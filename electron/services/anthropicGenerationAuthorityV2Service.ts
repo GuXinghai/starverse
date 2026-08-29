@@ -33,9 +33,6 @@ import {
   type DecodedProviderBindingRecordV2,
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
-import {
-  resolveAnthropicModelThinkingRuleV1,
-} from '../../src/next/generation-v2/providers/anthropic/modelThinkingRulesV1'
 import { ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
 import {
   isVerifiedAnthropicEndpointProfileV2,
@@ -51,6 +48,11 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
+import {
+  applyCapabilityRuleProjectionV2,
+  assertCapabilityRuleProjectionIdentityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
 
 export type VerifiedAnthropicProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_anthropic_provider_binding'
@@ -79,8 +81,6 @@ export class AnthropicGenerationAuthorityV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID'
     | 'GENERATION_V2_ANTHROPIC_OPERATION_AUTHORITY_REQUIRED'
-    | 'GENERATION_V2_ANTHROPIC_MODEL_RULE_UNAVAILABLE'
-    | 'GENERATION_V2_ANTHROPIC_MODEL_CAPABILITY_MISMATCH'
     | 'GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED') {
     super(code)
     this.name = 'AnthropicGenerationAuthorityV2Error'
@@ -126,35 +126,13 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
   return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
-function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, _toolsEnabled: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
-  const rule = resolveAnthropicModelThinkingRuleV1(evidence.modelId.value)
-  if (!rule) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_MODEL_RULE_UNAVAILABLE')
-  const reviewedThinkingTypes = rule.thinkingModes
-    .filter((mode) => mode !== 'disabled')
-    .map((mode) => mode === 'manual' ? 'enabled' : 'adaptive')
-    .sort()
-  const observedThinkingTypes = [...evidence.supportedThinkingTypes].sort()
-  const reviewedEfforts = [...rule.supportedEfforts].sort()
-  const observedEfforts = [...evidence.supportedEfforts].sort()
-  if (reviewedThinkingTypes.join('\0') !== observedThinkingTypes.join('\0') ||
-      reviewedEfforts.join('\0') !== observedEfforts.join('\0')) {
-    throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_MODEL_CAPABILITY_MISMATCH')
-  }
+function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly PersistedRuntimeCapabilityFieldV2[] {
   const values = new Map<RuntimeCapabilitySemanticPathV2, PersistedRuntimeCapabilityFieldV2>()
   for (const path of RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2) values.set(path, unavailable(path))
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', { kind: 'range', min: 1, max: evidence.maxTokens, integer: true }))
   for (const path of ['generation.seed', 'generation.candidateCount', 'generation.frequencyPenalty', 'generation.presencePenalty', 'generation.repetitionPenalty'] as const) values.set(path, unsupported(path))
-  if (rule.rejectsExplicitSampling) {
-    for (const path of ['generation.temperature', 'generation.topP', 'generation.topK'] as const) values.set(path, unsupported(path))
-  } else {
-    values.set('generation.temperature', supported('generation.temperature', { kind: 'range', min: 0, max: 1, integer: false }))
-    values.set('generation.topP', supported('generation.topP', { kind: 'range', min: 0, max: 1, integer: false }))
-    values.set('generation.topK', supported('generation.topK', { kind: 'range', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true }))
-  }
   values.set('generation.stop', supported('generation.stop', { kind: 'string_list', maxItems: 4, maxItemLength: 65_536 }))
-  values.set('reasoning.mode', supported('reasoning.mode', { kind: 'enum', values: Object.freeze(rule.thinkingModes.includes('disabled') ? ['disabled', 'enabled'] : ['enabled']) }))
-  if (rule.supportedEfforts.length) values.set('reasoning.effort', supported('reasoning.effort', { kind: 'enum', values: rule.supportedEfforts }))
-  else values.set('reasoning.effort', unsupported('reasoning.effort'))
+  values.set('reasoning.mode', supported('reasoning.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('reasoning.summary', unsupported('reasoning.summary'))
   values.set('reasoning.exclude', unsupported('reasoning.exclude'))
   values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }))
@@ -182,14 +160,6 @@ function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, _toolsEnabled: 
     constraints: Object.freeze([]), evidenceIds: Object.freeze([TOOL_CONFIRMATION]) }))
   values.set('providerExtension.kind', supported('providerExtension.kind', { kind: 'enum', values: Object.freeze(['anthropic_messages']) }))
   values.set('providerExtension.thinkingDisplay', supported('providerExtension.thinkingDisplay', { kind: 'enum', values: Object.freeze(['provider_default', 'summarized', 'omitted']) }))
-  const modes = [
-    ...(rule.recommendedEnabledThinkingMode === null ? [] : ['model_recommended']),
-    ...(rule.thinkingModes.includes('adaptive') ? ['adaptive'] : []),
-    ...(rule.thinkingModes.includes('manual') ? ['manual'] : []),
-  ]
-  values.set('providerExtension.thinkingMode', supported('providerExtension.thinkingMode', { kind: 'enum', values: Object.freeze(modes) }))
-  if (rule.thinkingModes.includes('manual')) values.set('providerExtension.manualThinkingBudgetTokens', supported('providerExtension.manualThinkingBudgetTokens', { kind: 'range', min: 1_024, max: Number.MAX_SAFE_INTEGER, integer: true }))
-  else values.set('providerExtension.manualThinkingBudgetTokens', unsupported('providerExtension.manualThinkingBudgetTokens'))
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
@@ -276,19 +246,25 @@ function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedAnthro
 }
 
 function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, modelEvidence: ActiveCatalogModelAuthorityV2,
-  fields: readonly PersistedRuntimeCapabilityFieldV2[], toolRegistry: ToolRegistryRepositoryFactV2 | null): VerifiedAnthropicRuntimeCapabilityAuthorityV2 {
+  capabilityRules: CapabilityRuleProjectionV2,
+  toolRegistry: ToolRegistryRepositoryFactV2 | null): VerifiedAnthropicRuntimeCapabilityAuthorityV2 {
   binding.assertCurrent()
   const observedAt = new Date(modelEvidence.observedAtMs).toISOString()
-  const evidence = [
+  const baseEvidence = [
       { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const, sourceRef: 'https://platform.claude.com/docs/en/api/messages/create', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const, sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
       { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant' as const, effect: 'requires_confirmation' as const, sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
       { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const, sourceRef: modelEvidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(modelEvidence.modelResponseDigest, 'evidence_digest') },
     ]
+  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
+    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
+  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(modelEvidence),
+    projection: capabilityRules })
   const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1, supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(modelEvidence),
-    binding: projectDecodedProviderBindingRecordV2(binding.binding), evidence, fields, continuation,
+    binding: projectDecodedProviderBindingRecordV2(binding.binding), evidence: merged.evidence,
+    fields: merged.fields, continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
     capability: resolvedCapability, resolvedAt: new Date(Date.now()).toISOString(),
@@ -316,9 +292,10 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
  */
 export function resolveAnthropicCapabilityV2(
   evidence: ActiveCatalogModelAuthorityV2,
+  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const binding = composeBinding(evidence)
-  return composeCapability(binding, evidence, fieldsForModel(evidence, false), null).resolvedCapability
+  return composeCapability(binding, evidence, capabilityRules, null).resolvedCapability
 }
 
 export function readVerifiedAnthropicProviderBindingRecordV2(authority: VerifiedAnthropicProviderBindingAuthorityV2): Readonly<Record<string, unknown>> {
@@ -337,6 +314,7 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedAnthropicProviderBindingAuthorityV2; capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2 }>) => T extends PromiseLike<unknown> ? never : T
 }>): T {
   if (!isActiveCatalogModelAuthorityV2(input.modelEvidence, 'anthropic_messages') || !isGenerationCommandFactsAuthorityV2(input.commandFacts) ||
@@ -351,14 +329,13 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
   }
   input.modelEvidence.assertCurrent()
   validateFacts(input.commandFacts, input.modelEvidence, input.toolRegistry)
-  const fields = fieldsForModel(input.modelEvidence, input.toolRegistry !== undefined && input.toolRegistry !== null)
   let binding: VerifiedAnthropicProviderBindingAuthorityV2 | undefined
   let capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2 | undefined
   let registered = false
   let completed = false
   try {
     binding = composeBinding(input.modelEvidence)
-    capability = composeCapability(binding, input.modelEvidence, fields, input.toolRegistry ?? null)
+    capability = composeCapability(binding, input.modelEvidence, input.capabilityRules, input.toolRegistry ?? null)
     validateSemanticIntentAgainstResolvedCapabilityV2(
       capability.resolvedCapability,
       input.commandFacts.semanticIntent,

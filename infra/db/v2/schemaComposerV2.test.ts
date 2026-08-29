@@ -96,6 +96,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       'model_catalog_v2',
       'dfc_attachment_v1',
       'conversation_route_preference_v1',
+      'capability_rule_v2',
     ])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
@@ -106,7 +107,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 17,
+        schema_digest: first.schemaDigest, fragment_count: 18,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())

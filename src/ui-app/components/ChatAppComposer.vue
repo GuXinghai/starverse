@@ -18,7 +18,7 @@ import { catalogModelSelectionCommandV2ForApp } from '@/next/modelCatalog/catalo
 import { GOOGLE_AI_STUDIO_PROVIDER_KEY, type GeminiModelAvailabilityResult } from '@/next/provider/gemini/geminiModelSource'
 import {
   type GeminiThinkingLevel,
-} from '@/next/provider/gemini/geminiThinkingPolicy'
+} from '@/next/provider/gemini/geminiThinkingControl'
 import {
   isProjectedGeminiImageModelV2,
   isProjectedGeminiThinkingBudgetValid,

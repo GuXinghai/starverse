@@ -3,8 +3,6 @@ import { decodeGenerationCommandAttachmentsV2, projectGenerationCommandAttachmen
 import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphIdentity } from '../../domain/conversationGraphV2'
 import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../domain/identityV2'
 import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
-import { normalizeGeminiImageGenerationModelId } from '../../../provider/gemini/geminiImageGenerationPolicy'
-import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 const MAX = 4 * 1024 * 1024
 const issued = new WeakSet<object>()
@@ -32,10 +30,7 @@ function issue<T extends object>(projection: object, typed: T): T & Readonly<{ c
   return value
 }
 function model(value: unknown): Identity<'model_id'> {
-  const raw = text(value)
-  const normalized = normalizeGeminiImageGenerationModelId(raw)
-  if (raw !== normalized || !isGeminiInteractionsImageModelIdV1(normalized)) throw new Error()
-  return GenerationV2Identity.create('model_id', normalized)
+  return GenerationV2Identity.create('model_id', text(value))
 }
 function prompt(value: unknown): string {
   const result = text(value)

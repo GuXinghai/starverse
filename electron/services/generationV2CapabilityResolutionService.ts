@@ -4,6 +4,7 @@ import { LocalEndpointProfileV2Repo, type LocalEndpointProfileV2 } from '../../i
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { OpenRouterImageBindingRepo } from '../../infra/db/repo/openRouterImageBindingRepo'
 import { OpenRouterImageSettingsRepo } from '../../infra/db/repo/openRouterImageSettingsRepo'
+import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
@@ -150,6 +151,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
   const compatible = new OpenAICompatibleV2Repo(input.db)
   const imageBindings = new OpenRouterImageBindingRepo(input.db)
   const imageSettings = new OpenRouterImageSettingsRepo(input.db)
+  const capabilityRules = new CapabilityRuleV2Repo(input.db)
   const imageDescriptors = createOpenRouterImageDescriptorAuthorityV2Service({
     db: input.db, credentialService: input.credentialService,
   })
@@ -176,7 +178,10 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       const profile = readVerifiedOpenAIResponsesEndpointProfileV2()
       return activeCatalog.withExactActiveModel({ providerKey: 'openai_responses', endpointProfile: profile, ...common,
         consume: (evidence) => {
-          const capability = resolveOpenAIResponsesCapabilityV2(evidence)
+          const capability = resolveOpenAIResponsesCapabilityV2(evidence, capabilityRules.resolveForIdentity({
+            providerId: evidence.providerId.value, endpointProfileId: evidence.endpointProfileId.value,
+            nativeModelId: evidence.modelId.value,
+          }))
           assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
@@ -185,7 +190,10 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       const profile = readVerifiedAnthropicEndpointProfileV2()
       return activeCatalog.withExactActiveModel({ providerKey: 'anthropic_messages', endpointProfile: profile, ...common,
         consume: (evidence) => {
-          const capability = resolveAnthropicCapabilityV2(evidence)
+          const capability = resolveAnthropicCapabilityV2(evidence, capabilityRules.resolveForIdentity({
+            providerId: evidence.providerId.value, endpointProfileId: evidence.endpointProfileId.value,
+            nativeModelId: evidence.modelId.value,
+          }))
           assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
@@ -194,7 +202,10 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       const profile = readVerifiedDeepSeekStableEndpointProfileV2()
       return activeCatalog.withExactActiveModel({ providerKey: 'deepseek', endpointProfile: profile, ...common,
         consume: (evidence) => {
-          const capability = resolveDeepSeekStableCapabilityV2(evidence)
+          const capability = resolveDeepSeekStableCapabilityV2(evidence, capabilityRules.resolveForIdentity({
+            providerId: evidence.providerId.value, endpointProfileId: evidence.endpointProfileId.value,
+            nativeModelId: evidence.modelId.value,
+          }))
           assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
@@ -204,14 +215,19 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       if (request.operation === 'text') {
         return activeCatalog.withExactActiveModel({ providerKey: 'google_ai_studio', endpointProfile: profile, ...common,
           consume: (evidence) => {
-            const capability = resolveGeminiGenerateContentCapabilityV2(evidence)
+            const capability = resolveGeminiGenerateContentCapabilityV2(evidence, capabilityRules.resolveForIdentity({
+              providerId: evidence.providerId.value, endpointProfileId: evidence.endpointProfileId.value,
+              nativeModelId: evidence.modelId.value,
+            }))
             assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
             return projectGenerationCapabilityResolutionV2(capability)
           } })
       }
       return activeCatalog.withExactActiveModel({ providerKey: 'google_ai_studio', endpointProfile: profile, ...common,
         consume: (evidence) => {
-          const capability = resolveGeminiInteractionsImageCapabilityV2(evidence, request.modelId)
+          const capability = resolveGeminiInteractionsImageCapabilityV2(evidence, request.modelId,
+            capabilityRules.resolveForIdentity({ providerId: evidence.providerId.value,
+              endpointProfileId: evidence.endpointProfileId.value, nativeModelId: evidence.modelId.value }))
           assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })

@@ -60,6 +60,7 @@ export type GenerationControlsProjectionV2 = Readonly<{
     visibility: 'visible' | 'hidden'
     state: PersistedModelCapabilityFieldV2['state']
     domain?: ModelCapabilityDomainV2
+    defaultValue?: PersistedModelCapabilityFieldV2['defaultValue']
     constraints: readonly PersistedModelCapabilityFieldV2['constraints'][number][]
     evidenceIds: readonly string[]
   }>>>
@@ -267,7 +268,9 @@ export function projectGenerationControlsProjectionV2(capability: ResolvedCapabi
   const binding = capability.executionContext.binding
   const controls = Object.fromEntries(facts.fields.map((field) => [field.path, Object.freeze({
     visibility: field.state === 'missing' || field.state === 'unsupported' ? 'hidden' : 'visible', state: field.state,
-    ...(field.domain ? { domain: field.domain } : {}), constraints: field.constraints, evidenceIds: field.evidenceIds,
+    ...(field.domain ? { domain: field.domain } : {}),
+    ...(field.defaultValue === undefined ? {} : { defaultValue: field.defaultValue }),
+    constraints: field.constraints, evidenceIds: field.evidenceIds,
   })])) as GenerationControlsProjectionV2['controls']
   return Object.freeze({ schemaVersion: 2, binding: Object.freeze({ providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value, protocolContractId: binding.protocolContractId.value,
@@ -291,7 +294,8 @@ function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): 
   if (domain.kind === 'enum_list') return Array.isArray(value) && value.length <= domain.maxItems &&
     value.every((item) => scalar(item) !== undefined && domain.values.includes(item as ModelCapabilityScalarV2))
   if (domain.kind === 'range') return typeof value === 'number' && Number.isFinite(value) && value >= domain.min &&
-    value <= domain.max && (!domain.integer || Number.isSafeInteger(value))
+    value <= domain.max && (!domain.integer || Number.isSafeInteger(value)) &&
+    !domain.excludedValues?.includes(value)
   if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems &&
     value.every((item) => typeof item === 'string' && item.length <= domain.maxItemLength)
   if (domain.kind === 'identity_list') return Array.isArray(value) && value.length <= domain.maxItems &&

@@ -241,7 +241,7 @@ function validateSourceRef(kind: RuntimeCapabilityEvidenceKindV2, value: string)
   if (value.length < 1 || value.length > 2048 || value.trim() !== value || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
-  if (kind === 'official_documentation') {
+  if (kind === 'official_documentation' || kind === 'capability_rule' && value.startsWith('https://')) {
     let url: URL
     try { url = new URL(value) } catch { throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE') }
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
@@ -321,14 +321,25 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
     })
   }
   if (discriminator.kind === 'range') {
-    const input = closedObject(value, ['kind', 'min', 'max', 'integer'])
+    const raw = value as Record<string, unknown>
+    const input = closedObject(value, raw.excludedValues === undefined
+      ? ['kind', 'min', 'max', 'integer'] : ['kind', 'min', 'max', 'integer', 'excludedValues'])
     if (typeof input.min !== 'number' || !Number.isFinite(input.min) ||
         typeof input.max !== 'number' || !Number.isFinite(input.max) || input.min > input.max ||
         typeof input.integer !== 'boolean' || (input.integer &&
           (!Number.isSafeInteger(input.min) || !Number.isSafeInteger(input.max)))) {
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
-    return Object.freeze({ kind: 'range', min: input.min, max: input.max, integer: input.integer })
+    const excludedValues = input.excludedValues === undefined ? undefined : closedDenseArray(input.excludedValues)
+    if (excludedValues?.some((item) => typeof item !== 'number' || !Number.isFinite(item) ||
+        item < (input.min as number) || item > (input.max as number) ||
+        input.integer === true && !Number.isSafeInteger(item)) ||
+        excludedValues && new Set(excludedValues).size !== excludedValues.length) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'range', min: input.min, max: input.max, integer: input.integer,
+      ...(excludedValues === undefined ? {} : { excludedValues: Object.freeze([...excludedValues].sort((left, right) =>
+        (left as number) - (right as number)) as number[]) }) })
   }
   if (discriminator.kind === 'string_list') {
     const input = closedObject(value, ['kind', 'maxItems', 'maxItemLength'])
@@ -495,7 +506,10 @@ function decodeEvidence(value: unknown, includesEntryDigest: boolean): DraftEvid
 }
 
 function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
-  const input = closedObject(value, ['path', 'state', 'domain', 'constraints', 'evidenceIds'])
+  const raw = value as Record<string, unknown>
+  const input = closedObject(value, raw.defaultValue === undefined
+    ? ['path', 'state', 'domain', 'constraints', 'evidenceIds']
+    : ['path', 'state', 'domain', 'defaultValue', 'constraints', 'evidenceIds'])
   const path = decodeSemanticPath(input.path)
   if (!FIELD_STATES.includes(input.state as RuntimeCapabilityFieldStateV2)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
@@ -506,6 +520,16 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
   }
   const domain = input.domain === undefined ? undefined : decodeDomain(input.domain)
   if (domain) assertDomainMatchesPath(path, domain)
+  const defaultValue = input.defaultValue === undefined ? undefined : decodeScalar(input.defaultValue)
+  if (defaultValue !== undefined && (!domain ||
+      domain.kind === 'boolean' && typeof defaultValue !== 'boolean' ||
+      (domain.kind === 'identity' || domain.kind === 'string') && typeof defaultValue !== 'string' ||
+      domain.kind === 'string' && typeof defaultValue === 'string' && defaultValue.length > domain.maxLength ||
+      domain.kind === 'enum' && !domain.values.includes(defaultValue) ||
+      domain.kind === 'range' && (typeof defaultValue !== 'number' || defaultValue < domain.min || defaultValue > domain.max ||
+        domain.integer && !Number.isSafeInteger(defaultValue) || domain.excludedValues?.includes(defaultValue)))) {
+    throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  }
   const constraints = closedDenseArray(input.constraints).map((item) => decodeConstraint(item, path))
   if (constraints.length > MAX_CONSTRAINTS_PER_FIELD) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
@@ -533,6 +557,7 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
     path,
     state,
     ...(domain === undefined ? {} : { domain }),
+    ...(defaultValue === undefined ? {} : { defaultValue }),
     constraints: Object.freeze(constraints),
     evidenceIds: Object.freeze(evidenceIds),
   })

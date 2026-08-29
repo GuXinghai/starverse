@@ -1,0 +1,2887 @@
+{
+  "schemaVersion": 1,
+  "packs": [
+    {
+      "schemaVersion": 1,
+      "ownerKind": "built_in",
+      "ownerId": "starverse",
+      "packId": "starverse.builtin.gemini-generate-content-model-facts",
+      "packVersion": 2,
+      "enabled": true,
+      "rules": [
+        {
+          "ruleId": "gemini-3.6-flash.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.6-flash"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for Gemini 3.6 Flash.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.6-flash.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.6-flash"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "medium",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists minimal, low, medium and high; medium is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.5-flash.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.5-flash"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for Gemini 3.5 Flash.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.5-flash.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.5-flash"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "medium",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists minimal, low, medium and high; medium is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.5-flash-lite.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.5-flash-lite"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for Gemini 3.5 Flash-Lite.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.5-flash-lite.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.5-flash-lite"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "minimal",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists minimal, low, medium and high; minimal is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-pro-preview.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-pro-preview"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for this exact preview ID.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-pro-preview.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-pro-preview"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "high",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists low, medium and high; high is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-flash-preview.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-flash-preview"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for this exact preview ID.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-flash-preview.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-flash-preview"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "high",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists minimal, low, medium and high; high is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-pro-preview.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-pro-preview"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for this exact preview ID.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-pro-preview.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-pro-preview"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "high"
+            ]
+          },
+          "defaultValue": "high",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.thinking.table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists low and high; high is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "ownerKind": "built_in",
+      "ownerId": "starverse",
+      "packId": "starverse.builtin.gemini-image-model-facts",
+      "packVersion": 2,
+      "enabled": true,
+      "rules": [
+        {
+          "ruleId": "gemini-3.1-flash-image.image.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "image.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "generate"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.model.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official exact-model page identifies image generation output.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.image.aspectRatio",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "image.aspectRatio",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1:1",
+              "1:4",
+              "1:8",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:1",
+              "4:3",
+              "4:5",
+              "5:4",
+              "8:1",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.ratio-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official exact-model table enumerates these aspect ratios.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.image.resolution",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "image.resolution",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "512",
+              "1K",
+              "2K",
+              "4K"
+            ]
+          },
+          "defaultValue": "1K",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.resolution-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists 512, 1K, 2K and 4K; 1K is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.thinking.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official image guide explicitly describes controllable thinking for this exact model.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "high"
+            ]
+          },
+          "defaultValue": "minimal",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.thinking.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official image guide lists minimal and high; minimal is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.web.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "web.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "provider_search"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.search.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official exact-model page lists search grounding support.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-image.web.types",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "semanticPath": "web.types",
+          "state": "supported",
+          "domain": {
+            "kind": "enum_list",
+            "values": [
+              "web",
+              "image"
+            ],
+            "maxItems": 2
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.search.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official exact-model page lists text web search and image search grounding.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-lite-image.image.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-lite-image"
+            ]
+          },
+          "semanticPath": "image.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "generate"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.model.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official image guide identifies this exact model as image-generating.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-lite-image.image.aspectRatio",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-lite-image"
+            ]
+          },
+          "semanticPath": "image.aspectRatio",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.ratio-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide enumerates these ratios for this exact model.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-lite-image.image.resolution",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-lite-image"
+            ]
+          },
+          "semanticPath": "image.resolution",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1K"
+            ]
+          },
+          "defaultValue": "1K",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.resolution-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide states this exact model supports only 1K output.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-lite-image.reasoning.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-lite-image"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.thinking.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official per-model table identifies controllable thinking for this exact model.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3.1-flash-lite-image.reasoning.effort",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3.1-flash-lite-image"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "high"
+            ]
+          },
+          "defaultValue": "minimal",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.thinking.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table lists minimal and high; minimal is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-pro-image.image.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-pro-image"
+            ]
+          },
+          "semanticPath": "image.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "generate"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.model.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official image guide identifies Gemini 3 Pro Image as image-generating.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-pro-image.image.aspectRatio",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-pro-image"
+            ]
+          },
+          "semanticPath": "image.aspectRatio",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.ratio-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official Pro Image table enumerates these aspect ratios.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-3-pro-image.image.resolution",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-3-pro-image"
+            ]
+          },
+          "semanticPath": "image.resolution",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1K",
+              "2K",
+              "4K"
+            ]
+          },
+          "defaultValue": "1K",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.resolution-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official Pro Image table lists 1K, 2K and 4K; 1K is default.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-2.5-flash-image.image.mode",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-2.5-flash-image"
+            ]
+          },
+          "semanticPath": "image.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "generate"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.model.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official image guide identifies Gemini 2.5 Flash Image as image-generating.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-2.5-flash-image.image.aspectRatio",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-2.5-flash-image"
+            ]
+          },
+          "semanticPath": "image.aspectRatio",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.ratio-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official exact-model table enumerates these output aspect ratios.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "gemini-2.5-flash-image.image.resolution",
+          "providerId": "google_ai_studio",
+          "endpointProfileId": "gemini-developer-api-v1beta",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gemini-2.5-flash-image"
+            ]
+          },
+          "semanticPath": "image.resolution",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "1K"
+            ]
+          },
+          "defaultValue": "1K",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "google.gemini.image.resolution-table.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official table shows fixed 1K-class output dimensions for this exact model.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.google-ai-studio.models.20260804",
+          "provenanceUrl": "https://ai.google.dev/gemini-api/docs/image-generation",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "ownerKind": "built_in",
+      "ownerId": "starverse",
+      "packId": "starverse.builtin.openai-responses-model-facts",
+      "packVersion": 5,
+      "enabled": true,
+      "rules": [
+        {
+          "ruleId": "gpt-5.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5",
+              "gpt-5-2025-08-07"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5",
+              "gpt-5-2025-08-07"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5-pro",
+              "gpt-5-pro-2025-10-06"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5-pro.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5-pro",
+              "gpt-5-pro-2025-10-06"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "high"
+            ]
+          },
+          "defaultValue": "high",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.1.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.1",
+              "gpt-5.1-2025-11-13"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.1.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.1",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.1.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.1",
+              "gpt-5.1-2025-11-13"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.1.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.1",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "defaultValue": "none",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2",
+              "gpt-5.2-2025-12-11"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2",
+              "gpt-5.2-2025-12-11"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "none",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2-pro",
+              "gpt-5.2-pro-2025-12-11"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2-pro.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2-pro",
+              "gpt-5.2-pro-2025-12-11"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2-codex.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2-codex"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2-codex.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2-codex",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.2-codex.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.2-codex"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.2-codex.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2-codex",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.3-codex.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.3-codex"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.3-codex.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.3-codex",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.3-codex.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.3-codex"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.3-codex.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.3-codex",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4",
+              "gpt-5.4-2026-03-05"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4",
+              "gpt-5.4-2026-03-05"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "none",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-pro",
+              "gpt-5.4-pro-2026-03-05"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-pro.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-pro",
+              "gpt-5.4-pro-2026-03-05"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "medium",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-mini.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-mini",
+              "gpt-5.4-mini-2026-03-17"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-mini.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-mini.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-mini",
+              "gpt-5.4-mini-2026-03-17"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-mini.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "none",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-nano.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-nano",
+              "gpt-5.4-nano-2026-03-17"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-nano.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-nano",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.4-nano.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.4-nano",
+              "gpt-5.4-nano-2026-03-17"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.4-nano.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-nano",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "none",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.5.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.5",
+              "gpt-5.5-2026-04-23"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.5.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.5.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.5",
+              "gpt-5.5-2026-04-23"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.5.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "medium",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.5-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.5-pro",
+              "gpt-5.5-pro-2026-04-23"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.5-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.5-pro.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.5-pro",
+              "gpt-5.5-pro-2026-04-23"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.5-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "defaultValue": "high",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-sol.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-sol"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-sol.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-sol.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-sol"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-sol.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "defaultValue": "medium",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-terra.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-terra"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-terra.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-terra.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-terra"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-terra.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "defaultValue": "medium",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-luna.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-luna"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-luna.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "gpt-5.6-luna.reasoning.effort",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "gpt-5.6-luna"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.gpt-5.6-luna.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "defaultValue": "medium",
+          "evidenceNote": "Official exact-model page lists the complete reasoning effort domain for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o1.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o1",
+              "o1-2024-12-17"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o1.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o1",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o1-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o1-pro",
+              "o1-pro-2025-03-19"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o1-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o1-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o3.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o3",
+              "o3-2025-04-16"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o3.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o3",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o3-mini.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o3-mini",
+              "o3-mini-2025-01-31"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o3-mini.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o3-mini",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o4-mini.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o4-mini",
+              "o4-mini-2025-04-16"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o4-mini.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.openai.models.20260804",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o4-mini",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        },
+        {
+          "ruleId": "o3-pro.reasoning.mode",
+          "providerId": "openai_responses",
+          "endpointProfileId": "openai-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "o3-pro"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "openai.models.o3-pro.20260828",
+          "evidenceKind": "explicit_provider",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai.models.o3-pro.20260828",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/o3-pro",
+          "verifiedAt": "2026-08-28T00:00:00.000Z",
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "evidenceNote": "Official exact-model page identifies reasoning support for every explicitly listed native model ID."
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "ownerKind": "built_in",
+      "ownerId": "starverse",
+      "packId": "starverse.builtin.anthropic-model-facts",
+      "packVersion": 2,
+      "enabled": true,
+      "rules": [
+        {
+          "ruleId": "claude-fable-5.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-fable-5"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official current-model table states Fable 5 uses adaptive thinking and cannot disable thinking; the archived Models API proves this exact native ID.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-fable-5.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-fable-5"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official effort compatibility table lists Fable 5 and explicitly documents the complete five-level effort domain.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-5.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-5"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official current-model documentation states Opus 5 uses adaptive thinking and permits disabling it subject to separate request constraints.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-5.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-5"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official Opus 5 effort guidance explicitly lists low, medium, high, xhigh and max.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-sonnet-5.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-sonnet-5"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official current-model table identifies adaptive thinking for Sonnet 5; the archived Models API proves the exact native ID.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-sonnet-5.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-sonnet-5"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official Sonnet 5 effort guidance explicitly lists the complete five-level effort domain.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-8.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-8"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table states Opus 4.8 supports adaptive thinking and rejects manual budget thinking; this rule records only the canonical support fact.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-8.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-8"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official Opus 4.8 guidance explicitly supports low, medium, high, xhigh and max.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-7.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-7"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table identifies adaptive thinking for Opus 4.7; manual budget support is deliberately not projected as a model capability.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-7.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-7"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official Opus 4.7 effort guidance explicitly lists all five effort levels.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-6.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-6"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table identifies thinking support for Opus 4.6 while treating manual budgets as deprecated; only canonical support is recorded.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-6.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-6"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official effort table supports max but not xhigh on Opus 4.6; low, medium and high remain generally supported levels.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-sonnet-4-6.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-sonnet-4-6"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table identifies thinking support for Sonnet 4.6 while separating deprecated manual budget wire behavior.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-sonnet-4-6.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-sonnet-4-6"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official effort table supports max but not xhigh on Sonnet 4.6; low, medium and high remain supported.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-5-20251101.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-5-20251101"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table states Opus 4.5 supports manual extended thinking; the archived API supplies the exact dated native identity.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-opus-4-5-20251101.reasoning.effort",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-opus-4-5-20251101"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.effort.compatibility.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official compatibility table includes Opus 4.5 but excludes it from xhigh and max; the minimum supported domain is low, medium and high.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-haiku-4-5-20251001.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-haiku-4-5-20251001"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table states Haiku 4.5 supports manual extended thinking; effort remains absent because official evidence says it is unsupported.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "claude-sonnet-4-5-20250929.reasoning.mode",
+          "providerId": "anthropic",
+          "endpointProfileId": "anthropic-developer-api-2023-06-01",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "claude-sonnet-4-5-20250929"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "anthropic.thinking.current-models.20260828",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Official table states Sonnet 4.5 supports manual extended thinking; effort is deliberately left missing rather than encoded as unsupported.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.anthropic.models.20260804",
+          "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "ownerKind": "built_in",
+      "ownerId": "starverse",
+      "packId": "starverse.builtin.deepseek-model-facts",
+      "packVersion": 2,
+      "enabled": true,
+      "rules": [
+        {
+          "ruleId": "deepseek-v4-flash.reasoning.mode",
+          "providerId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "deepseek-v4-flash"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "deepseek.thinking-mode.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide explicitly states thinking toggle support for DeepSeek V4 Flash.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.deepseek.models.20260804",
+          "provenanceUrl": "https://api-docs.deepseek.com/guides/thinking_mode",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "deepseek-v4-flash.reasoning.effort",
+          "providerId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "deepseek-v4-flash"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "defaultValue": "high",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "deepseek.thinking-mode.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide lists native low, high and max; compatibility-mapped medium and xhigh are excluded.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.deepseek.models.20260804",
+          "provenanceUrl": "https://api-docs.deepseek.com/guides/thinking_mode",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "deepseek-v4-pro.reasoning.mode",
+          "providerId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "deepseek-v4-pro"
+            ]
+          },
+          "semanticPath": "reasoning.mode",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "disabled",
+              "enabled"
+            ]
+          },
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "deepseek.thinking-mode.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide explicitly states thinking toggle support for DeepSeek V4 Pro.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.deepseek.models.20260804",
+          "provenanceUrl": "https://api-docs.deepseek.com/guides/thinking_mode",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        },
+        {
+          "ruleId": "deepseek-v4-pro.reasoning.effort",
+          "providerId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "selector": {
+            "kind": "exact",
+            "values": [
+              "deepseek-v4-pro"
+            ]
+          },
+          "semanticPath": "reasoning.effort",
+          "state": "supported",
+          "domain": {
+            "kind": "enum",
+            "values": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "defaultValue": "high",
+          "constraints": [],
+          "priority": 100,
+          "enabled": true,
+          "evidenceSourceRef": "deepseek.thinking-mode.20260828",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Official guide lists native low, high and max; compatibility-mapped medium and xhigh are excluded.",
+          "identityEvidenceKind": "provider_archive",
+          "identityEvidenceSourceRef": "archive.deepseek.models.20260804",
+          "provenanceUrl": "https://api-docs.deepseek.com/guides/thinking_mode",
+          "verifiedAt": "2026-08-28T00:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

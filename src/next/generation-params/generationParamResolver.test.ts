@@ -5,7 +5,7 @@ import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProf
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
 import { resolveGenerationParamsFromLayers } from './generationParamResolver'
-import { resolveGeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
+import type { GeminiThinkingCapability } from '../provider/gemini/geminiThinkingControl'
 
 describe('generationParamResolver', () => {
   it('resolves custom precedence conversation > project > global', () => {
@@ -55,9 +55,10 @@ describe('generationParamResolver', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: geminiGenerationProfile,
       modelId: 'gemini-3.1-flash-lite',
-      geminiThinkingCapability: resolveGeminiThinkingCapability({
-        model: 'gemini-3.1-flash-lite', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
-      }),
+      geminiThinkingCapability: Object.freeze({ modelId: 'gemini-3.1-flash-lite', thinkingOwnProperty: true,
+        thinkingRawValue: true, thinkingRawType: 'boolean', matchedRule: null, allowDynamic: false, allowOff: false,
+        thinkingSupported: 'supported', kind: 'level', controlKind: 'level', levels: Object.freeze(['minimal', 'low', 'medium', 'high']),
+        defaultLevel: 'minimal', highIsDynamic: true, reason: 'mapped_level' }) satisfies GeminiThinkingCapability,
       layers: {
         conversation: {
           thinkingLevel: { mode: 'custom', value: 'medium' },

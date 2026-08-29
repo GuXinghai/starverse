@@ -57,6 +57,11 @@ import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import {
+  applyCapabilityRuleProjectionV2,
+  assertCapabilityRuleProjectionIdentityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
 
 export type VerifiedDeepSeekStableProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_deepseek_stable_provider_binding'
@@ -357,11 +362,19 @@ function composeCapabilityAuthority(input: Readonly<{
   commandFacts?: GenerationCommandFactsAuthorityV2
   policy: VerifiedDeepSeekStableCapabilityPolicyV2
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
+  capabilityRules: CapabilityRuleProjectionV2
   resolvedAt: string
   toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 {
   input.bindingAuthority.assertCurrent()
-  const evidence = buildRuntimeEvidence(input.policy, input.modelEvidence)
+  const baseEvidence = buildRuntimeEvidence(input.policy, input.modelEvidence)
+  assertCapabilityRuleProjectionIdentityV2(input.capabilityRules, {
+    providerId: input.bindingAuthority.binding.providerId.value,
+    endpointProfileId: input.bindingAuthority.binding.endpointProfileId.value,
+    nativeModelId: input.bindingAuthority.binding.modelId.value,
+  })
+  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: input.fields,
+    projection: input.capabilityRules })
   const continuationSupports = evidenceId(
     DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
     'supports',
@@ -373,8 +386,8 @@ function composeCapabilityAuthority(input: Readonly<{
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
     binding: projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding),
-    evidence,
-    fields: input.fields,
+    evidence: merged.evidence,
+    fields: merged.fields,
     continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
@@ -440,6 +453,7 @@ export function readVerifiedDeepSeekStableProviderBindingRecordV2(
  * protocol policy and codec ceiling supply the semantic field domain. */
 export function resolveDeepSeekStableCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
+  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
   const toolEvidenceId = policy.rules.find((rule) => rule.path === 'tools.mode')?.evidenceId
@@ -452,6 +466,7 @@ export function resolveDeepSeekStableCapabilityV2(
     modelEvidence,
     policy,
     fields: Object.freeze(policy.rules.map((rule) => buildField(rule, false, toolEvidenceId))),
+    capabilityRules,
     resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
     toolRegistry: null,
   }).resolvedCapability
@@ -468,6 +483,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{
     binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
     capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
@@ -526,6 +542,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       commandFacts: input.commandFacts,
       policy,
       fields,
+      capabilityRules: input.capabilityRules,
       resolvedAt,
       toolRegistry,
     })

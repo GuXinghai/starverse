@@ -125,6 +125,7 @@ function createDivergentSchemaRoot(): string {
     'modelCatalogSchemaV2.sql',
     'dfcAttachmentSchema.sql',
     'conversationRoutePreferenceSchema.sql',
+    'capabilityRuleSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
   fs.appendFileSync(path.join(target, 'generationConfigSchema.sql'), '\n-- build advanced fixture\n')
   return root

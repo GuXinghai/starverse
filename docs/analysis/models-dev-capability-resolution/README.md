@@ -18,7 +18,9 @@ This directory preserves three independent investigations of using models.dev as
 5. [Raw model capability evidence draft](05-raw-model-capability-evidence-and-discussion.md) — raw fact draft (事实底稿) preserving original model/capability fields, sources, evidence, and discussion conclusions; not a design or rule document.
 6. [Owner-frozen model-facts architecture](06-owner-frozen-model-facts-architecture.md) — authoritative Owner decision for the model-facts boundary and the following source-ingestion Goals.
 7. [Model-facts authority boundary implementation](07-model-facts-authority-boundary-implementation.md) — first post-decision authority-boundary partial closeout, intentional residuals, and next-Goal checklist.
-8. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+8. [Goal 2A Capability Rule migration](08-goal-2a-capability-rule-migration.md) — database schema, built-in installation semantics, exact-model migration inventory, retained boundaries, and next-Goal blockers.
+9. [Goal 2A-Fix evidence and matching closeout](09-goal-2a-fix-evidence-and-matching-closeout.md) — corrected sparse rule inventory, Provider Native identity audit, provenance classes, constrained regex semantics, removals, and deferred verification candidates.
+10. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
@@ -28,7 +30,7 @@ This directory preserves three independent investigations of using models.dev as
 - The reports' file/line references describe their respective checkout baselines and can drift as the repository changes.
 - For current implementation facts, inspect the current checkout. For approved architecture, follow the current Generation V2 authority and Owner-frozen decisions.
 - models.dev data in these reports is treated as potential evidence, never as model availability or final capability authority.
-- Current implementation status and remaining TODOs are tracked in item 7; do not revive the deleted Catalog capability resolver while implementing source ingestion.
+- Current implementation status and remaining TODOs are split between items 7–9: item 7 records the authority-boundary residuals, item 8 records the Goal 2A migration, and item 9 is the controlling Goal 2A-Fix fact-quality closeout. Do not revive the deleted Catalog capability resolver while implementing source ingestion.
 
 ## Import fidelity
 

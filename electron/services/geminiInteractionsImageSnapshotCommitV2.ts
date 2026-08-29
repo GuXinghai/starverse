@@ -38,7 +38,6 @@ import {
   type VerifiedGeminiInteractionsImageProviderBindingAuthorityV2,
   type VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2,
 } from './geminiInteractionsImageGenerationAuthorityV2Service'
-import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 
 export class GeminiInteractionsImageSnapshotCommitV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_GEMINI_INTERACTIONS_SNAPSHOT_INPUT_INVALID' |
@@ -68,7 +67,7 @@ function commitCurrent(input: Readonly<{
       !isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2(input.capability) ||
       input.capability.bindingAuthority !== input.binding || input.command.operationId.value !== input.pending.operationId.value ||
-      commandBranchId.value !== pendingSourceBranchIdV2(input.pending).value || !isGeminiInteractionsImageModelIdV1(input.command.modelId.value) ||
+      commandBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.binding.binding.modelId.value !== input.command.modelId.value ||
       input.commandFacts.conversationId.value !== input.pending.conversationId.value ||
       (initial && (input.command as GeminiInteractionsImageInitialCommandV2).prompt !== (input.pending as PendingInitialTurnV2).userBody)) {
@@ -130,8 +129,7 @@ export function commitGeminiInteractionsImageRetrySnapshotV2(input: Readonly<{
       input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'google_ai_studio' ||
       input.target.snapshot.providerBinding.protocolContractId.value !== 'gemini-interactions-v1beta' ||
-      input.target.snapshot.providerBinding.operation !== 'image_generate' ||
-      !isGeminiInteractionsImageModelIdV1(input.target.snapshot.providerBinding.modelId.value)) {
+      input.target.snapshot.providerBinding.operation !== 'image_generate') {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_SNAPSHOT_INPUT_INVALID')
   }
   const payload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>

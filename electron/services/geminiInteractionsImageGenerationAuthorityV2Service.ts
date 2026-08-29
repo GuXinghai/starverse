@@ -44,10 +44,10 @@ import {
   readVerifiedGeminiDeveloperApiEndpointProfileV2,
 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import {
-  isGeminiInteractionsImageModelIdV1,
-} from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
-import { resolveGeminiImageGenerationPolicy,
-  type GeminiImageGenerationPolicy } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
+  applyCapabilityRuleProjectionV2,
+  assertCapabilityRuleProjectionIdentityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
@@ -61,7 +61,6 @@ export type VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 = Readonly
   binding: DecodedProviderBindingRecordV2
   contractReference: VerifiedProviderContractReferenceV2
   catalogAuthority: ActiveCatalogModelAuthorityV2
-  imagePolicy: Exclude<GeminiImageGenerationPolicy, { kind: 'unsupported' }>
   credentialRevision: number
   assertCurrent(): void
 }>
@@ -93,33 +92,21 @@ function supported(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabil
 function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
   return Object.freeze({ path, state: 'unsupported', constraints: Object.freeze([]), evidenceIds: Object.freeze([REJECTS]) })
 }
-function fields(policy: Exclude<GeminiImageGenerationPolicy, { kind: 'unsupported' }>): readonly PersistedRuntimeCapabilityFieldV2[] {
-  const values = new Map(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => [path, unsupported(path)] as const))
+function missing(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
+  return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+}
+function baseFields(): readonly PersistedRuntimeCapabilityFieldV2[] {
+  const values = new Map(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => [path, missing(path)] as const))
   values.set('generation.temperature', supported('generation.temperature', { kind: 'range', min: 0, max: 2, integer: false }))
   values.set('generation.topP', supported('generation.topP', { kind: 'range', min: 0, max: 1, integer: false }))
-  values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', { kind: 'range', min: 0, max: policy.maxOutputTokens, integer: true }))
-  if (policy.supportsStopSequences) values.set('generation.stop', supported('generation.stop', { kind: 'string_list', maxItems: 5, maxItemLength: 65_536 }))
-  values.set('reasoning.mode', supported('reasoning.mode', { kind: 'enum', values: Object.freeze(policy.supportsThoughtSummaries ? ['disabled', 'enabled'] : ['disabled']) }))
-  if (policy.supportsThoughtSummaries) {
-    values.set('reasoning.effort', supported('reasoning.effort', { kind: 'enum', values: Object.freeze([...policy.thinkingLevels]) }))
-    values.set('reasoning.summary', supported('reasoning.summary', { kind: 'enum', values: Object.freeze(['auto']) }))
-  }
-  values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(
-    policy.supportsGoogleSearch || policy.supportsImageSearch ? ['disabled', 'provider_search'] : ['disabled']) }))
-  if (policy.supportsGoogleSearch || policy.supportsImageSearch) values.set('web.types', supported('web.types', {
-    kind: 'enum_list', values: Object.freeze([
-      ...(policy.supportsGoogleSearch ? ['web' as const] : []),
-      ...(policy.supportsImageSearch ? ['image' as const] : []),
-    ]), maxItems: 2,
-  }))
+  values.set('reasoning.mode', supported('reasoning.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
+  values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('providerExtension.kind', supported('providerExtension.kind', { kind: 'enum', values: Object.freeze(['none']) }))
-  values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['generate']) }))
-  values.set('image.outputMode', supported('image.outputMode', { kind: 'enum', values: Object.freeze([...policy.supportedOutputModes]) }))
-  values.set('image.aspectRatio', supported('image.aspectRatio', { kind: 'enum', values: Object.freeze([...policy.supportedAspectRatios]) }))
-  if (policy.imageSizeMode !== 'hidden') values.set('image.resolution', supported('image.resolution', { kind: 'enum', values: Object.freeze([...policy.supportedImageSizes]) }))
   values.set('image.format', supported('image.format', { kind: 'enum', values: Object.freeze(['jpeg']) }))
   values.set('image.stream', supported('image.stream', { kind: 'boolean' }))
+  for (const path of ['generation.seed', 'generation.frequencyPenalty', 'generation.presencePenalty',
+    'generation.repetitionPenalty'] as const) values.set(path, unsupported(path))
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
@@ -134,12 +121,10 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2): void {
 function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId: string) {
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
   const definition = readReviewedGeminiInteractionsDefinitionV2()
-  const imagePolicy = resolveGeminiImageGenerationPolicy(modelId)
   if (!isVerifiedGeminiDeveloperApiEndpointProfileV2(profile) || !isReviewedProviderContractDefinitionV2(definition) ||
       definition.protocolContractId.value !== 'gemini-interactions-v1beta' || definition.providerId.value !== 'google_ai_studio' ||
       !isActiveCatalogModelAuthorityV2(catalogAuthority, 'google_ai_studio') ||
-      catalogAuthority.modelId?.value !== modelId || !isGeminiInteractionsImageModelIdV1(modelId) ||
-      imagePolicy.kind === 'unsupported') invalid()
+      catalogAuthority.modelId?.value !== modelId) invalid()
   catalogAuthority.assertCurrent()
   const descriptor = profile.descriptors.interactions
   const candidate = Object.freeze({
@@ -163,24 +148,29 @@ function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId
   const authority = Object.freeze({
     trust: 'verified_gemini_interactions_image_provider_binding' as const,
     usage: 'runtime_capability_and_snapshot_input_only' as const, executionAuthority: 'none' as const,
-    binding, contractReference, catalogAuthority, imagePolicy,
+    binding, contractReference, catalogAuthority,
     credentialRevision: catalogAuthority.credentialRevision,
     assertCurrent: () => { if (!bindings.has(authority)) invalid(); catalogAuthority.assertCurrent() },
   })
   bindings.add(authority)
   return authority
 }
-function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2) {
+function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2,
+  capabilityRules: CapabilityRuleProjectionV2) {
+  const baseEvidence = [
+      { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const,
+        sourceRef: 'https://ai.google.dev/gemini-api/docs/image-generation', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
+      { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const,
+        sourceRef: 'generation-v2-gemini-interactions-api-boundary', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
+    ]
+  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
+    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
+  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(), projection: capabilityRules })
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
-    evidence: [
-      { evidenceId: SUPPORTS, kind: 'official_documentation', effect: 'supports',
-        sourceRef: 'https://ai.google.dev/gemini-api/docs/image-generation', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
-      { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects',
-        sourceRef: 'generation-v2-gemini-interactions-reviewed-model-matrix', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
-    ],
+    evidence: merged.evidence,
     ...projectActiveCatalogSnapshotAuthorityV2(binding.catalogAuthority),
-    fields: fields(binding.imagePolicy), continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
+    fields: merged.fields, continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({ capability: resolvedCapability,
     resolvedAt: new Date(Date.now()).toISOString(), tools: [] })
@@ -199,8 +189,9 @@ function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindi
 export function resolveGeminiInteractionsImageCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
   modelId: string,
+  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
-  return composeCapability(composeBinding(modelEvidence, modelId)).resolvedCapability
+  return composeCapability(composeBinding(modelEvidence, modelId), capabilityRules).resolvedCapability
 }
 export function isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2(value: unknown): value is VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 {
   return Boolean(value && typeof value === 'object' && bindings.has(value))
@@ -220,13 +211,14 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   modelEvidence: ActiveCatalogModelAuthorityV2
   modelId: string
   commandFacts: GenerationCommandFactsAuthorityV2
+  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2;
     capability: VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2 }>) => T
 }>): T {
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) invalid()
   validateFacts(input.commandFacts)
   const binding = composeBinding(input.modelEvidence, input.modelId)
-  const capability = composeCapability(binding)
+  const capability = composeCapability(binding, input.capabilityRules)
   validateSemanticIntentAgainstResolvedCapabilityV2(
     capability.resolvedCapability,
     input.commandFacts.semanticIntent,

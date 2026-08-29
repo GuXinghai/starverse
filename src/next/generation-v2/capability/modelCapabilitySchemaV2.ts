@@ -131,7 +131,7 @@ export type ModelCapabilityDomainV2 =
   | Readonly<{ kind: 'enum'; values: readonly ModelCapabilityScalarV2[] }>
   | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
   | Readonly<{ kind: 'enum_list'; values: readonly ModelCapabilityScalarV2[]; maxItems: number }>
-  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean }>
+  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean; excludedValues?: readonly number[] }>
   | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
   | Readonly<{ kind: 'identity_list'; maxItems: number }>
   | Readonly<{ kind: 'approximate_location'; maxFieldLength: number }>
@@ -175,6 +175,8 @@ export type PersistedModelCapabilityFieldV2 = Readonly<{
   path: ModelCapabilitySemanticPathV2
   state: ModelCapabilityFieldStateV2
   domain?: ModelCapabilityDomainV2
+  /** Provider/model default declared by a fact source; never an implicit send fallback. */
+  defaultValue?: ModelCapabilityScalarV2
   constraints: readonly ModelCapabilityConstraintV2[]
   evidenceIds: readonly string[]
 }>

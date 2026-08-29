@@ -20,8 +20,6 @@ import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDec
   GeminiInteractionsImageStreamV1Error, type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
 // eslint-disable-next-line no-restricted-imports
 import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
-// eslint-disable-next-line no-restricted-imports
-import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailurePrimaryMessageV2,
   type ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
@@ -263,7 +261,6 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
   return Object.freeze({ run: async (command: GeminiInteractionsImageCommandResultV2, signal?: AbortSignal) => {
     if (command.kind !== 'created' || !command.preparedRequest || !isPreparedProviderRequestV2(command.preparedRequest) ||
         command.preparedRequest.providerId !== 'google_ai_studio' || command.preparedRequest.contractId !== 'gemini-interactions-v1beta' ||
-        !isGeminiInteractionsImageModelIdV1(command.preparedRequest.modelId) ||
         command.preparedRequest.headersPlan.credential.kind !== 'google_x_goog_api_key') {
       throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_AUTHORITY_INVALID')
     }

@@ -1,5 +1,5 @@
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import type { GeminiThinkingCapability, GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingPolicy'
+import type { GeminiThinkingCapability, GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingControl'
 import type { ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution } from './chatSessionConfig'
 import type { ImageGenerationOutputMode } from '@/next/openrouter/imageGenerationSettingsPersistence'
 
@@ -35,17 +35,23 @@ export function projectGeminiThinkingCapabilityV2(
   projection: GenerationControlsProjectionV2 | null | undefined,
   modelId: string,
 ): GeminiThinkingCapability {
+  const levelField = field(projection, 'providerExtension.thinkingLevel')
   const levels = projectGenerationEnumValuesV2(projection, 'providerExtension.thinkingLevel') as readonly GeminiThinkingLevel[]
   if (levels.length > 0) {
+    const defaultLevel = typeof levelField?.defaultValue === 'string' && levels.includes(levelField.defaultValue)
+      ? levelField.defaultValue : levels[0]!
     return Object.freeze({ ...baseThinking(modelId), thinkingSupported: 'supported', kind: 'level', controlKind: 'level',
-      levels: Object.freeze([...levels]), defaultLevel: levels[0],
+      levels: Object.freeze([...levels]), defaultLevel,
       highIsDynamic: true, reason: 'mapped_level' }) as GeminiThinkingCapability
   }
   const budget = field(projection, 'providerExtension.thinkingBudget')
   if (budget?.state === 'supported' && budget.domain?.kind === 'range') {
+    const excluded = budget.domain.excludedValues ?? []
+    const allowDynamic = budget.domain.min <= -1 && budget.domain.max >= -1 && !excluded.includes(-1)
+    const allowOff = budget.domain.min <= 0 && budget.domain.max >= 0 && !excluded.includes(0)
     return Object.freeze({ ...baseThinking(modelId), thinkingSupported: 'supported', kind: 'budget', controlKind: 'budget',
-      minBudget: budget.domain.min, maxBudget: budget.domain.max, defaultBudgetMode: 'dynamic', allowDynamic: true,
-      allowOff: budget.domain.min <= 0, reason: 'mapped_budget' }) as GeminiThinkingCapability
+      minBudget: budget.domain.min, maxBudget: budget.domain.max, defaultBudgetMode: budget.defaultValue === 0 ? 'off' : 'dynamic',
+      allowDynamic, allowOff, reason: 'mapped_budget' }) as GeminiThinkingCapability
   }
   const mode = projectGenerationEnumValuesV2(projection, 'reasoning.mode')
   if (mode.includes('enabled')) {

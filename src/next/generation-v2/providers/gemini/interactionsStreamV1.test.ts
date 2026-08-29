@@ -16,7 +16,7 @@ function officialSse(events: readonly unknown[], lineEnding = '\n', terminate = 
 }
 function decode(events: readonly unknown[]) {
   const decoder = new GeminiInteractionsImageSseDecoderV1()
-  const assembler = new GeminiInteractionsImageResultAssemblerV1()
+  const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-image')
   for (const event of decoder.push(sse(events))) assembler.push(event)
   for (const event of decoder.finish()) assembler.push(event)
   return assembler.finish()
@@ -107,7 +107,7 @@ describe('Gemini Interactions image SSE V1', () => {
     ].join('')
     const encoded = new TextEncoder().encode(body)
     const decoder = new GeminiInteractionsImageSseDecoderV1()
-    const assembler = new GeminiInteractionsImageResultAssemblerV1()
+    const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-image')
     for (let offset = 0; offset < encoded.length; offset += 3) {
       for (const event of decoder.push(encoded.slice(offset, Math.min(offset + 3, encoded.length)))) assembler.push(event)
     }
@@ -140,7 +140,7 @@ describe('Gemini Interactions image SSE V1', () => {
 
   it('preserves the raw Provider error when the stream closes without a done frame', () => {
     const decoder = new GeminiInteractionsImageSseDecoderV1()
-    const assembler = new GeminiInteractionsImageResultAssemblerV1()
+    const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-image')
     for (const event of decoder.push(new TextEncoder().encode(
       'event: interaction.created\ndata: {"event_type":"interaction.created","interaction":{"id":"interaction:1","model":"gemini-3.1-flash-image","status":"in_progress"}}\n\n' +
       'event: error\ndata: {"event_type":"error","error":{"code":"INVALID_ARGUMENT","status":"INVALID_ARGUMENT","message":"bad prompt"}}\n\n'))) assembler.push(event)
@@ -202,7 +202,7 @@ describe('Gemini Interactions image SSE V1', () => {
 
 function decodeWithBytes(bytes: Uint8Array) {
   const decoder = new GeminiInteractionsImageSseDecoderV1()
-  const assembler = new GeminiInteractionsImageResultAssemblerV1()
+  const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-image')
   for (const event of decoder.push(bytes)) assembler.push(event)
   for (const event of decoder.finish()) assembler.push(event)
   return assembler.finish()
