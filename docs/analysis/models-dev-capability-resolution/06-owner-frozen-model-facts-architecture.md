@@ -1,6 +1,44 @@
 - **Lifecycle Status**: active
 - **Document Role**: owner-decision
-- **Last updated**: 2026-08-28
+- **Last updated**: 2026-09-02
+
+## Owner amendment：Cloud/User Rules、同构 Pack/Rule 与 exact-subject materialization（2026-09-02）
+
+本 amendment 由 [`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md) 完整定义；它只修订 Capability Rules 的 ownership/lifecycle、activation、模型身份输入与 Rule materialization，不授权 Goal 3，也不改变“三套 Model Facts sources”结论。
+
+Cloud-managed Rules 与 User Rules 共同组成唯一的 Capability Rules source，不得被实现成两个新的 Model Facts sources。二者必须共享同一 Pack/Rule domain model、stable identity、priority、selector/assertion、Pack → Rule hierarchy、Rule configured state `default | on | off`、Pack mode `override | default_only | no_control`、Pack target `enabled | disabled`、effective activation 与 one-shot Rewrite 语义；差异只允许存在于 ownership、mutability、persistence 和 update lifecycle。
+
+Starverse 不再把 Rules 作为随应用永久 bundled 的特殊 built-in dataset。Cloud-managed content 只读，由 Owner 指定的 Cloud distribution source更新；首次获取失败且本地没有成功snapshot时Cloud Rules为空，成功snapshot作为LKG保留且refresh失败不得清空。User content可编辑并通过tab-scoped draft批量原子保存。Cloud/User可以拥有各自内部content/config/activation revision，但当前已应用Cloud Rules、已提交User Rules、activation、priority与materialized claims必须共同发布为一个 Capability Rules canonical source snapshot/revision。Cloud候选和未保存User draft不改变该source revision。
+
+Cloud Rules default activation policy可配置且初始为enabled，只作用于Cloud ownership。在`no_control`下，configured `on/off`分别直接启用/停用，configured `default`才继承该Cloud policy。User ownership不得继承Cloud default policy。Rewrite是一次性mutation：`override`改写当前全部子Rules，`default_only`只改写当前configured=`default`的子Rules，`no_control`不可用；未来Rules不受历史Rewrite影响。
+
+Authoritative exact-subject set只来自官方/provider-native模型枚举，以及compatible/third-party scope中正式配置的custom acquisition/parser或manual exact IDs。models.dev、Rule selector、regex例子、alias和display name均不得创建model subject。Rule regex只在Rule/source或authoritative-subject-set revision变化时用于materialization，输出必须绑定exact subject；不得在send、preflight或Goal 3 resolution时运行regex。Goal 2C中bundled built-in与按请求query-bound matching是待迁移历史实现，不再代表目标架构。
+
+Cloud distribution的repository/ref/release authority、manifest、version/revision、digest/integrity、candidate acquisition、redirect、retention与rollback contract必须由Owner另行冻结；实施Agent不得自行决定。
+
+## Owner amendment：Capability Rule selector（2026-08-28）
+
+本 amendment **仅替代第六十四节中“当前只允许 exact、regex 留待未来”的 selector 结论**；其余 Owner 决策继续有效。
+
+修订后的冻结规则：exact native model identity仍是首选且优先级最高；Capability Rules允许严格受限、provider + endpoint/profile scoped、完整锚定并具有独立 evidence和正反例测试的 regex selector。Regex只做 identity selection，不生成 capability semantics；exact rule在同 semantic path上覆盖 regex。仍禁止 wildcard/family inheritance/alias matching、宽泛语义猜测和通用 Rule Matching DSL。具体 guardrails与当前事实质量 closeout以 [`09-goal-2a-fix-evidence-and-matching-closeout.md`](09-goal-2a-fix-evidence-and-matching-closeout.md) 的“Derived inference 与 regex”节为准。
+
+第十一节的“regex 自动归并”特指通过 regex自动建立 canonical model identity/join、family inheritance或跨 Provider归并，不包括本 amendment允许的 Capability Rule identity selector。
+
+因此，后文第六十四节应作为 amendment前的历史文字阅读，不能再被实现解释为“schema必须拒绝所有 regex”。
+
+## Owner amendment：逐模型 Operation Support（2026-08-30）
+
+本 amendment只澄清第三十九、四十节的归属边界：第三十九节中的 `API operation support` 特指 API/protocol surface本身是否提供某 operation，以及该 operation的 request schema、wire method、URL与通用 contract。Provider若对 exact model明确声明其支持哪些 operations，该逐模型 support assertion属于 Model Facts；第四十节对此优先。
+
+因此 Google `supportedGenerationMethods` 这类逐模型列表可映射为 source-neutral operation capability；原始 method name和调用结构仍属于 API Contract。该 amendment不允许按当前 operation拆分多个 facts universe，也不允许从 API存在某 method反推所有模型都支持它。
+
+## Owner amendment：models.dev Official API Raw Source（2026-08-31）
+
+Starverse 的 models.dev Raw Source 冻结为 models.dev 官方部署 API `https://models.dev/api.json` 返回的扁平化 payload。实际持久化并经过 sanitizer 的 API payload是该 source surface的 raw audit authority；canonical claim provenance指向该 payload中实际存在的 provider/model record与具体字段。
+
+官方 API未暴露的 `base_model`、`base_model_omit`、生成器内部继承链和 base/provider override contributor不得由 Starverse猜测、重建或伪造。API中的 provider-specific model record视为 models.dev已完成自身 composition后对外发布的 source-native record；Starverse只解释该公开结果，不声称知道字段来自 base还是override。
+
+models.dev API payload digest、source snapshot revision、adapter/mapping revision与freshness仍分别保存。若未来改用 models.dev Git source/TOML作为另一 source surface，必须使用新的显式 surface/adapter revision与provenance契约，不得悄悄改变现有API snapshot的证据含义。
 
 以下作为本轮“模型统一事实源”一期的最终冻结决策。它整合了你后续所有修正，包括：`models.list` 术语纠正、`models.dev` 优先级、未知能力放行、坏字段局部隔离、模型从 API 消失即移除、来源不唯一、完整列表冲突、native value/alias 分离，以及对现有 `ResolvedCapabilityV2` 职责耦合的补充修正。
 
@@ -64,7 +102,7 @@ Capability Rules
 
 用户以后可以修改来源优先级。
 
-Capability Rule 可以单条配置优先级，也可以由 rule pack 批量配置。
+未来统一解析架构允许 Capability Rule 单条配置优先级，也允许 rule pack 批量配置；当前 Goal 2A 数据库 schema 尚未提供可编辑的 pack-level priority，Goal 2C 的 source contract因此以显式 neutral pack priority保留该维度，不伪造现有配置能力。
 
 ---
 
@@ -1126,6 +1164,7 @@ model-specific image dimensions
 model-specific aspect ratios
 model-specific context limit
 model-specific modalities
+provider-declared exact-model operation support
 ```
 
 属于 API contract：
@@ -1135,7 +1174,7 @@ model-specific modalities
 字段 wire path
 通用 API enum
 通用 request constraint
-API operation support
+API/protocol surface operation availability、request schema 与 wire contract
 compatibility alias
 ```
 
@@ -1661,7 +1700,7 @@ resolved/providerReturnedModelId
 
 * wildcard；
 * family rule；
-* regex；
+* legacy/uncontrolled provider-code regex capability matching（不包括 amendment允许的 Capability Rule constrained regex selector）；
 * aliases；
 
 可以另行设计。

@@ -1,6 +1,11 @@
 # models.dev 模型能力事实底稿
 
-> 本文是当前专题的事实底稿，不是 Starverse 最终能力模型设计，也不是 User/Cloud/Reviewed rule 规则文件。
+- **Lifecycle Status**: point-in-time reference
+- **Document Role**: source-evidence draft
+- **Last updated**: 2026-08-31
+- **Authority**: preserved raw observations only; later Owner decisions 06/10 control architecture and source contracts
+
+> 本文是 2026-08-23 调查时点的事实底稿，不是 Starverse 最终能力模型设计，也不是 User/Cloud/Reviewed rule 规则文件。当前 models.dev Raw Source以 06/10 的 Owner amendment为准，仅指 `https://models.dev/api.json` 的扁平化payload。
 >
 > 本轮目标是保留原始模型与模型能力字段、来源、证据和讨论结论，避免后续上下文压缩后丢失。Starverse 后续如何把这些事实翻译为 UI 控件、请求构建、模型目录展示和发送前校验，另行讨论。
 
@@ -705,9 +710,7 @@ Google 的 `temperature` 是当前已经确认的真实例子：
 
 ### 12.1 Anthropic 已移出当前调查范围
 
-README 已新增 2026-08-23 的停止声明：Anthropic/Claude 原生支持冻结并逐步移除，本专题不再把 Anthropic 作为待调查的原生供应商。
-
-相关入口：[README.md](../../README.md)。
+本轮调查按 2026-08-23 Owner方向不再把 Anthropic 作为待调查的原生供应商。该表述只限定本轮调查范围，不代表当前 checkout 中所有 Anthropic历史生产路径已经删除。
 
 ### 12.2 OpenRouter
 
@@ -939,7 +942,7 @@ API 模型项字段并集：
 6. Ollama：本机 `/api/tags` 和 `/v1/models` 实际成功；models.dev 当前没有 `ollama` provider；
 7. Generic Local OpenAI Chat：没有统一 provider catalog；Starverse diagnostics 支持探测 `/v1/models` 和 `/api/tags`，具体结果取决于用户 endpoint。
 
-Anthropic 的代码和 catalog registry 仍处于“冻结、逐步移除”状态，但不再作为本轮模型事实调查对象；这与 README 的停止声明一致。
+Anthropic 的代码和 catalog registry 在该调查时点仍处于“冻结、逐步移除”状态，但不再作为本轮模型事实调查对象。
 
 ## 15. 2026-08-23 补充：OpenRouter credential-scoped 模型列表
 

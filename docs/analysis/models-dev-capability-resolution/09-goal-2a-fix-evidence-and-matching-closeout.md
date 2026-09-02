@@ -5,13 +5,17 @@
 - **Last updated**: 2026-08-28
 - **Authority**: current checkout, preserved Provider Native payloads, linked official provider documentation, and focused tests
 
+> 时点说明：本文件中的“Goal 2B尚未开始”描述的是 2026-08-28 Goal 2A-Fix closeout时点。此后 Goal 2B设计已经冻结，Goal 2C ingestion实现已获独立授权；本文件仍只控制 Goal 2A-Fix 的事实质量与 selector结论。
+>
+> 后续 Owner amendment：本文件中的90条`built-in` dataset及其数量只记录Goal 2A-Fix当时的证据清理结果，不再定义未来Rules distribution或特殊永久system pack。目标架构不随应用bundled Rules；Cloud-managed与User Rules使用同构Pack/Rule模型并共同发布为唯一Capability Rules source。完整生命周期以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准。
+
 ## 结论
 
 Goal 2A 的数据库结构继续保留，但最初的 809 条迁移草案不再被视为经过事实审查的 built-in dataset。本次将 built-in rules 收窄到 90 条、60 个精确 provider/endpoint/native-model identity；一条规则可列出多个由同一证据支持的精确 native model ID，不使用 unsupported-by-silence，不保留 derived built-in rule，也不使用 built-in regex。
 
 本文件只记录 Goal 2A-Fix 的阶段性事实纠正，不宣称 Provider Native、models.dev 或用户规则的统一 ingestion 已完成，也不改变既定来源优先级和 availability 边界。
 
-来源优先级未改变：`Provider Native > models.dev > Capability Rules`。本轮只纠正规则事实质量和 selector 边界，尚未实现 Goal 2B 的统一多来源 ingestion。Capability Rules 不创建 availability。
+来源优先级未改变：`Provider Native > models.dev > Capability Rules`。本轮只纠正规则事实质量和 selector 边界；在本 closeout 时点尚未实现后续统一多来源 ingestion。Capability Rules 不创建 availability。
 
 ## 数量变化
 
@@ -141,4 +145,4 @@ Goal 2A-Fix 只运行 capability-rule、database schema/installer、capability r
 - `gate:docs` 与 `git diff --check` 通过；后者只有工作区既有 LF/CRLF 提示。
 - 未执行全仓测试、Electron smoke 或真实付费 provider 请求。
 
-Goal 2B 尚未开始并明确延后。统一 Provider Native/models.dev ingestion、跨来源 priority/conflict/LKG 和 OpenRouter 动态 facts 收敛属于下一 Goal。
+在本 closeout 时点，Goal 2B 尚未开始并明确延后。其后续状态以专题 README、10 及 Goal 2C closeout为准；本句不再描述当前 checkout。
