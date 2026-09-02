@@ -69,6 +69,12 @@ export type PersistedCapabilityRuleV2 = CapabilityRuleDefinitionV2 & Readonly<{
   contentDigest: string
 }>
 
+export type CapabilityRuleIdentityV2 = Readonly<{
+  providerId: string
+  endpointProfileId: string
+  nativeModelId: string
+}>
+
 export type CapabilityRuleProjectionV2 = Readonly<{
   schemaVersion: 1
   identity: Readonly<{ providerId: string; endpointProfileId: string; nativeModelId: string }>
@@ -174,6 +180,19 @@ function safeAnchoredRegex(value: unknown): RegExp {
     if (count < 1 || count > 32) invalid()
   }
   try { return new RegExp(value, 'u') } catch { return invalid() }
+}
+
+export function matchesCapabilityRuleIdentityV2(
+  rule: Pick<CapabilityRuleDefinitionV2, 'providerId' | 'endpointProfileId' | 'selector'>,
+  identity: CapabilityRuleIdentityV2,
+): boolean {
+  const providerId = identityValue(identity.providerId)
+  const endpointProfileId = identityValue(identity.endpointProfileId)
+  const nativeModelId = identityValue(identity.nativeModelId)
+  if (rule.providerId !== providerId || rule.endpointProfileId !== endpointProfileId) return false
+  return rule.selector.kind === 'exact'
+    ? rule.selector.values.includes(nativeModelId)
+    : safeAnchoredRegex(rule.selector.value).test(nativeModelId)
 }
 
 function selector(value: unknown): CapabilityRuleSelectorV2 {
@@ -336,15 +355,13 @@ function semanticRuleDigest(rule: PersistedCapabilityRuleV2): string {
 }
 
 export function projectCapabilityRulesV2(input: Readonly<{
-  identity: Readonly<{ providerId: string; endpointProfileId: string; nativeModelId: string }>
+  identity: CapabilityRuleIdentityV2
   matchingRules: readonly PersistedCapabilityRuleV2[]
 }>): CapabilityRuleProjectionV2 {
   const identity = Object.freeze({ providerId: identityValue(input.identity.providerId),
     endpointProfileId: identityValue(input.identity.endpointProfileId), nativeModelId: identityValue(input.identity.nativeModelId) })
   const candidates = input.matchingRules.filter((rule) => rule.enabled && rule.packEnabled &&
-    rule.providerId === identity.providerId && rule.endpointProfileId === identity.endpointProfileId &&
-    (rule.selector.kind === 'exact' ? rule.selector.values.includes(identity.nativeModelId) :
-      safeAnchoredRegex(rule.selector.value).test(identity.nativeModelId)))
+    matchesCapabilityRuleIdentityV2(rule, identity))
   const winners: PersistedCapabilityRuleV2[] = []
   for (const path of MODEL_CAPABILITY_SEMANTIC_PATHS_V2) {
     const matches = candidates.filter((rule) => rule.semanticPath === path)

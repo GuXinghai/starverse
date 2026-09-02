@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
+import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
+import { canonicalProviderNativeSourceScopeIdV1 } from
+  '../../infra/db/services/canonicalModelFactSourceIngestionV1Service'
 import { GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS, GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS,
   registerGenerationV2ModelAvailabilityIpc } from './generationV2ModelAvailabilityIpc'
 
@@ -44,7 +47,7 @@ function openRouterRawModel(id: string, name: string) {
 describe('generationV2ModelAvailabilityIpc', () => {
   it('pins OpenRouter category on the official models request and preserves the rich catalog projection', async () => {
     const handlers = new Map<string, Handler>()
-    const rawResponse = { data: [{
+    const rawResponse = { total_count: 1, future_top_level_field: { retained: true }, data: [{
       id: 'google/gemini-image', name: 'Gemini Image', canonical_slug: 'google/gemini-image',
       description: 'Image generation model', context_length: 131072, created: 1_700_000_000,
       supported_parameters: ['reasoning', 'tools', 'response_format'],
@@ -81,6 +84,21 @@ describe('generationV2ModelAvailabilityIpc', () => {
         capabilities: { reasoning: true, tools: true, structuredOutputs: true, vision: true, longContext: true },
         pricing: { prompt: '0.000001', completion: '0.000002', image: '0.01' },
         hasPerRequestLimits: true, hasDefaultParameters: true, topProviderIsModerated: true }] })
+      const factRepo = new CanonicalModelFactSourceV1Repo(db)
+      const sourceScopeId = canonicalProviderNativeSourceScopeIdV1({ providerAuthorityId: 'openrouter',
+        providerNativeSurfaceId: 'openrouter-chat-models-v1', endpointProfileId: 'openrouter-first-party-v1',
+        credentialScopeId: 'scope:test', credentialRevision: 1, catalogCategory: 'programming' })
+      const current = factRepo.readSourceState('provider_native', sourceScopeId)
+      expect(current?.currentSourceRevision).toMatch(/^canonical-source-v1:/u)
+      const storedSource = factRepo.readSourceRevision(current!.currentSourceRevision!)
+      expect(storedSource?.rawSnapshot.rawEnvelopeRefs).toHaveLength(1)
+      expect(factRepo.readRawPayload(storedSource!.rawSnapshot.rawEnvelopeRefs[0]!)).toEqual(rawResponse)
+      expect(factRepo.readSubjectFact({ canonicalSourceRevision: current!.currentSourceRevision!,
+        subject: { providerAuthorityId: 'openrouter', endpointProfileId: 'openrouter-first-party-v1',
+          nativeModelId: 'google/gemini-image' } })?.payload.outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: 'limits.contextWindow.maxTokens' }),
+        expect.objectContaining({ path: 'modalities.input' }),
+      ]))
       expect(JSON.stringify(result)).not.toContain('secret-not-renderer-visible')
     } finally { db.close() }
   })
@@ -97,6 +115,37 @@ describe('generationV2ModelAvailabilityIpc', () => {
       const result = await handlers.get(GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS[0])?.({}, { category: 'programming' }) as any
       expect(result).toMatchObject({ ok: false, code: 'invalid_payload' })
       expect(credentials.withCredential).not.toHaveBeenCalled()
+    } finally { db.close() }
+  })
+
+  it('does not let canonical fact publication failure block a valid Provider Catalog sync', async () => {
+    const handlers = new Map<string, Handler>()
+    let tooDeep: Record<string, unknown> = { retained: true }
+    for (let index = 0; index < 70; index += 1) tooDeep = { nested: tooDeep }
+    const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.includes('/providers') ? { data: [] } : {
+        data: [openRouterRawModel('openai/catalog-survives', 'Catalog Survives')], future: tooDeep,
+      },
+    ), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const db = database()
+    try {
+      registerGenerationV2ModelAvailabilityIpc({
+        registerInvoke: (channel, handler) => handlers.set(channel, handler as Handler),
+        credentialService: credentialService() as never, db, fetchImpl: fetchImpl as never,
+      })
+      const sync = await handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[0])?.({}, {
+        providerKey: 'openrouter', timeoutMs: 5_000,
+      }) as any
+      expect(sync).toMatchObject({ ok: true, status: 'synced',
+        items: [{ modelId: 'openai/catalog-survives' }] })
+
+      const facts = new CanonicalModelFactSourceV1Repo(db)
+      const scope = canonicalProviderNativeSourceScopeIdV1({ providerAuthorityId: 'openrouter',
+        providerNativeSurfaceId: 'openrouter-chat-models-v1', endpointProfileId: 'openrouter-first-party-v1',
+        credentialScopeId: 'scope:test', credentialRevision: 1 })
+      expect(facts.readSourceState('provider_native', scope)).toMatchObject({
+        currentSourceRevision: null, staleReason: 'CANONICAL_MODEL_FACT_PUBLICATION_FAILED',
+      })
     } finally { db.close() }
   })
 
@@ -202,6 +251,11 @@ describe('generationV2ModelAvailabilityIpc', () => {
           providerError: { code: 'rate_limit_exceeded', message: 'Please retry later.' },
         },
       })
+      const factScope = canonicalProviderNativeSourceScopeIdV1({ providerAuthorityId: 'openrouter',
+        providerNativeSurfaceId: 'openrouter-chat-models-v1', endpointProfileId: 'openrouter-first-party-v1',
+        credentialScopeId: 'scope:test', credentialRevision: 1 })
+      expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('provider_native', factScope))
+        .toMatchObject({ staleReason: failed.providerFailure.starverseDiagnosticCode })
     } finally {
       db.close()
     }

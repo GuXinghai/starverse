@@ -98,6 +98,7 @@ export type DeepSeekModelAvailabilitySuccess = Readonly<{
   models: ProviderModelAvailability[]
   warnings: string[]
   sourceDocuments: DeepSeekModelSourceDocument[]
+  rawSourcePayloads: readonly unknown[]
 }>
 
 export type DeepSeekModelAvailabilityFailure = Readonly<{
@@ -332,6 +333,7 @@ export function resolveDeepSeekModelAvailabilityFromModelsPayload(
     models,
     warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads: [payload],
   }
 }
 

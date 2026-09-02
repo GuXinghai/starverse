@@ -10,6 +10,7 @@ import {
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
 import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
+import { CanonicalModelFactSourceIngestionV1Service } from '../../infra/db/services/canonicalModelFactSourceIngestionV1Service'
 import {
   createEpoch2RootManifest,
   type Epoch2WorkspaceLayout,
@@ -316,6 +317,9 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         emitDatabaseInitializationMilestone('schema_installed')
         installBuiltInCapabilityRulesV2(db)
         emitDatabaseInitializationMilestone('builtin_capability_rules_installed')
+        new CanonicalModelFactSourceIngestionV1Service(db).refreshCapabilityRules({
+          ruleStoreId: 'epoch-2-capability-rules', fetchedAtMs: Date.now(),
+        })
         if (initiallyEmpty && crashSmoke?.stage === 'after_schema') {
           crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
         }

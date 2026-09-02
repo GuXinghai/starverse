@@ -71,6 +71,10 @@ describe('openAIResponsesCatalogSource', () => {
       }),
     })
     expect(snapshot.models[0]?.raw?.buckets[0]?.payload ?? {}).not.toHaveProperty('capabilitySeed')
+    expect(snapshot.rawModelListPayloads).toEqual([expect.objectContaining({
+      object: 'list',
+      data: expect.arrayContaining([expect.objectContaining({ id: 'gpt-4.1' })]),
+    })])
     expect(JSON.stringify(snapshot)).not.toContain('sk-openai-test')
   })
 })

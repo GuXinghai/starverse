@@ -53,6 +53,10 @@ describe('deepSeekCatalogSource', () => {
     ]))
     expect(snapshot.models.map((model) => model.modelId)).toEqual(['deepseek-v4-flash'])
     expect(snapshot.models[0]?.raw?.buckets[0]?.payload ?? {}).not.toHaveProperty('capabilitySeed')
+    expect(snapshot.rawModelListPayloads).toEqual([{
+      object: 'list',
+      data: [{ object: 'model', id: 'deepseek-v4-flash', owned_by: 'deepseek' }],
+    }])
     expect(JSON.stringify(snapshot)).not.toContain('sk-deepseek-test')
   })
 })

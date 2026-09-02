@@ -62,6 +62,7 @@ export type ProviderCatalogSnapshot = Readonly<{
   dataSource: ProviderCatalogDataSource
   fetchedAtMs: CatalogTimestampMs
   models: ReadonlyArray<CatalogModel>
+  rawModelListPayloads?: ReadonlyArray<unknown>
   providers?: ReadonlyArray<CatalogProvider>
   providerCount?: number | null
   countProbe?: Readonly<{ count: number; fetchedAtMs: CatalogTimestampMs }> | null

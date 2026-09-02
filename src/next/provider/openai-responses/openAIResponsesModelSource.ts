@@ -67,6 +67,7 @@ export type OpenAIModelAvailabilitySuccess = Readonly<{
   models: OpenAIProviderModelAvailability[]
   warnings: string[]
   sourceDocuments: OpenAIModelSourceDocument[]
+  rawSourcePayloads: readonly unknown[]
 }>
 
 export type OpenAIModelAvailabilityFailure = Readonly<{
@@ -289,6 +290,7 @@ export function resolveOpenAIModelAvailabilityFromModelsPayload(
     models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
     warnings: parsed.warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads: [payload],
   }
 }
 

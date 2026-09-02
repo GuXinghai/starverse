@@ -183,6 +183,26 @@ describe('Gemini provider observation authority', () => {
 })
 
 describe('Gemini model availability transport errors', () => {
+  it('preserves every successful models.list page as source-native raw evidence', async () => {
+    const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.includes('pageToken=next-page')
+        ? { models: [{ name: 'models/gemini-page-2' }] }
+        : { models: [{ name: 'models/gemini-page-1' }], nextPageToken: 'next-page' },
+    ), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+
+    const result = await listGeminiProviderModelAvailability({
+      apiKey: 'fake-google-secret',
+      fetchImpl,
+      observedAtMs: OBSERVED_AT_MS,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.rawSourcePayloads).toEqual([
+      { models: [{ name: 'models/gemini-page-1' }], nextPageToken: 'next-page' },
+      { models: [{ name: 'models/gemini-page-2' }] },
+    ])
+  })
+
   it('keeps sanitized network cause without leaking raw messages', async () => {
     const secret = 'fake-google-secret'
     const cause = Object.assign(new Error(`connect failed for ${secret}`), {

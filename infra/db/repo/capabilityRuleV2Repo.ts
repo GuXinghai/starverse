@@ -2,8 +2,10 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   decodeCapabilityRuleDefinitionV2,
   decodeCapabilityRulePackDefinitionV2,
+  matchesCapabilityRuleIdentityV2,
   projectCapabilityRulePackContentV2,
   projectCapabilityRulesV2,
+  type CapabilityRuleIdentityV2,
   type CapabilityRuleOwnerKindV2,
   type CapabilityRulePackDefinitionV2,
   type CapabilityRuleProjectionV2,
@@ -176,6 +178,29 @@ export class CapabilityRuleV2Repo {
     endpointProfileId: string
     nativeModelId: string
   }>): CapabilityRuleProjectionV2 {
+    return projectCapabilityRulesV2({ identity: input,
+      matchingRules: this.listMatchingRulesForIdentity(input) })
+  }
+
+  listAllRulesForSourceSnapshot(): readonly PersistedCapabilityRuleV2[] {
+    const rows = this.db.prepare(`SELECT
+      p.owner_kind, p.pack_id, p.owner_id, p.pack_version, p.pack_revision, p.content_digest,
+      p.enabled, p.installed_at_ms, p.updated_at_ms,
+      r.rule_id, r.provider_id, r.endpoint_profile_id, r.selector_kind, r.selector_values_json,
+      r.selector_pattern,
+      r.selector_positive_examples_json, r.selector_negative_examples_json, r.semantic_path,
+      r.capability_state, r.domain_json, r.constraints_json, r.default_value_json, r.priority,
+      r.enabled AS rule_enabled, r.evidence_source_ref, r.evidence_kind, r.evidence_note,
+      r.identity_evidence_kind, r.identity_evidence_source_ref, r.provenance_url, r.verified_at,
+      r.content_digest AS rule_content_digest, r.rule_revision, r.created_at_ms,
+      r.updated_at_ms AS rule_updated_at_ms
+      FROM capability_rule_v2 r
+      JOIN capability_rule_pack_v2 p ON p.owner_kind = r.owner_kind AND p.pack_id = r.pack_id
+      ORDER BY p.owner_kind, p.pack_id, r.rule_id`).all() as RuleRow[]
+    return Object.freeze(rows.map(decodeRuleRow))
+  }
+
+  listMatchingRulesForIdentity(input: CapabilityRuleIdentityV2): readonly PersistedCapabilityRuleV2[] {
     const rows = this.db.prepare(`SELECT
       p.owner_kind, p.pack_id, p.owner_id, p.pack_version, p.pack_revision, p.content_digest,
       p.enabled, p.installed_at_ms, p.updated_at_ms,
@@ -190,10 +215,11 @@ export class CapabilityRuleV2Repo {
       FROM capability_rule_v2 r
       JOIN capability_rule_pack_v2 p ON p.owner_kind = r.owner_kind AND p.pack_id = r.pack_id
       WHERE r.provider_id = ? AND r.endpoint_profile_id = ?
-      ORDER BY r.semantic_path, r.priority DESC, p.owner_kind, p.pack_id, r.rule_id`).all(
+      ORDER BY p.owner_kind, p.pack_id, r.rule_id`).all(
       input.providerId, input.endpointProfileId,
     ) as RuleRow[]
-    return projectCapabilityRulesV2({ identity: input, matchingRules: Object.freeze(rows.map(decodeRuleRow)) })
+    return Object.freeze(rows.map(decodeRuleRow)
+      .filter((rule) => rule.enabled && rule.packEnabled && matchesCapabilityRuleIdentityV2(rule, input)))
   }
 
   private installPack(

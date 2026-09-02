@@ -75,6 +75,7 @@ export type GeminiModelAvailabilitySuccess = Readonly<{
   models: GeminiProviderModelAvailability[]
   warnings: string[]
   sourceDocuments: GeminiModelSourceDocument[]
+  rawSourcePayloads: readonly unknown[]
 }>
 
 export type GeminiModelAvailabilityFailure = Readonly<{
@@ -306,7 +307,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
       ...(asPositiveInteger(record.outputTokenLimit) ? { outputTokenLimit: asPositiveInteger(record.outputTokenLimit) } : {}),
       thinkingOwnProperty,
       ...(thinkingOwnProperty ? { thinkingRawValue: record.thinking as JsonValue } : {}),
-      thinkingRawType: typeof record.thinking,
+      thinkingRawType: thinkingOwnProperty ? typeof record.thinking : 'missing',
     },
   }
 }
@@ -385,6 +386,7 @@ export function resolveGeminiModelAvailabilityFromModelsPayload(
     models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
     warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads: [payload],
   }
 }
 
@@ -418,6 +420,7 @@ export async function listGeminiProviderModelAvailability(
   const maxPages = Math.min(5, Math.max(1, Math.trunc(input.maxPages ?? 2)))
   const allModels: GeminiProviderModelAvailability[] = []
   const warnings: string[] = []
+  const rawSourcePayloads: unknown[] = []
   let nextPageToken: string | undefined
 
   for (let page = 0; page < maxPages; page += 1) {
@@ -491,6 +494,8 @@ export async function listGeminiProviderModelAvailability(
       }
     }
 
+    rawSourcePayloads.push(body.payload)
+
     allModels.push(...parsed.models)
     warnings.push(...parsed.warnings)
     nextPageToken = parsed.nextPageToken
@@ -520,5 +525,6 @@ export async function listGeminiProviderModelAvailability(
     models: [...allModels].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
     warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads,
   }
 }

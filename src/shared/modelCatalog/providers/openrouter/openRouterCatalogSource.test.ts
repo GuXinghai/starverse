@@ -22,6 +22,8 @@ describe('openRouterCatalogSource', () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url.endsWith('/models/user')) {
         return jsonResponse({
+          total_count: 1,
+          future_top_level_field: { retained: true },
           data: [
             {
               id: 'openai/gpt-test',
@@ -68,6 +70,10 @@ describe('openRouterCatalogSource', () => {
       countProbe: { count: 1 },
     })
     expect(snapshot.models.map((model) => model.modelId)).toEqual(['openai/gpt-test'])
+    expect(snapshot.rawModelListPayloads).toEqual([expect.objectContaining({
+      total_count: 1,
+      future_top_level_field: { retained: true },
+    })])
     expect(snapshot.providers?.map((provider) => provider.providerKey)).toEqual(['openai'])
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://openrouter.ai/api/v1/models/user',

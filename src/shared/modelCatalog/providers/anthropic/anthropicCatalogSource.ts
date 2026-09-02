@@ -140,6 +140,7 @@ export function createAnthropicCatalogSource(): ProviderCatalogSource {
         baseUrl,
         dataSource: 'models_user_primary',
         fetchedAtMs: result.observedAtMs,
+        rawModelListPayloads: result.rawSourcePayloads,
         models,
       }
     },
