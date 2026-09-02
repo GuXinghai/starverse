@@ -4,6 +4,8 @@
 - **Document Role**: evidence-report
 - **Last updated**: 2026-08-26
 
+> **Snapshot identity correction（2026-08-31）**：正文中的 DeepSeek models.dev `4` 条以及 OpenRouter `422/360` 计数来自较早的 comparison snapshot，不是同包 `raw-model-fields.json` 内最终保存 payload的计数。后者实际为 DeepSeek models.dev `3` 条、OpenRouter public API `417` 条、models.dev `355` 条。正文保留为历史调查报告；引用数量时必须同时引用对应 snapshot/revision，不得混用。
+
 生成日期：2026-08-26  
 专题：`models-dev-capability-resolution`  
 范围：DeepSeek、OpenAI、Google AI Studio、OpenRouter、LM Studio、Ollama，以及 Generic Local OpenAI Chat 的模型发现边界。

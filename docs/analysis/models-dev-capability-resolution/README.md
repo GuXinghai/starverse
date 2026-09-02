@@ -2,7 +2,7 @@
 
 - **Lifecycle Status**: reference
 - **Document Role**: entry
-- **Last updated**: 2026-08-28
+- **Last updated**: 2026-09-02
 - **Authority**: Evidence bundle only; it does not replace current source code, Owner decisions, Generation V2 authority, reviewed contracts, or current provider documentation.
 
 ---
@@ -20,7 +20,10 @@ This directory preserves three independent investigations of using models.dev as
 7. [Model-facts authority boundary implementation](07-model-facts-authority-boundary-implementation.md) — first post-decision authority-boundary partial closeout, intentional residuals, and next-Goal checklist.
 8. [Goal 2A Capability Rule migration](08-goal-2a-capability-rule-migration.md) — database schema, built-in installation semantics, exact-model migration inventory, retained boundaries, and next-Goal blockers.
 9. [Goal 2A-Fix evidence and matching closeout](09-goal-2a-fix-evidence-and-matching-closeout.md) — corrected sparse rule inventory, Provider Native identity audit, provenance classes, constrained regex semantics, removals, and deferred verification candidates.
-10. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+10. [Goal 2B three-source Canonical Model Facts design](10-goal-2b-three-source-canonical-facts-design.md) — frozen raw-first ontology, source mappings, provenance, adapter contract, revision/LKG semantics, Rules follow-up migration, and the strict Goal 3 boundary; the document remains design-only while the later Goal 2C implementation is separately authorized.
+11. [Goal 2C three-source ingestion closeout](11-goal-2c-three-source-ingestion-closeout.md) — implemented ontology/registry, three independent source adapters, raw persistence, revisions, LKG/publication, focused verification, and the strict Goal 3 handoff.
+12. [Model Facts UI synchronization plan](12-model-facts-ui-synchronization-plan.md) — frozen post-Goal 2C UI/product plan and Owner amendments for one Capability Rules source, isomorphic Cloud/User Pack/Rule semantics, exact-subject materialization, Rules workflows, and Facts Inspector.
+13. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
@@ -30,7 +33,19 @@ This directory preserves three independent investigations of using models.dev as
 - The reports' file/line references describe their respective checkout baselines and can drift as the repository changes.
 - For current implementation facts, inspect the current checkout. For approved architecture, follow the current Generation V2 authority and Owner-frozen decisions.
 - models.dev data in these reports is treated as potential evidence, never as model availability or final capability authority.
-- Current implementation status and remaining TODOs are split between items 7–9: item 7 records the authority-boundary residuals, item 8 records the Goal 2A migration, and item 9 is the controlling Goal 2A-Fix fact-quality closeout. Do not revive the deleted Catalog capability resolver while implementing source ingestion.
+- Rule selector policy has one explicit Owner amendment: item 9 supersedes item 6 only for constrained regex matching. Exact identity remains preferred; narrowly scoped, anchored, evidenced and tested regex may select identity, while wildcard/family/alias/general matching DSL remains forbidden. All other item 6 decisions remain authoritative.
+- The 2026-08-31 Owner amendment freezes the models.dev official deployed API flattened payload as the models.dev Raw Source. Provenance references only fields actually exposed by that API; Starverse does not reconstruct unexposed `base_model/base_model_omit` or internal contributor chains. A future Git/TOML source would be a separately versioned source surface.
+- Item 12 is the controlling post-Goal 2C UI/product amendment. It supersedes items 8–11 only for bundled built-in lifecycle, Cloud/User ownership semantics, Capability Rules source convergence, authoritative-subject identity input, and regex materialization timing. It does not replace the Goal 2B ontology or authorize Goal 3.
+- Current implementation status and remaining TODOs are split between items 7–12: item 7 records the authority-boundary residuals, item 8 records the historical Goal 2A migration, item 9 records the historical Goal 2A-Fix dataset/fact-quality closeout, item 10 is the frozen Goal 2B design, item 11 is the Goal 2C ingestion closeout, and item 12 freezes the required next UI/product migration. Do not revive the deleted Catalog capability resolver while implementing Goal 3.
+
+## Current post-Goal 2C planning status / TODO
+
+- Production still reflects the Goal 2C-era bundled built-in/user ownership and query-bound Rules implementation until a separately authorized migration changes it; documentation does not claim that migration is already complete.
+- Before Cloud-managed Rules production work, Owner must freeze the Cloud distribution contract: repository/ref/release authority, manifest, version/revision identity, digest/integrity verification, acquisition, redirect, retention, and rollback.
+- The next Rules implementation must use one isomorphic Pack/Rule core for Cloud-managed and User ownership, then publish both through one Capability Rules canonical source revision.
+- Regex Rules must be materialized only against the revisioned authoritative exact-subject set. models.dev, Rules, aliases, examples, and display names never create subjects.
+- UI implementation remains unstarted by this planning document: Settings integration, Cloud/User Rules workflows, durable User drafts, UI-safe services/IPC, Facts Inspector, and Model Picker deep-link require separate production authorization.
+- Goal 3 priority/merge/winner/conflict/final `capabilityRevision` remains deferred. Before Goal 3 consumer migration, remove or schedule removal of replaced query-bound/bundled Rules paths without creating a parallel fallback.
 
 ## Import fidelity
 
