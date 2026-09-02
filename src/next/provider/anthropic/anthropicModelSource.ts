@@ -76,6 +76,7 @@ export type AnthropicModelAvailabilitySuccess = Readonly<{
   models: AnthropicProviderModelAvailability[]
   warnings: string[]
   sourceDocuments: AnthropicModelSourceDocument[]
+  rawSourcePayloads: readonly unknown[]
 }>
 
 export type AnthropicModelAvailabilityFailure = Readonly<{
@@ -374,6 +375,7 @@ export function resolveAnthropicModelAvailabilityFromModelsPayload(
     models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
     warnings: parsed.warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads: [payload],
   }
 }
 
@@ -398,6 +400,7 @@ export async function listAnthropicProviderModelAvailability(
   const baseUrl = normalizeBaseUrl(input.baseUrl)
   const allModels: AnthropicProviderModelAvailability[] = []
   const allWarnings: string[] = []
+  const rawSourcePayloads: unknown[] = []
   let afterId: string | undefined
   let truncated = false
 
@@ -475,6 +478,8 @@ export async function listAnthropicProviderModelAvailability(
       }
     }
 
+    rawSourcePayloads.push(body.payload)
+
     allModels.push(...parsed.models)
     allWarnings.push(...parsed.warnings)
     if (!parsed.hasMore) break
@@ -531,5 +536,6 @@ export async function listAnthropicProviderModelAvailability(
       ...(truncated ? ['Anthropic models pagination was truncated after the bounded R5 page limit.'] : []),
     ],
     sourceDocuments: sourceDocuments(observedAtMs),
+    rawSourcePayloads,
   }
 }

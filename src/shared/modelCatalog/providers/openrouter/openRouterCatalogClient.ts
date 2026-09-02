@@ -582,7 +582,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
   private async fetchModelsBySource(
     source: OpenRouterModelsSource,
     ctx: OpenRouterFetchContext
-  ): Promise<Readonly<{ fetchedAtMs: number; models: OpenRouterModelObject[] }>> {
+  ): Promise<Readonly<{ fetchedAtMs: number; models: OpenRouterModelObject[]; rawPayload: JsonValue }>> {
     const pathname = source === 'models_user' ? '/models/user' : '/models'
     const category = ctx.category?.trim()
     const endpoint = category ? `${pathname}?category=${encodeURIComponent(category)}` : pathname
@@ -590,6 +590,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
     const data = ensureDataArray(payload, endpoint)
     return {
       fetchedAtMs: Date.now(),
+      rawPayload: toJsonValue(payload),
       models: data
         .map((item) => asObject(item))
         .filter((item): item is OpenRouterModelObject => item != null),
@@ -611,6 +612,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
     let usedFallback = false
     let fetchedAtMs = requestedAtMs
     let modelsPayload: OpenRouterModelObject[] = []
+    let rawPayload: JsonValue | null = null
     let lastError: unknown = null
 
     for (let index = 0; index < sourceOrder.length; index += 1) {
@@ -620,6 +622,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
         selectedSource = source
         fetchedAtMs = result.fetchedAtMs
         modelsPayload = result.models
+        rawPayload = result.rawPayload
         usedFallback = index > 0
         lastError = null
         break
@@ -631,6 +634,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
     if (lastError) {
       throw lastError
     }
+    if (rawPayload === null) throw new Error('OpenRouter model-list raw payload is unavailable')
 
     const models = modelsPayload
       .map((raw) =>
@@ -646,6 +650,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
     const completedAtMs = Date.now()
     return {
       models,
+      rawSourcePayloads: [rawPayload],
       meta: {
         primarySource: selectedSource,
         usedFallback,

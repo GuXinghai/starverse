@@ -26,6 +26,11 @@ import {
 } from '../../src/shared/modelCatalog/catalogPolicyV2'
 import { listProviderCatalogSourceDescriptors } from '../../src/shared/modelCatalog/providerCatalogRegistry'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
+import {
+  CanonicalModelFactSourceIngestionV1Service,
+  assertProviderNativeAuthorityBindingV1,
+  type CanonicalProviderNativeSurfaceIdV1,
+} from '../../infra/db/services/canonicalModelFactSourceIngestionV1Service'
 
 export const GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS = Object.freeze([
   'openai-responses-models:list-availability',
@@ -59,6 +64,7 @@ type ProviderConfig = Readonly<{
   endpointId: string
   profileId: string
   operationContractId: string
+  nativeSurfaceId: CanonicalProviderNativeSurfaceIdV1
   list: (credential: string, signal: AbortSignal, category?: OpenRouterModelCategory) => Promise<ProviderResult>
 }>
 
@@ -126,12 +132,17 @@ function createProviderConfigs(fetchImpl: ProviderFetch): Readonly<Record<Provid
     authority.providerKey,
     (() => {
       const source = authority.source()
+      const nativeSurfaceId = assertProviderNativeAuthorityBindingV1({
+        surfaceId: authority.modelsContractId as CanonicalProviderNativeSurfaceIdV1,
+        implementationProviderId: authority.executionProviderId, endpointProfileId: authority.endpointProfileId,
+      })
       return Object.freeze({
       providerKey: authority.credentialKey,
       sourceProviderKey: authority.providerKey,
       endpointId: source.descriptor.defaultBaseUrl,
       profileId: authority.endpointProfileId,
       operationContractId: authority.modelsContractId,
+      nativeSurfaceId,
       list: async (credential: string, signal: AbortSignal, category?: OpenRouterModelCategory): Promise<ProviderResult> => {
         const snapshot = await source.fetchSnapshot({
           providerKey: authority.providerKey,
@@ -146,6 +157,7 @@ function createProviderConfigs(fetchImpl: ProviderFetch): Readonly<Record<Provid
           ok: true,
           observedAtMs: snapshot.fetchedAtMs,
           items: Object.freeze(snapshot.models.map((model) => Object.freeze({ ...model }))),
+          canonicalRawEnvelopes: snapshot.rawModelListPayloads,
         })
       },
       } satisfies ProviderConfig)
@@ -202,6 +214,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
   const providerConfigs = createProviderConfigs(fetchImpl)
   const repo = new ModelCatalogV2Repo(input.db)
   const coordinator = new CatalogScopeCoordinatorV2(repo)
+  const modelFactIngestion = new CanonicalModelFactSourceIngestionV1Service(input.db)
 
   type CredentialStatus = Awaited<ReturnType<Epoch2RuntimeCredentialService['getStatus']>>
   type ResolvedScope =
@@ -326,7 +339,20 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     if (!config) return Object.freeze({ ok: false, code: 'invalid_payload' })
     const resolved = await resolveScope(config, request.category)
     if (!resolved.ok) return resolvedScopeFailure(resolved)
-    const operationId = `catalog:${config.sourceProviderKey}:${Date.now()}`
+    const attemptedAtMs = Date.now()
+    const operationId = `catalog:${config.sourceProviderKey}:${attemptedAtMs}`
+    let factPublicationAttempted = false
+    let factPublicationSucceeded = false
+    const recordFactFailure = (staleReason: string) => {
+      factPublicationAttempted = true
+      try {
+        modelFactIngestion.recordProviderNativeRefreshFailure({ surfaceId: config.nativeSurfaceId,
+          endpointProfileId: config.profileId, credentialScopeId: resolved.status.credentialScopeId!,
+          credentialRevision: resolved.status.revision,
+          ...(request.category === undefined ? {} : { catalogCategory: request.category }),
+          attemptedAtMs, staleReason })
+      } catch { /* facts failure must not replace provider/catalog behavior */ }
+    }
     const result = await coordinator.sync({
       scope: resolved.scope,
       applyMode: request.applyMode ?? 'automatic',
@@ -356,6 +382,27 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
           body: { diagnostic: 'catalog response shape invalid' },
           }) })
         }
+        const canonicalRawEnvelopes = providerResult.canonicalRawEnvelopes
+        if (!Array.isArray(canonicalRawEnvelopes) || canonicalRawEnvelopes.length < 1 ||
+            typeof providerResult.observedAtMs !== 'number') {
+          recordFactFailure('CANONICAL_MODEL_FACT_RAW_EVIDENCE_UNAVAILABLE')
+        } else {
+          factPublicationAttempted = true
+          try {
+            modelFactIngestion.refreshProviderNative({ surfaceId: config.nativeSurfaceId,
+              endpointProfileId: config.profileId, credentialScopeId: resolved.status.credentialScopeId!,
+              credentialRevision: resolved.status.revision,
+              ...(request.category === undefined ? {} : { catalogCategory: request.category }),
+              rawEnvelopes: canonicalRawEnvelopes.map((payload, index) => ({
+                recordKey: `provider-native:${config.nativeSurfaceId}:model-list-page:${index + 1}`,
+                payload,
+              })), recordSetCompleteness: 'complete',
+              fetchedAtMs: providerResult.observedAtMs, lastAttemptedAtMs: providerResult.observedAtMs })
+            factPublicationSucceeded = true
+          } catch {
+            recordFactFailure('CANONICAL_MODEL_FACT_PUBLICATION_FAILED')
+          }
+        }
         return Object.freeze({
           ok: true as const,
           items: items as readonly Readonly<Record<string, unknown>>[],
@@ -365,6 +412,9 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       },
     })
     if (!result.ok) {
+      if (!factPublicationAttempted && !factPublicationSucceeded) {
+        recordFactFailure(result.providerFailure.starverseDiagnosticCode)
+      }
       return Object.freeze({
         ok: false,
         code: result.providerFailure.starverseDiagnosticCode,

@@ -66,6 +66,9 @@ describe('googleAIStudioCatalogSource', () => {
         facts: expect.objectContaining({ reasoning: expect.objectContaining({ presence: 'missing' }) }),
       }),
     })
+    expect(snapshot.rawModelListPayloads).toEqual([expect.objectContaining({
+      models: expect.arrayContaining([expect.objectContaining({ name: 'models/gemini-2.5-flash' })]),
+    })])
     expect(JSON.stringify(snapshot)).not.toContain('AIza-test-key')
   })
 

@@ -4,6 +4,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
 import { RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
@@ -34,7 +35,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 18),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 19),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -60,6 +61,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'dfc_attachment_v1', fileName: 'dfcAttachmentSchema.sql' }),
   Object.freeze({ id: 'conversation_route_preference_v1', fileName: 'conversationRoutePreferenceSchema.sql' }),
   Object.freeze({ id: 'capability_rule_v2', fileName: 'capabilityRuleSchema.sql' }),
+  Object.freeze({ id: 'canonical_model_fact_source_v1', fileName: 'canonicalModelFactSourceSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
@@ -239,6 +241,9 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
   hasher.update('encoding-coverage-registry-schema\0', 'utf8')
   hasher.update(ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2, 'utf8')
   hasher.update('\0', 'utf8')
+  hasher.update('canonical-model-fact-ontology-schema\0', 'utf8')
+  hasher.update(CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1, 'utf8')
+  hasher.update('\0', 'utf8')
   return hasher.digest('hex')
 }
 
@@ -330,17 +335,21 @@ function verifyLoadedGenerationV2Schema(
   const manifestObject = db.prepare(
     "SELECT type, sql FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'",
   ).get() as { type: string; sql: string | null } | undefined
-  if (manifestObject?.type !== 'table' || typeof manifestObject.sql !== 'string' ||
-      normalizedSql(manifestObject.sql) !== normalizedSql(MANIFEST_TABLE_SQL)) {
+  if (manifestObject?.type !== 'table' || typeof manifestObject.sql !== 'string') {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
-  const manifest = db.prepare(`SELECT schema_version, schema_digest, fragment_count, object_projection_digest
-      FROM generation_v2_schema_manifest WHERE manifest_id = ?`).get(MANIFEST_ID) as {
+  let manifest: {
       schema_version: number
       schema_digest: string
       fragment_count: number
       object_projection_digest: string
     } | undefined
+  try {
+    manifest = db.prepare(`SELECT schema_version, schema_digest, fragment_count, object_projection_digest
+      FROM generation_v2_schema_manifest WHERE manifest_id = ?`).get(MANIFEST_ID) as typeof manifest
+  } catch {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
   if (!manifest || manifest.schema_version !== 1) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
@@ -351,6 +360,9 @@ function verifyLoadedGenerationV2Schema(
     // so the caller can offer a backup-and-recreate recovery instead of
     // reporting a damaged database.
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
+  }
+  if (normalizedSql(manifestObject.sql) !== normalizedSql(MANIFEST_TABLE_SQL)) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
   const projection = readInstalledProjection(db, expectedObjects, true)
   if (projection.digest !== manifest.object_projection_digest ||

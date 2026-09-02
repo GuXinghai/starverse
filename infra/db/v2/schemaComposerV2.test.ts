@@ -97,6 +97,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       'dfc_attachment_v1',
       'conversation_route_preference_v1',
       'capability_rule_v2',
+      'canonical_model_fact_source_v1',
     ])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
@@ -107,11 +108,13 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 18,
+        schema_digest: first.schemaDigest, fragment_count: 19,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
         .toEqual({ name: 'openrouter_image_endpoint_bindings' })
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='canonical_model_fact_source_state_v1'").get())
+        .toEqual({ name: 'canonical_model_fact_source_state_v1' })
       expect(db.pragma('foreign_key_check')).toEqual([])
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
       db.prepare("UPDATE generation_v2_schema_manifest SET schema_digest = ? WHERE manifest_id = 'generation_compiler_v2'")
@@ -335,6 +338,30 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       )
       expect(() => applyGenerationV2Schema(db, root))
         .toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
+    } finally { db.close() }
+  })
+
+  it('classifies a prior fragment-count manifest as a closed-schema replacement', () => {
+    const db = createDb()
+    try {
+      const current = db.prepare('SELECT * FROM generation_v2_schema_manifest').get() as Record<string, unknown>
+      db.exec('DROP TABLE generation_v2_schema_manifest')
+      db.exec(`CREATE TABLE generation_v2_schema_manifest (
+        manifest_id TEXT PRIMARY KEY CHECK (manifest_id = 'generation_compiler_v2'),
+        schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+        schema_digest TEXT NOT NULL CHECK (
+          length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        fragment_count INTEGER NOT NULL CHECK (fragment_count = 18),
+        object_projection_digest TEXT NOT NULL CHECK (
+          length(object_projection_digest) = 64 AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
+        )
+      )`)
+      db.prepare('INSERT INTO generation_v2_schema_manifest VALUES (?, ?, ?, ?, ?)').run(
+        current.manifest_id, current.schema_version, '0'.repeat(64), 18, current.object_projection_digest,
+      )
+      expect(() => applyGenerationV2Schema(db, root))
+        .toThrow('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
     } finally { db.close() }
   })
 

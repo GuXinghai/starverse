@@ -66,6 +66,10 @@ describe('anthropicCatalogSource', () => {
         }),
       ],
     })
+    expect(snapshot.rawModelListPayloads).toEqual([expect.objectContaining({
+      data: [expect.objectContaining({ id: 'claude-sonnet-4-5' })],
+      has_more: false,
+    })])
     expect(JSON.stringify(snapshot)).not.toContain('sk-ant-test')
   })
 })

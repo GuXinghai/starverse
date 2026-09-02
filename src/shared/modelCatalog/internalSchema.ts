@@ -189,6 +189,7 @@ export type AdapterGetModelEndpointsInput = Readonly<{
 
 export type AdapterListModelsResult = Readonly<{
   models: ReadonlyArray<CatalogModel>
+  rawSourcePayloads: ReadonlyArray<JsonValue>
   meta: Readonly<{
     primarySource: 'models_user' | 'models'
     usedFallback: boolean

@@ -84,6 +84,7 @@ export function createOpenRouterCatalogSource(options: Readonly<{
         dataSource: resolveOpenRouterDataSource(modelResult.meta),
         fetchedAtMs: modelResult.meta.completedAtMs,
         models: modelResult.models,
+        rawModelListPayloads: modelResult.rawSourcePayloads,
         ...(providers ? { providers, providerCount: providers.length } : {}),
         ...(countProbe ? { countProbe } : {}),
         ...(degradedStages.length > 0 ? { degradedStages } : {}),

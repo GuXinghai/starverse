@@ -126,6 +126,7 @@ function createDivergentSchemaRoot(): string {
     'dfcAttachmentSchema.sql',
     'conversationRoutePreferenceSchema.sql',
     'capabilityRuleSchema.sql',
+    'canonicalModelFactSourceSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
   fs.appendFileSync(path.join(target, 'generationConfigSchema.sql'), '\n-- build advanced fixture\n')
   return root
@@ -187,6 +188,12 @@ describe('fresh epoch-2 database initializer', () => {
           })
         expect(db.prepare('SELECT backend, key_version, typeof(ciphertext) AS storage_type FROM epoch_scope_key_envelope_v2').get())
           .toEqual({ backend: 'electron_safe_storage', key_version: 1, storage_type: 'blob' })
+        expect(db.prepare(`SELECT state.source_kind, revision.subject_index_mode
+          FROM canonical_model_fact_source_state_v1 state
+          JOIN canonical_model_fact_source_revision_v1 revision
+            ON revision.canonical_source_revision=state.canonical_source_revision
+          WHERE state.source_kind='capability_rule'`).get())
+          .toEqual({ source_kind: 'capability_rule', subject_index_mode: 'query_bound' })
       } finally { db.close() }
     } finally { value.lease.release() }
   })

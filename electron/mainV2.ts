@@ -28,6 +28,7 @@ import { isEpoch2SmokeFixtureAuthorityEnabled, registerEpoch2SmokeFixtureIpc } f
 import { bindPackagedTestDocxFixtureGrantInvalidationV1, createPackagedTestDocxFixtureAuthorityV1 } from './ipc/packagedTestDocxFixtureAuthorityV1'
 import { createMagikaUtilityProcessRunner } from './services/magikaUtilityProcessRunner'
 import { Epoch2FileTypeDetectionService, GENERATION_V2_FILE_TYPE_DETECTION_UPDATED_CHANNEL } from './services/epoch2FileTypeDetectionService'
+import { ModelsDevOfficialSourceRefreshV1 } from './services/modelsDevOfficialSourceRefreshV1'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -102,6 +103,13 @@ export async function startMainV2(): Promise<void> {
   beforeRequest: () => networkProxyController.assertGovernedRequestAvailable(),
 })
   const localDirectFetch = createElectronSessionProviderFetch({ session: localDirectSession })
+  const modelsDevSourceRefresh = new ModelsDevOfficialSourceRefreshV1({
+  db: runtime.epoch2.database,
+  fetchImpl: cloudFetch,
+})
+  void modelsDevSourceRefresh.start().then((result) => {
+    if (!result.ok) console.warn('[models-dev-source-v1] refresh failed', { code: result.code })
+  }).catch(() => console.warn('[models-dev-source-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
   const magikaProcessRunner = createMagikaUtilityProcessRunner()
@@ -189,6 +197,7 @@ export async function startMainV2(): Promise<void> {
   void (async () => {
     rawGenerationRequestStore.close()
     await packagedTestDocxFixtureAuthority?.dispose()
+    await modelsDevSourceRefresh.dispose()
     await runtime.epoch2.close()
     app.exit(0)
   })().catch(() => {

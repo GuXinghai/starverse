@@ -202,6 +202,18 @@ describe('Anthropic Models API client pagination', () => {
       'claude-opus-4-1',
       'claude-sonnet-4-5',
     ])
+    expect(result.ok && result.rawSourcePayloads).toEqual([
+      {
+        data: [{ id: 'claude-sonnet-4-5', type: 'model' }],
+        last_id: 'claude-sonnet-4-5',
+        has_more: true,
+      },
+      {
+        data: [{ id: 'claude-opus-4-1', type: 'model' }],
+        last_id: 'claude-opus-4-1',
+        has_more: false,
+      },
+    ])
     expect(JSON.stringify(result)).not.toContain('sk-ant-secret')
   })
 

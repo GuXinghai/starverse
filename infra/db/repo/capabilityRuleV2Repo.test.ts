@@ -161,6 +161,37 @@ describe('CapabilityRuleV2Repo', () => {
     } finally { db.close() }
   })
 
+  it('lists every active exact and constrained-regex match without choosing a winner', () => {
+    const db = database()
+    try {
+      const repo = new CapabilityRuleV2Repo(db)
+      repo.installBuiltInPacks([pack({ selector: { kind: 'regex',
+        value: '^deepseek-v4-(?:flash|pro)$', positiveExamples: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+        negativeExamples: ['deepseek-v4', 'deepseek-v4-pro-preview'] }, effortValues: ['low'], priority: 500 })])
+      repo.replaceUserPack(pack({ ownerKind: 'user', ownerId: 'user:1', packId: 'user.exact',
+        selector: { kind: 'exact', values: ['deepseek-v4-pro'] }, effortValues: ['max'], priority: -100 }))
+
+      const matches = repo.listMatchingRulesForIdentity({ providerId: 'deepseek',
+        endpointProfileId: 'deepseek-stable-api-v1', nativeModelId: 'deepseek-v4-pro' })
+      expect(matches).toHaveLength(2)
+      expect(matches.map((rule) => ({ selectorKind: rule.selector.kind, priority: rule.priority })))
+        .toEqual([{ selectorKind: 'regex', priority: 500 }, { selectorKind: 'exact', priority: -100 }])
+    } finally { db.close() }
+  })
+
+  it('exports a deterministic full rule universe for an immutable source snapshot', () => {
+    const db = database()
+    try {
+      const repo = new CapabilityRuleV2Repo(db)
+      repo.installBuiltInPacks([pack({ selector: { kind: 'exact', values: ['deepseek-v4-pro'] },
+        effortValues: ['max'], priority: 1 })])
+      const first = repo.listAllRulesForSourceSnapshot()
+      expect(repo.listAllRulesForSourceSnapshot()).toEqual(first)
+      expect(first).toHaveLength(1)
+      expect(first[0]).toMatchObject({ ruleId: 'reasoning-effort', enabled: true, packEnabled: true })
+    } finally { db.close() }
+  })
+
   it('fails deterministically on equal-priority conflicting regex matches across packs', () => {
     const db = database()
     try {
