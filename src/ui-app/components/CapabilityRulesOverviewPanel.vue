@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { t } from '@/shared/i18n'
 import { evaluateCapabilityRuleActivationV1, planCapabilityRuleRewriteV1 } from '@/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import CapabilityRulesUserPanel from './CapabilityRulesUserPanel.vue'
 
 type Rule = Readonly<{ ruleId: string; label: string | null; configured: 'default' | 'on' | 'off'; assertion: Readonly<{ path: string }> }>
 type Pack = Readonly<{ packId: string; displayName: string; priority: number; mode: 'override' | 'default_only' | 'no_control'; target: 'enabled' | 'disabled'; rules: readonly Rule[] }>
@@ -150,11 +151,13 @@ async function setCloudRuleSelection(ruleId: string, selection: string) {
   finally { changingActivation.value = null }
 }
 
-onMounted(() => { void load() })
+onMounted(() => { if (props.ownership === 'cloud') void load() })
 </script>
 
 <template>
   <section class="space-y-3" :data-testid="`capability-rules-${props.ownership}-overview`">
+    <CapabilityRulesUserPanel v-if="props.ownership === 'user'" />
+    <template v-else>
     <header class="flex flex-wrap items-start justify-between gap-2">
       <div>
         <h3 class="text-sm font-semibold text-gray-900">
@@ -217,5 +220,6 @@ onMounted(() => { void load() })
         {{ t('settings.modelsCapabilities.noPacks') }}
       </li>
     </ul>
+    </template>
   </section>
 </template>
