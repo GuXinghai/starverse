@@ -26,6 +26,12 @@ type InspectorSnapshot = Readonly<{ subjectSetRevision: string; subject: ExactSu
 type SelectedField = Readonly<{ source: InspectorSourceRow; outcome: FieldOutcome }>
 type View = 'overview' | 'fields' | 'evidence'
 
+const props = withDefaults(defineProps<{
+  initialSubject?: ExactSubject | null
+}>(), {
+  initialSubject: null,
+})
+
 const query = ref('')
 const loading = ref(false)
 const evidenceLoading = ref(false)
@@ -162,7 +168,10 @@ async function readRawPayload() {
   finally { evidenceLoading.value = false }
 }
 
-onMounted(() => { void search() })
+onMounted(async () => {
+  await search()
+  if (props.initialSubject) await inspect(props.initialSubject)
+})
 </script>
 
 <template>

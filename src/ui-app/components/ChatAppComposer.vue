@@ -39,6 +39,7 @@ import { t, tf } from '@/shared/i18n'
 import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCatalogClient'
 import { createCompatibleProviderRegistryClient, createCompatibleRouteIntent, type CompatibleRoutePickerSource } from '@/next/provider/openai-chat-compatible/ui'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 
 const props = defineProps<{
   draft: string
@@ -119,6 +120,7 @@ const emit = defineEmits<{
   (e: 'navigateHistoryIncompatibleNext'): void
   (e: 'send'): void
   (e: 'abort'): void
+  (e: 'inspectModelFacts', subject: CanonicalModelSubjectV1): void
 }>()
 
 const favoriteModels = ref<FavoriteViewModel[]>([])
@@ -991,6 +993,11 @@ function onSelectModelFromPicker(selection: ConversationRouteSelection, displayN
   modelPickerOpen.value = false
 }
 
+function onInspectModelFacts(subject: CanonicalModelSubjectV1) {
+  modelPickerOpen.value = false
+  emit('inspectModelFacts', subject)
+}
+
 async function onToggleCurrentModelFavorite() {
   const modelId = normalizeModelKey(selectedModel.value)
   const providerId = selectedProvider.value
@@ -1605,6 +1612,7 @@ onBeforeUnmount(() => {
     :queryFn="props.modelPickerQueryFn"
     @close="closeModelPicker"
     @select="onSelectModelFromPicker"
+    @inspectModelFacts="onInspectModelFacts"
     @toggleFavorite="onToggleModelPickerFavorite"
     @reorderFavorites="onReorderModelPickerFavorites"
   />

@@ -39,6 +39,7 @@ import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSett
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
 import ModelsAndCapabilitiesSettingsPanel from './ModelsAndCapabilitiesSettingsPanel.vue'
+import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -71,6 +72,8 @@ import type { CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
 const props = defineProps<{
   disabled: boolean
   isRunning: boolean
+  initialCategory?: SettingsCategoryId
+  inspectorSubject?: CanonicalModelSubjectV1 | null
 }>()
 const isDev = import.meta.env?.DEV === true
 const appIdentity = getCurrentInstance()?.appContext.app
@@ -451,7 +454,10 @@ const SETTINGS_CATEGORIES: ReadonlyArray<Readonly<{ id: SettingsCategoryId; labe
   { id: 'network', labelKey: 'settings.categories.network' },
   { id: 'extensions', labelKey: 'settings.categories.extensions' },
 ]
-const activeCategory = ref<SettingsCategoryId>('general')
+const activeCategory = ref<SettingsCategoryId>(props.initialCategory ?? 'general')
+watch(() => props.initialCategory, (value) => {
+  if (value) activeCategory.value = value
+})
 
 function settingsCategoryTabId(id: SettingsCategoryId): string {
   return `settings-category-tab-${id}`
@@ -2802,7 +2808,10 @@ onMounted(() => {
           class="space-y-3"
           data-testid="settings-pane-models-capabilities"
         >
-          <ModelsAndCapabilitiesSettingsPanel />
+          <ModelsAndCapabilitiesSettingsPanel
+            :initialTab="props.inspectorSubject ? 'inspector' : undefined"
+            :inspectorSubject="props.inspectorSubject"
+          />
         </section>
 
         <section
