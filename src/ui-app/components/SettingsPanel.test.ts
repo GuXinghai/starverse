@@ -422,7 +422,7 @@ describe('ui-app SettingsPanel', () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
     await screen.findByText('设置')
 
-    const tabs = screen.getAllByRole('tab')
+    const tabs = within(screen.getByTestId('settings-category-navigation')).getAllByRole('tab')
     expect(tabs).toHaveLength(8)
     expect(screen.getByTestId('settings-pane-general')).toBeVisible()
     expect(screen.getByTestId('settings-pane-providers')).not.toBeVisible()
