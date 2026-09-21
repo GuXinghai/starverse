@@ -98,4 +98,24 @@ describe('CapabilityRulesOverviewPanel', () => {
     await user.click(screen.getByRole('button', { name: '保存更改' }))
     await waitFor(() => expect(saveDraft).toHaveBeenCalledWith({ sessionId: 'session:1', expectedDraftRevision: 2 }))
   })
+
+  it('rolls back a persisted Cloud history record with the current revision and optional pin', async () => {
+    const rollback = vi.fn(async () => null)
+    ;(window as any).generationV2 = { capabilityRules: { cloud: {
+      read: vi.fn(async () => ({ distribution: { latestObserved: null, candidate: null },
+        application: { appliedIntegrity: 'valid', appliedRecordRevision: 8, applied: null,
+          policy: { policyRevision: 3, historyLimit: 4, pin: null }, overrides: { revision: 1, overrides: [] } },
+        active: { activeSnapshot: null }, history: [{ appliedRecordRevision: 7, releaseVersion: '1.0.0', contentRevision: 'sha256:' + 'a'.repeat(64) }] })),
+      rollback, check: vi.fn(), candidateDiff: vi.fn(), apply: vi.fn(), replaceActivationOverrides: vi.fn(),
+      setHistoryLimit: vi.fn(), resumeUpdates: vi.fn(),
+    }, user: { readCommitted: vi.fn(), readDraft: vi.fn(), openDraft: vi.fn(), replaceDraft: vi.fn(),
+      addRule: vi.fn(), rewritePack: vi.fn(), importPack: vi.fn(), exportCommittedPack: vi.fn(), saveDraft: vi.fn(), cancelDraft: vi.fn() } } }
+    const user = userEvent.setup()
+    render(CapabilityRulesOverviewPanel, { props: { ownership: 'cloud' } })
+    await user.click(await screen.findByRole('button', { name: '回滚' }))
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: '确认' }))
+    await waitFor(() => expect(rollback).toHaveBeenCalledWith({ expectedAppliedRecordRevision: 8,
+      expectedHistoryTargetRecordRevision: 7, pinTarget: true }))
+  })
 })
