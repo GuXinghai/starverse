@@ -137,3 +137,123 @@ BEFORE UPDATE OF ownership, owner_id, rule_id ON capability_rule_core_v1
 BEGIN
   SELECT RAISE(ABORT, 'CAPABILITY_RULE_CORE_IDENTITY_IMMUTABLE');
 END;
+
+-- Fixed GuXinghai/starverse Cloud-managed Rules distribution state. This is
+-- candidate acquisition state only; applying content into the shared Cloud
+-- ownership snapshot is a later transaction boundary.
+CREATE TABLE IF NOT EXISTS cloud_rules_distribution_state_v1 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  state_revision INTEGER NOT NULL CHECK (state_revision >= 0),
+  last_attempted_at_ms INTEGER CHECK (last_attempted_at_ms IS NULL OR last_attempted_at_ms >= 0),
+  last_successful_check_at_ms INTEGER CHECK (
+    last_successful_check_at_ms IS NULL OR last_successful_check_at_ms >= 0
+  ),
+  last_failure_code TEXT CHECK (
+    last_failure_code IS NULL OR length(last_failure_code) BETWEEN 1 AND 128
+  ),
+  latest_release_version TEXT,
+  latest_content_revision TEXT CHECK (
+    latest_content_revision IS NULL OR (
+      length(latest_content_revision) = 71
+      AND latest_content_revision GLOB 'sha256:*'
+      AND substr(latest_content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  latest_release_metadata_json TEXT CHECK (
+    latest_release_metadata_json IS NULL OR (
+      json_valid(latest_release_metadata_json)
+      AND json_type(latest_release_metadata_json) = 'object'
+    )
+  ),
+  candidate_record_revision TEXT CHECK (
+    candidate_record_revision IS NULL OR (
+      length(candidate_record_revision) = 89
+      AND candidate_record_revision GLOB 'cloud-rules-candidate-v1:*'
+      AND substr(candidate_record_revision, 26) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  candidate_release_version TEXT,
+  candidate_content_revision TEXT CHECK (
+    candidate_content_revision IS NULL OR (
+      length(candidate_content_revision) = 71
+      AND candidate_content_revision GLOB 'sha256:*'
+      AND substr(candidate_content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  candidate_release_metadata_json TEXT CHECK (
+    candidate_release_metadata_json IS NULL OR (
+      json_valid(candidate_release_metadata_json)
+      AND json_type(candidate_release_metadata_json) = 'object'
+    )
+  ),
+  candidate_document_json TEXT CHECK (
+    candidate_document_json IS NULL OR (
+      json_valid(candidate_document_json)
+      AND json_type(candidate_document_json) = 'object'
+    )
+  ),
+  candidate_document_sha256 TEXT CHECK (
+    candidate_document_sha256 IS NULL OR (
+      length(candidate_document_sha256) = 64
+      AND candidate_document_sha256 NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  candidate_raw_asset_sha256 TEXT CHECK (
+    candidate_raw_asset_sha256 IS NULL OR (
+      length(candidate_raw_asset_sha256) = 64
+      AND candidate_raw_asset_sha256 NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  candidate_fetched_at_ms INTEGER CHECK (
+    candidate_fetched_at_ms IS NULL OR candidate_fetched_at_ms >= 0
+  ),
+  applied_content_revision TEXT CHECK (
+    applied_content_revision IS NULL OR (
+      length(applied_content_revision) = 71
+      AND applied_content_revision GLOB 'sha256:*'
+      AND substr(applied_content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  CHECK (
+    (latest_release_version IS NULL AND latest_content_revision IS NULL
+      AND latest_release_metadata_json IS NULL)
+    OR
+    (latest_release_version IS NOT NULL AND latest_content_revision IS NOT NULL
+      AND latest_release_metadata_json IS NOT NULL)
+  ),
+  CHECK (
+    (candidate_record_revision IS NULL AND candidate_release_version IS NULL
+      AND candidate_content_revision IS NULL AND candidate_release_metadata_json IS NULL
+      AND candidate_document_json IS NULL AND candidate_document_sha256 IS NULL
+      AND candidate_raw_asset_sha256 IS NULL AND candidate_fetched_at_ms IS NULL)
+    OR
+    (candidate_record_revision IS NOT NULL AND candidate_release_version IS NOT NULL
+      AND candidate_content_revision IS NOT NULL AND candidate_release_metadata_json IS NOT NULL
+      AND candidate_document_json IS NOT NULL AND candidate_document_sha256 IS NOT NULL
+      AND candidate_raw_asset_sha256 IS NOT NULL AND candidate_fetched_at_ms IS NOT NULL)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_release_version_ledger_v1 (
+  release_version TEXT PRIMARY KEY CHECK (length(release_version) BETWEEN 5 AND 64),
+  content_revision TEXT NOT NULL CHECK (
+    length(content_revision) = 71
+    AND content_revision GLOB 'sha256:*'
+    AND substr(content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  first_observed_at_ms INTEGER NOT NULL CHECK (first_observed_at_ms >= 0),
+  last_observed_at_ms INTEGER NOT NULL CHECK (last_observed_at_ms >= first_observed_at_ms)
+);
+
+CREATE TRIGGER IF NOT EXISTS cloud_rules_release_version_binding_immutable_v1
+BEFORE UPDATE OF release_version, content_revision ON cloud_rules_release_version_ledger_v1
+BEGIN
+  SELECT RAISE(ABORT, 'CLOUD_RULES_RELEASE_VERSION_BINDING_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS cloud_rules_release_version_ledger_permanent_v1
+BEFORE DELETE ON cloud_rules_release_version_ledger_v1
+BEGIN
+  SELECT RAISE(ABORT, 'CLOUD_RULES_RELEASE_VERSION_LEDGER_PERMANENT');
+END;
