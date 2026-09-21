@@ -1,8 +1,11 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
+import {
+  OpenAICompatibleV2Repo,
+  type OpenAICompatibleEndpointRevisionV2,
+} from '../../infra/db/repo/openAICompatibleV2Repo'
 import { parseCompatibleModelsResponse } from '../../src/shared/modelCatalog/providers/openai-chat-compatible/compatibleCatalogSource'
 import type { CompatibleCatalogSyncState } from '../../src/shared/provider/openai-chat-compatible'
-import { readOpenAIChatCompatibleModelsEndpointV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { readOpenAIChatCompatibleModelsEndpointV2 } from '../../infra/db/services/openAICompatibleModelsEndpointV2'
 import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 
@@ -21,11 +24,27 @@ export function createOpenAICompatibleCatalogV2Service(input: Readonly<{
   const controllers = new Map<string, AbortController>()
   const nowMs = input.nowMs ?? Date.now
   const state = (providerInstanceId: string): CompatibleCatalogSyncState | null => states.get(providerInstanceId) ?? null
+  async function credentialBinding(providerInstanceId: string, endpoint: OpenAICompatibleEndpointRevisionV2) {
+    const auth = endpoint.auth as { mode?: unknown; credentialVersionRef?: unknown }
+    if (auth.mode === 'none') return Object.freeze({ credentialScopeId: 'compatible-credential-none', credentialRevision: 0 })
+    if ((auth.mode !== 'bearer' && auth.mode !== 'basic' && auth.mode !== 'custom_headers') ||
+        typeof auth.credentialVersionRef !== 'string') {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_INVALID')
+    }
+    const status = await input.credentialService.getStatus(providerInstanceId, auth.credentialVersionRef)
+    if (!status.configured || !status.credentialScopeId || status.revision < 1) {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_MISSING')
+    }
+    return Object.freeze({ credentialScopeId: status.credentialScopeId, credentialRevision: status.revision })
+  }
   async function fetchModels(providerInstanceId: string, signal?: AbortSignal) {
     const provider = repo.get(providerInstanceId); const endpoint = provider.endpointRevisions[0]
     if (provider.status !== 'active' || !endpoint) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
+    const binding = await credentialBinding(providerInstanceId, endpoint)
     const headers = await createOpenAICompatibleHeadersV2({ credentialService: input.credentialService,
-      providerInstanceId, endpoint, accept: 'application/json' })
+      providerInstanceId, endpoint, expectedRevision: binding.credentialRevision,
+      expectedCredentialScopeId: binding.credentialRevision === 0 ? undefined : binding.credentialScopeId as never,
+      accept: 'application/json' })
     const response = await input.fetchImpl(readOpenAIChatCompatibleModelsEndpointV2(endpoint), {
       method: 'GET', redirect: 'error', signal, headers,
     })
@@ -35,7 +54,8 @@ export function createOpenAICompatibleCatalogV2Service(input: Readonly<{
     const bytes = new Uint8Array(await response.arrayBuffer())
     try {
       if (bytes.byteLength > MAX_MODELS_BYTES) throw new Error('compatible_catalog_models_overflow')
-      return Object.freeze({ source: parseCompatibleModelsResponse(bytes), httpStatus: response.status })
+      return Object.freeze({ source: parseCompatibleModelsResponse(bytes), httpStatus: response.status,
+        endpoint, binding })
     } finally { bytes.fill(0) }
   }
   async function sync(providerInstanceId: string, requestId: string) {
@@ -47,7 +67,21 @@ export function createOpenAICompatibleCatalogV2Service(input: Readonly<{
       diagnostics: null, updatedAtMs: attemptAt }))
     try {
       const fetched = await fetchModels(providerInstanceId, controller.signal); const source = fetched.source
-      const models = repo.replaceRemoteModels(providerInstanceId, source.models); const at = nowMs()
+      const currentProvider = repo.get(providerInstanceId); const currentEndpoint = currentProvider.endpointRevisions[0]
+      if (currentProvider.status !== 'active' || !currentEndpoint ||
+          currentEndpoint.endpointRevisionId !== fetched.endpoint.endpointRevisionId ||
+          currentEndpoint.endpointDigest !== fetched.endpoint.endpointDigest) {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CONFLICT')
+      }
+      const currentBinding = await credentialBinding(providerInstanceId, currentEndpoint)
+      if (currentBinding.credentialScopeId !== fetched.binding.credentialScopeId ||
+          currentBinding.credentialRevision !== fetched.binding.credentialRevision) {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_STALE')
+      }
+      const models = repo.replaceRemoteModels({ providerInstanceId,
+        endpointRevisionId: currentEndpoint.endpointRevisionId, endpointDigest: currentEndpoint.endpointDigest,
+        credentialScopeId: currentBinding.credentialScopeId, credentialRevision: currentBinding.credentialRevision,
+        models: source.models }); const at = nowMs()
       const next = Object.freeze({ providerInstanceId: providerInstanceId as CompatibleCatalogSyncState['providerInstanceId'],
         status: models.length === 0 ? 'empty_success' as const : 'success' as const, lastAttemptAtMs: attemptAt,
         lastSuccessAtMs: at, lastSuccessSnapshotId: null, failureCount: 0, backoffUntilMs: null,

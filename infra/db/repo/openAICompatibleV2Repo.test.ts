@@ -106,7 +106,11 @@ describe('OpenAI-compatible V2 configuration repository', () => {
     const unknown = { schemaVersion: 1, displayName: null, contextLength: null, maxOutputTokens: null,
       capabilities: { text: null, vision: null, tools: null, structuredOutputs: null, reasoning: null },
       pricing: { prompt: null, completion: null, request: null, image: null }, fieldProvenance: {} }
-    repo.replaceRemoteModels('ocp_provider_12345678', [{ modelId: 'same-model', metadata: unknown }])
+    const endpoint = repo.get('ocp_provider_12345678').endpointRevisions[0]!
+    repo.replaceRemoteModels({ providerInstanceId: 'ocp_provider_12345678',
+      endpointRevisionId: endpoint.endpointRevisionId, endpointDigest: endpoint.endpointDigest,
+      credentialScopeId: 'compatible-credential-none', credentialRevision: 0,
+      models: [{ modelId: 'same-model', metadata: unknown }] })
     const merged = repo.upsertManualModel('ocp_provider_12345678', 'same-model', { ...unknown, displayName: 'Manual name',
       capabilities: { ...unknown.capabilities, reasoning: true } })
     expect(merged).toMatchObject([{ modelId: 'same-model', metadata: { displayName: 'Manual name', capabilities: { reasoning: true } },
@@ -116,5 +120,25 @@ describe('OpenAI-compatible V2 configuration repository', () => {
         aggregate: { schemaVersion: 1, observedShapes: ['string'], redactedPreview: { kind: 'redacted', valueType: 'string', originalLength: null }, sampleCount: 2 } }] })
     expect(repo.listDiscovery('ocp_provider_12345678')).toMatchObject([{ streamPath: 'choices.*.delta.vendor_reasoning',
       state: 'candidate', occurrenceCount: 2 }])
+  })
+
+  it('binds remote models to the exact endpoint acquisition and invalidates them on endpoint change', () => {
+    repo.create({ providerInstanceId: 'ocp_provider_12345678', displayName: 'Compatible endpoint',
+      endpointRevisionId: 'ocp_endpoint_12345678', baseUrl: 'https://example.test/', securityPolicy: 'compatibility_first',
+      auth: { mode: 'none' }, ordinaryHeaders: [], query: [], configuration: configuration() })
+    const endpoint = repo.get('ocp_provider_12345678').endpointRevisions[0]!
+    const unknown = { schemaVersion: 1, displayName: null, contextLength: null, maxOutputTokens: null,
+      capabilities: { text: null, vision: null, tools: null, structuredOutputs: null, reasoning: null },
+      pricing: { prompt: null, completion: null, request: null, image: null }, fieldProvenance: {} }
+    repo.replaceRemoteModels({ providerInstanceId: 'ocp_provider_12345678',
+      endpointRevisionId: endpoint.endpointRevisionId, endpointDigest: endpoint.endpointDigest,
+      credentialScopeId: 'credential-scope-v2:remote', credentialRevision: 1,
+      models: [{ modelId: 'remote-only', metadata: unknown }] })
+    repo.upsertManualModel('ocp_provider_12345678', 'manual-only', unknown)
+    repo.updateEndpoint({ providerInstanceId: 'ocp_provider_12345678',
+      endpointRevisionId: 'ocp_endpoint_23456789', baseUrl: 'https://changed.example.test/',
+      securityPolicy: 'compatibility_first', auth: { mode: 'none' }, ordinaryHeaders: [], query: [] })
+    expect(repo.listMergedModels('ocp_provider_12345678', false).map((item) => item.modelId))
+      .toEqual(['manual-only'])
   })
 })
