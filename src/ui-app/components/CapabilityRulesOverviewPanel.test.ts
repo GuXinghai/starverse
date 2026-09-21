@@ -65,4 +65,37 @@ describe('CapabilityRulesOverviewPanel', () => {
     await waitFor(() => expect(screen.getByText('没有可用的规则包。')).toBeInTheDocument())
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
+
+  it('keeps User Rule edits in the session draft until the batch Save', async () => {
+    const replaceDraft = vi.fn(async (input: any) => ({
+      ...draftFixture, draftRevision: input.expectedDraftRevision + 1, dirty: true,
+      projected: { definition: input.snapshot },
+    }))
+    const saveDraft = vi.fn(async () => ({ snapshotRevision: 'snapshot:2', canonicalSourceRevision: 'source:2' }))
+    const draftFixture = {
+      sessionId: 'session:1', draftRevision: 1, dirty: false, notes: [],
+      projected: { definition: { schemaVersion: 1, ownership: 'user', ownerId: 'local-user', packs: [{
+        schemaVersion: 1, packId: 'pack:one', displayName: 'User Pack', description: null, priority: 0,
+        mode: 'no_control', target: 'enabled', rules: [{ ruleId: 'rule:one', label: null, description: null,
+          priority: 0, configured: 'default', providerAuthorityId: 'openai', endpointProfileId: 'openai-default',
+          selector: { kind: 'exact', nativeModelIds: ['gpt-test'] },
+          assertion: { path: 'reasoning.support', value: { kind: 'support', value: 'supported' } }, evidence: null }],
+      }] } },
+    }
+    ;(window as any).generationV2 = { capabilityRules: { user: {
+      readCommitted: vi.fn(async () => ({ snapshot: null, notes: [] })),
+      readDraft: vi.fn(async () => null), openDraft: vi.fn(async () => draftFixture), replaceDraft,
+      addRule: vi.fn(), rewritePack: vi.fn(), importPack: vi.fn(), exportCommittedPack: vi.fn(), saveDraft,
+      cancelDraft: vi.fn(),
+    } } }
+    const user = userEvent.setup()
+    render(CapabilityRulesOverviewPanel, { props: { ownership: 'user' } })
+    await user.click(await screen.findByRole('button', { name: '编辑规则' }))
+    await user.selectOptions((await screen.findAllByRole('combobox'))[2]!, 'off')
+    await waitFor(() => expect(replaceDraft).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session:1', expectedDraftRevision: 1,
+    })))
+    await user.click(screen.getByRole('button', { name: '保存更改' }))
+    await waitFor(() => expect(saveDraft).toHaveBeenCalledWith({ sessionId: 'session:1', expectedDraftRevision: 2 }))
+  })
 })
