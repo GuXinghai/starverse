@@ -6,8 +6,14 @@ type Rule = Readonly<{ ruleId: string; label: string | null; assertion: Readonly
 type Pack = Readonly<{ packId: string; displayName: string; priority: number; rules: readonly Rule[] }>
 type OwnershipSnapshot = Readonly<{ packs: readonly Readonly<{ definition: Pack }>[] }>
 type CloudRead = Readonly<{
-  distribution: Readonly<{ latestObserved: Readonly<{ releaseVersion: string }> | null; candidate: unknown | null }>
-  application: Readonly<{ applied: Readonly<{ releaseVersion: string; document: Readonly<{ packs: readonly Pack[] }> }> | null }>
+  distribution: Readonly<{
+    latestObserved: Readonly<{ releaseVersion: string }> | null
+    candidate: Readonly<{ candidateRecordRevision: string; releaseVersion: string }> | null
+  }>
+  application: Readonly<{
+    appliedRecordRevision: number | null
+    applied: Readonly<{ releaseVersion: string; document: Readonly<{ packs: readonly Pack[] }> }> | null
+  }>
 }>
 
 const props = defineProps<{ ownership: 'cloud' | 'user' }>()
@@ -15,6 +21,9 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const cloud = ref<CloudRead | null>(null)
 const user = ref<OwnershipSnapshot | null>(null)
+const candidateDiff = ref<Readonly<{ current: string | null; candidate: string }> | null>(null)
+const applying = ref(false)
+const applyConfirming = ref(false)
 
 function capabilityRules() {
   const value = window.generationV2?.capabilityRules
@@ -50,6 +59,33 @@ async function checkCloud() {
   } finally { loading.value = false }
 }
 
+function candidateRequest() {
+  const state = cloud.value
+  if (!state?.distribution.candidate) throw new Error('GENERATION_V2_CLOUD_RULES_CANDIDATE_NOT_FOUND')
+  return Object.freeze({ expectedCandidateRecordRevision: state.distribution.candidate.candidateRecordRevision,
+    expectedAppliedRecordRevision: state.application.appliedRecordRevision })
+}
+
+async function viewChanges() {
+  loading.value = true
+  error.value = null
+  try { candidateDiff.value = await capabilityRules().cloud.candidateDiff(candidateRequest()) as Readonly<{ current: string | null; candidate: string }> }
+  catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { loading.value = false }
+}
+
+async function applyCandidate() {
+  applying.value = true
+  error.value = null
+  try {
+    await capabilityRules().cloud.apply(candidateRequest())
+    candidateDiff.value = null
+    applyConfirming.value = false
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { applying.value = false }
+}
+
 onMounted(() => { void load() })
 </script>
 
@@ -74,6 +110,21 @@ onMounted(() => { void load() })
       {{ t('settings.modelsCapabilities.appliedRelease') }}: {{ cloud.application.applied.releaseVersion }}
       <span v-if="cloud.distribution.candidate"> · {{ t('settings.modelsCapabilities.candidateAvailable') }}</span>
     </p>
+    <div v-if="props.ownership === 'cloud' && cloud?.distribution.candidate" class="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+      <div>{{ t('settings.modelsCapabilities.candidateRelease') }}: {{ cloud.distribution.candidate.releaseVersion }}</div>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 hover:bg-amber-100" :disabled="loading || applying" @click="viewChanges">{{ t('settings.modelsCapabilities.viewChanges') }}</button>
+        <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 hover:bg-amber-100" :disabled="loading || applying" @click="applyConfirming = true">{{ t('settings.modelsCapabilities.applyUpdate') }}</button>
+      </div>
+      <pre v-if="candidateDiff" class="mt-2 max-h-48 overflow-auto rounded bg-white p-2 text-[10px] text-gray-700">{{ candidateDiff.candidate }}</pre>
+      <div v-if="applyConfirming" class="mt-2 rounded border border-amber-300 bg-white p-2">
+        <p>{{ t('settings.modelsCapabilities.applyConfirmation') }}</p>
+        <div class="mt-2 flex gap-2">
+          <button type="button" class="rounded bg-amber-600 px-2 py-1 text-white hover:bg-amber-700" :disabled="applying" @click="applyCandidate">{{ applying ? t('common.loading') : t('common.confirm') }}</button>
+          <button type="button" class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50" :disabled="applying" @click="applyConfirming = false">{{ t('common.cancel') }}</button>
+        </div>
+      </div>
+    </div>
     <ul class="space-y-2">
       <li v-for="pack in packs()" :key="pack.packId" class="rounded border border-gray-200 bg-white p-3">
         <div class="flex items-center justify-between gap-2 text-xs">
