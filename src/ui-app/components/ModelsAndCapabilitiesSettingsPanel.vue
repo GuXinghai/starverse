@@ -1,16 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
 import CapabilityRulesOverviewPanel from './CapabilityRulesOverviewPanel.vue'
 import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
+import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 
 type TabId = 'cloud' | 'user' | 'inspector'
+const props = withDefaults(defineProps<{
+  initialTab?: TabId
+  inspectorSubject?: CanonicalModelSubjectV1 | null
+}>(), {
+  initialTab: 'cloud',
+  inspectorSubject: null,
+})
 const tabs: readonly Readonly<{ id: TabId; label: string }>[] = [
   { id: 'cloud', label: 'settings.modelsCapabilities.cloudTab' },
   { id: 'user', label: 'settings.modelsCapabilities.userTab' },
   { id: 'inspector', label: 'settings.modelsCapabilities.inspectorTab' },
 ]
-const active = ref<TabId>('cloud')
+const active = ref<TabId>(props.initialTab)
+watch(() => props.initialTab, (value) => { active.value = value })
 function tabId(id: TabId) { return `models-capabilities-tab-${id}` }
 function panelId(id: TabId) { return `models-capabilities-panel-${id}` }
 function select(id: TabId, focus = false) {
@@ -42,6 +51,6 @@ function keydown(event: KeyboardEvent, current: TabId) {
     </nav>
     <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')"><CapabilityRulesOverviewPanel ownership="cloud" /></div>
     <div :id="panelId('user')" v-show="active === 'user'" role="tabpanel" :aria-labelledby="tabId('user')"><CapabilityRulesOverviewPanel ownership="user" /></div>
-    <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel /></div>
+    <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel :initialSubject="props.inspectorSubject" /></div>
   </section>
 </template>

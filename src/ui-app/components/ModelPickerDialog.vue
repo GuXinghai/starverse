@@ -48,6 +48,11 @@ import {
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
 } from '@/next/provider/modelSelection'
+import {
+  modelFactsSubjectForCatalogModelV1,
+  modelFactsSubjectForCompatibleModelV1,
+} from '@/next/generation-v2/model-facts/modelFactsSubjectIdentityV1'
+import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 import { isRuntimeProviderId, type RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import {
   createProviderModelRouteSelection,
@@ -127,6 +132,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: []
   select: [selection: ConversationRouteSelection, displayName: string]
+  inspectModelFacts: [subject: CanonicalModelSubjectV1]
   toggleFavorite: [providerId: RuntimeProviderId, modelId: string]
   reorderFavorites: [orderedModelKeys: string[]]
 }>()
@@ -2059,6 +2065,16 @@ function onSelectCompatibleRoute(
   void commitSelection(routeIntent, displayName)
 }
 
+function inspectCatalogModelFacts(providerId: RuntimeProviderId, modelId: string) {
+  const subject = modelFactsSubjectForCatalogModelV1(providerId, modelId)
+  if (subject) emit('inspectModelFacts', subject)
+}
+
+function inspectCompatibleModelFacts(routeIntent: CompatibleRouteIntent) {
+  const subject = modelFactsSubjectForCompatibleModelV1(routeIntent.providerInstanceId, routeIntent.modelId)
+  if (subject) emit('inspectModelFacts', subject)
+}
+
 function onSelectModel(modelId: string, providerId: RuntimeProviderId) {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return
@@ -2361,10 +2377,15 @@ const selectedModelFilteredOut = computed(() =>
         <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible</div>
         <div class="mt-2 flex flex-wrap gap-2">
           <template v-for="source in props.compatibleRouteSources" :key="source.providerInstanceId">
-            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
-              <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
-              <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
-            </button>
+            <div v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" class="flex items-center gap-1 rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs">
+              <button type="button" class="min-w-0 flex-1 text-left" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
+                <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
+                <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
+              </button>
+              <button type="button" class="shrink-0 rounded border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700 hover:bg-blue-50" :disabled="props.disabled || props.isRunning" :data-testid="`compatible-model-inspect-${source.providerInstanceId}-${model.modelId}`" @click="inspectCompatibleModelFacts(model.routeIntent)">
+                {{ t('settings.modelsCapabilities.inspectModelFacts') }}
+              </button>
+            </div>
           </template>
         </div>
       </div>
@@ -3059,6 +3080,15 @@ const selectedModelFilteredOut = computed(() =>
                     <div>{{ activeDetailItem.sourceLabel ?? t('errors.modelCatalog.providerSource') }}</div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  class="mt-3 rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-50"
+                  :disabled="props.disabled || !activeDetailItem"
+                  data-testid="model-picker-inspect-model-facts"
+                  @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
+                >
+                  {{ t('settings.modelsCapabilities.inspectModelFacts') }}
+                </button>
               </div>
               <ModelDetailPanel
                 v-else-if="activeDetailTab === 'model'"
@@ -3068,8 +3098,18 @@ const selectedModelFilteredOut = computed(() =>
                 :error="modelDetailError"
                 :disabled="props.disabled || !activeDetailModelId"
               />
+              <button
+                v-if="activeDetailTab === 'model' && activeDetailItem?.providerId === OPENROUTER_PROVIDER_ID"
+                type="button"
+                class="rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-50"
+                :disabled="props.disabled || !activeDetailItem"
+                data-testid="model-picker-inspect-model-facts-openrouter"
+                @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
+              >
+                {{ t('settings.modelsCapabilities.inspectModelFacts') }}
+              </button>
               <EndpointDetailPanel
-                v-else
+                v-if="activeDetailTab === 'endpoints'"
                 :modelId="activeDetailModelId"
                 :loading="endpointLoading"
                 :fetchedAtMs="endpointFetchedAtMs"

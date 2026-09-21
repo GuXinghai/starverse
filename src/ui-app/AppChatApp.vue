@@ -24,6 +24,7 @@ import { formatModelIndicatorName } from './components/modelIndicatorName'
 import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
 import { t, tf } from '@/shared/i18n'
 import { createCompatibleProviderRegistryClient } from '@/next/provider/openai-chat-compatible/ui'
+import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 
 const {
   isReady,
@@ -269,6 +270,14 @@ const {
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
 const effectiveIsRunning = computed(() => isRunning.value)
+const modelFactsInspectorSubject = ref<CanonicalModelSubjectV1 | null>(null)
+function openModelFactsInspector(subject: CanonicalModelSubjectV1) {
+  modelFactsInspectorSubject.value = subject
+  openSettings()
+}
+watch(settingsOpen, (open) => {
+  if (!open) modelFactsInspectorSubject.value = null
+})
 const templateResetOpen = ref(false)
 const resetTemplateModelConfig = ref(true)
 const resetTemplateDraftAttachments = ref(true)
@@ -962,6 +971,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             @reviewHistoryIncompatible="onReviewHistoryIncompatibleAttachments"
             @navigateHistoryIncompatiblePrev="onNavigateHistoryIncompatibleAttachments(-1)"
             @navigateHistoryIncompatibleNext="onNavigateHistoryIncompatibleAttachments(1)"
+            @inspectModelFacts="openModelFactsInspector"
           />
         </div>
       </template>
@@ -1148,7 +1158,12 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       variant="categorized"
       @close="closeSettings"
     >
-      <SettingsPanel :disabled="!isReady" :isRunning="effectiveIsRunning" />
+      <SettingsPanel
+        :disabled="!isReady"
+        :isRunning="effectiveIsRunning"
+        :initialCategory="modelFactsInspectorSubject ? 'models-capabilities' : undefined"
+        :inspectorSubject="modelFactsInspectorSubject"
+      />
     </SettingsModal>
 
     <SettingsModal

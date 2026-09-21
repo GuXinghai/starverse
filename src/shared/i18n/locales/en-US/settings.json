@@ -78,6 +78,7 @@
       "cloudTab": "Cloud-managed Rules",
       "userTab": "User Rules",
       "inspectorTab": "Facts Inspector",
+      "inspectModelFacts": "Inspect model facts",
       "cloudTitle": "Cloud-managed Rules",
       "userTitle": "User Rules",
       "cloudDescription": "Cloud content is read-only. Its local activation and update lifecycle remain part of the single Capability Rules source.",

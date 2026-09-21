@@ -78,6 +78,7 @@
       "cloudTab": "云端托管规则",
       "userTab": "用户规则",
       "inspectorTab": "事实检查器",
+      "inspectModelFacts": "检查模型事实",
       "cloudTitle": "云端托管规则",
       "userTitle": "用户规则",
       "cloudDescription": "云端内容只读；其本地 activation 与更新生命周期仍属于唯一的 Capability Rules source。",
