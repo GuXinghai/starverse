@@ -17,7 +17,7 @@ import { decodeAnthropicPlainTextRegenerateCommandV2, type AnthropicPlainTextReg
 import { readVerifiedAnthropicEndpointProfileV2 } from '../../src/next/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { withVerifiedAnthropicGenerationAuthoritiesV2 } from './anthropicGenerationAuthorityV2Service'
-import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
 import { preflightAnthropicMessagesAttachmentDescriptorsV2 } from './anthropicMessagesAttachmentPreflightV2'
@@ -44,7 +44,7 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
   const descriptorRepo = new AnthropicMessagesFileDescriptorV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
+  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedAnthropicEndpointProfileV2()
 

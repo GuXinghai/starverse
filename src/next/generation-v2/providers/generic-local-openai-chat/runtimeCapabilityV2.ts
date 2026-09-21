@@ -3,6 +3,10 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
   type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '../../capability/modelCapabilitySchemaV2'
 import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
+import {
+  applyCapabilityRuleProjectionToResolvedCapabilityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../capability-rules/materializedCapabilityRuleProjectionV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { GENERIC_LOCAL_OPENAI_CHAT_CONTRACT_DIGEST_V2 } from './verifiedContractV2'
 
@@ -31,7 +35,28 @@ function resolveGenericLocalOpenAIChatCapabilityRecordV2(input: Readonly<{ bindi
 
 export function composeGenericLocalOpenAIChatBaselineCapabilityV2(input: Readonly<{ binding: DecodedProviderBindingRecordV2; resolvedAt: string }>): DecodedRuntimeCapabilitySnapshotV2 {
   const capability = resolveGenericLocalOpenAIChatCapabilityRecordV2(input)
-  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({ capability, resolvedAt: input.resolvedAt, tools: [] }))
+  return snapshotFromResolvedCapabilityV2(capability, input.resolvedAt)
+}
+
+function snapshotFromResolvedCapabilityV2(
+  capability: ResolvedCapabilityV2,
+  resolvedAt: string,
+): DecodedRuntimeCapabilitySnapshotV2 {
+  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability, resolvedAt, tools: [],
+  }))
+}
+
+export function composeGenericLocalOpenAIChatCapabilityWithMaterializedRulesV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  resolvedAt: string
+  capabilityRules: CapabilityRuleProjectionV2
+}>): DecodedRuntimeCapabilitySnapshotV2 {
+  const base = resolveGenericLocalOpenAIChatCapabilityRecordV2(input)
+  const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+    capability: base, projection: input.capabilityRules,
+  })
+  return snapshotFromResolvedCapabilityV2(capability, input.resolvedAt)
 }
 
 /** Independent model capability resolver; the runtime snapshot is only the persistence envelope. */

@@ -33,6 +33,9 @@ import { registerOllamaRuntimeManagementV2Ipc } from './ollamaLocalProviderIpc'
 import { registerGenerationV2ModelPreferencesIpc } from './generationV2ModelPreferencesIpc'
 import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRuntimeV2Ipc'
 import { registerGenerationV2CapabilityIpc } from './generationV2CapabilityIpc'
+import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/authoritativeModelSubjectSetV1Service'
+import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
+import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -52,26 +55,36 @@ export function registerGenerationV2Ipc(input: Readonly<{
     rawGenerationRequestStore: input.rawGenerationRequestStore,
     fetchImpl: input.cloudFetch })
   const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
-  return Object.freeze([
+  const subjectSetService = new AuthoritativeModelSubjectSetV1Service(input.epoch2.database,
+    input.epoch2.credentialService, input.epoch2.openAICompatibleCredentialService)
+  const materializationService = new CapabilityRuleMaterializationV1Service(input.epoch2.database,
+    subjectSetService)
+  const materializationScheduler = new CapabilityRuleMaterializationSchedulerV1Service({
+    db: input.epoch2.database, materializationService,
+  })
+  const notifyCommittedSubjectMutation = async () => { await materializationScheduler.schedule() }
+  const channels = [
     ...registerGenerationV2CapabilityIpc({ registerInvoke: input.registerInvoke, epoch2: input.epoch2 }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),
     ...registerGenerationV2ModelPreferencesIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
     ...registerGenerationV2CredentialSettingsIpc({ registerInvoke: input.registerInvoke,
-      credentialService: input.epoch2.credentialService }),
+      credentialService: input.epoch2.credentialService, onCommittedSubjectMutation: notifyCommittedSubjectMutation }),
     ...registerGenerationV2ModelAvailabilityIpc({ registerInvoke: input.registerInvoke,
-      credentialService: input.epoch2.credentialService, db: input.epoch2.database, fetchImpl: input.cloudFetch }),
+      credentialService: input.epoch2.credentialService, db: input.epoch2.database, fetchImpl: input.cloudFetch,
+      onCommittedSubjectMutation: notifyCommittedSubjectMutation }),
     ...registerLocalEndpointDiagnosticsV2Ipc({ registerInvoke: input.registerInvoke,
       fetchImpl: input.localDirectFetch }),
     ...registerLMStudioRuntimeManagementV2Ipc({ registerInvoke: input.registerInvoke,
       fetchImpl: input.localDirectFetch }),
     ...registerOllamaRuntimeManagementV2Ipc({ registerInvoke: input.registerInvoke,
       fetchImpl: input.localDirectFetch }),
-    ...registerLocalEndpointProfileV2Ipc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
+    ...registerLocalEndpointProfileV2Ipc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
+      onCommittedSubjectMutation: notifyCommittedSubjectMutation }),
     ...registerOpenAICompatibleV2Ipc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       credentialService: input.epoch2.openAICompatibleCredentialService, fetchImpl: input.cloudFetch,
-      proxyMode: input.proxyMode }),
+      proxyMode: input.proxyMode, onCommittedSubjectMutation: notifyCommittedSubjectMutation }),
     ...registerOpenAICompatibleGenerationV2Ipc({ registerInvoke: input.registerInvoke,
       runtimeRegistry,
       createRuntime: (streamProjectionSink) => createOpenAIChatCompatibleGenerationV2Runtime({ db: input.epoch2.database,
@@ -117,5 +130,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
       createInteractionsImageRuntime: (streamProjectionSink) => createGeminiInteractionsImageGenerationV2Runtime({
         ...common, attachmentBlobStore: input.epoch2.attachmentBlobStore,
         streamProjectionSink }) }),
-  ])
+  ]
+  void materializationScheduler.schedule().catch(() => undefined)
+  return Object.freeze(channels)
 }

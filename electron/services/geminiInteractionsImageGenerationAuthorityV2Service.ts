@@ -47,7 +47,7 @@ import {
   applyCapabilityRuleProjectionV2,
   assertCapabilityRuleProjectionIdentityV2,
   type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
+} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,

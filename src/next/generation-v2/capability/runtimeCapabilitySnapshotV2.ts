@@ -100,10 +100,11 @@ export type PersistedRuntimeCapabilitySnapshotV2 = Readonly<{
   snapshotHash: string
 }>
 
-export type DecodedRuntimeCapabilityEvidenceV2 = Omit<PersistedRuntimeCapabilityEvidenceV2, 'contentDigest' | 'entryDigest'> & Readonly<{
-  contentDigest: GenerationV2Digest<'evidence_digest'>
-  entryDigest: GenerationV2Digest<'evidence_digest'>
-}>
+export type DecodedRuntimeCapabilityEvidenceV2 =
+  Omit<PersistedRuntimeCapabilityEvidenceV2, 'contentDigest' | 'entryDigest'> & Readonly<{
+    contentDigest: GenerationV2Digest<'evidence_digest'>
+    entryDigest: GenerationV2Digest<'evidence_digest'>
+  }>
 
 export type DecodedRuntimeCapabilitySnapshotV2 = Readonly<{
   trust: 'decoded_unverified'
@@ -487,12 +488,14 @@ function decodeEvidence(value: unknown, includesEntryDigest: boolean): DraftEvid
   }
   const kind = input.kind as RuntimeCapabilityEvidenceKindV2
   const effect = input.effect as RuntimeCapabilityEvidenceEffectV2
+  const verifiedAt = input.verifiedAt === null && kind === 'capability_rule'
+    ? null : validateTimestamp(requiredString(input, 'verifiedAt'))
   const projection: DraftEvidence & { entryDigest?: string } = {
     evidenceId: validateIdentifier(requiredString(input, 'evidenceId')),
     kind,
     effect,
     sourceRef: validateSourceRef(kind, requiredString(input, 'sourceRef')),
-    verifiedAt: validateTimestamp(requiredString(input, 'verifiedAt')),
+    verifiedAt,
     contentDigest: readGenerationV2Digest(
       GenerationV2Digest.create('evidence_digest', requiredString(input, 'contentDigest')), 'evidence_digest',
     ),
@@ -749,7 +752,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_DUPLICATE_VALUE')
   }
   evidence.sort((left, right) => compareCodePoints(left.evidenceId, right.evidenceId))
-  if (evidence.some((item) => Date.parse(item.verifiedAt) > resolvedAtMs)) {
+  if (evidence.some((item) => item.verifiedAt !== null && Date.parse(item.verifiedAt) > resolvedAtMs)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const fields = closedDenseArray(input.fields).map(decodeField)

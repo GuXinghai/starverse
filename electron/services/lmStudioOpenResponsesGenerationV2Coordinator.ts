@@ -11,9 +11,10 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type Generation
 import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { composeLmStudioOpenResponsesBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
+import { composeLmStudioOpenResponsesCapabilityWithMaterializedRulesV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
 import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
 import { decodeLmStudioPlainTextEditResendCommandV2, decodeLmStudioPlainTextInitialCommandV2,
   decodeLmStudioPlainTextRegenerateCommandV2, decodeLmStudioPlainTextRetryCommandV2,
@@ -37,6 +38,7 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
   const requests = new GenerationRequestV2Repo(input.db, nowMs); const history = new LmStudioOpenResponsesNativeHistoryV2Repo(input.db)
   const profiles = new LocalEndpointProfileV2Repo(input.db, nowMs); const config = new GenerationConfigV2Repo(input.db, nowMs)
   const attachments = new AttachmentAssetV2Repo(input.db, nowMs); const capabilities = new RuntimeCapabilityV2Repo(input.db)
+  const capabilityRuleProjection = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
 
   function compile(context: GenerationV2AuthorityTransactionContextV2, bundle: GenerationExecutionOperationBundleV2) {
@@ -92,9 +94,13 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
       projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
         const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, facts)
         const providerBinding = createLmStudioOpenResponsesProviderBindingV2(profile, command.modelId.value)
-        const capability = composeLmStudioOpenResponsesBaselineCapabilityV2({
+        const capabilityRules = capabilityRuleProjection.resolveForLocalIdentity({
+          providerId: profile.providerId, endpointProfileId: providerBinding.endpointProfileId.value,
+          nativeModelId: providerBinding.modelId.value,
+        })
+        const capability = composeLmStudioOpenResponsesCapabilityWithMaterializedRulesV2({
           binding: providerBinding, resolvedAt: new Date(at).toISOString(),
-          selectedTools: toolRegistry?.selectedDefinitions,
+          selectedTools: toolRegistry?.selectedDefinitions, capabilityRules,
         })
         assertExpectedCapabilityRevisionV2(capability.revision.value)
         const persisted = commitLmStudioCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,

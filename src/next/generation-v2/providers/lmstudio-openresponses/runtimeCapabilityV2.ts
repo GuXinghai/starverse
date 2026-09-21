@@ -12,6 +12,10 @@ import {
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../capability/resolvedCapabilityV2'
+import {
+  applyCapabilityRuleProjectionToResolvedCapabilityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../capability-rules/materializedCapabilityRuleProjectionV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import type { ToolDefinitionV2 } from '../../tools/toolRegistryV2'
 import { LMSTUDIO_OPENRESPONSES_COMPLIANCE_EVIDENCE_SHA256_V2 } from './verifiedContractV2'
@@ -81,8 +85,20 @@ export function composeLmStudioOpenResponsesBaselineCapabilityV2(input: Readonly
   selectedTools?: readonly ToolDefinitionV2[]
 }>): DecodedRuntimeCapabilitySnapshotV2 {
   const capability = resolveLmStudioOpenResponsesCapabilityRecordV2(input)
-  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({
+  return snapshotFromResolvedCapabilityV2({
     capability,
+    resolvedAt: input.resolvedAt,
+    selectedTools: input.selectedTools,
+  })
+}
+
+function snapshotFromResolvedCapabilityV2(input: Readonly<{
+  capability: ResolvedCapabilityV2
+  resolvedAt: string
+  selectedTools?: readonly ToolDefinitionV2[]
+}>): DecodedRuntimeCapabilitySnapshotV2 {
+  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability: input.capability,
     resolvedAt: input.resolvedAt,
     tools: (input.selectedTools ?? []).map((tool) => Object.freeze({ toolId: tool.toolId, kind: tool.kind,
       state: tool.sideEffectPolicy === 'none' ? 'supported' as const : 'requires_confirmation' as const,
@@ -92,6 +108,21 @@ export function composeLmStudioOpenResponsesBaselineCapabilityV2(input: Readonly
           : 'starverse.tool-confirmation.required-each-execution.v2',
       ]) })),
   }))
+}
+
+export function composeLmStudioOpenResponsesCapabilityWithMaterializedRulesV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  resolvedAt: string
+  selectedTools?: readonly ToolDefinitionV2[]
+  capabilityRules: CapabilityRuleProjectionV2
+}>): DecodedRuntimeCapabilitySnapshotV2 {
+  const base = resolveLmStudioOpenResponsesCapabilityRecordV2(input)
+  const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+    capability: base, projection: input.capabilityRules,
+  })
+  return snapshotFromResolvedCapabilityV2({
+    capability, resolvedAt: input.resolvedAt, selectedTools: input.selectedTools,
+  })
 }
 
 /** Independent model capability resolver; command tools are not part of it. */

@@ -27,9 +27,9 @@ export interface CanonicalModelFactSourceAdapterV1 {
   readonly adapterId: string
   readonly adapterRevision: string
   readonly coverageManifest: SourceMappingCoverageManifestV1
-  readonly subjectDiscovery: 'enumerable' | 'query_bound'
+  readonly subjectDiscovery: 'enumerable'
 
-  indexRawRecords?(rawSnapshot: RawSourceSnapshotRefV1): SourceRecordIndexV1
+  indexRawRecords(rawSnapshot: RawSourceSnapshotRefV1): SourceRecordIndexV1
 
   adaptExactSubject(input: Readonly<{
     rawSnapshot: RawSourceSnapshotRefV1

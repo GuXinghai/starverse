@@ -67,12 +67,10 @@ CREATE TABLE IF NOT EXISTS canonical_model_fact_source_revision_v1 (
     length(provider_authority_registry_revision) BETWEEN 1 AND 256
   ),
   previous_lkg_source_revision TEXT,
-  subject_index_mode TEXT NOT NULL CHECK (subject_index_mode IN ('complete', 'query_bound')),
+  subject_index_mode TEXT NOT NULL CHECK (subject_index_mode = 'complete'),
   subject_fact_count INTEGER NOT NULL CHECK (subject_fact_count BETWEEN 0 AND 1000000),
-  subject_index_digest TEXT CHECK (
-    subject_index_digest IS NULL OR (
-      length(subject_index_digest) = 64 AND subject_index_digest NOT GLOB '*[^0-9a-f]*'
-    )
+  subject_index_digest TEXT NOT NULL CHECK (
+    length(subject_index_digest) = 64 AND subject_index_digest NOT GLOB '*[^0-9a-f]*'
   ),
   source_revision_json TEXT NOT NULL CHECK (
     length(CAST(source_revision_json AS BLOB)) BETWEEN 2 AND 65536
@@ -80,10 +78,6 @@ CREATE TABLE IF NOT EXISTS canonical_model_fact_source_revision_v1 (
     AND json_type(source_revision_json) = 'object'
   ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  CHECK (
-    (subject_index_mode = 'complete' AND subject_index_digest IS NOT NULL)
-    OR (subject_index_mode = 'query_bound' AND subject_fact_count = 0 AND subject_index_digest IS NULL)
-  ),
   UNIQUE (canonical_source_revision, source_kind, source_scope_id),
   FOREIGN KEY (raw_source_snapshot_revision, source_kind, source_scope_id)
     REFERENCES canonical_model_fact_raw_snapshot_v1(

@@ -6,6 +6,7 @@ import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Re
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { OpenRouterImageBindingRepo } from '../../infra/db/repo/openRouterImageBindingRepo'
 import { OpenRouterImageEndpointRepo } from '../../infra/db/repo/openRouterImageEndpointRepo'
 import { OpenRouterImageSettingsRepo } from '../../infra/db/repo/openRouterImageSettingsRepo'
@@ -79,6 +80,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const bindingRepo = new OpenRouterImageBindingRepo(input.db, nowMs)
   const endpointRepo = new OpenRouterImageEndpointRepo(input.db, nowMs)
   const settingsRepo = new OpenRouterImageSettingsRepo(input.db, nowMs)
@@ -212,6 +214,11 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
                   descriptor, decision.candidate.providerTag, decision.candidate.providerSlug,
                 ),
                 resolvedAt: new Date(nowMs()).toISOString(),
+                capabilityRules: capabilityRuleRepo.resolveForIdentity({
+                  providerId: modelEvidence.providerId.value,
+                  endpointProfileId: modelEvidence.endpointProfileId.value,
+                  nativeModelId: modelEvidence.modelId.value,
+                }),
               })
               const persisted = commitOpenRouterImageInitialSnapshotV2({
                 context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,

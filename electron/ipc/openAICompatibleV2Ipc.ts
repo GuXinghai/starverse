@@ -89,6 +89,7 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
   credentialService: ReturnType<typeof createOpenAICompatibleCredentialV2Service>
   fetchImpl: (url: string, init: RequestInit) => Promise<Response>
   proxyMode: () => 'environment' | 'manual' | 'direct' | 'system'
+  onCommittedSubjectMutation?: () => Promise<void>
 }>): readonly string[] {
   const repo = new OpenAICompatibleV2Repo(input.db)
   const catalog = createOpenAICompatibleCatalogV2Service({ db: input.db, credentialService: input.credentialService,
@@ -96,6 +97,10 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
   const connectionControllers = new Map<string, AbortController>()
   const safe = (callback: (payload: unknown) => unknown) => (_event: unknown, payload?: unknown) => {
     try { return Object.freeze({ ok: true, value: callback(payload) }) }
+    catch (error) { return Object.freeze({ ok: false, code: commandFailure(error) }) }
+  }
+  const safeAsync = (callback: (payload: unknown) => unknown | Promise<unknown>) => async (_event: unknown, payload?: unknown) => {
+    try { return Object.freeze({ ok: true, value: await callback(payload) }) }
     catch (error) { return Object.freeze({ ok: false, code: commandFailure(error) }) }
   }
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[0], safe(() => repo.list()))
@@ -122,16 +127,18 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
           endpointRevisionId: identifier('ocp_endpoint_'), baseUrl: value.baseUrl as string, securityPolicy: value.securityPolicy as 'compatibility_first' | 'strict_ssrf',
           auth, ordinaryHeaders: value.ordinaryHeaders, query: value.query, configuration: initialConfiguration() as never },
         () => { if (prepared) input.credentialService.writePrepared(prepared) }))
+        await input.onCommittedSubjectMutation?.()
         return Object.freeze({ ok: true, value: Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(details.providerInstanceId) }) })
       } finally { if (prepared) input.credentialService.discardPrepared(prepared) }
     } catch (error) {
       return Object.freeze({ ok: false, code: commandFailure(error) })
     }
   })
-  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[3], safe((payload) => {
+  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[3], safeAsync(async (payload) => {
     const value = raw(payload, ['providerInstanceId', 'configuration'])
     if (typeof value.providerInstanceId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     const details = repo.reviseConfiguration({ providerInstanceId: value.providerInstanceId, endpointRevisionId: identifier('ocp_endpoint_'), configuration: value.configuration as never })
+    await input.onCommittedSubjectMutation?.()
     return Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(details.providerInstanceId) })
   }))
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[4], async (_event: unknown, payload?: unknown) => {
@@ -140,12 +147,14 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
       return Object.freeze({ ok: true, value: await input.credentialService.getStatus(value.providerInstanceId, value.credentialVersionRef) })
     } catch (error) { return Object.freeze({ ok: false, code: commandFailure(error) }) }
   })
-  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[5], safe((payload) => {
+  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[5], safeAsync(async (payload) => {
     const value = raw(payload, ['providerInstanceId', 'displayName', 'status'])
     if (typeof value.providerInstanceId !== 'string' || value.displayName !== undefined && typeof value.displayName !== 'string' ||
         value.status !== undefined && value.status !== 'active' && value.status !== 'disabled') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
-    return repo.updateProvider({ providerInstanceId: value.providerInstanceId, ...(value.displayName === undefined ? {} : { displayName: value.displayName }),
+    const updated = repo.updateProvider({ providerInstanceId: value.providerInstanceId, ...(value.displayName === undefined ? {} : { displayName: value.displayName }),
       ...(value.status === undefined ? {} : { status: value.status }) })
+    await input.onCommittedSubjectMutation?.()
+    return updated
   }))
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[6], async (_event: unknown, payload?: unknown) => {
     try {
@@ -177,6 +186,7 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
             input.credentialService.clearCurrentPersisted(value.providerInstanceId as string, previousRef)
           }
         }))
+        await input.onCommittedSubjectMutation?.()
         return Object.freeze({ ok: true, value: Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(details.providerInstanceId) }) })
       } finally { if (prepared) input.credentialService.discardPrepared(prepared) }
     } catch (error) {
@@ -189,6 +199,7 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
         repo.deleteProviderWithCredentials(value.providerInstanceId as string)
         input.credentialService.clearProviderSessions(value.providerInstanceId as string)
       })
+      await input.onCommittedSubjectMutation?.()
       return Object.freeze({ ok: true, value: Object.freeze({ deleted: true }) })
     } catch (error) { return Object.freeze({ ok: false, code: commandFailure(error) }) }
   })
@@ -206,6 +217,7 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
           clearPersisted: () => { next = input.credentialService.clearPersisted(providerInstanceId, credentialVersionRef, expectedRevision) } })
         return Object.freeze({ status: next!, details })
       })
+      await input.onCommittedSubjectMutation?.()
       return Object.freeze({ ok: true, value: Object.freeze({ status: status.status, details: status.details, activeConfiguration: repo.getActiveConfiguration(providerInstanceId) }) })
     } catch (error) { return Object.freeze({ ok: false, code: commandFailure(error) }) }
   })
@@ -232,7 +244,9 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[11], async (_event: unknown, payload?: unknown) => {
     try { const value = raw(payload, ['providerInstanceId', 'requestId', 'force']);
       if (typeof value.providerInstanceId !== 'string' || typeof value.requestId !== 'string' || typeof value.force !== 'boolean') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
-      return await catalog.sync(value.providerInstanceId, value.requestId)
+      const result = await catalog.sync(value.providerInstanceId, value.requestId)
+      if (result.ok) await input.onCommittedSubjectMutation?.()
+      return result
     } catch (error) { return Object.freeze({ ok: false, code: error instanceof Error ? error.message : 'compatible_catalog_sync_failed' }) }
   })
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[12], safe((payload) => {
@@ -253,16 +267,20 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
     const value = raw(payload, ['providerInstanceId']); if (typeof value.providerInstanceId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     return catalog.getStatus(value.providerInstanceId)
   }))
-  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[15], safe((payload) => {
+  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[15], safeAsync(async (payload) => {
     const value = raw(payload, ['providerInstanceId', 'modelId', 'metadata'])
     if (typeof value.providerInstanceId !== 'string' || typeof value.modelId !== 'string' || !value.metadata || typeof value.metadata !== 'object') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     const metadata = value.metadata as Record<string, unknown>
-    return catalog.upsertManual(value.providerInstanceId, value.modelId, { ...metadata, fieldProvenance: Object.freeze({}) })
+    const result = catalog.upsertManual(value.providerInstanceId, value.modelId, { ...metadata, fieldProvenance: Object.freeze({}) })
+    await input.onCommittedSubjectMutation?.()
+    return result
   }))
-  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[16], safe((payload) => {
+  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[16], safeAsync(async (payload) => {
     const value = raw(payload, ['providerInstanceId', 'modelId'])
     if (typeof value.providerInstanceId !== 'string' || typeof value.modelId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
-    return catalog.deleteManual(value.providerInstanceId, value.modelId)
+    const result = catalog.deleteManual(value.providerInstanceId, value.modelId)
+    await input.onCommittedSubjectMutation?.()
+    return result
   }))
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[17], safe((payload) => {
     const value = raw(payload, ['providerInstanceId']); if (typeof value.providerInstanceId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
@@ -276,18 +294,20 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
     }>
     return repo.setDiscoveryState(providerInstanceId, responseProfileId, responseProfileVersion, streamPath, 'ignored')
   }))
-  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[19], safe((payload) => {
+  input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[19], safeAsync(async (payload) => {
     const value = raw(payload, ['providerInstanceId', 'configuration', 'responseProfileId', 'responseProfileVersion', 'streamPath'])
     if (typeof value.providerInstanceId !== 'string' || typeof value.responseProfileId !== 'string' || typeof value.responseProfileVersion !== 'number' || typeof value.streamPath !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     const { providerInstanceId, responseProfileId, responseProfileVersion, streamPath } = value as Readonly<{
       providerInstanceId: string; responseProfileId: string; responseProfileVersion: number; streamPath: string
     }>
-    return input.db.transaction(() => {
+    const result = input.db.transaction(() => {
       const details = repo.reviseConfiguration({ providerInstanceId,
         endpointRevisionId: identifier('ocp_endpoint_'), configuration: value.configuration as never })
       repo.setDiscoveryState(providerInstanceId, responseProfileId, responseProfileVersion, streamPath, 'confirmed')
       return Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(providerInstanceId) })
     })()
+    await input.onCommittedSubjectMutation?.()
+    return result
   }))
   return OPENAI_COMPATIBLE_V2_IPC_CHANNELS
 }

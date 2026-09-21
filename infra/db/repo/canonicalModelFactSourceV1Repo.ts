@@ -78,9 +78,9 @@ export type CanonicalModelFactSourceStateV1 = Readonly<{
 export type CanonicalModelFactStoredSourceRevisionV1 = Readonly<{
   sourceRevision: CanonicalSourceRevisionRefV1
   rawSnapshot: RawSourceSnapshotRefV1
-  subjectIndexMode: 'complete' | 'query_bound'
+  subjectIndexMode: 'complete'
   subjectFactCount: number
-  subjectIndexDigest: string | null
+  subjectIndexDigest: string
   createdAtMs: number
 }>
 
@@ -93,6 +93,11 @@ export type CanonicalModelFactSourcePublicationResultV1 = Readonly<{
 export type CanonicalModelFactStagedSourceResultV1 = Readonly<{
   source: CanonicalModelFactStoredSourceRevisionV1
   subjectFacts: readonly CanonicalModelFactSubjectPublicationV1[]
+}>
+
+export type CanonicalModelFactStagedSourcePromotionResultV1 = Readonly<{
+  source: CanonicalModelFactStoredSourceRevisionV1
+  state: CanonicalModelFactSourceStateV1
 }>
 
 export type CanonicalModelFactRetentionPinTargetV1 =
@@ -304,8 +309,8 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
     rawPayloads: readonly SanitizedRawPayloadV1[]
     rawSnapshot: RawSourceSnapshotRefV1
     sourceRevision: CanonicalSourceRevisionRefV1
-    subjectIndexMode: 'complete' | 'query_bound'
-    subjectFacts?: readonly CanonicalModelFactSubjectPublicationV1[]
+    subjectIndexMode: 'complete'
+    subjectFacts: readonly CanonicalModelFactSubjectPublicationV1[]
     expectedCurrentRevision: string | null
     fetchedAtMs: number
     lastAttemptedAtMs?: number
@@ -316,8 +321,7 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
     if (sourceRevision.sourceKind !== rawSnapshot.sourceKind ||
         sourceRevision.sourceScopeId !== rawSnapshot.sourceScopeId ||
         sourceRevision.rawSourceSnapshotRevision !== rawSnapshot.rawSourceSnapshotRevision ||
-        (input.subjectIndexMode !== 'complete' && input.subjectIndexMode !== 'query_bound') ||
-        (sourceRevision.sourceKind === 'capability_rule') !== (input.subjectIndexMode === 'query_bound')) return invalid()
+        input.subjectIndexMode !== 'complete') return invalid()
     const expected = input.expectedCurrentRevision === null
       ? null : boundedInput(input.expectedCurrentRevision, 256)
     const fetchedAt = inputTime(input.fetchedAtMs)
@@ -326,12 +330,9 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
     const suppliedByRef = new Map(rawPayloads.map((payload) => [rawRefKey(payload.ref), payload]))
     if (suppliedByRef.size !== rawPayloads.length || suppliedByRef.size !== rawSnapshot.rawEnvelopeRefs.length ||
         rawSnapshot.rawEnvelopeRefs.some((ref) => !suppliedByRef.has(rawRefKey(ref)))) return invalid()
-    const subjectFacts = [...(input.subjectFacts ?? [])]
-    if (input.subjectIndexMode === 'query_bound' && subjectFacts.length !== 0) return invalid()
-    const subjectIndexDigest = input.subjectIndexMode === 'complete'
-      ? canonicalSourceFactDigestV1([...subjectFacts]
-        .map((fact) => fact.ref.canonicalSubjectFactRevision).sort())
-      : null
+    const subjectFacts = [...input.subjectFacts]
+    const subjectIndexDigest = canonicalSourceFactDigestV1([...subjectFacts]
+      .map((fact) => fact.ref.canonicalSubjectFactRevision).sort())
     const run = () => {
       const current = this.readSourceState(sourceRevision.sourceKind, sourceRevision.sourceScopeId)
       if ((current?.currentSourceRevision ?? null) !== expected) {
@@ -346,9 +347,7 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
       this.insertRawSnapshot(rawSnapshot, suppliedByRef, now)
       this.insertSourceRevision(sourceRevision, input.subjectIndexMode, subjectFacts.length, subjectIndexDigest, now)
       const persistedFacts = subjectFacts.map((fact) => this.insertSubjectFact(fact, sourceRevision, now))
-      if (input.subjectIndexMode === 'complete') {
-        this.assertCompleteSubjectIndex(sourceRevision.canonicalSourceRevision, subjectFacts.length, subjectIndexDigest!)
-      }
+      this.assertCompleteSubjectIndex(sourceRevision.canonicalSourceRevision, subjectFacts.length, subjectIndexDigest)
       const nextPointer = current?.currentSourceRevision === sourceRevision.canonicalSourceRevision
         ? current.pointerRevision : (current?.pointerRevision ?? 0) + 1
       if (nextPointer > MAX_SAFE_INTEGER) return stateInvalid()
@@ -406,6 +405,71 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
     })
   }
 
+  promoteStagedCompleteSourceRevision(input: Readonly<{
+    sourceKind: CanonicalSourceKindV1
+    sourceScopeId: string
+    canonicalSourceRevision: string
+    expectedCurrentRevision: string | null
+    fetchedAtMs: number
+    lastAttemptedAtMs?: number
+  }>): CanonicalModelFactStagedSourcePromotionResultV1 {
+    const kind = inputSourceKind(input.sourceKind)
+    if (kind !== 'capability_rule') return invalid()
+    const scope = boundedInput(input.sourceScopeId, 1024)
+    const revision = boundedInput(input.canonicalSourceRevision, 256)
+    const expected = input.expectedCurrentRevision === null
+      ? null : boundedInput(input.expectedCurrentRevision, 256)
+    const fetchedAt = inputTime(input.fetchedAtMs)
+    const attemptedAt = inputTime(input.lastAttemptedAtMs ?? fetchedAt)
+    if (fetchedAt > attemptedAt) return invalid()
+    return this.runImmediate(() => {
+      const source = this.readSourceRevision(revision)
+      if (!source) throw new CanonicalModelFactSourceV1RepoError(
+        'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_NOT_FOUND')
+      if (source.sourceRevision.sourceKind !== kind || source.sourceRevision.sourceScopeId !== scope ||
+          source.subjectIndexMode !== 'complete') return invalid()
+
+      const staged = this.db.prepare(`SELECT source_scope_id, canonical_source_revision
+        FROM capability_rule_materialization_stage_v1 WHERE source_scope_id=?`).get(scope) as
+        Record<string, unknown> | undefined
+      if (!staged || staged.source_scope_id !== scope ||
+          staged.canonical_source_revision !== revision) {
+        throw new CanonicalModelFactSourceV1RepoError(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_NOT_FOUND')
+      }
+
+      const current = this.readSourceState(kind, scope)
+      if ((current?.currentSourceRevision ?? null) !== expected) {
+        throw new CanonicalModelFactSourceV1RepoError(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_STALE_CURRENT')
+      }
+      if (current?.lastAttemptedAtMs !== null && current?.lastAttemptedAtMs !== undefined &&
+          attemptedAt < current.lastAttemptedAtMs) return invalid()
+      this.assertCompleteSubjectIndex(revision, source.subjectFactCount, source.subjectIndexDigest!)
+
+      const now = inputTime(this.nowMs())
+      const nextPointer = current?.currentSourceRevision === revision
+        ? current.pointerRevision : (current?.pointerRevision ?? 0) + 1
+      if (nextPointer > MAX_SAFE_INTEGER) return stateInvalid()
+      this.db.prepare(`INSERT INTO canonical_model_fact_source_state_v1 (
+        source_kind, source_scope_id, canonical_source_revision, pointer_revision,
+        fetched_at_ms, last_succeeded_at_ms, last_attempted_at_ms, stale_reason,
+        refresh_cadence_ms, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+      ON CONFLICT(source_kind, source_scope_id) DO UPDATE SET
+        canonical_source_revision=excluded.canonical_source_revision,
+        pointer_revision=excluded.pointer_revision,
+        fetched_at_ms=excluded.fetched_at_ms,
+        last_succeeded_at_ms=excluded.last_succeeded_at_ms,
+        last_attempted_at_ms=excluded.last_attempted_at_ms,
+        stale_reason=NULL,
+        updated_at_ms=excluded.updated_at_ms`).run(
+        kind, scope, revision, nextPointer, fetchedAt, now, attemptedAt, now, now,
+      )
+      return Object.freeze({ source, state: this.readSourceState(kind, scope)! })
+    })
+  }
+
   refreshCurrentSourceRevision(input: Readonly<{
     canonicalSourceRevision: string
     fetchedAtMs: number
@@ -441,17 +505,6 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
       if (subjectFacts.length !== source.subjectFactCount) return stateInvalid()
       return Object.freeze({ source, state: this.readSourceState(source.sourceRevision.sourceKind,
         source.sourceRevision.sourceScopeId)!, subjectFacts: Object.freeze(subjectFacts) })
-    })
-  }
-
-  materializeSubjectFact(fact: CanonicalModelFactSubjectPublicationV1): CanonicalModelFactSubjectPublicationV1 {
-    const sourceRevision = decodeCanonicalSourceRevisionRefV1(fact.payload.sourceRevision)
-    const now = inputTime(this.nowMs())
-    return this.runImmediate(() => {
-      const source = this.readSourceRevision(sourceRevision.canonicalSourceRevision)
-      if (!source) throw new CanonicalModelFactSourceV1RepoError('GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_NOT_FOUND')
-      if (source.subjectIndexMode !== 'query_bound') return invalid()
-      return this.insertSubjectFact(fact, sourceRevision, now)
     })
   }
 
@@ -500,17 +553,16 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
         decoded.providerAuthorityRegistryRevision !== row.provider_authority_registry_revision ||
         (decoded.previousLkgSourceRevision ?? null) !== row.previous_lkg_source_revision ||
         stableSerializeProviderRequestV2(decoded) !== row.source_revision_json ||
-        (row.subject_index_mode !== 'complete' && row.subject_index_mode !== 'query_bound')) return stateInvalid()
+        row.subject_index_mode !== 'complete') return stateInvalid()
     const subjectFactCount = safeTime(row.subject_fact_count)
-    const subjectIndexDigest = row.subject_index_digest === null ? null : String(row.subject_index_digest)
-    if ((row.subject_index_mode === 'complete' && (!subjectIndexDigest || !DIGEST.test(subjectIndexDigest))) ||
-        (row.subject_index_mode === 'query_bound' && (subjectFactCount !== 0 || subjectIndexDigest !== null))) return stateInvalid()
+    const subjectIndexDigest = String(row.subject_index_digest)
+    if (!DIGEST.test(subjectIndexDigest)) return stateInvalid()
     const rawSnapshot = this.readRawSnapshot(decoded.rawSourceSnapshotRevision)
     if (!rawSnapshot || rawSnapshot.sourceKind !== decoded.sourceKind || rawSnapshot.sourceScopeId !== decoded.sourceScopeId) {
       return stateInvalid()
     }
     return Object.freeze({ sourceRevision: decoded, rawSnapshot,
-      subjectIndexMode: row.subject_index_mode, subjectFactCount, subjectIndexDigest,
+      subjectIndexMode: 'complete' as const, subjectFactCount, subjectIndexDigest,
       createdAtMs: safeTime(row.created_at_ms) })
   }
 
@@ -718,9 +770,9 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
 
   private insertSourceRevision(
     revision: CanonicalSourceRevisionRefV1,
-    subjectIndexMode: 'complete' | 'query_bound',
+    subjectIndexMode: 'complete',
     subjectFactCount: number,
-    subjectIndexDigest: string | null,
+    subjectIndexDigest: string,
     now: number,
   ): void {
     const revisionJson = stableSerializeProviderRequestBoundedV2(revision, 65_536)

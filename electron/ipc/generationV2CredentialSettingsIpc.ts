@@ -110,6 +110,7 @@ async function status(service: Epoch2RuntimeCredentialService, provider: Provide
 export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: Epoch2RuntimeCredentialService
+  onCommittedSubjectMutation?: () => Promise<void>
 }>): readonly string[] {
   for (const provider of PROVIDERS) {
     input.registerInvoke(`${provider.channelPrefix}:get-status`, async () => {
@@ -121,16 +122,22 @@ export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
       try {
         const current = await input.credentialService.getStatus(provider.providerKey)
         const apiKey = payload.apiKey?.trim()
-        if (apiKey) await input.credentialService.updateCredential({ providerKey: provider.providerKey,
-          credential: apiKey, expectedRevision: current.revision, storageMode: payload.storageMode })
+        if (apiKey) {
+          await input.credentialService.updateCredential({ providerKey: provider.providerKey,
+            credential: apiKey, expectedRevision: current.revision, storageMode: payload.storageMode })
+          await input.onCommittedSubjectMutation?.()
+        }
         return Object.freeze({ ok: true, status: await status(input.credentialService, provider) })
       } catch (error) { return credentialStoreFailure(provider, 'update', error) }
     })
     input.registerInvoke(`${provider.channelPrefix}:clear`, async () => {
       try {
         const current = await input.credentialService.getStatus(provider.providerKey)
-        if (current.configured) await input.credentialService.clearCredential({ providerKey: provider.providerKey,
-          expectedRevision: current.revision })
+        if (current.configured) {
+          await input.credentialService.clearCredential({ providerKey: provider.providerKey,
+            expectedRevision: current.revision })
+          await input.onCommittedSubjectMutation?.()
+        }
         return Object.freeze({ ok: true, status: await status(input.credentialService, provider) })
       } catch (error) { return credentialStoreFailure(provider, 'clear', error) }
     })

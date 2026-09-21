@@ -9,8 +9,14 @@ import {
   GenerationV2SchemaComposerError,
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
-import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
-import { CanonicalModelFactSourceIngestionV1Service } from '../../infra/db/services/canonicalModelFactSourceIngestionV1Service'
+import { CapabilityRuleMaterializationV1Repo } from '../../infra/db/repo/capabilityRuleMaterializationV1Repo'
+import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
+import { buildAuthoritativeModelSubjectSetV1 } from
+  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { prepareCapabilityRuleMaterializationV1 } from
+  '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+import { buildCapabilityRuleSourceScopeIdV1 } from
+  '../../src/next/generation-v2/model-facts/sourceScopeV1'
 import {
   createEpoch2RootManifest,
   type Epoch2WorkspaceLayout,
@@ -302,6 +308,12 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
       configureConnection(db)
       emitDatabaseInitializationMilestone('connection_configured')
       const initiallyEmpty = !hasInstalledObjects(db)
+      const initialCapabilityRuleMaterialization = prepareCapabilityRuleMaterializationV1({
+        sourceScopeId: buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: 'epoch-2-capability-rules' }),
+        subjectSet: buildAuthoritativeModelSubjectSetV1([]),
+        ownershipSnapshots: [],
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+      })
       if (initiallyEmpty) {
         retiredEnvelopeMarker = createRetiredScopeEnvelopeMarker()
         emitDatabaseInitializationMilestone('scope_envelope_created')
@@ -315,11 +327,23 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         }
         const bundle = installGenerationV2SchemaInActiveTransaction(db, schemaRoot)
         emitDatabaseInitializationMilestone('schema_installed')
-        installBuiltInCapabilityRulesV2(db)
-        emitDatabaseInitializationMilestone('builtin_capability_rules_installed')
-        new CanonicalModelFactSourceIngestionV1Service(db).refreshCapabilityRules({
-          ruleStoreId: 'epoch-2-capability-rules', fetchedAtMs: Date.now(),
-        })
+        if (initiallyEmpty) {
+          const rulesInitializedAt = Date.now()
+          const stagedRules = new CapabilityRuleMaterializationV1Repo(db).stagePrepared({
+            prepared: initialCapabilityRuleMaterialization,
+            expectedMaterializationRevision: null,
+            currentAuthoritativeSubjectSetRevision:
+              initialCapabilityRuleMaterialization.authoritativeSubjectSetRevision,
+          })
+          new CanonicalModelFactSourceV1Repo(db).promoteStagedCompleteSourceRevision({
+            sourceKind: 'capability_rule',
+            sourceScopeId: initialCapabilityRuleMaterialization.sourceScopeId,
+            canonicalSourceRevision: stagedRules.source.source.sourceRevision.canonicalSourceRevision,
+            expectedCurrentRevision: null,
+            fetchedAtMs: rulesInitializedAt,
+          })
+          emitDatabaseInitializationMilestone('capability_rules_materialized')
+        }
         if (initiallyEmpty && crashSmoke?.stage === 'after_schema') {
           crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
         }

@@ -1,17 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { CapabilityRuleV2Repo } from '../repo/capabilityRuleV2Repo'
 import {
   CanonicalModelFactSourceV1Repo,
   type CanonicalModelFactSourcePublicationResultV1,
-  type CanonicalModelFactSubjectPublicationV1,
 } from '../repo/canonicalModelFactSourceV1Repo'
-import type { CanonicalModelSubjectV1 } from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
-import {
-  canonicalizeCapabilityRuleSourceRulesV1,
-  buildCapabilityRuleSourceSnapshotV1,
-  capabilityRuleSourceHasPotentialInvalidOutcomeV1,
-  createCapabilityRuleSourceAdapterV1,
-} from '../../../src/next/generation-v2/model-facts/capabilityRuleSourceAdapterV1'
 import {
   createProviderNativeSourceAdapterV1,
   type ProviderNativeSurfaceIdV1,
@@ -28,14 +19,9 @@ import {
   type SanitizedRawPayloadV1,
 } from '../../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
 import {
-  buildSourceRevisionForAdapterV1,
-} from '../../../src/next/generation-v2/model-facts/sourceAdapterV1'
-import {
   buildEnumerableSourcePublicationV1,
-  materializeQueryBoundSubjectFactV1,
 } from '../../../src/next/generation-v2/model-facts/sourceSnapshotBuilderV1'
 import {
-  buildCapabilityRuleSourceScopeIdV1,
   buildModelsDevSourceScopeIdV1,
   buildProviderNativeSourceScopeIdV1,
 } from '../../../src/next/generation-v2/model-facts/sourceScopeV1'
@@ -90,11 +76,9 @@ function hasInvalidField(publication: ReturnType<typeof buildEnumerableSourcePub
 
 export class CanonicalModelFactSourceIngestionV1Service {
   readonly sourceRepo: CanonicalModelFactSourceV1Repo
-  readonly ruleRepo: CapabilityRuleV2Repo
 
   constructor(db: BetterSqlite3.Database, nowMs: () => number = Date.now) {
     this.sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
-    this.ruleRepo = new CapabilityRuleV2Repo(db)
   }
 
   publishProviderNative(input: Readonly<{
@@ -250,62 +234,5 @@ export class CanonicalModelFactSourceIngestionV1Service {
       distributionChannel: input.distributionChannel })
     this.sourceRepo.recordRefreshFailure({ sourceKind: 'models_dev', sourceScopeId,
       attemptedAtMs: input.attemptedAtMs, staleReason: input.staleReason })
-  }
-
-  publishCapabilityRules(input: Readonly<{
-    ruleStoreId: string
-    expectedCurrentRevision: string | null
-    fetchedAtMs: number
-    lastAttemptedAtMs?: number
-  }>): CanonicalModelFactSourcePublicationResultV1 {
-    const rules = canonicalizeCapabilityRuleSourceRulesV1(this.ruleRepo.listAllRulesForSourceSnapshot())
-    const sourceSnapshot = buildCapabilityRuleSourceSnapshotV1(rules)
-    const rawPayloads = sanitizeAll([{ recordKey: 'capability-rule-store-v2', payload: sourceSnapshot }])
-    const rawSnapshot = buildRawSourceSnapshotRefV1({ sourceKind: 'capability_rule',
-      sourceScopeId: buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId }),
-      recordSetCompleteness: 'not_applicable', rawEnvelopeRefs: rawPayloads.map((entry) => entry.ref) })
-    const adapter = createCapabilityRuleSourceAdapterV1({ rawPayloadReader: {
-      readRawPayload: () => rawPayloads[0]!.persistedPayload,
-    } })
-    const currentSource = input.expectedCurrentRevision === null ? null
-      : this.sourceRepo.readSourceRevision(input.expectedCurrentRevision)
-    if (currentSource && currentSource.sourceRevision.rawSourceSnapshotRevision === rawSnapshot.rawSourceSnapshotRevision &&
-        currentSource.sourceRevision.adapterRevision === adapter.adapterRevision &&
-        currentSource.sourceRevision.coverageManifestRevision === adapter.coverageManifest.manifestRevision &&
-        currentSource.sourceRevision.providerAuthorityRegistryRevision === PROVIDER_AUTHORITY_REGISTRY_REVISION_V1) {
-      return this.sourceRepo.refreshCurrentSourceRevision({
-        canonicalSourceRevision: input.expectedCurrentRevision!, fetchedAtMs: input.fetchedAtMs,
-        ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
-      })
-    }
-    const sourceRevision = buildSourceRevisionForAdapterV1({ adapter, rawSnapshot,
-      ...(input.expectedCurrentRevision !== null && capabilityRuleSourceHasPotentialInvalidOutcomeV1(rules)
-        ? { previousLkgSourceRevision: input.expectedCurrentRevision } : {}),
-    })
-    return this.sourceRepo.publishSourceRevision({ rawPayloads, rawSnapshot, sourceRevision,
-      subjectIndexMode: 'query_bound', expectedCurrentRevision: input.expectedCurrentRevision,
-      fetchedAtMs: input.fetchedAtMs,
-      ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
-    })
-  }
-
-  refreshCapabilityRules(input: Readonly<{
-    ruleStoreId: string
-    fetchedAtMs: number
-    lastAttemptedAtMs?: number
-  }>): CanonicalModelFactSourcePublicationResultV1 {
-    const sourceScopeId = buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId })
-    const current = this.sourceRepo.readSourceState('capability_rule', sourceScopeId)
-    return this.publishCapabilityRules({ ...input,
-      expectedCurrentRevision: current?.currentSourceRevision ?? null })
-  }
-
-  materializeCapabilityRuleSubject(input: Readonly<{
-    canonicalSourceRevision: string
-    subject: CanonicalModelSubjectV1
-  }>): CanonicalModelFactSubjectPublicationV1 {
-    return materializeQueryBoundSubjectFactV1({ store: this.sourceRepo,
-      canonicalSourceRevision: input.canonicalSourceRevision, subject: input.subject,
-      resolveAdapter: () => createCapabilityRuleSourceAdapterV1({ rawPayloadReader: this.sourceRepo }) })
   }
 }

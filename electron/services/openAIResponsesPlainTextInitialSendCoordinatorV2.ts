@@ -18,7 +18,7 @@ import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/next/gener
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
-import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2 } from './openAIResponsesPlainTextSnapshotCommitV2'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import {
@@ -55,7 +55,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const descriptorRepo = new OpenAIResponsesFileDescriptorV2Repo(input.db, nowMs)
-  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
+  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedOpenAIResponsesEndpointProfileV2()
 

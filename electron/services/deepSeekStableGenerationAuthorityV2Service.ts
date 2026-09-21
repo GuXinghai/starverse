@@ -61,7 +61,7 @@ import {
   applyCapabilityRuleProjectionV2,
   assertCapabilityRuleProjectionIdentityV2,
   type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
+} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 
 export type VerifiedDeepSeekStableProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_deepseek_stable_provider_binding'
