@@ -120,7 +120,7 @@ export type SourceFieldRefV1 = Readonly<{
 }>
 
 export type RuleClaimContextV1 = Readonly<{
-  ownerKind: 'built_in' | 'user'
+  ownerKind: 'built_in' | 'cloud' | 'user'
   ownerId: string
   packId: string
   ruleId: string
@@ -563,7 +563,7 @@ function canonicalizeRuleClaimContextV1(value: unknown): RuleClaimContextV1 {
   if (!plainObject(value)) return invalid('GENERATION_V2_CANONICAL_SOURCE_FACTS_PROVENANCE_INVALID')
   exactKeys(value, ['ownerKind', 'ownerId', 'packId', 'ruleId', 'packRevision', 'ruleRevision', 'selectorKind',
     'selectorRef', 'packPriority', 'rulePriority', 'effectiveRulePriority', 'prioritySemanticsRevision'])
-  if ((value.ownerKind !== 'built_in' && value.ownerKind !== 'user') ||
+  if ((value.ownerKind !== 'built_in' && value.ownerKind !== 'cloud' && value.ownerKind !== 'user') ||
       (value.selectorKind !== 'exact' && value.selectorKind !== 'regex') ||
       !Number.isSafeInteger(value.packPriority) || !Number.isSafeInteger(value.rulePriority) ||
       !Number.isSafeInteger(value.effectiveRulePriority)) {

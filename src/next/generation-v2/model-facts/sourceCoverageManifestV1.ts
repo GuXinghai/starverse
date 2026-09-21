@@ -1,4 +1,5 @@
 import {
+  CANONICAL_MODEL_FACT_PATHS_V1,
   canonicalSourceFactDigestV1,
   isCanonicalSemanticPathV1,
   type CanonicalOperationKindV1,
@@ -231,4 +232,21 @@ export const CAPABILITY_RULE_COVERAGE_MANIFEST_V1 = defineSourceMappingCoverageM
       canonicalPath: 'search.web.support', absenceSemantics: 'no_outcome', nullSemantics: 'invalid',
       collectionCompleteness: 'complete' }),
   ],
+})
+
+/**
+ * The shared Cloud/User rule core already stores canonical typed assertions.
+ * This manifest records that the materializer performs a lossless direct projection;
+ * omission never manufactures a field outcome.
+ */
+export const MATERIALIZED_CAPABILITY_RULE_COVERAGE_MANIFEST_V1 = defineSourceMappingCoverageManifestV1({
+  sourceSurfaceId: 'materialized-capability-rules-v1',
+  mappings: CANONICAL_MODEL_FACT_PATHS_V1.map((canonicalPath) => Object.freeze({
+    mappingId: `materialized-rules.direct.${canonicalPath}.v1`,
+    sourceFieldPaths: [`assertion.${canonicalPath}`],
+    canonicalPath,
+    absenceSemantics: 'no_outcome' as const,
+    nullSemantics: 'invalid' as const,
+    collectionCompleteness: 'not_a_collection' as const,
+  })),
 })
