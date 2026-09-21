@@ -38,7 +38,7 @@ import PluginManagementPanel from './PluginManagementPanel.vue'
 import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSettingsPanel.vue'
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
-import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
+import ModelsAndCapabilitiesSettingsPanel from './ModelsAndCapabilitiesSettingsPanel.vue'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -2802,7 +2802,7 @@ onMounted(() => {
           class="space-y-3"
           data-testid="settings-pane-models-capabilities"
         >
-          <ModelFactsInspectorPanel />
+          <ModelsAndCapabilitiesSettingsPanel />
         </section>
 
         <section

@@ -133,6 +133,27 @@ export function createGenerationV2TestBridge() {
         },
       })),
     },
+    capabilityRules: {
+      cloud: {
+        read: vi.fn(async () => ({ distribution: { latestObserved: null, candidate: null },
+          application: { applied: null }, history: [] })),
+        check: vi.fn(async () => ({ status: 'not_due' })),
+        candidateDiff: vi.fn(async () => null), apply: vi.fn(async () => null), rollback: vi.fn(async () => null),
+        replaceActivationOverrides: vi.fn(async () => null), setHistoryLimit: vi.fn(async () => null),
+        resumeUpdates: vi.fn(async () => null),
+      },
+      user: {
+        readCommitted: vi.fn(async () => ({ snapshot: null, notes: [] })), readDraft: vi.fn(async () => null),
+        openDraft: vi.fn(async () => null), replaceDraft: vi.fn(async () => null), addRule: vi.fn(async () => null),
+        rewritePack: vi.fn(async () => null), importPack: vi.fn(async () => null),
+        exportCommittedPack: vi.fn(async () => null), saveDraft: vi.fn(async () => null), cancelDraft: vi.fn(async () => null),
+      },
+    },
+    modelFactsInspector: {
+      searchSubjects: vi.fn(async () => ({ subjectSetRevision: 'subject-set:test', records: [], nextCursor: null })),
+      readInspector: vi.fn(async () => null), readEvidenceSlice: vi.fn(async () => null),
+      readSanitizedRawPayload: vi.fn(async () => null),
+    },
     credentials: {
       openRouter: credentialBridge('openrouter-first-party-v1'),
       openAIResponses: credentialBridge('openai-responses-v1'),
