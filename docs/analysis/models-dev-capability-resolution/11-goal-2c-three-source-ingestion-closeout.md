@@ -2,10 +2,10 @@
 
 - **Lifecycle Status**: implementation closeout
 - **Document Role**: controlling Goal 2C implementation inventory and Goal 3 handoff
-- **Last updated**: 2026-08-31
+- **Last updated**: 2026-09-21
 - **Authority**: current checkout, Owner-frozen documents 06/09/10, focused tests, and persisted source contracts
 
-> 后续 Owner amendment：本closeout中的bundled `built-in/user` ownership与按请求`query-bound` regex matching只描述Goal 2C当时实现。目标架构不保留bundled built-in Rules；Cloud-managed与User Rules将共享同一Pack/Rule semantics，并共同发布为唯一Capability Rules canonical source。Regex改为在Rule/source或authoritative exact-subject-set revision变化时物化exact-subject claims，不在runtime request path执行。该迁移尚未实施，完整边界以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准；本文件其余Goal 2C实施清单仍是历史收口记录。
+> 后续 Owner amendment：本closeout中的bundled `built-in/user` ownership与按请求`query-bound` regex matching只描述Goal 2C当时实现。目标架构不保留bundled built-in Rules；Cloud-managed与User Rules将共享同一Pack/Rule semantics，并共同发布为唯一Capability Rules canonical source。Regex改为在Rule/source或authoritative exact-subject-set revision变化时物化exact-subject claims，不在runtime request path执行。该迁移尚未实施，完整边界以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准；Cloud distribution contract已由后续[`13-cloud-managed-rules-distribution-contract.md`](13-cloud-managed-rules-distribution-contract.md)冻结，但尚未获得生产实现授权。本文件其余Goal 2C实施清单仍是历史收口记录。
 
 ## 结论
 
@@ -149,7 +149,7 @@ ABI状态：
 
 在进入Goal 3 consumer迁移前，还必须按后续Owner amendment完成或明确排期：
 
-1. 由Owner另行冻结Cloud distribution contract；
+1. 在单独授权的production Goal中实现item 13已经冻结的Cloud distribution contract；
 2. 将bundled built-in/user旧ownership迁移为同构Cloud-managed/User Pack/Rule core；
 3. 将二者收敛为唯一Capability Rules canonical source revision；
 4. 建立authoritative exact-subject set及revision-bound Rule materialization，移除runtime query-bound regex路径；
