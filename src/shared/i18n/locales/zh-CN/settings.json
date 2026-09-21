@@ -90,6 +90,25 @@
       "applyUpdate": "应用更新",
       "applyConfirmation": "应用这个已验证候选吗？其内容将替换 Cloud 快照，同时按稳定 Rule identity 保留本地 activation。",
       "priority": "优先级",
+      "configured": "已配置",
+      "packModeLabel": "Pack 模式",
+      "packMode": {
+        "override": "覆盖",
+        "default_only": "仅默认值",
+        "no_control": "不控制"
+      },
+      "packTargetLabel": "Pack 目标",
+      "packTarget": {
+        "enabled": "启用",
+        "disabled": "禁用"
+      },
+      "rewriteCount": "Rewrite 影响数",
+      "activationSource": {
+        "rule_explicit": "显式 Rule",
+        "pack_override": "Pack 覆盖",
+        "pack_default_only": "Pack 仅默认值",
+        "ownership_default_policy": "所有权默认策略"
+      },
       "activationDefault": "默认",
       "followRemoteBaseline": "跟随远端基线",
       "noPacks": "没有可用的规则包。",
