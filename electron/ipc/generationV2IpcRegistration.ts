@@ -33,6 +33,7 @@ import { registerOllamaRuntimeManagementV2Ipc } from './ollamaLocalProviderIpc'
 import { registerGenerationV2ModelPreferencesIpc } from './generationV2ModelPreferencesIpc'
 import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRuntimeV2Ipc'
 import { registerGenerationV2CapabilityIpc } from './generationV2CapabilityIpc'
+import { registerGenerationV2UserCapabilityRulesIpc } from './generationV2UserCapabilityRulesIpc'
 import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/authoritativeModelSubjectSetV1Service'
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
@@ -65,6 +66,9 @@ export function registerGenerationV2Ipc(input: Readonly<{
   const notifyCommittedSubjectMutation = async () => { await materializationScheduler.schedule() }
   const channels = [
     ...registerGenerationV2CapabilityIpc({ registerInvoke: input.registerInvoke, epoch2: input.epoch2 }),
+    ...registerGenerationV2UserCapabilityRulesIpc({ registerInvoke: input.registerInvoke,
+      db: input.epoch2.database, credentialService: input.epoch2.credentialService,
+      openAICompatibleCredentialService: input.epoch2.openAICompatibleCredentialService }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),

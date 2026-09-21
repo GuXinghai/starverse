@@ -264,6 +264,20 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     reorderFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:reorder-favorites', payload),
     listRecents: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-recents', payload),
   }),
+  capabilityRules: Object.freeze({
+    user: Object.freeze({
+      readCommitted: () => ipcRenderer.invoke('generation-v2:capability-rules:user:read-committed'),
+      readDraft: () => ipcRenderer.invoke('generation-v2:capability-rules:user:read-draft'),
+      openDraft: () => ipcRenderer.invoke('generation-v2:capability-rules:user:open-draft'),
+      replaceDraft: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:replace-draft', payload),
+      addRule: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:add-rule', payload),
+      rewritePack: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:rewrite-pack', payload),
+      importPack: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:import-pack', payload),
+      exportCommittedPack: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:export-committed-pack', payload),
+      saveDraft: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:save-draft', payload),
+      cancelDraft: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:cancel-draft', payload),
+    }),
+  }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
     create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
