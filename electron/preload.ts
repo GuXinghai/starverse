@@ -265,6 +265,16 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     listRecents: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-recents', payload),
   }),
   capabilityRules: Object.freeze({
+    cloud: Object.freeze({
+      read: () => ipcRenderer.invoke('generation-v2:capability-rules:cloud:read'),
+      check: () => ipcRenderer.invoke('generation-v2:capability-rules:cloud:check'),
+      candidateDiff: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:candidate-diff', payload),
+      apply: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:apply', payload),
+      rollback: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:rollback', payload),
+      replaceActivationOverrides: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:replace-activation-overrides', payload),
+      setHistoryLimit: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:set-history-limit', payload),
+      resumeUpdates: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:cloud:resume-updates', payload),
+    }),
     user: Object.freeze({
       readCommitted: () => ipcRenderer.invoke('generation-v2:capability-rules:user:read-committed'),
       readDraft: () => ipcRenderer.invoke('generation-v2:capability-rules:user:read-draft'),

@@ -1120,6 +1120,16 @@ interface Window {
       listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
     }>
     capabilityRules: Readonly<{
+      cloud: Readonly<{
+        read: () => Promise<unknown>
+        check: () => Promise<unknown>
+        candidateDiff: (payload: unknown) => Promise<unknown>
+        apply: (payload: unknown) => Promise<unknown>
+        rollback: (payload: unknown) => Promise<unknown>
+        replaceActivationOverrides: (payload: unknown) => Promise<unknown>
+        setHistoryLimit: (payload: unknown) => Promise<unknown>
+        resumeUpdates: (payload: unknown) => Promise<unknown>
+      }>
       user: Readonly<{
         readCommitted: () => Promise<unknown>
         readDraft: () => Promise<unknown>
