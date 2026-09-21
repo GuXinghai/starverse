@@ -386,3 +386,46 @@ CREATE TABLE IF NOT EXISTS cloud_rules_activation_override_v1 (
 
 CREATE INDEX IF NOT EXISTS cloud_rules_activation_override_identity_v1
   ON cloud_rules_activation_override_v1(identity_kind, identity_id);
+
+-- Slice 6 User Rules durable tab-scoped editing session. The draft contains a
+-- complete shared User ownership snapshot and remains outside committed authority
+-- until one batch Save transaction installs it.
+CREATE TABLE IF NOT EXISTS user_capability_rule_editing_session_v1 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 256),
+  owner_id TEXT NOT NULL CHECK (length(owner_id) BETWEEN 1 AND 256),
+  base_snapshot_revision TEXT,
+  base_content_digest TEXT NOT NULL CHECK (length(base_content_digest) = 64
+    AND base_content_digest NOT GLOB '*[^0-9a-f]*'),
+  draft_revision INTEGER NOT NULL CHECK (draft_revision >= 1),
+  draft_snapshot_revision TEXT NOT NULL CHECK (length(draft_snapshot_revision) BETWEEN 1 AND 256),
+  draft_content_digest TEXT NOT NULL CHECK (length(draft_content_digest) = 64
+    AND draft_content_digest NOT GLOB '*[^0-9a-f]*'),
+  draft_snapshot_json TEXT NOT NULL CHECK (
+    length(CAST(draft_snapshot_json AS BLOB)) BETWEEN 2 AND 16 * 1024 * 1024
+    AND json_valid(draft_snapshot_json)
+    AND json_type(draft_snapshot_json) = 'object'
+  ),
+  draft_notes_json TEXT NOT NULL CHECK (
+    length(CAST(draft_notes_json AS BLOB)) BETWEEN 2 AND 4 * 1024 * 1024
+    AND json_valid(draft_notes_json)
+    AND json_type(draft_notes_json) = 'array'
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms)
+);
+
+CREATE TABLE IF NOT EXISTS user_capability_rule_note_v1 (
+  owner_id TEXT NOT NULL CHECK (length(owner_id) BETWEEN 1 AND 256),
+  rule_id TEXT NOT NULL CHECK (length(rule_id) BETWEEN 1 AND 256),
+  note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 16384),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  PRIMARY KEY (owner_id, rule_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_capability_rule_note_state_v1 (
+  owner_id TEXT PRIMARY KEY CHECK (length(owner_id) BETWEEN 1 AND 256),
+  note_revision INTEGER NOT NULL CHECK (note_revision >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+);
