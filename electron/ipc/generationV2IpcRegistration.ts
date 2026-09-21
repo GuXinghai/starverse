@@ -34,9 +34,11 @@ import { registerGenerationV2ModelPreferencesIpc } from './generationV2ModelPref
 import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRuntimeV2Ipc'
 import { registerGenerationV2CapabilityIpc } from './generationV2CapabilityIpc'
 import { registerGenerationV2UserCapabilityRulesIpc } from './generationV2UserCapabilityRulesIpc'
+import { registerGenerationV2ModelFactsInspectorIpc } from './generationV2ModelFactsInspectorIpc'
 import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/authoritativeModelSubjectSetV1Service'
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
+import { ModelFactsInspectorV1Service } from '../services/modelFactsInspectorV1Service'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -58,6 +60,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
   const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
   const subjectSetService = new AuthoritativeModelSubjectSetV1Service(input.epoch2.database,
     input.epoch2.credentialService, input.epoch2.openAICompatibleCredentialService)
+  const modelFactsInspector = new ModelFactsInspectorV1Service(input.epoch2.database, subjectSetService)
   const materializationService = new CapabilityRuleMaterializationV1Service(input.epoch2.database,
     subjectSetService)
   const materializationScheduler = new CapabilityRuleMaterializationSchedulerV1Service({
@@ -69,6 +72,8 @@ export function registerGenerationV2Ipc(input: Readonly<{
     ...registerGenerationV2UserCapabilityRulesIpc({ registerInvoke: input.registerInvoke,
       db: input.epoch2.database, credentialService: input.epoch2.credentialService,
       openAICompatibleCredentialService: input.epoch2.openAICompatibleCredentialService }),
+    ...registerGenerationV2ModelFactsInspectorIpc({ registerInvoke: input.registerInvoke,
+      service: modelFactsInspector }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),

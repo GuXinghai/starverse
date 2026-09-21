@@ -288,6 +288,12 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
       cancelDraft: (payload: unknown) => ipcRenderer.invoke('generation-v2:capability-rules:user:cancel-draft', payload),
     }),
   }),
+  modelFactsInspector: Object.freeze({
+    searchSubjects: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:search-subjects', payload),
+    readInspector: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:read-inspector', payload),
+    readEvidenceSlice: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:read-evidence-slice', payload),
+    readSanitizedRawPayload: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:read-sanitized-raw-payload', payload),
+  }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
     create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
