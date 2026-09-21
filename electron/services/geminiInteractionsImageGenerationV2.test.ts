@@ -6,7 +6,9 @@ import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReaso
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
-import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
+import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
+import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 
@@ -15,10 +17,49 @@ import { createGeminiInteractionsImageActionCoordinatorV2 } from './geminiIntera
 import { createGeminiInteractionsImageStreamRunnerV2 } from './geminiInteractionsImageStreamRunnerV2'
 
 const scope = `credential-scope-v2:${'a'.repeat(64)}` as never
-function database(modelId = 'gemini-3.1-flash-image') {
+type CapabilityRuleClaim = Readonly<{
+  ruleId: string
+  path: CanonicalSemanticPathV1
+  value: CanonicalFactValueV1
+}>
+
+function exactRule(modelId: string, claim: CapabilityRuleClaim): CapabilityRuleCoreRuleV1 {
+  return { ruleId: claim.ruleId, label: null, description: null, priority: 0, configured: 'on',
+    providerAuthorityId: 'google-ai-studio', endpointProfileId: 'gemini-developer-api-v1beta',
+    selector: { kind: 'exact', nativeModelIds: [modelId] }, assertion: { path: claim.path, value: claim.value },
+    evidence: null }
+}
+
+function imageSnapshot(modelId: string, claims: readonly CapabilityRuleClaim[]): CapabilityRuleOwnershipSnapshotV1 {
+  return { schemaVersion: 1, ownership: 'cloud', ownerId: 'test:cloud', packs: [{
+    schemaVersion: 1, packId: `pack.test.${modelId}`, displayName: 'Gemini image test', description: null,
+    priority: 0, mode: 'no_control', target: 'enabled', rules: claims.map((claim) => exactRule(modelId, claim)),
+  }] }
+}
+
+function imageClaims(modelId: string, input: Readonly<{ resolutions: readonly string[]; search?: boolean }>): readonly CapabilityRuleClaim[] {
+  const claims: CapabilityRuleClaim[] = [
+    { ruleId: `${modelId}.image.support`, path: 'image.generation.support', value: { kind: 'support', value: 'supported' } },
+    { ruleId: `${modelId}.image.ratios`, path: 'image.generation.aspectRatios',
+      value: { kind: 'aspect_ratio_set', values: [{ width: 1, height: 1 }], completeness: 'complete' } },
+    { ruleId: `${modelId}.image.resolutions`, path: 'image.generation.resolutionPresets.nativeValues',
+      value: { kind: 'native_string_set', values: input.resolutions, completeness: 'complete' } },
+    { ruleId: `${modelId}.image.defaultResolution`, path: 'image.generation.resolutionPreset.providerDefault',
+      value: { kind: 'native_string', value: input.resolutions[0]! } },
+  ]
+  if (input.search) claims.push(
+    { ruleId: `${modelId}.search.web`, path: 'search.web.support', value: { kind: 'support', value: 'supported' } },
+    { ruleId: `${modelId}.search.image`, path: 'search.image.support', value: { kind: 'support', value: 'supported' } },
+  )
+  return claims
+}
+
+function database(
+  modelId = 'gemini-3.1-flash-image',
+  claims: readonly CapabilityRuleClaim[] = imageClaims(modelId, { resolutions: ['1K'] }),
+) {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2SchemaForTest(db, process.cwd())
-  installBuiltInCapabilityRulesV2(db, () => 1)
   const graph = new ConversationGraphV2Repo(db)
   runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
     graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
@@ -58,6 +99,15 @@ function database(modelId = 'gemini-3.1-flash-image') {
       modelKey: `google_ai_studio::${modelId}`, displayName: 'Gemini Image', raw: { schemaVersion: 1,
         buckets: [{ source: 'models', fetchedAtMs: 10, baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
           payload: { observation } }] } }] })
+  seedMaterializedCapabilityRulesForTestV1(db, {
+    ownershipSnapshots: [imageSnapshot(modelId, claims)],
+    subjectCandidates: [{ subject: { providerAuthorityId: 'google-ai-studio',
+      endpointProfileId: 'gemini-developer-api-v1beta', nativeModelId: modelId }, proof: {
+      kind: 'provider_native_catalog', providerKey: 'google_ai_studio', scopeId: 'scope:test:gemini',
+      credentialScopeId: scope, credentialRevision: 1, endpointProfileId: 'gemini-developer-api-v1beta',
+      operationContractId: 'gemini-models-v1beta', catalogCategory: '', activeSnapshotDigest: 'a'.repeat(64),
+    } }],
+  })
   return db
 }
 function credentialService() {
@@ -130,7 +180,7 @@ function streamResponseWithProviderError(): Response {
 
 describe('Gemini Interactions image generation V2', () => {
   it('keeps an unknown exact image model unresolved instead of inheriting a family capability', async () => {
-    const db = database('gemini-3.1-flash-image-future')
+    const db = database('gemini-3.1-flash-image-future', [])
     try {
       const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
         credentialService: credentialService(), nowMs: () => 100,
@@ -256,7 +306,7 @@ describe('Gemini Interactions image generation V2', () => {
   })
 
   it('persists Google Search evidence and citations with the generated image', async () => {
-    const db = database(); let ids = 0; let clock = 100
+    const db = database('gemini-3.1-flash-image', imageClaims('gemini-3.1-flash-image', { resolutions: ['1K'], search: true })); let ids = 0; let clock = 100
     try {
       const configs = new GenerationConfigV2Repo(db)
       const current = configs.getScope('conversation', 'conversation:1')

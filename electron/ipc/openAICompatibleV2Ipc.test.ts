@@ -1,16 +1,18 @@
 import BetterSqlite3 from 'better-sqlite3'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { OPENAI_COMPATIBLE_V2_IPC_CHANNELS, registerOpenAICompatibleV2Ipc } from './openAICompatibleV2Ipc'
 
 describe('OpenAI-compatible V2 IPC', () => {
   let db: BetterSqlite3.Database
   let handlers: Map<string, (event: unknown, payload?: unknown) => unknown>
+  let onCommittedSubjectMutation: ReturnType<typeof vi.fn<() => Promise<void>>>
   beforeEach(() => {
     db = new BetterSqlite3(':memory:')
     applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
     handlers = new Map()
+    onCommittedSubjectMutation = vi.fn<() => Promise<void>>(async () => undefined)
     expect(registerOpenAICompatibleV2Ipc({ db, registerInvoke: (channel, handler) => handlers.set(channel, handler), credentialService: {
       getStatus: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 0, availability: 'unknown', sessionOverridesPersistent: false }),
       write: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: true, revision: 1, credentialScopeId: 'credential-scope-v2:'.concat('0'.repeat(64)) }),
@@ -23,7 +25,7 @@ describe('OpenAI-compatible V2 IPC', () => {
       commit: async (_providerInstanceId: string, work: () => unknown) => work(),
       withCredential: async () => { throw new Error('not expected') },
     } as never, fetchImpl: async () => new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
-      proxyMode: () => 'direct' }))
+      proxyMode: () => 'direct', onCommittedSubjectMutation }))
       .toEqual(OPENAI_COMPATIBLE_V2_IPC_CHANNELS)
   })
   afterEach(() => { if (db.open) db.close() })
@@ -34,6 +36,7 @@ describe('OpenAI-compatible V2 IPC', () => {
     expect(result.ok).toBe(true)
     expect(result.value.details.protocolContractId).toBe('openai_chat_compatible')
     expect(result.value.activeConfiguration.requestProfile.payload.extraBody.enabled).toBe(true)
+    expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(1)
     expect(handlers.get('generation-v2:openai-compatible:list')!({}, undefined)).toMatchObject({ ok: true, value: [expect.any(Object)] })
   })
 

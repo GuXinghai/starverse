@@ -37,6 +37,11 @@ function subjects() {
   } }])
 }
 
+function required<T>(value: T | null): T {
+  if (value === null) throw new Error('expected non-null test value')
+  return value
+}
+
 describe('CapabilityRuleMaterializationV1Service', () => {
   it('prepares outside the write transaction and stages a complete source without activating it', async () => {
     const db = database()
@@ -47,9 +52,8 @@ describe('CapabilityRuleMaterializationV1Service', () => {
       const currentSubjects = subjects()
       const service = new CapabilityRuleMaterializationV1Service(db,
         { readCurrent: async () => currentSubjects }, () => ++now)
-      const prepared = await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
-        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } })
-      expect(prepared).not.toBeNull()
+      const prepared = required(await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } }))
       const result = await service.stagePrepared({ prepared, expectedMaterializationRevision: null })
 
       expect(result.stage.materializationRevision).toBe(prepared.materializationRevision)
@@ -79,9 +83,8 @@ describe('CapabilityRuleMaterializationV1Service', () => {
       const currentSubjects = subjects()
       const service = new CapabilityRuleMaterializationV1Service(db,
         { readCurrent: async () => currentSubjects }, () => ++now)
-      const prepared = await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
-        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } })
-      expect(prepared).not.toBeNull()
+      const prepared = required(await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } }))
       core.replaceOwnershipSnapshot({ expectedSnapshotRevision: first.projected.snapshotRevision,
         snapshot: snapshot('unsupported') })
 
@@ -104,9 +107,8 @@ describe('CapabilityRuleMaterializationV1Service', () => {
       const currentSubjects = subjects()
       const service = new CapabilityRuleMaterializationV1Service(db,
         { readCurrent: async () => currentSubjects })
-      const prepared = await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
-        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } })
-      expect(prepared).not.toBeNull()
+      const prepared = required(await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } }))
       const first = await service.stagePrepared({ prepared, expectedMaterializationRevision: null })
       await expect(service.stagePrepared({ prepared, expectedMaterializationRevision: null }))
         .rejects.toThrowError(expect.objectContaining<Partial<CapabilityRuleMaterializationV1RepoError>>({
@@ -130,9 +132,8 @@ describe('CapabilityRuleMaterializationV1Service', () => {
       let currentSubjects = subjects()
       const service = new CapabilityRuleMaterializationV1Service(db,
         { readCurrent: async () => currentSubjects })
-      const prepared = await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
-        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } })
-      expect(prepared).not.toBeNull()
+      const prepared = required(await service.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } }))
       currentSubjects = buildAuthoritativeModelSubjectSetV1([...currentSubjects.records.flatMap((record) =>
         record.proofs.map((proof) => ({ subject: record.subject, proof }))), {
         subject: { providerAuthorityId: 'openai', endpointProfileId: 'openai-api-v1',
@@ -157,6 +158,87 @@ describe('CapabilityRuleMaterializationV1Service', () => {
         .get()).toEqual({ count: 0 })
       expect(db.prepare('SELECT count(*) AS count FROM canonical_model_fact_raw_payload_v1')
         .get()).toEqual({ count: 0 })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('activates the first staged complete capability-rule source with freshness', async () => {
+    const db = database()
+    try {
+      let now = 100
+      const core = new CapabilityRuleCoreV1Repo(db, () => ++now)
+      core.replaceOwnershipSnapshot({ expectedSnapshotRevision: null, snapshot: snapshot() })
+      const currentSubjects = subjects()
+      const service = new CapabilityRuleMaterializationV1Service(db,
+        { readCurrent: async () => currentSubjects }, () => ++now)
+
+      const promoted = await service.activateCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+        expectedActiveSourceRevision: null, fetchedAtMs: 200, lastAttemptedAtMs: 210 })
+
+      expect(promoted.source.subjectIndexMode).toBe('complete')
+      expect(promoted.state).toMatchObject({ sourceKind: 'capability_rule',
+        sourceScopeId: buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: 'epoch-2-capability-rules' }),
+        currentSourceRevision: promoted.source.sourceRevision.canonicalSourceRevision,
+        pointerRevision: 1, fetchedAtMs: 200, lastAttemptedAtMs: 210 })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('recovers a durable staged revision when promotion did not complete before restart', async () => {
+    const db = database()
+    try {
+      let now = 100
+      const core = new CapabilityRuleCoreV1Repo(db, () => ++now)
+      core.replaceOwnershipSnapshot({ expectedSnapshotRevision: null, snapshot: snapshot() })
+      const currentSubjects = subjects()
+      const firstProcess = new CapabilityRuleMaterializationV1Service(db,
+        { readCurrent: async () => currentSubjects }, () => ++now)
+      const prepared = required(await firstProcess.prepareCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' } }))
+      const staged = await firstProcess.stagePrepared({ prepared, expectedMaterializationRevision: null })
+      expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('capability_rule',
+        buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: 'epoch-2-capability-rules' }))).toBeNull()
+
+      const restarted = new CapabilityRuleMaterializationV1Service(db,
+        { readCurrent: async () => currentSubjects }, () => ++now)
+      const promoted = await restarted.activateCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+        expectedActiveSourceRevision: null, fetchedAtMs: 200 })
+
+      expect(promoted.source.sourceRevision.canonicalSourceRevision)
+        .toBe(staged.stage.canonicalSourceRevision)
+      expect(promoted.state.currentSourceRevision).toBe(staged.stage.canonicalSourceRevision)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('fails closed when the expected active capability-rule source revision is stale', async () => {
+    const db = database()
+    try {
+      let now = 100
+      const core = new CapabilityRuleCoreV1Repo(db, () => ++now)
+      const first = core.replaceOwnershipSnapshot({ expectedSnapshotRevision: null, snapshot: snapshot() })
+      const currentSubjects = subjects()
+      const service = new CapabilityRuleMaterializationV1Service(db,
+        { readCurrent: async () => currentSubjects }, () => ++now)
+      const firstActivation = await service.activateCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+        expectedActiveSourceRevision: null, fetchedAtMs: 200 })
+
+      core.replaceOwnershipSnapshot({ expectedSnapshotRevision: first.projected.snapshotRevision,
+        snapshot: snapshot('unsupported') })
+      await expect(service.activateCurrent({ ruleStoreId: 'epoch-2-capability-rules',
+        defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+        expectedActiveSourceRevision: null, fetchedAtMs: 220 })).rejects.toThrow(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_STALE_CURRENT')
+      expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('capability_rule',
+        buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: 'epoch-2-capability-rules' })))
+        .toMatchObject({ currentSourceRevision: firstActivation.source.sourceRevision.canonicalSourceRevision,
+          pointerRevision: 1 })
     } finally {
       db.close()
     }

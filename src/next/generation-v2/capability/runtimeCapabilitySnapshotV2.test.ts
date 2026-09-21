@@ -48,7 +48,7 @@ type MutableDraft = {
     kind: string
     effect: string
     sourceRef: string
-    verifiedAt: string
+    verifiedAt: string | null
     contentDigest: string
   }>
   fields: MutableField[]
@@ -93,6 +93,39 @@ function draft(): MutableDraft {
 }
 
 describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
+  it('allows an unverified capability-rule assertion without inventing a verification timestamp', () => {
+    const value = draft()
+    value.evidence[0] = {
+      ...value.evidence[0],
+      evidenceId: 'capability.rule.user.example',
+      kind: 'capability_rule',
+      sourceRef: 'canonical-subject-fact-v1:user-rule-example',
+      verifiedAt: null,
+    }
+    value.fields.find((field) => field.path === 'generation.maxOutputTokens')!.evidenceIds = [
+      'capability.rule.user.example',
+    ]
+    value.continuation = { kind: 'none', evidenceIds: ['capability.rule.user.example'] }
+
+    const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value)
+    expect(record.evidence[0]?.verifiedAt).toBeNull()
+    expect(decodeRuntimeCapabilitySnapshotV2(record).evidence[0]?.verifiedAt).toBeNull()
+
+    const nonRule = draft()
+    nonRule.evidence[0] = { ...nonRule.evidence[0], verifiedAt: null }
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(nonRule))
+      .toThrow('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+
+    const aliased = draft()
+    const aliasedEvidence: Record<string, unknown> = { ...aliased.evidence[0] }
+    delete aliasedEvidence.verifiedAt
+    aliasedEvidence.createdAt = '2026-07-15T07:00:00.000Z'
+    aliasedEvidence.updatedAt = '2026-07-15T07:00:00.000Z'
+    aliased.evidence[0] = aliasedEvidence as typeof aliased.evidence[number]
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(aliased))
+      .toThrow('GENERATION_V2_CAPABILITY_UNKNOWN_FIELD')
+  })
+
   it('canonicalizes one complete closed field projection and verifies all content identities', () => {
     const first = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(draft())
     const second = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(draft())

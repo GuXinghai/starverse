@@ -193,7 +193,7 @@ describe('fresh epoch-2 database initializer', () => {
           JOIN canonical_model_fact_source_revision_v1 revision
             ON revision.canonical_source_revision=state.canonical_source_revision
           WHERE state.source_kind='capability_rule'`).get())
-          .toEqual({ source_kind: 'capability_rule', subject_index_mode: 'query_bound' })
+          .toEqual({ source_kind: 'capability_rule', subject_index_mode: 'complete' })
       } finally { db.close() }
     } finally { value.lease.release() }
   })
