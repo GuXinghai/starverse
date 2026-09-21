@@ -31,8 +31,11 @@ import { Epoch2FileTypeDetectionService, GENERATION_V2_FILE_TYPE_DETECTION_UPDAT
 import { ModelsDevOfficialSourceRefreshV1 } from './services/modelsDevOfficialSourceRefreshV1'
 import { CloudRulesCandidateRefreshV1 } from './services/cloudRulesCandidateRefreshV1'
 import { CloudRulesApplicationV1Service } from './services/cloudRulesApplicationV1Service'
+import { registerGenerationV2CloudCapabilityRulesIpc } from './ipc/generationV2CloudCapabilityRulesIpc'
 import { AuthoritativeModelSubjectSetV1Service } from
   '../infra/db/services/authoritativeModelSubjectSetV1Service'
+import { CloudRulesApplicationV1Repo } from '../infra/db/repo/cloudRulesApplicationV1Repo'
+import { CloudRulesDistributionV1Repo } from '../infra/db/repo/cloudRulesDistributionV1Repo'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -166,6 +169,10 @@ export async function startMainV2(): Promise<void> {
   recoverGenerationOrphansV2(runtime.epoch2.database)
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode })
+  registerGenerationV2CloudCapabilityRulesIpc({ registerInvoke, refresh: cloudRulesCandidateRefresh,
+    application: cloudRulesApplication,
+    applicationRepo: new CloudRulesApplicationV1Repo(runtime.epoch2.database),
+    distributionRepo: new CloudRulesDistributionV1Repo(runtime.epoch2.database) })
   registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,
