@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { t } from '@/shared/i18n'
+import { evaluateCapabilityRuleActivationV1 } from '@/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
-type Rule = Readonly<{ ruleId: string; label: string | null; assertion: Readonly<{ path: string }> }>
-type Pack = Readonly<{ packId: string; displayName: string; priority: number; rules: readonly Rule[] }>
+type Rule = Readonly<{ ruleId: string; label: string | null; configured: 'default' | 'on' | 'off'; assertion: Readonly<{ path: string }> }>
+type Pack = Readonly<{ packId: string; displayName: string; priority: number; mode: 'override' | 'default_only' | 'no_control'; target: 'enabled' | 'disabled'; rules: readonly Rule[] }>
 type OwnershipSnapshot = Readonly<{ packs: readonly Readonly<{ definition: Pack }>[] }>
 type CloudRead = Readonly<{
   distribution: Readonly<{
@@ -12,9 +13,14 @@ type CloudRead = Readonly<{
   }>
   application: Readonly<{
     appliedRecordRevision: number | null
+    appliedIntegrity: 'missing' | 'valid' | 'invalid'
+    overrides: Readonly<{ revision: number; overrides: readonly CloudOverride[] }>
     applied: Readonly<{ releaseVersion: string; document: Readonly<{ packs: readonly Pack[] }> }> | null
   }>
+  active: Readonly<{ activeSnapshot: Readonly<{ projected: Readonly<{ definition: Readonly<{ packs: readonly Pack[] }> }> }> | null }>
 }>
+type CloudOverride = Readonly<{ kind: 'pack'; packId: string; mode?: Pack['mode']; target?: Pack['target'] }> |
+  Readonly<{ kind: 'rule'; ruleId: string; configured: Rule['configured'] }>
 
 const props = defineProps<{ ownership: 'cloud' | 'user' }>()
 const loading = ref(false)
@@ -24,6 +30,7 @@ const user = ref<OwnershipSnapshot | null>(null)
 const candidateDiff = ref<Readonly<{ current: string | null; candidate: string }> | null>(null)
 const applying = ref(false)
 const applyConfirming = ref(false)
+const changingActivation = ref<string | null>(null)
 
 function capabilityRules() {
   const value = window.generationV2?.capabilityRules
@@ -32,7 +39,10 @@ function capabilityRules() {
 }
 
 function packs(): readonly Pack[] {
-  if (props.ownership === 'cloud') return cloud.value?.application.applied?.document.packs ?? []
+  if (props.ownership === 'cloud') {
+    if (cloud.value?.application.appliedIntegrity !== 'valid') return []
+    return cloud.value.active.activeSnapshot?.projected.definition.packs ?? []
+  }
   return user.value?.packs.map((pack) => pack.definition) ?? []
 }
 
@@ -86,6 +96,42 @@ async function applyCandidate() {
   finally { applying.value = false }
 }
 
+function activationText(pack: Pack, rule: Rule): string {
+  const activation = evaluateCapabilityRuleActivationV1({ mode: pack.mode, target: pack.target,
+    configured: rule.configured, defaultPolicy: 'enabled' })
+  return activation.enabled ? t('common.enabled') : t('common.disabled')
+}
+
+function cloudRuleOverride(ruleId: string): CloudOverride | undefined {
+  return cloud.value?.application.overrides.overrides.find((override) =>
+    override.kind === 'rule' && override.ruleId === ruleId)
+}
+
+function cloudRuleSelection(ruleId: string, baseline: Rule['configured']): string {
+  const override = cloudRuleOverride(ruleId)
+  return override?.kind === 'rule' ? override.configured : `remote:${baseline}`
+}
+
+async function setCloudRuleSelection(ruleId: string, selection: string) {
+  const state = cloud.value
+  if (!state || state.application.appliedIntegrity !== 'valid' || state.application.appliedRecordRevision === null) return
+  const retained = state.application.overrides.overrides.filter((override) =>
+    override.kind !== 'rule' || override.ruleId !== ruleId)
+  const configured = selection === 'on' || selection === 'off' || selection === 'default' ? selection : null
+  if (configured !== null) retained.push({ kind: 'rule', ruleId, configured })
+  changingActivation.value = ruleId
+  error.value = null
+  try {
+    await capabilityRules().cloud.replaceActivationOverrides({
+      expectedAppliedRecordRevision: state.application.appliedRecordRevision,
+      expectedOverrideRevision: state.application.overrides.revision,
+      overrides: retained,
+    })
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { changingActivation.value = null }
+}
+
 onMounted(() => { void load() })
 </script>
 
@@ -132,7 +178,16 @@ onMounted(() => { void load() })
           <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
         </div>
         <ul class="mt-2 space-y-1 text-[11px] text-gray-600">
-          <li v-for="rule in pack.rules" :key="rule.ruleId">{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }}</li>
+          <li v-for="rule in pack.rules" :key="rule.ruleId" class="flex flex-wrap items-center justify-between gap-2">
+            <span>{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }} · {{ activationText(pack, rule) }}</span>
+            <select v-if="props.ownership === 'cloud'" class="rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px]"
+              :value="cloudRuleSelection(rule.ruleId, rule.configured)" :disabled="changingActivation === rule.ruleId" @change="setCloudRuleSelection(rule.ruleId, ($event.target as HTMLSelectElement).value)">
+              <option :value="`remote:${rule.configured}`">{{ t('settings.modelsCapabilities.followRemoteBaseline') }}</option>
+              <option value="default">{{ t('settings.modelsCapabilities.activationDefault') }}</option>
+              <option value="on">{{ t('common.on') }}</option>
+              <option value="off">{{ t('common.off') }}</option>
+            </select>
+          </li>
         </ul>
       </li>
       <li v-if="!loading && packs().length === 0" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500">

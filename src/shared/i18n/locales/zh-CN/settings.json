@@ -90,6 +90,8 @@
       "applyUpdate": "应用更新",
       "applyConfirmation": "应用这个已验证候选吗？其内容将替换 Cloud 快照，同时按稳定 Rule identity 保留本地 activation。",
       "priority": "优先级",
+      "activationDefault": "默认",
+      "followRemoteBaseline": "跟随远端基线",
       "noPacks": "没有可用的规则包。",
       "inspectorTitle": "事实检查器",
       "inspectorDescription": "分别查看权威精确模型主体已发布的来源事实。本视图不会选择胜者或解析最终能力。",
