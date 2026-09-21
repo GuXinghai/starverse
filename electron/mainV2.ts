@@ -29,6 +29,7 @@ import { bindPackagedTestDocxFixtureGrantInvalidationV1, createPackagedTestDocxF
 import { createMagikaUtilityProcessRunner } from './services/magikaUtilityProcessRunner'
 import { Epoch2FileTypeDetectionService, GENERATION_V2_FILE_TYPE_DETECTION_UPDATED_CHANNEL } from './services/epoch2FileTypeDetectionService'
 import { ModelsDevOfficialSourceRefreshV1 } from './services/modelsDevOfficialSourceRefreshV1'
+import { CloudRulesCandidateRefreshV1 } from './services/cloudRulesCandidateRefreshV1'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -110,6 +111,13 @@ export async function startMainV2(): Promise<void> {
   void modelsDevSourceRefresh.start().then((result) => {
     if (!result.ok) console.warn('[models-dev-source-v1] refresh failed', { code: result.code })
   }).catch(() => console.warn('[models-dev-source-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
+  const cloudRulesCandidateRefresh = new CloudRulesCandidateRefreshV1({
+  db: runtime.epoch2.database,
+  fetchImpl: cloudFetch,
+  })
+  void cloudRulesCandidateRefresh.start().then((result) => {
+    if (!result.ok) console.warn('[cloud-rules-candidate-v1] refresh failed', { code: result.code })
+  }).catch(() => console.warn('[cloud-rules-candidate-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
   const magikaProcessRunner = createMagikaUtilityProcessRunner()
@@ -197,6 +205,7 @@ export async function startMainV2(): Promise<void> {
   void (async () => {
     rawGenerationRequestStore.close()
     await packagedTestDocxFixtureAuthority?.dispose()
+    await cloudRulesCandidateRefresh.dispose()
     await modelsDevSourceRefresh.dispose()
     await runtime.epoch2.close()
     app.exit(0)
