@@ -501,7 +501,7 @@ export function decodeCanonicalSourceRevisionRefV1(value: unknown): CanonicalSou
   return rebuilt
 }
 
-function canonicalizeRawPayloadRefV1(value: unknown): RawPayloadRefV1 {
+export function canonicalizeRawPayloadRefV1(value: unknown): RawPayloadRefV1 {
   if (!plainObject(value)) return invalid('GENERATION_V2_CANONICAL_SOURCE_FACTS_PROVENANCE_INVALID')
   const keys = ['storeId', 'persistedPayloadSha256', 'recordKey', 'sanitizerRevision']
   if (value.networkPayloadSha256 !== undefined) keys.push('networkPayloadSha256')

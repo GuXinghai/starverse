@@ -1143,6 +1143,12 @@ interface Window {
         cancelDraft: (payload: unknown) => Promise<unknown>
       }>
     }>
+    modelFactsInspector: Readonly<{
+      searchSubjects: (payload: unknown) => Promise<unknown>
+      readInspector: (payload: unknown) => Promise<unknown>
+      readEvidenceSlice: (payload: unknown) => Promise<unknown>
+      readSanitizedRawPayload: (payload: unknown) => Promise<unknown>
+    }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
       create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;

@@ -535,6 +535,23 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
       createdAtMs: safeTime(row.created_at_ms), updatedAtMs: safeTime(row.updated_at_ms) })
   }
 
+  listSourceStates(): readonly CanonicalModelFactSourceStateV1[] {
+    const rows = this.db.prepare(`SELECT source_kind, source_scope_id
+      FROM canonical_model_fact_source_state_v1 ORDER BY source_kind, source_scope_id`).all() as Array<{
+        source_kind: unknown
+        source_scope_id: unknown
+      }>
+    return Object.freeze(rows.map((row) => {
+      if ((row.source_kind !== 'provider_native' && row.source_kind !== 'models_dev' &&
+          row.source_kind !== 'capability_rule') || typeof row.source_scope_id !== 'string') {
+        return stateInvalid()
+      }
+      const state = this.readSourceState(row.source_kind, row.source_scope_id)
+      if (!state) return stateInvalid()
+      return state
+    }))
+  }
+
   readSourceRevision(canonicalSourceRevision: string): CanonicalModelFactStoredSourceRevisionV1 | null {
     const revision = boundedInput(canonicalSourceRevision, 256)
     const row = this.db.prepare(`SELECT canonical_source_revision, source_kind, source_scope_id,

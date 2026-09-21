@@ -144,6 +144,23 @@ describe('CanonicalModelFactSourceV1Repo', () => {
     } finally { db.close() }
   })
 
+  it('lists every persisted source state through its validated state projection', () => {
+    const db = createDb()
+    try {
+      const repo = new CanonicalModelFactSourceV1Repo(db, () => 200)
+      const native = sourceFixture({ scope: 'scope:z', marker: 'native' })
+      repo.publishSourceRevision({ ...native, rawPayloads: [native.raw], subjectIndexMode: 'complete',
+        subjectFacts: [emptyFact(native.sourceRevision)], expectedCurrentRevision: null, fetchedAtMs: 180 })
+      repo.configureRefresh({ sourceKind: 'models_dev', sourceScopeId: 'scope:a', refreshCadenceMs: 300_000 })
+
+      expect(repo.listSourceStates()).toEqual([
+        expect.objectContaining({ sourceKind: 'models_dev', sourceScopeId: 'scope:a', currentSourceRevision: null }),
+        expect.objectContaining({ sourceKind: 'provider_native', sourceScopeId: 'scope:z',
+          currentSourceRevision: native.sourceRevision.canonicalSourceRevision }),
+      ])
+    } finally { db.close() }
+  })
+
   it('rolls back an invalid same-source publication without moving the current pointer', () => {
     const db = createDb()
     let now = 300
