@@ -533,11 +533,11 @@ nextDueAt = lastSuccessfulCheckAt + checkInterval
 - 不发送 OS notification；
 - renderer 不自行推导严重阈值。
 
-## 11. Cloud distribution contract 已冻结，生产实现待授权
+## 11. Cloud distribution contract 已冻结；生产实现由 item 14 授权
 
 完整 Owner 决策见 [`13-cloud-managed-rules-distribution-contract.md`](13-cloud-managed-rules-distribution-contract.md)。Source authority、Release/version/revision、Manifest、integrity、candidate acquisition、Apply、LKG、retention、rollback 与 version pin 均已冻结。
 
-该合同解除的是设计决策阻断，不是生产实现授权。后续实施必须完整遵守：
+Item 13 本身解除的是设计决策阻断，不是生产实现授权；后续 item 14 已单独授权分 Slice 生产实施，并且必须完整遵守：
 
 - 固定 `GuXinghai/starverse` 专用 GitHub Release source；
 - 独立 stable SemVer `releaseVersion` 与内容导出的 `contentRevision`；
@@ -546,18 +546,21 @@ nextDueAt = lastSuccessfulCheckAt + checkInterval
 - 有界 retention、显式 rollback 与可选 version pin；
 - Cloud/User 最终仍共同发布为唯一 Capability Rules canonical source revision。
 
-实施 Agent 不得自行替换 source、Release、Manifest、完整性或生命周期策略，也不得将 item 13 解释为 Goal 3、schema 或生产迁移授权。
+实施 Agent 不得自行替换 source、Release、Manifest、完整性或生命周期策略，也不得将 item 13 单独解释为 Goal 3、schema 或生产迁移授权。当前生产迁移权限与顺序来自 item 14，Goal 3 仍未授权。
 
-## 12. 未来实施顺序
+## 12. Item 14 实施顺序
 
-1. 在单独授权的 production Goal 中实现已冻结的 item 13 distribution contract。
-2. 迁移到同构 Pack/Rule core 与唯一 Capability Rules source。
-3. 建立 authoritative model set 和 revision-bound regex materialization。
-4. 增加 UI-safe services、IPC 和 renderer clients。
-5. 实现 Settings 分类、Cloud/User Rules 和 refresh status。
-6. 实现 User durable draft 及 Import/Export。
-7. 实现 Facts Inspector 及 Model Picker deep-link。
-8. Goal 3 后再接 Resolved Facts 与正常消费者。
+具体依赖顺序以 item 14 为准：
+
+1. Slice 1：同构 Pack/Rule core；
+2. Slice 2：authoritative exact-subject set；
+3. Slice 3：revision-bound regex materialization；
+4. Slice 3.5：切断 bundled/query-bound/request-time Rules authority；
+5. Slice 4：item 13 Cloud candidate acquisition；
+6. Slice 5：Cloud Apply/LKG/rollback/pin；
+7. Slice 6：User Rules、durable draft 与 Import/Export；
+8. Slice 7：UI-safe services、Settings、Facts Inspector 与 Model Picker deep-link；
+9. Goal 3 后再接三来源 Resolved Facts 与正常消费者，并删除 Slice 3.5 暂时保留的 Rules-only consumer projection。
 
 ## 13. 未来聚焦验收
 
@@ -595,7 +598,7 @@ nextDueAt = lastSuccessfulCheckAt + checkInterval
 - 手工三元组 Inspector 入口；
 - OS notification；
 - 正常 Model Picker/Composer/Preflight/Runtime/Compiler consumer 迁移；
-- Cloud distribution 生产实现，等待单独授权并受 item 13 约束。
+- 本 planning Goal 本身不实现 Cloud distribution；其生产实施现由 item 14 授权并继续受 item 13 约束。
 
 ## 15. 冻结结论
 
