@@ -292,4 +292,19 @@ describe('CloudRulesApplicationV1Service', () => {
       }, providerAuthorityId: 'openai' })).not.toThrow()
     } finally { db.close() }
   })
+
+  it('does not expose the stale cloud core through the UI projection when the LKG is invalid', async () => {
+    const db = database()
+    try {
+      const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjectSet() }, () => 20)
+      const first = candidate('1.0.0')
+      publish(db, first, 10)
+      await service.applyCandidate({ expectedCandidateRecordRevision: first.candidateRecordRevision,
+        expectedAppliedRecordRevision: null })
+      db.prepare(`UPDATE cloud_rules_applied_snapshot_v1 SET document_sha256=? WHERE singleton_id=1`)
+        .run('f'.repeat(64))
+
+      expect(service.readActiveProjection().activeSnapshot).toBeNull()
+    } finally { db.close() }
+  })
 })

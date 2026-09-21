@@ -89,7 +89,8 @@ export function registerGenerationV2CloudCapabilityRulesIpc(input: Readonly<{
   const register = (channel: string, handler: (payload: unknown) => unknown | Promise<unknown>) =>
     input.registerInvoke(channel, (_event, payload) => handler(payload))
   const read = () => Object.freeze({ distribution: input.distributionRepo.readState(),
-    application: input.applicationRepo.readState(), history: input.applicationRepo.listHistory() })
+    application: input.applicationRepo.readState(), active: input.application.readActiveProjection(),
+    history: input.applicationRepo.listHistory() })
 
   register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[0], (value) => {
     empty(value)

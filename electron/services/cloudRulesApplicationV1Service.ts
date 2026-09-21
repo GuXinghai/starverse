@@ -126,6 +126,20 @@ export class CloudRulesApplicationV1Service {
     }
   }
 
+  /** UI-safe read projection: remote LKG and the locally overlaid shared core
+   * are intentionally returned separately, so the renderer cannot mistake the
+   * immutable release document for effective local activation. */
+  readActiveProjection(): Readonly<{
+    activeSnapshot: ReturnType<CapabilityRuleCoreV1Repo['readOwnershipSnapshot']>
+  }> {
+    const application = this.#applicationRepo.readState()
+    if (application.appliedIntegrity !== 'valid' || application.applied === null) {
+      return Object.freeze({ activeSnapshot: null })
+    }
+    return Object.freeze({ activeSnapshot: this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
+      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 }) })
+  }
+
   async applyCandidate(input: Readonly<{
     expectedCandidateRecordRevision: string
     expectedAppliedRecordRevision: number | null

@@ -90,6 +90,8 @@
       "applyUpdate": "Apply update",
       "applyConfirmation": "Apply this verified candidate? Its content will replace the Cloud snapshot while preserving local activation by stable Rule identity.",
       "priority": "Priority",
+      "activationDefault": "Default",
+      "followRemoteBaseline": "Follow remote baseline",
       "noPacks": "No rule packs are available.",
       "inspectorTitle": "Facts Inspector",
       "inspectorDescription": "Inspect separately published source facts for authoritative exact model subjects. This view does not choose a winner or resolve a final capability.",

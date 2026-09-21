@@ -55,10 +55,11 @@ export function registerGenerationV2ModelFactsInspectorIpc(input: Readonly<{
     if (value.query !== undefined) keys.push('query')
     if (value.cursor !== undefined) keys.push('cursor')
     exactKeys(value, keys)
-    if (!Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 200) invalid()
+    const limit = value.limit
+    if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 200) invalid()
     if (value.query !== undefined && (typeof value.query !== 'string' || value.query.length > 512)) invalid()
     if (value.cursor !== undefined && value.cursor !== null) boundedText(value.cursor, 4096)
-    return input.service.searchSubjects({ limit: value.limit as number,
+    return input.service.searchSubjects({ limit: limit as number,
       ...(value.query === undefined ? {} : { query: value.query as string }),
       ...(value.cursor === undefined ? {} : { cursor: value.cursor as string | null }) })
   })

@@ -136,7 +136,8 @@ export function createGenerationV2TestBridge() {
     capabilityRules: {
       cloud: {
         read: vi.fn(async () => ({ distribution: { latestObserved: null, candidate: null },
-          application: { applied: null }, history: [] })),
+          application: { applied: null, overrides: { revision: 0, overrides: [] } },
+          active: { activeSnapshot: null }, history: [] })),
         check: vi.fn(async () => ({ status: 'not_due' })),
         candidateDiff: vi.fn(async () => null), apply: vi.fn(async () => null), rollback: vi.fn(async () => null),
         replaceActivationOverrides: vi.fn(async () => null), setHistoryLimit: vi.fn(async () => null),
