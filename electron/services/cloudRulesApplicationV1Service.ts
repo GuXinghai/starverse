@@ -5,7 +5,8 @@ import {
   type CloudRulesReleaseMetadataV1,
 } from '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
 import { applyCloudRulesActivationOverridesV1,
-  CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1 } from
+  CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1,
+  type CloudRulesActivationOverrideV1 } from
   '../../src/next/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 import { prepareCapabilityRuleMaterializationV1 } from
   '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
@@ -27,6 +28,7 @@ import {
 } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import {
   CloudRulesApplicationV1Repo,
+  type CloudRulesActivationOverrideStateV1,
   type CloudRulesInstallTargetV1,
   type CloudRulesStoredSnapshotV1,
 } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
@@ -68,6 +70,17 @@ type PreparedInstallV1 = Readonly<{
   consumeCandidate: boolean
   pinTarget: boolean
   retainedOverrides: ReturnType<typeof applyCloudRulesActivationOverridesV1>['retainedOverrides']
+  coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1>
+  materialization: ReturnType<typeof prepareCapabilityRuleMaterializationV1>
+}>
+
+type PreparedActivationOverrideV1 = Readonly<{
+  expectedAppliedRecordRevision: number
+  expectedOverrideRevision: number
+  expectedCloudCoreRevision: string | null
+  expectedMaterializationRevision: string | null
+  expectedActiveSourceRevision: string | null
+  retainedOverrides: readonly CloudRulesActivationOverrideV1[]
   coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1>
   materialization: ReturnType<typeof prepareCapabilityRuleMaterializationV1>
 }>
@@ -162,6 +175,80 @@ export class CloudRulesApplicationV1Service {
       eventKind: 'rollback', consumeCandidate: input.pinTarget, pinTarget: input.pinTarget,
       allowCorruptRecovery: true })
     return this.#commit(prepared)
+  }
+
+  async replaceActivationOverrides(input: Readonly<{
+    expectedAppliedRecordRevision: number
+    expectedOverrideRevision: number
+    overrides: readonly CloudRulesActivationOverrideV1[]
+  }>): Promise<Readonly<{
+    overrides: CloudRulesActivationOverrideStateV1
+    canonicalSourceRevision: string
+  }>> {
+    const application = this.#applicationRepo.readState()
+    if (application.appliedIntegrity !== 'valid' || !application.applied ||
+        application.appliedRecordRevision !== input.expectedAppliedRecordRevision ||
+        application.overrides.revision !== input.expectedOverrideRevision) this.#stale()
+    const overlay = applyCloudRulesActivationOverridesV1({ document: application.applied.document,
+      overrides: input.overrides })
+    const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
+      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
+    const ownershipSnapshots = this.#coreRepo.listOwnershipSnapshots()
+      .filter((snapshot) => !(snapshot.projected.definition.ownership === 'cloud' &&
+        snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
+      .map((snapshot) => snapshot.projected)
+    const coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(overlay.ownershipSnapshot)
+    ownershipSnapshots.push(coreWrite.projected)
+    const subjectSet = await this.subjectSetReader.readCurrent()
+    const materialization = prepareCapabilityRuleMaterializationV1({ sourceScopeId: this.#sourceScopeId,
+      subjectSet, ownershipSnapshots,
+      defaultActivationPolicies: CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1 })
+    const prepared: PreparedActivationOverrideV1 = Object.freeze({
+      expectedAppliedRecordRevision: input.expectedAppliedRecordRevision,
+      expectedOverrideRevision: input.expectedOverrideRevision,
+      expectedCloudCoreRevision: currentCloud?.projected.snapshotRevision ?? null,
+      expectedMaterializationRevision: this.#materializationRepo.readStage(this.#sourceScopeId)
+        ?.materializationRevision ?? null,
+      expectedActiveSourceRevision: this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
+        ?.currentSourceRevision ?? null,
+      retainedOverrides: overlay.retainedOverrides, coreWrite, materialization,
+    })
+    const currentSubjectSet = await this.subjectSetReader.readCurrent()
+    if (currentSubjectSet.subjectSetRevision !== prepared.materialization.authoritativeSubjectSetRevision) {
+      throw new CloudRulesApplicationV1ServiceError(
+        'GENERATION_V2_CLOUD_RULES_APPLICATION_SUBJECT_SET_STALE')
+    }
+    return this.db.transaction(() => {
+      const currentApplication = this.#applicationRepo.readState()
+      const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
+        ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
+      const currentStage = this.#materializationRepo.readStage(this.#sourceScopeId)
+      const currentSource = this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
+      if (currentApplication.appliedIntegrity !== 'valid' ||
+          currentApplication.appliedRecordRevision !== prepared.expectedAppliedRecordRevision ||
+          currentApplication.overrides.revision !== prepared.expectedOverrideRevision ||
+          (currentCloud?.projected.snapshotRevision ?? null) !== prepared.expectedCloudCoreRevision ||
+          (currentStage?.materializationRevision ?? null) !== prepared.expectedMaterializationRevision ||
+          (currentSource?.currentSourceRevision ?? null) !== prepared.expectedActiveSourceRevision) this.#stale()
+      this.#coreRepo.replacePreparedOwnershipSnapshot({
+        expectedSnapshotRevision: prepared.expectedCloudCoreRevision, prepared: prepared.coreWrite,
+      })
+      const staged = this.#materializationRepo.stagePrepared({ prepared: prepared.materialization,
+        expectedMaterializationRevision: prepared.expectedMaterializationRevision,
+        currentAuthoritativeSubjectSetRevision: currentSubjectSet.subjectSetRevision })
+      const timestamp = this.nowMs()
+      const promoted = this.#sourceRepo.promoteStagedCompleteSourceRevision({
+        sourceKind: 'capability_rule', sourceScopeId: this.#sourceScopeId,
+        canonicalSourceRevision: staged.stage.canonicalSourceRevision,
+        expectedCurrentRevision: prepared.expectedActiveSourceRevision,
+        fetchedAtMs: timestamp, lastAttemptedAtMs: timestamp,
+      })
+      const overrides = this.#applicationRepo.replaceOverrides({
+        expectedRevision: prepared.expectedOverrideRevision, overrides: prepared.retainedOverrides,
+      })
+      return Object.freeze({ overrides,
+        canonicalSourceRevision: promoted.source.sourceRevision.canonicalSourceRevision })
+    }).immediate()
   }
 
   async #prepare(input: Readonly<{
