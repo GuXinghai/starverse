@@ -417,16 +417,17 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).networkProxy = originalNetworkProxy
   })
 
-  it('switches all seven categories with keyboard-accessible mounted panes', async () => {
+  it('switches all eight categories with keyboard-accessible mounted panes', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
     await screen.findByText('设置')
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs).toHaveLength(7)
+    expect(tabs).toHaveLength(8)
     expect(screen.getByTestId('settings-pane-general')).toBeVisible()
     expect(screen.getByTestId('settings-pane-providers')).not.toBeVisible()
     expect(screen.getByTestId('settings-pane-model-catalog')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-pane-models-capabilities')).toBeInTheDocument()
     expect(screen.getByTestId('settings-pane-generation')).toBeInTheDocument()
     expect(screen.getByTestId('settings-pane-privacy-data')).toBeInTheDocument()
     expect(screen.getByTestId('settings-pane-network')).toBeInTheDocument()
@@ -439,6 +440,10 @@ describe('ui-app SettingsPanel', () => {
     await fireEvent.keyDown(screen.getByTestId('settings-category-providers'), { key: 'ArrowRight' })
     await waitFor(() => expect(screen.getByTestId('settings-category-model-catalog')).toHaveAttribute('aria-selected', 'true'))
     expect(screen.getByTestId('settings-pane-model-catalog')).toBeVisible()
+
+    await fireEvent.keyDown(screen.getByTestId('settings-category-model-catalog'), { key: 'ArrowRight' })
+    await waitFor(() => expect(screen.getByTestId('settings-category-models-capabilities')).toHaveAttribute('aria-selected', 'true'))
+    expect(screen.getByTestId('settings-pane-models-capabilities')).toBeVisible()
   })
 
   it('keeps unsaved drafts mounted while switching categories', async () => {

@@ -6,6 +6,7 @@
       "general": "General",
       "providers": "Providers",
       "modelCatalog": "Model Catalog",
+      "modelsCapabilities": "Models & Capabilities",
       "generation": "Generation",
       "privacyData": "Privacy & Data",
       "network": "Network",
@@ -71,6 +72,16 @@
       "cacheClearAllSuccess": "Cleared all model catalog caches for {provider}.",
       "cacheClearFailed": "Failed to clear the model catalog",
       "credentialRequired": "Configure credentials for this provider first."
+    },
+    "modelsCapabilities": {
+      "inspectorTitle": "Facts Inspector",
+      "inspectorDescription": "Inspect separately published source facts for authoritative exact model subjects. This view does not choose a winner or resolve a final capability.",
+      "subjectSearch": "Search authoritative exact subjects",
+      "authoritativeSubjects": "Authoritative exact subjects",
+      "noAuthoritativeSubjects": "No authoritative exact subjects match this search.",
+      "selectSubject": "Select an authoritative exact subject to inspect its source facts.",
+      "subjectFactPresent": "Subject fact available",
+      "sourceAbsent": "No source fact for this subject"
     },
     "language": {
       "title": "Language",
