@@ -317,8 +317,16 @@ export class CloudRulesCandidateRefreshV1 {
   }
 
   refreshIfDue(): Promise<CloudRulesCandidateRefreshResultV1> {
+    return this.#refresh(false)
+  }
+
+  checkNow(): Promise<CloudRulesCandidateRefreshResultV1> {
+    return this.#refresh(true)
+  }
+
+  #refresh(force: boolean): Promise<CloudRulesCandidateRefreshResultV1> {
     if (this.inFlight) return this.inFlight
-    const promise = this.refreshIfDueOnce().finally(() => {
+    const promise = this.refreshIfDueOnce(force).finally(() => {
       if (this.inFlight === promise) this.inFlight = null
     })
     this.inFlight = promise
@@ -359,10 +367,10 @@ export class CloudRulesCandidateRefreshV1 {
     }, delay)
   }
 
-  private async refreshIfDueOnce(): Promise<CloudRulesCandidateRefreshResultV1> {
+  private async refreshIfDueOnce(force: boolean): Promise<CloudRulesCandidateRefreshResultV1> {
     const attemptedAtMs = this.nowMs()
     const current = this.repo.readState()
-    if (current.lastAttemptedAtMs !== null &&
+    if (!force && current.lastAttemptedAtMs !== null &&
         attemptedAtMs - current.lastAttemptedAtMs < this.refreshCadenceMs) {
       return toSuccess('not_due', current)
     }
