@@ -2,7 +2,7 @@
 
 - **Lifecycle Status**: frozen planning; production implementation not authorized by this document
 - **Document Role**: controlling Model Facts UI/product plan and post-Goal 2C Owner amendment
-- **Last updated**: 2026-09-02
+- **Last updated**: 2026-09-21
 - **Authority**: Owner decisions in this document, current checkout UI audit, and documents 06/09/10/11 subject to the amendments recorded here
 
 ## 0. 摘要与停止边界
@@ -13,7 +13,7 @@
 
 > Cloud-managed Rules 与 User Rules 是唯一 Capability Rules source 内部的两种 ownership/lifecycle，不是两个独立 Model Facts sources。二者共享同构 Pack/Rule semantics，但具有不同 mutability、persistence 和 update lifecycle。
 
-本文件冻结未来实现应遵守的 UI、产品生命周期、revision 与 identity 边界；它不是生产实现授权。Cloud distribution contract 仍是独立硬阻断，必须由 Owner 另行冻结。
+本文件冻结未来实现应遵守的 UI、产品生命周期、revision 与 identity 边界；它不是生产实现授权。Cloud distribution contract 已由后续 [`13-cloud-managed-rules-distribution-contract.md`](13-cloud-managed-rules-distribution-contract.md) 冻结，但其生产实现仍须单独授权。
 
 ## 1. 当前 UI 与架构审计结论
 
@@ -270,9 +270,9 @@ Candidate diff 使用独立 unified/line-oriented Diff 窗口：
 
 Apply 原子切换 snapshot，并按 stable Rule identity：
 
-- 保留未变化 Rule 的本地 activation；
-- 删除远端已删除 Rule 的 activation；
-- 新 Rule 初始化为 configured=`default`。
+- 保留未变化 Pack/Rule identity 的本地 activation override；
+- 删除远端已删除 Pack/Rule identity 的本地 activation override；
+- 新 Pack/Rule identity 使用 Release Document 必填的远端 activation baseline，初始不存在本地 override。
 
 ## 7. User Rules UI
 
@@ -533,23 +533,24 @@ nextDueAt = lastSuccessfulCheckAt + checkInterval
 - 不发送 OS notification；
 - renderer 不自行推导严重阈值。
 
-## 11. Cloud distribution contract 硬阻断
+## 11. Cloud distribution contract 已冻结，生产实现待授权
 
-生产实现 Cloud-managed Rules 前，Owner 必须另行冻结：
+完整 Owner 决策见 [`13-cloud-managed-rules-distribution-contract.md`](13-cloud-managed-rules-distribution-contract.md)。Source authority、Release/version/revision、Manifest、integrity、candidate acquisition、Apply、LKG、retention、rollback 与 version pin 均已冻结。
 
-- repository authority；
-- ref、release 或 channel authority；
-- manifest format；
-- version/revision identity；
-- digest/integrity verification；
-- candidate acquisition rules；
-- redirect、retention 与 rollback 边界。
+该合同解除的是设计决策阻断，不是生产实现授权。后续实施必须完整遵守：
 
-实施 Agent 不得自行选择 branch、release、manifest 或完整性策略。该事项不阻止本 UI planning Goal 冻结，但阻止 Cloud distribution 生产实现。
+- 固定 `GuXinghai/starverse` 专用 GitHub Release source；
+- 独立 stable SemVer `releaseVersion` 与内容导出的 `contentRevision`；
+- 单个封闭、严格校验的 Release Document；
+- persisted candidate、原子 Apply 与 non-expiring applied LKG；
+- 有界 retention、显式 rollback 与可选 version pin；
+- Cloud/User 最终仍共同发布为唯一 Capability Rules canonical source revision。
+
+实施 Agent 不得自行替换 source、Release、Manifest、完整性或生命周期策略，也不得将 item 13 解释为 Goal 3、schema 或生产迁移授权。
 
 ## 12. 未来实施顺序
 
-1. 冻结 Cloud distribution contract。
+1. 在单独授权的 production Goal 中实现已冻结的 item 13 distribution contract。
 2. 迁移到同构 Pack/Rule core 与唯一 Capability Rules source。
 3. 建立 authoritative model set 和 revision-bound regex materialization。
 4. 增加 UI-safe services、IPC 和 renderer clients。
@@ -594,7 +595,7 @@ nextDueAt = lastSuccessfulCheckAt + checkInterval
 - 手工三元组 Inspector 入口；
 - OS notification；
 - 正常 Model Picker/Composer/Preflight/Runtime/Compiler consumer 迁移；
-- Cloud distribution contract，等待 Owner 另行冻结。
+- Cloud distribution 生产实现，等待单独授权并受 item 13 约束。
 
 ## 15. 冻结结论
 

@@ -1,6 +1,12 @@
 - **Lifecycle Status**: active
 - **Document Role**: owner-decision
-- **Last updated**: 2026-09-02
+- **Last updated**: 2026-09-21
+
+## Owner amendment：Cloud-managed Rules distribution contract（2026-09-21）
+
+Cloud-managed Rules distribution contract 已由 [`13-cloud-managed-rules-distribution-contract.md`](13-cloud-managed-rules-distribution-contract.md) 完整冻结。唯一官方源固定为 `GuXinghai/starverse` 的专用 GitHub Release；Cloud Release 使用独立 stable SemVer `releaseVersion` 与规范化完整远端 Pack/Rule 内容导出的 `contentRevision`，并采用严格单一 Release Document、受限 GitHub HTTPS host space、persisted candidate Apply、non-expiring applied LKG、有界历史、显式 rollback 与可选 version pin。
+
+该 amendment 只解除“Owner 尚未冻结 distribution contract”的设计阻断，不授权生产实现、schema/IPC 修改、Rules 迁移或 Goal 3。Cloud `contentRevision` 不是新的 Model Facts source revision；当前已应用 Cloud 与已提交 User 内容仍必须共同发布为唯一 Capability Rules canonical source revision。
 
 ## Owner amendment：Cloud/User Rules、同构 Pack/Rule 与 exact-subject materialization（2026-09-02）
 
@@ -14,7 +20,7 @@ Cloud Rules default activation policy可配置且初始为enabled，只作用于
 
 Authoritative exact-subject set只来自官方/provider-native模型枚举，以及compatible/third-party scope中正式配置的custom acquisition/parser或manual exact IDs。models.dev、Rule selector、regex例子、alias和display name均不得创建model subject。Rule regex只在Rule/source或authoritative-subject-set revision变化时用于materialization，输出必须绑定exact subject；不得在send、preflight或Goal 3 resolution时运行regex。Goal 2C中bundled built-in与按请求query-bound matching是待迁移历史实现，不再代表目标架构。
 
-Cloud distribution的repository/ref/release authority、manifest、version/revision、digest/integrity、candidate acquisition、redirect、retention与rollback contract必须由Owner另行冻结；实施Agent不得自行决定。
+Cloud distribution 的 repository/ref/release authority、Manifest、version/revision、digest/integrity、candidate acquisition、redirect、Apply、LKG、retention 与 rollback 已由 item 13 冻结。生产实现仍须单独授权，实施 Agent 不得偏离该合同或把它解释为 Goal 3 授权。
 
 ## Owner amendment：Capability Rule selector（2026-08-28）
 
