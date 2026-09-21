@@ -5,6 +5,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import { ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
 import { RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import { CAPABILITY_RULE_CORE_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
@@ -243,6 +244,9 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
   hasher.update('\0', 'utf8')
   hasher.update('canonical-model-fact-ontology-schema\0', 'utf8')
   hasher.update(CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1, 'utf8')
+  hasher.update('\0', 'utf8')
+  hasher.update('capability-rule-core-schema\0', 'utf8')
+  hasher.update(CAPABILITY_RULE_CORE_SCHEMA_DIGEST_V1, 'utf8')
   hasher.update('\0', 'utf8')
   return hasher.digest('hex')
 }
