@@ -88,6 +88,8 @@
       "draftDirty": "Unsaved changes are kept in the User Rules draft until you save or cancel.",
       "draftSession": "Draft revision",
       "addRule": "Add Rule",
+      "importPack": "Import Pack",
+      "exportPack": "Export Pack",
       "ruleId": "Rule identity",
       "packId": "Pack identity (optional)",
       "packName": "New Pack name (optional)",

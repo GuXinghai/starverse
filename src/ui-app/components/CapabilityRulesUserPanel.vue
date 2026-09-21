@@ -172,6 +172,34 @@ async function rewritePack(packId: string) {
   finally { loading.value = false }
 }
 
+async function exportPack(packId: string) {
+  if (editing.value && draft.value?.dirty) return
+  error.value = null
+  try {
+    const transfer = await userApi().exportCommittedPack({ packId })
+    const blob = new Blob([JSON.stringify(transfer, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${packId}.starverse-rule-pack.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+}
+
+async function importPackFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  const current = draft.value
+  if (!file || !current) return
+  error.value = null
+  try {
+    const transfer = JSON.parse(await file.text()) as unknown
+    draft.value = await userApi().importPack({ sessionId: current.sessionId,
+      expectedDraftRevision: current.draftRevision, transfer }) as Draft
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { (event.target as HTMLInputElement).value = '' }
+}
+
 async function addRule() {
   const current = draft.value
   if (!current) return
@@ -237,6 +265,10 @@ onMounted(() => { void load() })
       </div>
       <div class="flex gap-2">
         <button v-if="!editing" type="button" class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50" :disabled="loading" @click="openDraft">{{ t('settings.modelsCapabilities.editRules') }}</button>
+        <label v-if="editing" class="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50">
+          {{ t('settings.modelsCapabilities.importPack') }}
+          <input class="hidden" type="file" accept="application/json,.json" :disabled="loading || saving" @change="importPackFile" />
+        </label>
         <button v-if="editing" type="button" class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50" :disabled="loading || saving" @click="cancel">{{ t('settings.modelsCapabilities.cancelChanges') }}</button>
         <button v-if="editing" type="button" class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700" :disabled="loading || saving || !draft?.dirty" @click="save">{{ saving ? t('common.loading') : t('settings.modelsCapabilities.saveChanges') }}</button>
       </div>
@@ -268,6 +300,7 @@ onMounted(() => { void load() })
             <input v-if="editing" :value="pack.priority" type="number" class="w-20 rounded border border-gray-300 px-1 py-0.5" @change="updatePack(pack.packId, { priority: Number(($event.target as HTMLInputElement).value) })" />
             <span v-else>{{ pack.priority }}</span>
           </span>
+          <button v-if="!editing || !draft?.dirty" type="button" class="rounded border border-gray-300 px-1.5 py-0.5 text-gray-700" @click="exportPack(pack.packId)">{{ t('settings.modelsCapabilities.exportPack') }}</button>
         </div>
         <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
           <label>{{ t('settings.modelsCapabilities.packModeLabel') }} <select v-if="editing" :value="pack.mode" class="rounded border border-gray-300 px-1" @change="updatePack(pack.packId, { mode: ($event.target as HTMLSelectElement).value as PackMode })"><option value="override">override</option><option value="default_only">default_only</option><option value="no_control">no_control</option></select><span v-else>{{ pack.mode }}</span></label>
@@ -277,7 +310,12 @@ onMounted(() => { void load() })
         </div>
         <ul class="mt-2 space-y-1">
           <li v-for="rule in pack.rules" :key="rule.ruleId" class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-1 text-[11px] text-gray-600">
-            <span class="min-w-0 flex-1 truncate">{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }}</span>
+            <span class="min-w-0 flex-1 truncate">
+              <input v-if="editing" :value="rule.label ?? ''" class="w-32 rounded border border-gray-300 px-1 py-0.5" :placeholder="rule.ruleId" @change="updateRule(rule.ruleId, { label: ($event.target as HTMLInputElement).value || null })" />
+              <span v-else>{{ rule.label ?? rule.ruleId }}</span>
+              · {{ rule.assertion.path }}
+              <input v-if="editing" :value="rule.priority" type="number" class="ml-1 w-16 rounded border border-gray-300 px-1 py-0.5" @change="updateRule(rule.ruleId, { priority: Number(($event.target as HTMLInputElement).value) })" />
+            </span>
             <select v-if="editing" :value="rule.configured" class="rounded border border-gray-300 px-1" @change="updateRule(rule.ruleId, { configured: ($event.target as HTMLSelectElement).value as Configured })"><option value="default">{{ t('settings.modelsCapabilities.activationDefault') }}</option><option value="on">{{ t('common.on') }}</option><option value="off">{{ t('common.off') }}</option></select>
             <select v-if="editing && moveRuleId === rule.ruleId" class="rounded border border-gray-300 px-1" @change="moveRule(rule.ruleId, ($event.target as HTMLSelectElement).value)"><option value="">{{ t('settings.modelsCapabilities.moveRule') }}</option><option v-for="target in packs().filter((item) => item.packId !== pack.packId)" :key="target.packId" :value="target.packId">{{ target.displayName }}</option></select>
             <button v-if="editing" type="button" class="rounded border border-gray-300 px-1.5 py-0.5" @click="moveRuleId = moveRuleId === rule.ruleId ? null : rule.ruleId">{{ t('settings.modelsCapabilities.moveRule') }}</button>
