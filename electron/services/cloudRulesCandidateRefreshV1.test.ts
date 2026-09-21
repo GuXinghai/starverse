@@ -111,6 +111,23 @@ describe('CloudRulesCandidateRefreshV1', () => {
     } finally { db.close() }
   })
 
+  it('uses the same validation path for an explicit check even when the scheduled cadence is not due', async () => {
+    const db = database()
+    let now = 100
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => String(input).includes('/releases/assets/')
+      ? assetResponse(document('1.0.0')) : jsonResponse([release('1.0.0')]))
+    try {
+      const refresher = new CloudRulesCandidateRefreshV1({ db, fetchImpl, nowMs: () => now,
+        refreshCadenceMs: 60_000 })
+      await refresher.refreshIfDue()
+      now = 101
+      expect(await refresher.refreshIfDue()).toMatchObject({ ok: true, status: 'not_due' })
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      expect(await refresher.checkNow()).toMatchObject({ ok: true, status: 'refreshed' })
+      expect(fetchImpl).toHaveBeenCalledTimes(4)
+    } finally { db.close() }
+  })
+
   it('fails the highest release without falling down to an older release', async () => {
     const db = database()
     const fetchImpl = listingFetcher([[release('1.0.0'), release('2.0.0', { assets: [] })]], [])
