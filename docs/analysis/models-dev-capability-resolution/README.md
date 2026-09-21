@@ -24,7 +24,8 @@ This directory preserves three independent investigations of using models.dev as
 11. [Goal 2C three-source ingestion closeout](11-goal-2c-three-source-ingestion-closeout.md) — implemented ontology/registry, three independent source adapters, raw persistence, revisions, LKG/publication, focused verification, and the strict Goal 3 handoff.
 12. [Model Facts UI synchronization plan](12-model-facts-ui-synchronization-plan.md) — frozen post-Goal 2C UI/product plan and Owner amendments for one Capability Rules source, isomorphic Cloud/User Pack/Rule semantics, exact-subject materialization, Rules workflows, and Facts Inspector.
 13. [Cloud-managed Rules distribution contract](13-cloud-managed-rules-distribution-contract.md) — Owner-frozen source, Release/version/revision, Manifest, integrity, candidate, Apply, LKG, retention, rollback, and version-pin contract; documentation only, with production implementation still separately gated.
-14. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+14. [Cloud-managed Capability Rules implementation Goal](14-cloud-managed-capability-rules-implementation-goal.md) — active production implementation sequence for the shared Pack/Rule core, exact-subject materialization, explicit Rules authority cutover, Cloud/User lifecycle, and UI-safe surfaces; Goal 3 remains prohibited.
+15. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
@@ -38,16 +39,18 @@ This directory preserves three independent investigations of using models.dev as
 - The 2026-08-31 Owner amendment freezes the models.dev official deployed API flattened payload as the models.dev Raw Source. Provenance references only fields actually exposed by that API; Starverse does not reconstruct unexposed `base_model/base_model_omit` or internal contributor chains. A future Git/TOML source would be a separately versioned source surface.
 - Item 12 is the controlling post-Goal 2C UI/product amendment. It supersedes items 8–11 only for bundled built-in lifecycle, Cloud/User ownership semantics, Capability Rules source convergence, authoritative-subject identity input, and regex materialization timing. It does not replace the Goal 2B ontology or authorize Goal 3.
 - Item 13 is the controlling Owner-frozen Cloud-managed Rules distribution contract. It resolves the design blocker named by item 12 but does not itself authorize production migration or Goal 3.
-- Current implementation status and remaining TODOs are split between items 7–13: item 7 records the authority-boundary residuals, item 8 records the historical Goal 2A migration, item 9 records the historical Goal 2A-Fix dataset/fact-quality closeout, item 10 is the frozen Goal 2B design, item 11 is the Goal 2C ingestion closeout, item 12 freezes the required next UI/product migration, and item 13 freezes its Cloud distribution dependency. Do not revive the deleted Catalog capability resolver while implementing Goal 3.
+- Item 14 is the active production implementation Goal authorized after the read-only pre-implementation audit. It translates items 06/12/13 into dependency slices and adds an explicit Slice 3.5 Rules authority cutover; it does not supersede those Owner contracts or authorize Goal 3.
+- Current implementation status and remaining TODOs are split between items 7–14: item 7 records the authority-boundary residuals, item 8 records the historical Goal 2A migration, item 9 records the historical Goal 2A-Fix dataset/fact-quality closeout, item 10 is the frozen Goal 2B design, item 11 is the Goal 2C ingestion closeout, item 12 freezes the required next UI/product migration, item 13 freezes its Cloud distribution dependency, and item 14 controls the authorized production migration sequence. Do not revive the deleted Catalog capability resolver while implementing Goal 3.
 
-## Current post-Goal 2C planning status / TODO
+## Current post-Goal 2C implementation status / TODO
 
-- Production still reflects the Goal 2C-era bundled built-in/user ownership and query-bound Rules implementation until a separately authorized migration changes it; documentation does not claim that migration is already complete.
-- The Cloud distribution contract is fully frozen in item 13. Production remains unmodified and requires a separately authorized Goal to implement the fixed official GitHub Release source, strict Release Document, candidate/Apply/LKG lifecycle, retention, rollback, and pin policy.
-- The next Rules implementation must use one isomorphic Pack/Rule core for Cloud-managed and User ownership, then publish both through one Capability Rules canonical source revision.
+- Production still reflects the Goal 2C-era bundled built-in/user ownership and query-bound Rules implementation. Item 14 now authorizes its sliced replacement but does not claim any slice is complete before code and focused acceptance evidence land.
+- The Cloud distribution contract is fully frozen in item 13. Its production implementation must follow item 14 and the fixed official GitHub Release source, strict Release Document, candidate/Apply/LKG lifecycle, retention, rollback, and pin policy.
+- Slice 1 is complete: the isomorphic owner-neutral Pack/Rule core, ownership snapshot repository, activation/Rewrite semantics, revisions and schema integration are implemented but intentionally dormant. Slice 2 authoritative exact-subject-set work is next; no parallel Rules authority has been published.
 - Regex Rules must be materialized only against the revisioned authoritative exact-subject set. models.dev, Rules, aliases, examples, and display names never create subjects.
-- UI implementation remains unstarted by this planning document: Settings integration, Cloud/User Rules workflows, durable User drafts, UI-safe services/IPC, Facts Inspector, and Model Picker deep-link require separate production authorization.
-- Goal 3 priority/merge/winner/conflict/final `capabilityRevision` remains deferred. Before Goal 3 consumer migration, remove or schedule removal of replaced query-bound/bundled Rules paths without creating a parallel fallback.
+- Slice 3.5 must cut runtime from the old Rule repository to materialized exact canonical Rule claims before Cloud Apply or User Rules become production authorities. It may temporarily preserve only the existing Rules-only consumer projection semantics, never the old bundled/query-bound data authority.
+- UI implementation remains a later item 14 slice: Settings integration, Cloud/User Rules workflows, durable User drafts, UI-safe services/IPC, Facts Inspector, and Model Picker deep-link are not part of Slice 1.
+- Goal 3 priority/merge/winner/conflict/final `capabilityRevision` remains deferred. Slice 3.5 must remove the bundled/query-bound/request-time Rules authority; only already non-authoritative dead-code cleanup may be scheduled after that cutover, never retained as a fallback.
 
 ## Import fidelity
 
