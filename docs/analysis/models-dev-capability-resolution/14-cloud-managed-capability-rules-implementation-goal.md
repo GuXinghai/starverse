@@ -163,7 +163,24 @@ Slice 5 is complete only when focused tests prove:
 
 Run only Slice 5 and directly affected schema/repository/service/materialization/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
 
-## 8. Current implementation status
+## 8. Slice 6 acceptance
+
+Slice 6 is complete only when focused tests prove:
+
+1. Committed User Packs/Rules use the same Pack/Rule core, selector/assertion representation, activation evaluator, priority bounds, and one-shot Rewrite semantics as Cloud ownership; no User-only Rule truth model or fourth Model Facts source is introduced.
+2. The User Rules tab owns one durable editing session whose persisted draft contains the full User ownership snapshot plus its immutable base committed snapshot revision and draft revision. Opening/recovering a draft never mutates committed Rules.
+3. Draft create/edit/delete, cross-Pack Rule move, activation changes, Rewrite, Import/Replace, and ordinary Pack creation mutate only the draft. Cancel/discard removes the durable draft and leaves committed Rules plus the active Capability Rules source unchanged.
+4. When no User Pack exists, creating the first Rule creates one ordinary explicit User Pack. It has no reserved identity, hidden flag, or special lifecycle and may subsequently be renamed, deleted, disabled, rewritten, imported/replaced, or exported.
+5. Batch Save stale-fails against the draft base revision, validates the entire draft, installs the shared User ownership snapshot, materializes and promotes the resulting state of the same single Capability Rules canonical source, and deletes the draft in one short SQLite transaction. Any claim-affecting Save produces exactly one new source revision; Note-only metadata cannot churn Model Facts. Any failure rolls back every write and leaves the recoverable draft intact.
+6. User content and activation publish only through batch Save. A successful claim-affecting Save performs one canonical publication regardless of the number of draft edits; no partial Save, field autosave, three-way merge, or multi-writer merge path exists.
+7. The versioned User Rule Pack import/export format uses shared typed Pack/Rule content rather than arbitrary JSON. Import fully validates before changing the draft, adds a new Pack identity or performs explicit whole-Pack replacement, rejects unexplained identity collisions, and never performs copy-ID regeneration, automatic merge, per-Rule merge, or partial replacement.
+8. Export reads only the last successfully committed Pack and includes stable identities, display metadata, selector/assertion, priority, activation, and optional Note where the frozen User format permits it; it excludes DB/source/runtime/draft metadata. The backend refuses committed export while the editing session is dirty.
+9. Persisted draft recovery is deterministic and crash-safe; successful Save or explicit Cancel removes the editing session, while failed validation, stale Save, or publication failure preserves it.
+10. Slice 6 does not add Settings UI, renderer DB access, product IPC, Cloud content mutation, derived Rule authoring, normal consumer migration, or any Goal 3 source merge/winner/conflict/final-resolution behavior.
+
+Run only Slice 6 and directly affected shared-core/schema/repository/service/materialization/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
+
+## 9. Current implementation status
 
 Slice 1 completed on 2026-09-21 with focused acceptance evidence:
 
@@ -229,12 +246,24 @@ Slice 5 completed on 2026-09-21 with focused acceptance evidence:
 - current LKG integrity failure marks the materialized Rules source unavailable without promoting history or clearing content, and explicit candidate Apply or retained-history rollback can recover atomically;
 - normal logs contain no full `contentRevision`, and the Slice remains outside product IPC/UI, User drafts, and every Goal 3 merge/winner/conflict/final-resolution concern.
 
-Slices 1–5 are therefore complete. Slice 6 is next. User committed Rules/drafts/import-export, product UI/IPC, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+Slice 6 completed on 2026-09-21 with focused acceptance evidence:
 
-## 9. Deferred findings ledger
+- User-owned committed Packs/Rules reuse the shared Pack/Rule core and remain a single ownership input to the existing one Capability Rules source; Notes stay outside Model Facts content and evidence;
+- one persisted full-snapshot draft is scoped to the User Rules tab, records immutable base revision/content, survives close/reopen recovery, and leaves committed authority unchanged until Save;
+- first Rule creation creates an ordinary explicit User Pack with no hidden identity or special lifecycle; all draft changes, including shared Rewrite behavior, stay unpublished until Save and Cancel leaves the active canonical source unchanged;
+- Save performs preparation outside the SQLite write transaction, then stale-rechecks and atomically writes User core, materialization/staged promotion, committed Notes, and draft deletion; an injected late failure rolls all writes back and preserves the draft;
+- transfer Import/Export uses a versioned typed whole-Pack format, rejects invalid digest/foreign Notes, replaces only an identity-matched whole Pack, and refuses committed export while the User draft is dirty;
+- Note-only Save preserves the canonical Capability Rules source revision, while claim-affecting content/activation/priority changes remain publication inputs;
+- this Slice adds no Settings UI, renderer database access, product IPC, Cloud-content mutation, derived Rule authoring, normal consumer migration, or Goal 3 source merge/winner/conflict/final-resolution behavior;
+- the schema change uses the frozen epoch-2 closed-schema digest replacement policy rather than an old-schema migration; the schema-mismatch recovery smoke passed.
+
+Slices 1–6 are therefore complete. Slice 7 is next. Product UI/IPC and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+
+## 10. Deferred findings ledger
 
 | Finding | Classification | blocksCurrentSlice | Disposition |
 |---|---|---:|---|
 | Additive migration from the immediately preceding development schema was suggested during Slice 4 review. | Contract conflict, not a deferred defect | no | Rejected: the frozen development policy remains epoch-2 closed-schema digest replacement with no old decoder or compatibility migration. Schema-mismatch replacement smoke is the acceptance path. |
 | Per-family IPC mutation rejection coverage could be broader after Slice 3.5. | Polish / additional regression coverage | no | Defer to the bounded hardening/cleanup pass; the shared scheduler rejection path and current authority cutover acceptance remain covered. |
 | Item 13 still contains one historical sentence saying Goal 2C-era production paths remain, although item 14 and this README record their later removal. | Deferred documentation cleanup | no | Keep item 13's frozen contract semantics unchanged during Slice 4; reconcile the historical implementation-status sentence in the bounded cleanup pass. |
+| User draft mutations currently use revision CAS but do not require the persisted `sessionId` except at Save. | Deferred Finding | no | Slice 6 has one local durable-draft owner and no product IPC; bind mutations to renderer/session authority in Slice 7 when multi-caller UI-safe IPC is introduced. |
