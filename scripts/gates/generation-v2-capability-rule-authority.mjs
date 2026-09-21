@@ -10,6 +10,12 @@ const removedAuthorities = [
   'src/next/generation-v2/providers/gemini/toolCapabilityPolicyV2.ts',
   'src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1.ts',
   'src/next/generation-v2/providers/anthropic/modelThinkingRulesV1.ts',
+  'infra/db/repo/capabilityRuleV2Repo.ts',
+  'infra/db/repo/installBuiltInCapabilityRulesV2.ts',
+  'src/next/generation-v2/capability-rules/capabilityRuleV2.ts',
+  'src/next/generation-v2/capability-rules/builtinCapabilityRulePacksV2.ts',
+  'src/next/generation-v2/capability-rules/builtinCapabilityRulePacksV2.json',
+  'src/next/generation-v2/model-facts/capabilityRuleSourceAdapterV1.ts',
 ]
 for (const file of removedAuthorities) {
   if (existsSync(path.resolve(root, file))) fail(`obsolete model-fact authority remains: ${file}`)
@@ -19,6 +25,8 @@ const roots = [
   'electron/services',
   'src/next/provider',
   'src/next/generation-v2/providers',
+  'infra/db/repo',
+  'infra/db/services',
   'src/ui-app',
 ]
 const files = []
@@ -42,6 +50,10 @@ const forbiddenSymbols = [
   'hasReviewedGeminiGenerateContentReasoningWebCapabilityV2',
   'readAnthropicModelThinkingRuleV1',
   'OPENAI_RESPONSES_IMAGE_SIZE_DOMAIN_V2',
+  'CapabilityRuleV2Repo',
+  'installBuiltInCapabilityRulesV2',
+  'capabilityRuleSourceAdapterV1',
+  'matchesCapabilityRuleIdentityV2',
 ]
 const exactModelLiteral = /['"](?:gemini-[0-9]|claude-[0-9]|gpt-[0-9]|o[0-9](?:-|['"])|deepseek-v[0-9])/u
 for (const file of files) {

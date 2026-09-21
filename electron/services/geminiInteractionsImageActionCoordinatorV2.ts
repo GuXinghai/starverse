@@ -6,7 +6,7 @@ import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Re
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
-import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
@@ -43,7 +43,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
+  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const catalogAuthorityService = createActiveCatalogModelAuthorityV2Service(input)
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 

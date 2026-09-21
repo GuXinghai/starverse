@@ -4,7 +4,9 @@ import { LocalEndpointProfileV2Repo, type LocalEndpointProfileV2 } from '../../i
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { OpenRouterImageBindingRepo } from '../../infra/db/repo/openRouterImageBindingRepo'
 import { OpenRouterImageSettingsRepo } from '../../infra/db/repo/openRouterImageSettingsRepo'
-import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
+import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
+import { applyCapabilityRuleProjectionToResolvedCapabilityV2 } from
+  '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
@@ -109,6 +111,7 @@ function assertCapabilityResolutionRegistryCompleteV2(
 function localBindingCapability(
   request: GenerationCapabilityResolutionRequestV2,
   profile: LocalEndpointProfileV2,
+  capabilityRules: MaterializedCapabilityRuleProjectionV2Repo,
 ) {
   if (request.credentialRevision !== profile.revisionGeneration || request.credentialScopeId !== profile.credentialScopeId) {
     throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_STALE')
@@ -124,7 +127,7 @@ function localBindingCapability(
     throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_MODEL_UNAVAILABLE')
   }
   const at = resolvedAt(Math.max(Date.now(), profile.updatedAtMs))
-  const capability = profile.providerId === 'lmstudio'
+  const baseCapability = profile.providerId === 'lmstudio'
     ? resolveLmStudioOpenResponsesCapabilityV2({
       binding: createLmStudioOpenResponsesProviderBindingV2(profile, request.modelId), resolvedAt: at,
     })
@@ -137,6 +140,14 @@ function localBindingCapability(
         binding: createOllamaChatProviderBindingV2(profile, request.modelId), profile, resolvedAt: at,
         })
         : (() => { throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_UNSUPPORTED_SCOPE') })()
+  const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+    capability: baseCapability,
+    projection: capabilityRules.resolveForLocalIdentity({
+      providerId: profile.providerId,
+      endpointProfileId: profile.endpointProfileId,
+      nativeModelId: request.modelId,
+    }),
+  })
   assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
   return projectGenerationCapabilityResolutionV2(capability)
 }
@@ -151,7 +162,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
   const compatible = new OpenAICompatibleV2Repo(input.db)
   const imageBindings = new OpenRouterImageBindingRepo(input.db)
   const imageSettings = new OpenRouterImageSettingsRepo(input.db)
-  const capabilityRules = new CapabilityRuleV2Repo(input.db)
+  const capabilityRules = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const imageDescriptors = createOpenRouterImageDescriptorAuthorityV2Service({
     db: input.db, credentialService: input.credentialService,
   })
@@ -169,7 +180,14 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
       return activeCatalog.withExactActiveModel({ providerKey: 'openrouter', endpointProfile: profile, ...common,
         consume: (evidence) => {
-          const capability = resolveOpenRouterChatCapabilityV2(evidence)
+          const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+            capability: resolveOpenRouterChatCapabilityV2(evidence),
+            projection: capabilityRules.resolveForIdentity({
+              providerId: evidence.providerId.value,
+              endpointProfileId: evidence.endpointProfileId.value,
+              nativeModelId: evidence.modelId.value,
+            }),
+          })
           assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
@@ -270,9 +288,15 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       provider, endpoint, credentialScopeId, modelId: request.modelId,
     })
     const configuration = compatible.getConfigurationForEndpointRevision(provider.providerInstanceId, endpoint.endpointRevisionId)
-    const capability = resolveOpenAIChatCompatibleCapabilityV2({
+    const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+      capability: resolveOpenAIChatCompatibleCapabilityV2({
       binding, resolvedAt: resolvedAt(Math.max(Date.now(), endpoint.createdAtMs)),
       mappedReasoningSourceFields: mappedReasoningSources(configuration),
+      }),
+      projection: capabilityRules.resolveForCompatibleIdentity({
+        providerInstanceId: provider.providerInstanceId,
+        nativeModelId: request.modelId,
+      }),
     })
     assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
     return projectGenerationCapabilityResolutionV2(capability)
@@ -305,8 +329,16 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       candidate.providerTag.value === selector.providerTag.value && candidate.providerSlug.value === selector.providerSlug.value &&
       candidate.descriptorRevision.value === selector.descriptorRevision.value && candidate.descriptorDigest.value === selector.descriptorDigest.value)
     if (!selected) throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_STALE')
-    const capability = resolveOpenRouterImageCapabilityV2({
-      binding: binding.record, descriptor: selected, resolvedAt: resolvedAt(Math.max(Date.now(), descriptor.fetchedAtMs)),
+    const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+      capability: resolveOpenRouterImageCapabilityV2({
+        binding: binding.record, descriptor: selected,
+        resolvedAt: resolvedAt(Math.max(Date.now(), descriptor.fetchedAtMs)),
+      }),
+      projection: capabilityRules.resolveForIdentity({
+        providerId: 'openrouter',
+        endpointProfileId: OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2,
+        nativeModelId: request.modelId,
+      }),
     })
     assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
     return projectGenerationCapabilityResolutionV2(capability)
@@ -321,11 +353,11 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
     [capabilityResolutionScopeKeyV2('google_ai_studio', 'gemini-generate-content-v1beta', 'text'), cloud],
     [capabilityResolutionScopeKeyV2('google_ai_studio', 'gemini-interactions-v1beta', 'image_generate'), cloud],
     [capabilityResolutionScopeKeyV2('lmstudio', 'lmstudio-openresponses', 'text'),
-      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId)))],
+      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId), capabilityRules))],
     [capabilityResolutionScopeKeyV2('generic_local', 'generic-local-openai-chat-completions', 'text'),
-      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId)))],
+      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId), capabilityRules))],
     [capabilityResolutionScopeKeyV2('ollama', 'ollama-chat-v1', 'text'),
-      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId)))],
+      (request) => Promise.resolve(localBindingCapability(request, profiles.get(request.endpointProfileId), capabilityRules))],
     [capabilityResolutionScopeKeyV2('openai_compatible', 'openai_chat_compatible', 'text'), compatibleCapability],
   ])
   assertCapabilityResolutionRegistryCompleteV2(resolverRegistry)

@@ -166,7 +166,7 @@ export type PersistedModelCapabilityEvidenceV2 = Readonly<{
   kind: ModelCapabilityEvidenceKindV2
   effect: ModelCapabilityEvidenceEffectV2
   sourceRef: string
-  verifiedAt: string
+  verifiedAt: string | null
   contentDigest: string
   entryDigest: string
 }>

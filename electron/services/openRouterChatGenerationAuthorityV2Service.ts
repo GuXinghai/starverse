@@ -12,6 +12,10 @@ import {
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import {
+  applyCapabilityRuleProjectionToResolvedCapabilityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
@@ -286,11 +290,10 @@ function resolveOpenRouterChatCapabilityRecord(
 }
 
 function composeOpenRouterChatSnapshot(
-  binding: VerifiedOpenRouterChatBindingAuthorityV2,
+  capability: ResolvedCapabilityV2,
   modelEvidence: ActiveCatalogModelAuthorityV2,
   toolRegistry: ToolRegistryRepositoryFactV2 | null = null,
 ): DecodedRuntimeCapabilitySnapshotV2 {
-  const capability = resolveOpenRouterChatCapabilityRecord(binding, modelEvidence)
   return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({
     capability,
     resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
@@ -318,6 +321,7 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{
     binding: VerifiedOpenRouterChatBindingAuthorityV2
     capability: VerifiedOpenRouterChatCapabilityAuthorityV2
@@ -329,8 +333,11 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
     return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
   }
   const binding = composeOpenRouterChatBinding(input.modelEvidence)
-  const resolvedCapability = resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence)
-  const snapshot = composeOpenRouterChatSnapshot(binding, input.modelEvidence, input.toolRegistry)
+  const resolvedCapability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
+    capability: resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence),
+    projection: input.capabilityRules,
+  })
+  const snapshot = composeOpenRouterChatSnapshot(resolvedCapability, input.modelEvidence, input.toolRegistry)
   validateIntent(input.commandFacts, input.toolRegistry)
   validateSemanticIntentAgainstResolvedCapabilityV2(
     resolvedCapability,

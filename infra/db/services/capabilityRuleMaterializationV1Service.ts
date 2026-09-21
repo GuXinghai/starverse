@@ -14,6 +14,9 @@ import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
 import { CapabilityRuleMaterializationV1Repo,
   type CapabilityRuleMaterializationStageResultV1 } from
   '../repo/capabilityRuleMaterializationV1Repo'
+import { CanonicalModelFactSourceV1Repo,
+  type CanonicalModelFactStagedSourcePromotionResultV1 } from
+  '../repo/canonicalModelFactSourceV1Repo'
 
 export interface AuthoritativeModelSubjectSetReaderV1 {
   readCurrent(): Promise<AuthoritativeModelSubjectSetV1>
@@ -26,6 +29,7 @@ export interface AuthoritativeModelSubjectSetReaderV1 {
 export class CapabilityRuleMaterializationV1Service {
   readonly #ruleRepo: CapabilityRuleCoreV1Repo
   readonly #stageRepo: CapabilityRuleMaterializationV1Repo
+  readonly #sourceRepo: CanonicalModelFactSourceV1Repo
 
   constructor(
     db: BetterSqlite3.Database,
@@ -34,6 +38,7 @@ export class CapabilityRuleMaterializationV1Service {
   ) {
     this.#ruleRepo = new CapabilityRuleCoreV1Repo(db, nowMs)
     this.#stageRepo = new CapabilityRuleMaterializationV1Repo(db, nowMs)
+    this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
   }
 
   async prepareCurrent(input: Readonly<{
@@ -63,5 +68,37 @@ export class CapabilityRuleMaterializationV1Service {
     const currentSubjectSet = await this.subjectSetReader.readCurrent()
     return this.#stageRepo.stagePrepared({ ...input,
       currentAuthoritativeSubjectSetRevision: currentSubjectSet.subjectSetRevision })
+  }
+
+  async activateCurrent(input: Readonly<{
+    ruleStoreId: string
+    defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1
+    expectedActiveSourceRevision: string | null
+    fetchedAtMs: number
+    lastAttemptedAtMs?: number
+  }>): Promise<CanonicalModelFactStagedSourcePromotionResultV1> {
+    const sourceScopeId = buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId })
+    const expectedMaterializationRevision = this.#stageRepo.readStage(sourceScopeId)
+      ?.materializationRevision ?? null
+    const prepared = await this.prepareCurrent(input)
+    if (prepared === null) {
+      const currentStage = this.#stageRepo.readStage(sourceScopeId)
+      if (!currentStage) {
+        throw new Error('GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_STALE_CURRENT')
+      }
+      return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId, canonicalSourceRevision: currentStage.canonicalSourceRevision,
+        expectedCurrentRevision: input.expectedActiveSourceRevision,
+        fetchedAtMs: input.fetchedAtMs,
+        ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
+      })
+    }
+    const staged = await this.stagePrepared({ prepared, expectedMaterializationRevision })
+    return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+      sourceScopeId, canonicalSourceRevision: staged.stage.canonicalSourceRevision,
+      expectedCurrentRevision: input.expectedActiveSourceRevision,
+      fetchedAtMs: input.fetchedAtMs,
+      ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
+    })
   }
 }

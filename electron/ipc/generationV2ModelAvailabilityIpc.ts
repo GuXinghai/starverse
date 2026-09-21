@@ -209,6 +209,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
   credentialService: Epoch2RuntimeCredentialService
   db: BetterSqlite3.Database
   fetchImpl?: ProviderFetch
+  onCommittedSubjectMutation?: () => Promise<void>
 }>): readonly string[] {
   const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
   const providerConfigs = createProviderConfigs(fetchImpl)
@@ -425,6 +426,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       })
     }
     const projected = snapshotResult(result.state, config)
+    if (result.ok && result.publication === 'active') await input.onCommittedSubjectMutation?.()
     return result.publication === 'pending'
       ? Object.freeze({ ...projected, status: 'pending' })
       : projected
@@ -452,7 +454,9 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const resolved = await resolveScope(config, request.category)
     if (!resolved.ok) return resolvedScopeFailure(resolved)
     try {
-      return Object.freeze({ ok: true, deletedScopes: repo.clearCurrentCredentialScopes(resolved.scope) })
+      const deletedScopes = repo.clearCurrentCredentialScopes(resolved.scope)
+      if (deletedScopes > 0) await input.onCommittedSubjectMutation?.()
+      return Object.freeze({ ok: true, deletedScopes })
     } catch (error) {
       return databaseFailureResult(config, 'catalog-clear-current', 'MODEL_CATALOG_CLEAR_CURRENT_FAILED', error, resolved.scope)
     }
@@ -464,7 +468,9 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const config = request.providerKey ? providerConfigs[request.providerKey] : null
     if (!config || request.category) return Object.freeze({ ok: false, code: 'invalid_payload' })
     try {
-      return Object.freeze({ ok: true, deletedScopes: repo.clearAllScopes(config.sourceProviderKey) })
+      const deletedScopes = repo.clearAllScopes(config.sourceProviderKey)
+      if (deletedScopes > 0) await input.onCommittedSubjectMutation?.()
+      return Object.freeze({ ok: true, deletedScopes })
     } catch (error) {
       return databaseFailureResult(config, 'catalog-clear-all', 'MODEL_CATALOG_CLEAR_ALL_FAILED', error)
     }
@@ -480,10 +486,12 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const resolved = await resolveScope(config, request.category)
     if (!resolved.ok) return resolvedScopeFailure(resolved)
     try {
-      return snapshotResult(coordinator.applyPending({
+      const state = coordinator.applyPending({
         scope: resolved.scope,
         expectedSnapshotDigest: request.snapshotDigest,
-      }), config)
+      })
+      await input.onCommittedSubjectMutation?.()
+      return snapshotResult(state, config)
     } catch (error) {
       return databaseFailureResult(config, `catalog-apply:${request.snapshotDigest}`,
         'MODEL_CATALOG_PENDING_APPLY_FAILED', error, resolved.scope)

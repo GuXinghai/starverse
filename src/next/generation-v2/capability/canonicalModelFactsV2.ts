@@ -32,7 +32,7 @@ export type CanonicalModelCapabilityEvidenceV2 = Readonly<{
   kind: ModelCapabilityEvidenceKindV2
   effect: ModelCapabilityEvidenceEffectV2
   sourceRef: string
-  verifiedAt: string
+  verifiedAt: string | null
   contentDigest: GenerationV2Digest<'evidence_digest'>
   entryDigest: GenerationV2Digest<'evidence_digest'>
 }>
@@ -293,8 +293,10 @@ function canonicalEvidence(input: readonly Readonly<Record<string, unknown>>[]):
     const kind = item.kind as ModelCapabilityEvidenceKindV2
     const effect = item.effect as ModelCapabilityEvidenceEffectV2
     if (!EVIDENCE_KINDS.includes(kind) || !EVIDENCE_EFFECTS.includes(effect)) invalid()
+    const verifiedAt = item.verifiedAt === null && kind === 'capability_rule'
+      ? null : timestamp(item.verifiedAt)
     const base = Object.freeze({ evidenceId: identifier(item.evidenceId), kind, effect,
-      sourceRef: canonicalSourceRef(kind, item.sourceRef), verifiedAt: timestamp(item.verifiedAt),
+      sourceRef: canonicalSourceRef(kind, item.sourceRef), verifiedAt,
       contentDigest: digest(item.contentDigest) })
     return Object.freeze({ ...base,
       contentDigest: GenerationV2Digest.create('evidence_digest', base.contentDigest),
@@ -393,7 +395,7 @@ export function canonicalizeModelFactsV2(value: unknown): CanonicalModelFactsV2 
   }
 }
 
-export function projectCanonicalModelFactsDraftV2(facts: CanonicalModelFactsV2): Readonly<Record<string, unknown>> {
+export function projectCanonicalModelFactsDraftV2(facts: CanonicalModelFactsV2): CanonicalModelFactsDraftV2 {
   return Object.freeze({
     identity: facts.identity,
     evidence: Object.freeze(facts.evidence.map((item) => Object.freeze({
