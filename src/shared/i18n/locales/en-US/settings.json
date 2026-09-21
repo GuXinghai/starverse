@@ -136,7 +136,19 @@
       "noAuthoritativeSubjects": "No authoritative exact subjects match this search.",
       "selectSubject": "Select an authoritative exact subject to inspect its source facts.",
       "subjectFactPresent": "Subject fact available",
-      "sourceAbsent": "No source fact for this subject"
+      "sourceAbsent": "No source fact for this subject",
+      "loadMore": "Load more",
+      "fields": "fields",
+      "valuesDiffer": "Values differ",
+      "noFields": "No canonical fields were published for this subject.",
+      "selectField": "Select a field to inspect its evidence.",
+      "viewRawPayload": "View full sanitized payload",
+      "rawUnavailable": "No persisted raw payload reference is available for this field.",
+      "inspector": {
+        "overview": "Overview",
+        "fields": "Fields",
+        "evidence": "Evidence"
+      }
     },
     "language": {
       "title": "Language",

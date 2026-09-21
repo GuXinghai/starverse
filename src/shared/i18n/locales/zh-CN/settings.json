@@ -136,7 +136,19 @@
       "noAuthoritativeSubjects": "没有与搜索匹配的权威精确模型主体。",
       "selectSubject": "选择一个权威精确模型主体以检查其来源事实。",
       "subjectFactPresent": "存在主体事实",
-      "sourceAbsent": "该主体没有来源事实"
+      "sourceAbsent": "该主体没有来源事实",
+      "loadMore": "加载更多",
+      "fields": "字段",
+      "valuesDiffer": "值不同",
+      "noFields": "该主体没有已发布的 canonical 字段。",
+      "selectField": "选择字段以查看其证据。",
+      "viewRawPayload": "查看完整脱敏 payload",
+      "rawUnavailable": "该字段没有可用的已持久化 raw payload 引用。",
+      "inspector": {
+        "overview": "概览",
+        "fields": "字段",
+        "evidence": "证据"
+      }
     },
     "language": {
       "title": "界面语言",
