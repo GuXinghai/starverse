@@ -1119,6 +1119,20 @@ interface Window {
       reorderFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
       listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
     }>
+    capabilityRules: Readonly<{
+      user: Readonly<{
+        readCommitted: () => Promise<unknown>
+        readDraft: () => Promise<unknown>
+        openDraft: () => Promise<unknown>
+        replaceDraft: (payload: unknown) => Promise<unknown>
+        addRule: (payload: unknown) => Promise<unknown>
+        rewritePack: (payload: unknown) => Promise<unknown>
+        importPack: (payload: unknown) => Promise<unknown>
+        exportCommittedPack: (payload: unknown) => Promise<unknown>
+        saveDraft: (payload: unknown) => Promise<unknown>
+        cancelDraft: (payload: unknown) => Promise<unknown>
+      }>
+    }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
       create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;

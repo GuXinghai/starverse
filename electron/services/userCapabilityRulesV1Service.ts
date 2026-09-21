@@ -94,6 +94,18 @@ export class UserCapabilityRulesV1Service {
     return this.#draftRepo.openOrCreate(input)
   }
 
+  readDraft(): UserCapabilityRuleDraftV1 | null {
+    return this.#draftRepo.readDraft()
+  }
+
+  readCommitted(): Readonly<{
+    snapshot: ReturnType<CapabilityRuleCoreV1Repo['readOwnershipSnapshot']>
+    notes: ReturnType<UserCapabilityRuleDraftV1Repo['readCommittedNotes']>
+  }> {
+    return Object.freeze({ snapshot: this.#coreRepo.readOwnershipSnapshot({ ownership: 'user',
+      ownerId: USER_RULES_LOCAL_OWNER_ID_V1 }), notes: this.#draftRepo.readCommittedNotes() })
+  }
+
   replaceDraft(input: Readonly<{
     sessionId: string
     expectedDraftRevision: number
