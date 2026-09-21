@@ -149,6 +149,17 @@ Slice 3 completed on 2026-09-21 with focused acceptance evidence:
 - the canonical Rule source revision binds the Rule definition/policy inputs and authoritative subject-set membership revision; proof-only subject metadata changes do not cause materialization churn;
 - heavy validation/canonicalization happens before the SQLite write boundary, while staging rechecks the expected stage revision, current Rule snapshot revisions, and a freshly read authoritative subject-set revision;
 - complete subject facts, raw provenance, and their source revision are persisted behind a dedicated dormant stage pointer and protected from retention pruning;
-- staging never updates `canonical_model_fact_source_state_v1`, so the Goal 2C bundled/query-bound source remains the only active Rules authority.
+- before Slice 3.5, staging did not update `canonical_model_fact_source_state_v1`, so it could not create a parallel active Rules authority.
 
-Slices 1–3 therefore remain intentionally dormant from runtime, IPC, and renderer consumers. Slice 3.5 is the next implementation slice and must atomically cut runtime to the staged exact canonical Rule claims while deleting the bundled/query-bound/request-time authority paths; it must not add a fallback or enter Goal 3.
+Slice 3.5 completed on 2026-09-21 with focused acceptance evidence:
+
+- the active Capability Rules source is now a complete, exact-subject materialized source; runtime repositories read only its frozen subject facts and never evaluate selectors or regex;
+- runtime provider authorities and send coordinators consume the same materialized Rules-only projection, while the temporary projection remains explicitly outside the three-source Goal 3 resolver;
+- the legacy bundled dataset, installer/repository, query-bound source mode, request-time adapter, selector matching path, schema tables, and tests were deleted rather than retained as fallback;
+- the fresh database seeds one empty complete Rules source only on first creation; reopen is idempotent, and process startup schedules rematerialization from the real authoritative exact-subject set;
+- committed catalog, credential, compatible-provider/manual-model, and local-profile identity mutations await one serialized/coalesced rematerialization before acknowledging usable success; terminal or exhausted-stale publication failures are logged and returned to the mutation caller, while startup recovery remains an explicit fire-and-forget schedule;
+- preparation remains outside SQLite write transactions and staged promotion uses expected-revision checks; a durable staged revision is recoverable after interruption before promotion;
+- Rule evidence can use `verifiedAt=null` only for `capability_rule`; mapped field evidence is effect-compatible with the resulting state, and invalid overlays—including empty numeric domains and out-of-domain explicit defaults—fail closed instead of silently returning provider base fields;
+- a static authority gate prevents the removed repository, installer, bundled packs, request-time adapter, and selector matcher from returning to production code.
+
+Slices 1–3.5 are therefore complete. Slice 4 is next. Cloud candidate acquisition, Cloud Apply/LKG/rollback/pin, User drafts, UI, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
