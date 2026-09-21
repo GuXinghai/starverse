@@ -88,6 +88,8 @@
       "draftDirty": "未保存的更改会保留在用户规则草稿中，直到保存或取消。",
       "draftSession": "草稿 revision",
       "addRule": "添加 Rule",
+      "importPack": "导入 Pack",
+      "exportPack": "导出 Pack",
       "ruleId": "Rule identity",
       "packId": "Pack identity（可选）",
       "packName": "新 Pack 名称（可选）",
