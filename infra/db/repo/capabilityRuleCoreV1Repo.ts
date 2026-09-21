@@ -294,6 +294,22 @@ export class CapabilityRuleCoreV1Repo {
     return Object.freeze({ projected, createdAtMs: snapshot.createdAtMs, updatedAtMs: snapshot.updatedAtMs })
   }
 
+  listOwnershipSnapshots(): readonly CapabilityRuleOwnershipSnapshotFactV1[] {
+    const rows = this.db.prepare(`SELECT ownership, owner_id
+      FROM capability_rule_owner_snapshot_v1 ORDER BY ownership, owner_id`).all() as Array<{
+        ownership: unknown
+        owner_id: unknown
+      }>
+    return Object.freeze(rows.map((row) => {
+      if ((row.ownership !== 'cloud' && row.ownership !== 'user') || typeof row.owner_id !== 'string') {
+        return repositoryInvalid()
+      }
+      const snapshot = this.readOwnershipSnapshot({ ownership: row.ownership, ownerId: row.owner_id })
+      if (!snapshot) return repositoryInvalid()
+      return snapshot
+    }))
+  }
+
   replaceOwnershipSnapshot(input: Readonly<{
     expectedSnapshotRevision: string | null
     snapshot: unknown

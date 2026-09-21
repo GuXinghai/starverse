@@ -165,6 +165,35 @@ CREATE TABLE IF NOT EXISTS canonical_model_fact_subject_fact_source_ref_v1 (
   PRIMARY KEY (canonical_subject_fact_revision, canonical_source_revision)
 );
 
+-- Dormant Slice 3 output. This pointer tracks the latest fully materialized exact-subject
+-- Capability Rules source without making it the active source authority. Slice 3.5 performs
+-- the one-time authority cutover and removes the old query-bound path.
+CREATE TABLE IF NOT EXISTS capability_rule_materialization_stage_v1 (
+  source_scope_id TEXT PRIMARY KEY CHECK (length(source_scope_id) BETWEEN 1 AND 1024),
+  materialization_revision TEXT NOT NULL UNIQUE CHECK (
+    length(materialization_revision) BETWEEN 65 AND 256
+    AND materialization_revision GLOB 'capability-rule-materialization-v1:*'
+  ),
+  canonical_source_revision TEXT NOT NULL UNIQUE,
+  rule_definition_revision TEXT NOT NULL CHECK (
+    length(rule_definition_revision) BETWEEN 65 AND 256
+    AND rule_definition_revision GLOB 'capability-rule-definition-set-v1:*'
+  ),
+  authoritative_subject_set_revision TEXT NOT NULL CHECK (
+    length(authoritative_subject_set_revision) BETWEEN 65 AND 256
+    AND authoritative_subject_set_revision GLOB 'authoritative-model-subject-set-v1:*'
+  ),
+  owner_snapshot_revisions_json TEXT NOT NULL CHECK (
+    length(CAST(owner_snapshot_revisions_json AS BLOB)) BETWEEN 2 AND 1048576
+    AND json_valid(owner_snapshot_revisions_json)
+    AND json_type(owner_snapshot_revisions_json) = 'array'
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  FOREIGN KEY (canonical_source_revision)
+    REFERENCES canonical_model_fact_source_revision_v1(canonical_source_revision) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS canonical_model_fact_retention_pin_v1 (
   pin_id TEXT PRIMARY KEY CHECK (length(pin_id) BETWEEN 1 AND 256),
   owner_kind TEXT NOT NULL CHECK (length(owner_kind) BETWEEN 1 AND 128),

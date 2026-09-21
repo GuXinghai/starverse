@@ -90,6 +90,11 @@ export type CanonicalModelFactSourcePublicationResultV1 = Readonly<{
   subjectFacts: readonly CanonicalModelFactSubjectPublicationV1[]
 }>
 
+export type CanonicalModelFactStagedSourceResultV1 = Readonly<{
+  source: CanonicalModelFactStoredSourceRevisionV1
+  subjectFacts: readonly CanonicalModelFactSubjectPublicationV1[]
+}>
+
 export type CanonicalModelFactRetentionPinTargetV1 =
   | Readonly<{ kind: 'raw_payload'; storeId: string }>
   | Readonly<{ kind: 'source_revision'; canonicalSourceRevision: string }>
@@ -370,6 +375,37 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
     return this.runImmediate(run)
   }
 
+  stageCompleteSourceRevision(input: Readonly<{
+    rawPayloads: readonly SanitizedRawPayloadV1[]
+    rawSnapshot: RawSourceSnapshotRefV1
+    sourceRevision: CanonicalSourceRevisionRefV1
+    subjectFacts: readonly CanonicalModelFactSubjectPublicationV1[]
+  }>): CanonicalModelFactStagedSourceResultV1 {
+    const rawPayloads = input.rawPayloads.map(canonicalRawPayload)
+    const rawSnapshot = this.validateRawSnapshot(input.rawSnapshot)
+    const sourceRevision = decodeCanonicalSourceRevisionRefV1(input.sourceRevision)
+    if (sourceRevision.sourceKind !== 'capability_rule' || rawSnapshot.sourceKind !== 'capability_rule' ||
+        sourceRevision.sourceScopeId !== rawSnapshot.sourceScopeId ||
+        sourceRevision.rawSourceSnapshotRevision !== rawSnapshot.rawSourceSnapshotRevision) return invalid()
+    const suppliedByRef = new Map(rawPayloads.map((payload) => [rawRefKey(payload.ref), payload]))
+    if (suppliedByRef.size !== rawPayloads.length || suppliedByRef.size !== rawSnapshot.rawEnvelopeRefs.length ||
+        rawSnapshot.rawEnvelopeRefs.some((ref) => !suppliedByRef.has(rawRefKey(ref)))) return invalid()
+    const subjectFacts = [...input.subjectFacts]
+    const subjectIndexDigest = canonicalSourceFactDigestV1(subjectFacts
+      .map((fact) => fact.ref.canonicalSubjectFactRevision).sort())
+    return this.runImmediate(() => {
+      const now = inputTime(this.nowMs())
+      for (const payload of rawPayloads) this.insertRawPayload(payload, now)
+      this.insertRawSnapshot(rawSnapshot, suppliedByRef, now)
+      this.insertSourceRevision(sourceRevision, 'complete', subjectFacts.length, subjectIndexDigest, now)
+      const persistedFacts = subjectFacts.map((fact) => this.insertSubjectFact(fact, sourceRevision, now))
+      this.assertCompleteSubjectIndex(sourceRevision.canonicalSourceRevision,
+        subjectFacts.length, subjectIndexDigest)
+      return Object.freeze({ source: this.readSourceRevision(sourceRevision.canonicalSourceRevision)!,
+        subjectFacts: Object.freeze(persistedFacts) })
+    })
+  }
+
   refreshCurrentSourceRevision(input: Readonly<{
     canonicalSourceRevision: string
     fetchedAtMs: number
@@ -571,6 +607,8 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
         WHERE fact.created_at_ms < ?
           AND NOT EXISTS (SELECT 1 FROM canonical_model_fact_source_state_v1 state
             WHERE state.canonical_source_revision=fact.canonical_source_revision)
+          AND NOT EXISTS (SELECT 1 FROM capability_rule_materialization_stage_v1 stage
+            WHERE stage.canonical_source_revision=fact.canonical_source_revision)
           AND NOT EXISTS (SELECT 1 FROM canonical_model_fact_retention_pin_v1 pin
             WHERE pin.canonical_subject_fact_revision=fact.canonical_subject_fact_revision)
           AND NOT EXISTS (
@@ -583,6 +621,8 @@ export class CanonicalModelFactSourceV1Repo implements RawPayloadReaderV1 {
         WHERE revision.created_at_ms < ?
           AND NOT EXISTS (SELECT 1 FROM canonical_model_fact_source_state_v1 state
             WHERE state.canonical_source_revision=revision.canonical_source_revision)
+          AND NOT EXISTS (SELECT 1 FROM capability_rule_materialization_stage_v1 stage
+            WHERE stage.canonical_source_revision=revision.canonical_source_revision)
           AND NOT EXISTS (SELECT 1 FROM canonical_model_fact_retention_pin_v1 pin
             WHERE pin.canonical_source_revision=revision.canonical_source_revision)
           AND NOT EXISTS (SELECT 1 FROM canonical_model_fact_subject_fact_v1 fact
