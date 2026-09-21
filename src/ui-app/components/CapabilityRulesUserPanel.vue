@@ -255,7 +255,7 @@ onMounted(() => { void load() })
         <input v-model="addForm.endpointProfileId" required class="rounded border border-gray-300 px-2 py-1 text-xs" :placeholder="t('settings.modelsCapabilities.endpointProfile')" />
         <input v-model="addForm.nativeModelId" required class="rounded border border-gray-300 px-2 py-1 text-xs" :placeholder="t('settings.modelsCapabilities.nativeModelId')" />
         <label class="flex items-center gap-2 text-xs text-gray-700"><span>{{ t('settings.modelsCapabilities.supportAssertion') }}</span><select v-model="addForm.support" class="rounded border border-gray-300 px-2 py-1"><option value="supported">{{ t('common.enabled') }}</option><option value="unsupported">{{ t('common.disabled') }}</option></select></label>
-        <button type="submit" class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700">{{ t('common.add') }}</button>
+        <button type="submit" class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700">{{ t('settings.modelsCapabilities.addRule') }}</button>
       </form>
     </div>
 
