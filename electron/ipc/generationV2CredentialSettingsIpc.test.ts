@@ -10,6 +10,7 @@ import type { IpcInvokeHandler } from './types'
 function registerWith(
   getStatus: Epoch2RuntimeCredentialService['getStatus'],
   updateCredential: Epoch2RuntimeCredentialService['updateCredential'] = vi.fn(),
+  onCommittedSubjectMutation: () => Promise<void> = vi.fn(async () => undefined),
 ) {
   const handlers = new Map<string, IpcInvokeHandler>()
   const credentialService = {
@@ -20,6 +21,7 @@ function registerWith(
   registerGenerationV2CredentialSettingsIpc({
     credentialService,
     registerInvoke: (channel, handler) => { handlers.set(channel, handler) },
+    onCommittedSubjectMutation,
   })
   return handlers
 }
@@ -119,5 +121,26 @@ describe('generationV2CredentialSettingsIpc', () => {
     expect(result.message).toContain('apiKey=[redacted]')
     expect(serialized).not.toContain('sk-test-secret')
     expect(serialized).not.toContain('C:\\Users\\alice')
+  })
+
+  it('notifies only after a committed first-party credential update or clear', async () => {
+    let configured = false
+    let revision = 0
+    const onCommittedSubjectMutation = vi.fn(async () => undefined)
+    const getStatus = vi.fn(async () => ({ providerKey: 'openrouter' as const, configured, revision,
+      availability: configured ? 'available' as const : 'unknown' as const, sessionOverridesPersistent: false }))
+    const updateCredential = vi.fn(async () => {
+      configured = true
+      revision += 1
+      return {} as never
+    })
+    const handlers = registerWith(getStatus, updateCredential, onCommittedSubjectMutation)
+
+    await handlers.get('generation-v2:credentials:openrouter:update')?.(undefined, { apiKey: 'sk-test' })
+    expect(updateCredential).toHaveBeenCalledTimes(1)
+    expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(1)
+
+    await handlers.get('generation-v2:credentials:openrouter:clear')?.(undefined)
+    expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(2)
   })
 })

@@ -2,13 +2,17 @@ import BetterSqlite3 from 'better-sqlite3'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
-import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
+import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import { openAICompatibleUnauthenticatedCredentialScopeV2 } from './openAIChatCompatibleGenerationV2Coordinator'
 import { createGenerationV2CapabilityResolutionService } from './generationV2CapabilityResolutionService'
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
+import { providerAuthorityForExecutionBindingV1 } from '../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
+import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 
@@ -75,6 +79,78 @@ function configuration() {
   })
 }
 
+function exactRule(input: Readonly<{
+  ruleId: string
+  providerAuthorityId: string
+  endpointProfileId: string
+  nativeModelId: string
+  path: CanonicalSemanticPathV1
+  value: CanonicalFactValueV1
+}>): CapabilityRuleCoreRuleV1 {
+  return {
+    ruleId: input.ruleId, label: null, description: null, priority: 0, configured: 'on',
+    providerAuthorityId: input.providerAuthorityId, endpointProfileId: input.endpointProfileId,
+    selector: { kind: 'exact', nativeModelIds: [input.nativeModelId] },
+    assertion: { path: input.path, value: input.value }, evidence: null,
+  }
+}
+
+function cloudSnapshot(rules: readonly CapabilityRuleCoreRuleV1[]): CapabilityRuleOwnershipSnapshotV1 {
+  return { schemaVersion: 1, ownership: 'cloud', ownerId: 'test:cloud', packs: [{
+    schemaVersion: 1, packId: 'pack.test.capability-resolution', displayName: 'Capability resolution test',
+    description: null, priority: 0, mode: 'no_control', target: 'enabled', rules,
+  }] }
+}
+
+function catalogSubjects(providerKey: ProviderCatalogKnownProviderKey, modelIds: readonly string[]) {
+  const registry = ProviderCatalogAuthorityRegistryV2.get(providerKey)!
+  const authority = providerAuthorityForExecutionBindingV1({
+    implementationProviderId: registry.executionProviderId,
+    endpointProfileKind: registry.endpointProfileId,
+  })
+  return modelIds.map((nativeModelId) => ({
+    subject: { providerAuthorityId: authority.providerAuthorityId,
+      endpointProfileId: registry.endpointProfileId, nativeModelId },
+    proof: { kind: 'provider_native_catalog' as const, providerKey, scopeId: `scope:test:${providerKey}`,
+      credentialScopeId: cloudScope, credentialRevision: 1, endpointProfileId: registry.endpointProfileId,
+      operationContractId: registry.modelsContractId, catalogCategory: '', activeSnapshotDigest: 'c'.repeat(64) },
+  }))
+}
+
+function resolutionSnapshot(fixture: Readonly<{
+  providerKey: ProviderCatalogKnownProviderKey
+  known: string
+  expectedDomain: { kind: 'enum'; values: readonly string[] }
+  expectedDefault: string
+}>): CapabilityRuleOwnershipSnapshotV1 {
+  const registry = ProviderCatalogAuthorityRegistryV2.get(fixture.providerKey)!
+  const authority = providerAuthorityForExecutionBindingV1({
+    implementationProviderId: registry.executionProviderId,
+    endpointProfileKind: registry.endpointProfileId,
+  })
+  const rules = [exactRule({ ruleId: `${fixture.known}.reasoning.effort.values`,
+    providerAuthorityId: authority.providerAuthorityId, endpointProfileId: registry.endpointProfileId,
+    nativeModelId: fixture.known, path: 'reasoning.effort.nativeValues',
+    value: { kind: 'native_string_set', values: fixture.expectedDomain.values, completeness: 'complete' } }),
+  exactRule({ ruleId: `${fixture.known}.reasoning.effort.default`,
+    providerAuthorityId: authority.providerAuthorityId, endpointProfileId: registry.endpointProfileId,
+    nativeModelId: fixture.known, path: 'reasoning.effort.providerDefault',
+    value: { kind: 'native_string', value: fixture.expectedDefault } })]
+  if (fixture.providerKey === 'openai_responses') rules.push(exactRule({
+    ruleId: `${fixture.known}.reasoning.support`, providerAuthorityId: authority.providerAuthorityId,
+    endpointProfileId: registry.endpointProfileId, nativeModelId: fixture.known,
+    path: 'reasoning.support', value: { kind: 'support', value: 'supported' },
+  }))
+  return cloudSnapshot(rules)
+}
+
+function anthropicSnapshot(): CapabilityRuleOwnershipSnapshotV1 {
+  return cloudSnapshot([exactRule({ ruleId: 'claude-opus-4-6.reasoning.effort.values',
+    providerAuthorityId: 'anthropic', endpointProfileId: 'anthropic-developer-api-2023-06-01',
+    nativeModelId: 'claude-opus-4-6', path: 'reasoning.effort.nativeValues',
+    value: { kind: 'native_string_set', values: ['high', 'low', 'max', 'medium'], completeness: 'complete' } })])
+}
+
 describe('Generation V2 capability resolution scope', () => {
   let db: BetterSqlite3.Database
 
@@ -95,6 +171,22 @@ describe('Generation V2 capability resolution scope', () => {
       pricing: { prompt: null, completion: null, request: null, image: null }, fieldProvenance: {},
     })
     const endpoint = provider.endpointRevisions[0]!
+    const providerAuthorityId = `openai-compatible-provider-instance-v1:${provider.providerInstanceId}`
+    seedMaterializedCapabilityRulesForTestV1(db, {
+      ownershipSnapshots: [cloudSnapshot([exactRule({
+        ruleId: 'compatible.reasoning.effort.values', providerAuthorityId,
+        endpointProfileId: provider.providerInstanceId, nativeModelId: 'ocp_model_12345678',
+        path: 'reasoning.effort.nativeValues',
+        value: { kind: 'native_string_set', values: ['high', 'medium'], completeness: 'complete' },
+      })])],
+      subjectCandidates: [{
+        subject: { providerAuthorityId, endpointProfileId: provider.providerInstanceId,
+          nativeModelId: 'ocp_model_12345678' },
+        proof: { kind: 'compatible_model_binding', providerInstanceId: provider.providerInstanceId,
+          endpointRevisionId: endpoint.endpointRevisionId, endpointDigest: endpoint.endpointDigest,
+          source: 'manual' },
+      }],
+    })
     const service = createGenerationV2CapabilityResolutionService({
       db, credentialService: {} as never, openAICompatibleCredentialService: {} as never,
     })
@@ -120,8 +212,41 @@ describe('Generation V2 capability resolution scope', () => {
     })
     expect(result.resolvedCapability.modelFacts.capabilityRevision)
       .toBe(result.controlsProjection.capabilityRevision)
+    expect(result.resolvedCapability.modelFacts.fields.find((field) => field.path === 'reasoning.effort'))
+      .toMatchObject({ state: 'supported', domain: { kind: 'enum', values: ['high', 'medium'] } })
     expect(result.resolvedCapability.modelFacts).not.toHaveProperty('operation')
     expect(result.resolvedCapability.modelFacts).not.toHaveProperty('encodingCoverage')
+  })
+
+  it('applies exact local-profile Rules through the shared local authority binding', async () => {
+    const profile = new LocalEndpointProfileV2Repo(db, () => 100).create({
+      endpointProfileId: 'endpoint_profile_lmstudio', providerId: 'lmstudio',
+      protocolContractId: 'lmstudio-openresponses', baseUrl: 'http://127.0.0.1:1234/',
+      protocolConfig: { modelId: 'local-model' },
+    })
+    seedMaterializedCapabilityRulesForTestV1(db, {
+      ownershipSnapshots: [cloudSnapshot([exactRule({
+        ruleId: 'local.reasoning.effort.values', providerAuthorityId: 'lmstudio-local',
+        endpointProfileId: profile.endpointProfileId, nativeModelId: 'local-model',
+        path: 'reasoning.effort.nativeValues',
+        value: { kind: 'native_string_set', values: ['high', 'medium'], completeness: 'complete' },
+      })])],
+      subjectCandidates: [{
+        subject: { providerAuthorityId: 'lmstudio-local', endpointProfileId: profile.endpointProfileId,
+          nativeModelId: 'local-model' },
+        proof: { kind: 'local_profile_binding', endpointProfileId: profile.endpointProfileId,
+          providerId: 'lmstudio', protocolContractId: profile.protocolContractId,
+          profileRevision: profile.profileRevision },
+      }],
+    })
+    const service = createGenerationV2CapabilityResolutionService({ db, credentialService: {} as never,
+      openAICompatibleCredentialService: {} as never })
+    const result = await service.resolve({ providerId: 'lmstudio', credentialRevision: profile.revisionGeneration,
+      credentialScopeId: profile.credentialScopeId, endpointProfileId: profile.endpointProfileId,
+      protocolId: profile.protocolContractId, modelId: 'local-model', operation: 'text' })
+    expect(result.resolvedCapability.modelFacts.fields.find((field) => field.path === 'reasoning.effort'))
+      .toMatchObject({ state: 'supported', domain: { kind: 'enum', values: ['high', 'medium'] } })
+    expect(result.controlsProjection.capabilityRevision).toBe(result.resolvedCapability.modelFacts.capabilityRevision)
   })
 
   it.each([
@@ -134,10 +259,17 @@ describe('Generation V2 capability resolution scope', () => {
     { providerKey: 'openai_responses' as const, providerId: 'openai_responses', endpointProfileId: 'openai-api-v1',
       protocolId: 'openai-responses-v1', known: 'gpt-5.4', path: 'reasoning.effort',
       expectedDomain: { kind: 'enum', values: ['high', 'low', 'medium', 'none', 'xhigh'] }, expectedDefault: 'none' },
-  ])('applies exact $providerId rules through authority and leaves unknown models unresolved', async (fixture) => {
-    installBuiltInCapabilityRulesV2(db)
+    { providerKey: 'openrouter' as const, providerId: 'openrouter', endpointProfileId: 'openrouter-first-party-v1',
+      protocolId: 'openrouter-chat-completions-v1', known: 'openrouter/test-model', path: 'reasoning.effort',
+      expectedDomain: { kind: 'enum', values: ['high', 'medium'] }, expectedDefault: 'medium',
+      expectedUnresolvedState: 'unsupported' as const },
+  ] as const)('applies exact $providerId rules through authority and leaves unknown models unresolved', async (fixture) => {
     const unknown = `${fixture.known}-future`
     seedCloudCatalog(db, fixture.providerKey, [fixture.known, unknown])
+    seedMaterializedCapabilityRulesForTestV1(db, {
+      ownershipSnapshots: [resolutionSnapshot(fixture)],
+      subjectCandidates: catalogSubjects(fixture.providerKey, [fixture.known, unknown]),
+    })
     const service = createGenerationV2CapabilityResolutionService({ db, credentialService: cloudCredentialService(),
       openAICompatibleCredentialService: {} as never })
     const request = (modelId: string) => ({ providerId: fixture.providerId, credentialRevision: 1,
@@ -158,12 +290,15 @@ describe('Generation V2 capability resolution scope', () => {
 
     const unresolved = await service.resolve(request(unknown) as never)
     expect(unresolved.resolvedCapability.modelFacts.fields.find((field) => field.path === fixture.path)?.state)
-      .toBe('missing')
+      .toBe('expectedUnresolvedState' in fixture ? fixture.expectedUnresolvedState : 'missing')
   })
 
   it('resolves sparse Anthropic facts only for an archived exact native identity', async () => {
-    installBuiltInCapabilityRulesV2(db)
     seedCloudCatalog(db, 'anthropic_messages', ['claude-opus-4-6'])
+    seedMaterializedCapabilityRulesForTestV1(db, {
+      ownershipSnapshots: [anthropicSnapshot()],
+      subjectCandidates: catalogSubjects('anthropic_messages', ['claude-opus-4-6']),
+    })
     const service = createGenerationV2CapabilityResolutionService({ db, credentialService: cloudCredentialService(),
       openAICompatibleCredentialService: {} as never })
     const result = await service.resolve({ providerId: 'anthropic', credentialRevision: 1,

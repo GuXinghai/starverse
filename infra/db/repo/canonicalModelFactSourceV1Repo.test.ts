@@ -42,8 +42,7 @@ function sourceFixture(input: Readonly<{
   const raw = sanitizeRawSourcePayloadV1({ recordKey: subject.nativeModelId,
     payload: { marker: input.marker, thinking: true, apiKey: 'must-not-persist' } })
   const rawSnapshot = buildRawSourceSnapshotRefV1({ sourceKind, sourceScopeId: input.scope,
-    recordSetCompleteness: sourceKind === 'capability_rule' ? 'not_applicable' : 'complete',
-    rawEnvelopeRefs: [raw.ref] })
+    recordSetCompleteness: 'complete', rawEnvelopeRefs: [raw.ref] })
   const sourceRevision = buildCanonicalSourceRevisionRefV1({ sourceKind, sourceScopeId: input.scope,
     rawSourceSnapshotRevision: rawSnapshot.rawSourceSnapshotRevision,
     adapterRevision: `adapter:${input.marker}`, coverageManifestRevision: 'coverage:v1',
@@ -66,6 +65,31 @@ function presentFact(sourceRevision: CanonicalSourceRevisionRefV1, rawRef: Retur
 function emptyFact(sourceRevision: CanonicalSourceRevisionRefV1) {
   return buildCanonicalSubjectFactV1({ schemaVersion: 1, subject, sourceRevision,
     recordOutcome: 'no_matching_claims', outcomes: [], unmappedSourceFields: [] })
+}
+
+function stageForPromotion(db: Database.Database, repo: CanonicalModelFactSourceV1Repo,
+  fixture: ReturnType<typeof sourceFixture>) {
+  const staged = repo.stageCompleteSourceRevision({ ...fixture, rawPayloads: [fixture.raw],
+    subjectFacts: [emptyFact(fixture.sourceRevision)] })
+  db.prepare(`INSERT INTO capability_rule_materialization_stage_v1 (
+    source_scope_id, materialization_revision, canonical_source_revision,
+    rule_definition_revision, authoritative_subject_set_revision,
+    owner_snapshot_revisions_json, created_at_ms, updated_at_ms
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(source_scope_id) DO UPDATE SET
+    materialization_revision=excluded.materialization_revision,
+    canonical_source_revision=excluded.canonical_source_revision,
+    rule_definition_revision=excluded.rule_definition_revision,
+    authoritative_subject_set_revision=excluded.authoritative_subject_set_revision,
+    owner_snapshot_revisions_json=excluded.owner_snapshot_revisions_json,
+    updated_at_ms=excluded.updated_at_ms`).run(
+    fixture.sourceRevision.sourceScopeId,
+    'capability-rule-materialization-v1:' + 'a'.repeat(64),
+    fixture.sourceRevision.canonicalSourceRevision,
+    'capability-rule-definition-set-v1:' + 'b'.repeat(64),
+    'authoritative-model-subject-set-v1:' + 'c'.repeat(64), '[]', 1, 1,
+  )
+  return staged
 }
 
 describe('CanonicalModelFactSourceV1Repo', () => {
@@ -176,48 +200,104 @@ describe('CanonicalModelFactSourceV1Repo', () => {
     } finally { db.close() }
   })
 
-  it('supports query-bound materialization and preserves only live pins and predecessor/LKG provenance', () => {
+  it('promotes a staged complete capability-rule source on the first CAS', () => {
     const db = createDb()
-    let now = 10
     try {
+      let now = 100
       const repo = new CanonicalModelFactSourceV1Repo(db, () => now)
-      const first = sourceFixture({ scope: 'scope:retention', marker: 'first', sourceKind: 'capability_rule' })
-      repo.publishSourceRevision({ ...first, rawPayloads: [first.raw], subjectIndexMode: 'query_bound',
-        expectedCurrentRevision: null, fetchedAtMs: 5 })
-      const firstFact = repo.materializeSubjectFact(emptyFact(first.sourceRevision))
-      const pinId = repo.pinRetention({ ownerKind: 'runtime_snapshot', ownerId: 'request:1',
-        target: { kind: 'subject_fact', canonicalSubjectFactRevision: firstFact.ref.canonicalSubjectFactRevision } })
-      expect(pinId).toMatch(/^canonical-fact-pin-v1:[0-9a-f]{64}$/u)
+      const fixture = sourceFixture({ scope: 'scope:promotion', marker: 'first', sourceKind: 'capability_rule' })
+      stageForPromotion(db, repo, fixture)
 
-      now = 20
-      const second = sourceFixture({ scope: 'scope:retention', marker: 'second', sourceKind: 'capability_rule',
-        previous: first.sourceRevision.canonicalSourceRevision })
-      repo.publishSourceRevision({ ...second, rawPayloads: [second.raw], subjectIndexMode: 'query_bound',
-        expectedCurrentRevision: first.sourceRevision.canonicalSourceRevision, fetchedAtMs: 15 })
-      now = 30
-      const third = sourceFixture({ scope: 'scope:retention', marker: 'third', sourceKind: 'capability_rule',
-        previous: second.sourceRevision.canonicalSourceRevision })
-      repo.publishSourceRevision({ ...third, rawPayloads: [third.raw], subjectIndexMode: 'query_bound',
-        expectedCurrentRevision: second.sourceRevision.canonicalSourceRevision, fetchedAtMs: 25 })
+      const promoted = repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: fixture.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: fixture.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 80, lastAttemptedAtMs: 90 })
 
-      expect(repo.pruneRetainedData(100).deletedSubjectFactCount).toBe(0)
-      expect(repo.readSubjectFactByRevision(firstFact.ref.canonicalSubjectFactRevision)).toEqual(firstFact)
-      expect(repo.releaseRetentionPins('runtime_snapshot', 'request:1')).toBe(1)
-      expect(repo.pruneRetainedData(100)).toMatchObject({ deletedSubjectFactCount: 1,
-        deletedSourceRevisionCount: 0, deletedRawSnapshotCount: 0, deletedRawPayloadCount: 0 })
-      expect(repo.readSubjectFactByRevision(firstFact.ref.canonicalSubjectFactRevision)).toBeNull()
+      expect(promoted.source.subjectIndexMode).toBe('complete')
+      expect(promoted.state).toMatchObject({ sourceKind: 'capability_rule',
+        sourceScopeId: fixture.sourceRevision.sourceScopeId,
+        currentSourceRevision: fixture.sourceRevision.canonicalSourceRevision,
+        pointerRevision: 1, fetchedAtMs: 80, lastSucceededAtMs: 100,
+        lastAttemptedAtMs: 90, staleReason: null })
+    } finally { db.close() }
+  })
 
-      now = 40
-      const fourth = sourceFixture({ scope: 'scope:retention', marker: 'fourth', sourceKind: 'capability_rule' })
-      repo.publishSourceRevision({ ...fourth, rawPayloads: [fourth.raw], subjectIndexMode: 'query_bound',
-        expectedCurrentRevision: third.sourceRevision.canonicalSourceRevision, fetchedAtMs: 35 })
-      const pruned = repo.pruneRetainedData(100)
-      expect(pruned).toMatchObject({ deletedSubjectFactCount: 0, deletedSourceRevisionCount: 3,
-        deletedRawSnapshotCount: 3, deletedRawPayloadCount: 3 })
-      expect(repo.readSubjectFactByRevision(firstFact.ref.canonicalSubjectFactRevision)).toBeNull()
-      expect(repo.readSourceRevision(second.sourceRevision.canonicalSourceRevision)).toBeNull()
-      expect(repo.readSourceRevision(third.sourceRevision.canonicalSourceRevision)).toBeNull()
-      expect(repo.readSourceRevision(fourth.sourceRevision.canonicalSourceRevision)).not.toBeNull()
+  it('rejects a staged promotion when the expected current source revision is stale', () => {
+    const db = createDb()
+    try {
+      let now = 200
+      const repo = new CanonicalModelFactSourceV1Repo(db, () => now)
+      const first = sourceFixture({ scope: 'scope:promotion-stale', marker: 'first', sourceKind: 'capability_rule' })
+      stageForPromotion(db, repo, first)
+      repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: first.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: first.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 180 })
+
+      const second = sourceFixture({ scope: first.sourceRevision.sourceScopeId, marker: 'second',
+        sourceKind: 'capability_rule', previous: first.sourceRevision.canonicalSourceRevision })
+      stageForPromotion(db, repo, second)
+      expect(() => repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: second.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: second.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 190 })).toThrow(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_STALE_CURRENT')
+      expect(repo.readSourceState('capability_rule', first.sourceRevision.sourceScopeId))
+        .toMatchObject({ currentSourceRevision: first.sourceRevision.canonicalSourceRevision, pointerRevision: 1 })
+    } finally { db.close() }
+  })
+
+  it('rejects wrong scope, wrong source kind, and non-staged revisions', () => {
+    const db = createDb()
+    try {
+      const repo = new CanonicalModelFactSourceV1Repo(db, () => 300)
+      const staged = sourceFixture({ scope: 'scope:promotion-identity', marker: 'staged', sourceKind: 'capability_rule' })
+      stageForPromotion(db, repo, staged)
+      expect(() => repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: 'scope:wrong', canonicalSourceRevision: staged.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 290 })).toThrow(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_INPUT_INVALID')
+
+      const unstaged = sourceFixture({ scope: staged.sourceRevision.sourceScopeId, marker: 'unstaged', sourceKind: 'capability_rule',
+        previous: staged.sourceRevision.canonicalSourceRevision })
+      repo.stageCompleteSourceRevision({ ...unstaged, rawPayloads: [unstaged.raw], subjectFacts: [emptyFact(unstaged.sourceRevision)] })
+      expect(() => repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: unstaged.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: unstaged.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 290 })).toThrow(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_NOT_FOUND')
+
+      const wrongKind = sourceFixture({ scope: 'scope:promotion-wrong-kind', marker: 'wrong-kind' })
+      repo.publishSourceRevision({ ...wrongKind, rawPayloads: [wrongKind.raw], subjectIndexMode: 'complete',
+        subjectFacts: [emptyFact(wrongKind.sourceRevision)], expectedCurrentRevision: null, fetchedAtMs: 290 })
+      expect(() => repo.promoteStagedCompleteSourceRevision({ sourceKind: 'provider_native',
+        sourceScopeId: wrongKind.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: wrongKind.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 290 })).toThrow(
+          'GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_INPUT_INVALID')
+    } finally { db.close() }
+  })
+
+  it('keeps the pointer revision on same-revision promotion while refreshing freshness', () => {
+    const db = createDb()
+    try {
+      let now = 400
+      const repo = new CanonicalModelFactSourceV1Repo(db, () => now)
+      const fixture = sourceFixture({ scope: 'scope:promotion-idempotent', marker: 'same', sourceKind: 'capability_rule' })
+      stageForPromotion(db, repo, fixture)
+      const first = repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: fixture.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: fixture.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: null, fetchedAtMs: 380, lastAttemptedAtMs: 390 })
+
+      now = 450
+      const second = repo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+        sourceScopeId: fixture.sourceRevision.sourceScopeId,
+        canonicalSourceRevision: fixture.sourceRevision.canonicalSourceRevision,
+        expectedCurrentRevision: fixture.sourceRevision.canonicalSourceRevision,
+        fetchedAtMs: 430, lastAttemptedAtMs: 440 })
+      expect(second.state).toMatchObject({ pointerRevision: first.state.pointerRevision,
+        fetchedAtMs: 430, lastSucceededAtMs: 450, lastAttemptedAtMs: 440 })
     } finally { db.close() }
   })
 

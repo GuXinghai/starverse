@@ -151,6 +151,7 @@ describe('generationV2ModelAvailabilityIpc', () => {
 
   it('keeps a manual sync pending until the selected snapshot is explicitly applied', async () => {
     const handlers = new Map<string, Handler>()
+    const onCommittedSubjectMutation = vi.fn(async () => undefined)
     const db = database()
     const modelPayloads = [openRouterRawModel('openai/active', 'Active'), openRouterRawModel('openai/pending', 'Pending')]
     const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify({
@@ -162,6 +163,7 @@ describe('generationV2ModelAvailabilityIpc', () => {
         credentialService: credentialService() as never,
         db,
         fetchImpl: fetchImpl as never,
+        onCommittedSubjectMutation,
       })
       const sync = handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[0])!
       const apply = handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[4])!
@@ -169,8 +171,10 @@ describe('generationV2ModelAvailabilityIpc', () => {
 
       expect(await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000 }))
         .toMatchObject({ ok: true, status: 'synced', items: [{ modelId: 'openai/active' }] })
+      expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(1)
       const pending = await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000, applyMode: 'manual' }) as any
       expect(pending).toMatchObject({ ok: true, status: 'pending', modelCount: 1 })
+      expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(1)
       expect(await list({}, {})).toMatchObject({
         ok: true,
         items: [{ modelId: 'openai/active' }],
@@ -181,6 +185,7 @@ describe('generationV2ModelAvailabilityIpc', () => {
         providerKey: 'openrouter',
         snapshotDigest: pending.pendingSnapshotDigest,
       })).toMatchObject({ ok: true, status: 'synced', items: [{ modelId: 'openai/pending' }] })
+      expect(onCommittedSubjectMutation).toHaveBeenCalledTimes(2)
       expect(await list({}, {})).toMatchObject({
         ok: true,
         items: [{ modelId: 'openai/pending' }],

@@ -2,7 +2,6 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
-import { BUILTIN_CAPABILITY_RULE_PACKS_V2 } from '../../../src/next/generation-v2/capability-rules/builtinCapabilityRulePacksV2'
 import { buildModelsDevSourceScopeIdV1, buildProviderNativeSourceScopeIdV1 } from
   '../../../src/next/generation-v2/model-facts/sourceScopeV1'
 import { CanonicalModelFactSourceIngestionV1Service } from './canonicalModelFactSourceIngestionV1Service'
@@ -42,29 +41,6 @@ describe('Canonical Model Fact Source Ingestion V1 service', () => {
       expect(repeated.source.sourceRevision).toEqual(result.source.sourceRevision)
       expect(repeated.subjectFacts).toEqual(result.subjectFacts)
       expect(repeated.state).toMatchObject({ pointerRevision: 1, fetchedAtMs: 95 })
-    } finally { db.close() }
-  })
-
-  it('publishes a frozen query-bound Rule source and materializes every matched claim without a winner', () => {
-    const db = database()
-    try {
-      const service = new CanonicalModelFactSourceIngestionV1Service(db, () => 200)
-      service.ruleRepo.installBuiltInPacks(BUILTIN_CAPABILITY_RULE_PACKS_V2)
-      const publication = service.publishCapabilityRules({ ruleStoreId: 'epoch-2',
-        expectedCurrentRevision: null, fetchedAtMs: 190 })
-      expect(publication.source.subjectIndexMode).toBe('query_bound')
-      expect(publication.subjectFacts).toEqual([])
-      const fact = service.materializeCapabilityRuleSubject({
-        canonicalSourceRevision: publication.source.sourceRevision.canonicalSourceRevision,
-        subject: { providerAuthorityId: 'openai', endpointProfileId: 'openai-api-v1', nativeModelId: 'gpt-5' },
-      })
-      expect(fact.payload.outcomes.length).toBeGreaterThan(1)
-      expect(fact.payload.outcomes.every((outcome) => outcome.currentObservation.kind !== 'present_valid' ||
-        outcome.currentObservation.assertion.provenance.ruleClaim?.ruleId)).toBe(true)
-      expect(service.materializeCapabilityRuleSubject({
-        canonicalSourceRevision: publication.source.sourceRevision.canonicalSourceRevision,
-        subject: fact.payload.subject,
-      })).toEqual(fact)
     } finally { db.close() }
   })
 

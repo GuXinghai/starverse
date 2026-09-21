@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
+import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2, OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 } from './openAIChatCompatibleResponseBodyV2'
 
@@ -36,7 +37,7 @@ function configuration(input: Readonly<{ nativeReasoningReplay?: boolean; vendor
     inlinePolicy: { inlinePolicyId, version },
   } },
 } }
-function database(input: Readonly<{ nativeReasoningReplay?: boolean }> = {}) {
+function database(input: Readonly<{ nativeReasoningReplay?: boolean; withTemperatureRule?: boolean }> = {}) {
   const db = new BetterSqlite3(':memory:'); applyGenerationV2SchemaForTest(db, process.cwd())
   const graph = new ConversationGraphV2Repo(db)
   runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
@@ -46,12 +47,38 @@ function database(input: Readonly<{ nativeReasoningReplay?: boolean }> = {}) {
   new OpenAICompatibleV2Repo(db, () => 10).create({ providerInstanceId: 'ocp_provider_12345678', displayName: 'Compatible', endpointRevisionId: 'ocp_endpoint_12345678',
     baseUrl: 'https://example.test', securityPolicy: 'compatibility_first', auth: { mode: 'none' }, ordinaryHeaders: [{ name: 'X-Tenant', value: 'public', classification: 'public_non_secret' }],
     query: [{ name: 'tenant', value: 'alpha', classification: 'public_non_secret' }], configuration: configuration(input) })
+  seedMaterializedCapabilityRulesForTestV1(db, { ownershipSnapshots: input.withTemperatureRule ? [{
+    schemaVersion: 1, ownership: 'user', ownerId: 'user:default', packs: [{ schemaVersion: 1,
+      packId: 'pack.compatible', displayName: 'Compatible', description: null, priority: 0,
+      mode: 'no_control', target: 'enabled', rules: [{ ruleId: 'rule.temperature-max', label: null,
+        description: null, priority: 0, configured: 'on',
+        providerAuthorityId: 'openai-compatible-provider-instance-v1:ocp_provider_12345678',
+        endpointProfileId: 'ocp_provider_12345678', selector: { kind: 'exact', nativeModelIds: ['model-x'] },
+        assertion: { path: 'sampling.temperature.modelMaximum', value: { kind: 'decimal', value: 1 } }, evidence: null }] }],
+  }] : [], subjectCandidates: [{
+    subject: { providerAuthorityId: 'openai-compatible-provider-instance-v1:ocp_provider_12345678',
+      endpointProfileId: 'ocp_provider_12345678', nativeModelId: 'model-x' },
+    proof: { kind: 'compatible_model_binding', providerInstanceId: 'ocp_provider_12345678',
+      endpointRevisionId: 'ocp_endpoint_12345678', endpointDigest: 'a'.repeat(64), source: 'manual' },
+  }] })
   return db
 }
 
 describe('OpenAI-compatible V2 coordinator', () => {
   const databases: BetterSqlite3.Database[] = []
   afterEach(() => { while (databases.length) databases.pop()!.close() })
+
+  it('applies the exact materialized rule claim before creating the runtime snapshot', async () => {
+    const db = database({ withTemperatureRule: true }); databases.push(db)
+    const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, nowMs: () => 100,
+      credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never })
+    const result = await coordinator.submitInitial({ operationId: 'operation:materialized-rule', branchId: 'branch:1',
+      expectedHeadMessageId: null, providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x',
+      userBody: 'hello', commandAttachments: [] })
+    const temperature = result.execution.capability.fields.find((field) => field.path === 'generation.temperature')
+    expect(temperature).toMatchObject({ state: 'supported', domain: { kind: 'range', max: 1 } })
+    expect(result.execution.capability.evidence.some((entry) => entry.kind === 'capability_rule')).toBe(true)
+  })
 
   it('commits and immediately selects an exact prepared initial request without legacy runtime state', async () => {
     const db = database(); databases.push(db); let id = 0
