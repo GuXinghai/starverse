@@ -95,25 +95,29 @@ export class UserCapabilityRulesV1Service {
   }
 
   replaceDraft(input: Readonly<{
+    sessionId: string
     expectedDraftRevision: number
     snapshot: unknown
     notes: readonly UserCapabilityRuleNoteV1[]
   }>): UserCapabilityRuleDraftV1 {
+    this.#requiredDraft(input)
     return this.#draftRepo.replaceDraft(input)
   }
 
-  cancelDraft(input: Readonly<{ expectedDraftRevision: number }>): void {
+  cancelDraft(input: Readonly<{ sessionId: string; expectedDraftRevision: number }>): void {
+    this.#requiredDraft(input)
     this.#draftRepo.discard(input)
   }
 
   addRule(input: Readonly<{
+    sessionId: string
     expectedDraftRevision: number
     targetPackId: string | null
     firstPack: Readonly<{ packId: string; displayName: string }>
     rule: CapabilityRuleCoreRuleV1
     note?: string | null
   }>): UserCapabilityRuleDraftV1 {
-    const draft = this.#requiredDraft(input.expectedDraftRevision)
+    const draft = this.#requiredDraft(input)
     if (draft.projected.definition.packs.some((pack) => pack.rules.some((rule) =>
       rule.ruleId === input.rule.ruleId))) {
       throw new UserCapabilityRulesV1ServiceError('GENERATION_V2_USER_CAPABILITY_RULES_IDENTITY_COLLISION')
@@ -144,10 +148,11 @@ export class UserCapabilityRulesV1Service {
   }
 
   rewritePack(input: Readonly<{
+    sessionId: string
     expectedDraftRevision: number
     packId: string
   }>): UserCapabilityRuleDraftV1 {
-    const draft = this.#requiredDraft(input.expectedDraftRevision)
+    const draft = this.#requiredDraft(input)
     const pack = packById(draft, input.packId)
     const plan = planCapabilityRuleRewriteV1({ mode: pack.mode, target: pack.target, rules: pack.rules })
     assertCapabilityRuleRewriteAvailableV1(plan)
@@ -160,10 +165,11 @@ export class UserCapabilityRulesV1Service {
   }
 
   importPack(input: Readonly<{
+    sessionId: string
     expectedDraftRevision: number
     transfer: unknown
   }>): UserCapabilityRuleDraftV1 {
-    const draft = this.#requiredDraft(input.expectedDraftRevision)
+    const draft = this.#requiredDraft(input)
     const transfer = decodeUserRulePackTransferV1(input.transfer)
     const existingPack = draft.projected.definition.packs.find((pack) => pack.packId === transfer.pack.packId)
     const outsideRuleIds = new Set(draft.projected.definition.packs
@@ -200,7 +206,7 @@ export class UserCapabilityRulesV1Service {
     sessionId: string
     expectedDraftRevision: number
   }>): Promise<Readonly<{ snapshotRevision: string; canonicalSourceRevision: string }>> {
-    const draft = this.#requiredDraft(input.expectedDraftRevision)
+    const draft = this.#requiredDraft(input)
     if (draft.sessionId !== input.sessionId) this.#stale()
     if (this.#cloudApplicationRepo.readState().appliedIntegrity === 'invalid') {
       throw new UserCapabilityRulesV1ServiceError(
@@ -262,9 +268,13 @@ export class UserCapabilityRulesV1Service {
     }).immediate()
   }
 
-  #requiredDraft(expectedDraftRevision: number): UserCapabilityRuleDraftV1 {
+  #requiredDraft(input: Readonly<{
+    sessionId: string
+    expectedDraftRevision: number
+  }>): UserCapabilityRuleDraftV1 {
     const draft = this.#draftRepo.readDraft()
-    if (!draft || draft.draftRevision !== expectedDraftRevision) this.#stale()
+    if (!draft || draft.sessionId !== input.sessionId ||
+        draft.draftRevision !== input.expectedDraftRevision) this.#stale()
     return draft
   }
 
