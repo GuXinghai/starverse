@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS openai_compatible_endpoint_revision_v2 (
   response_profile_version INTEGER NOT NULL CHECK (response_profile_version >= 1),
   endpoint_digest TEXT NOT NULL CHECK (length(endpoint_digest) = 64 AND endpoint_digest NOT GLOB '*[^0-9a-f]*'),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  UNIQUE (provider_instance_id, endpoint_revision_id),
   UNIQUE (provider_instance_id, revision),
   UNIQUE (provider_instance_id, endpoint_digest)
 );
@@ -70,10 +71,44 @@ CREATE TABLE IF NOT EXISTS openai_compatible_model_v2 (
   model_id TEXT NOT NULL CHECK (length(model_id) BETWEEN 1 AND 512),
   source TEXT NOT NULL CHECK (source IN ('remote_sync', 'manual')),
   state TEXT NOT NULL CHECK (state IN ('active', 'stale')),
+  acquisition_endpoint_revision_id TEXT REFERENCES openai_compatible_endpoint_revision_v2(endpoint_revision_id),
+  acquisition_endpoint_digest TEXT CHECK (
+    acquisition_endpoint_digest IS NULL OR (
+      length(acquisition_endpoint_digest) = 64
+      AND acquisition_endpoint_digest NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  acquisition_credential_scope_id TEXT,
+  acquisition_credential_revision INTEGER CHECK (
+    acquisition_credential_revision IS NULL OR acquisition_credential_revision BETWEEN 0 AND 9007199254740991
+  ),
+  acquisition_snapshot_digest TEXT CHECK (
+    acquisition_snapshot_digest IS NULL OR (
+      length(acquisition_snapshot_digest) = 64
+      AND acquisition_snapshot_digest NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
   metadata_json TEXT NOT NULL CHECK (length(metadata_json) BETWEEN 2 AND 131072),
   metadata_digest TEXT NOT NULL CHECK (length(metadata_digest) = 64 AND metadata_digest NOT GLOB '*[^0-9a-f]*'),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
-  PRIMARY KEY (provider_instance_id, model_id, source)
+  PRIMARY KEY (provider_instance_id, model_id, source),
+  FOREIGN KEY (provider_instance_id, acquisition_endpoint_revision_id)
+    REFERENCES openai_compatible_endpoint_revision_v2(provider_instance_id, endpoint_revision_id),
+  CHECK (
+    (source = 'remote_sync'
+      AND acquisition_endpoint_revision_id IS NOT NULL
+      AND acquisition_endpoint_digest IS NOT NULL
+      AND acquisition_credential_scope_id IS NOT NULL
+      AND acquisition_credential_revision IS NOT NULL
+      AND acquisition_snapshot_digest IS NOT NULL)
+    OR
+    (source = 'manual'
+      AND acquisition_endpoint_revision_id IS NULL
+      AND acquisition_endpoint_digest IS NULL
+      AND acquisition_credential_scope_id IS NULL
+      AND acquisition_credential_revision IS NULL
+      AND acquisition_snapshot_digest IS NULL)
+  )
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS openai_compatible_discovery_v2 (

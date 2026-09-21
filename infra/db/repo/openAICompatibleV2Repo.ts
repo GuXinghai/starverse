@@ -67,6 +67,18 @@ export type OpenAICompatibleActiveConfigurationV2 = Readonly<{
   responseProfile: OpenAICompatibleConfigRevisionV2
 }>
 
+export type OpenAICompatibleAuthoritativeModelBindingV2 = Readonly<{
+  modelId: string
+  manual: boolean
+  remoteAcquisition?: Readonly<{
+    endpointRevisionId: string
+    endpointDigest: string
+    credentialScopeId: string
+    credentialRevision: number
+    snapshotDigest: string
+  }>
+}>
+
 export type OpenAICompatibleDiscoveryV2 = Readonly<{
   providerInstanceId: string
   responseProfileId: string
@@ -204,6 +216,18 @@ function modelRecord(row: Row): CompatibleModelRecord {
   if (typeof row.provider_instance_id !== 'string' || typeof row.model_id !== 'string' ||
       (row.source !== 'remote_sync' && row.source !== 'manual') || (row.state !== 'active' && row.state !== 'stale') ||
       typeof row.metadata_digest !== 'string' || row.metadata_digest !== digest(metadata)) {
+    throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+  }
+  const remoteAcquisitionValid = row.source === 'remote_sync' &&
+    typeof row.acquisition_endpoint_revision_id === 'string' &&
+    typeof row.acquisition_endpoint_digest === 'string' && /^[0-9a-f]{64}$/u.test(row.acquisition_endpoint_digest) &&
+    typeof row.acquisition_credential_scope_id === 'string' &&
+    Number.isSafeInteger(row.acquisition_credential_revision) && (row.acquisition_credential_revision as number) >= 0 &&
+    typeof row.acquisition_snapshot_digest === 'string' && /^[0-9a-f]{64}$/u.test(row.acquisition_snapshot_digest)
+  const manualAcquisitionEmpty = row.source === 'manual' && row.acquisition_endpoint_revision_id === null &&
+    row.acquisition_endpoint_digest === null && row.acquisition_credential_scope_id === null &&
+    row.acquisition_credential_revision === null && row.acquisition_snapshot_digest === null
+  if (!remoteAcquisitionValid && !manualAcquisitionEmpty) {
     throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
   }
   const updatedAtMs = timestamp(row.updated_at_ms)
@@ -355,28 +379,98 @@ export class OpenAICompatibleV2Repo {
     const provider = this.get(providerInstanceId)
     const rows = this.db.prepare(`SELECT * FROM openai_compatible_model_v2 WHERE provider_instance_id=?
       ${includeStale ? '' : "AND state='active'"} ORDER BY model_id, source`).all(provider.providerInstanceId) as Row[]
+    const latest = provider.endpointRevisions[0]
+    if (rows.some((row) => row.source === 'remote_sync' && row.state === 'active' &&
+        (!latest || row.acquisition_endpoint_revision_id !== latest.endpointRevisionId ||
+          row.acquisition_endpoint_digest !== latest.endpointDigest))) {
+      throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+    }
     return mergeCompatibleModelRecords(rows.map(modelRecord))
   }
 
-  replaceRemoteModels(providerInstanceId: string, models: readonly Readonly<{ modelId: string; metadata: unknown }>[]): readonly CompatibleMergedModel[] {
-    const provider = this.get(providerInstanceId); const at = this.nowMs()
-    if (provider.status !== 'active' || !Array.isArray(models) || models.length > 10_000) {
+  listAuthoritativeModelBindings(providerInstanceId: string): readonly OpenAICompatibleAuthoritativeModelBindingV2[] {
+    const provider = this.get(providerInstanceId)
+    const latest = provider.endpointRevisions[0]
+    if (!latest) throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+    const rows = this.db.prepare(`SELECT * FROM openai_compatible_model_v2 WHERE provider_instance_id=? AND state='active'
+      ORDER BY model_id, source`).all(provider.providerInstanceId) as Row[]
+    const byModel = new Map<string, { manual: boolean; remoteAcquisition?: OpenAICompatibleAuthoritativeModelBindingV2['remoteAcquisition'] }>()
+    for (const row of rows) {
+      const record = modelRecord(row)
+      const current = byModel.get(record.modelId) ?? { manual: false }
+      if (record.source === 'manual') current.manual = true
+      else {
+        if (row.acquisition_endpoint_revision_id !== latest.endpointRevisionId ||
+            row.acquisition_endpoint_digest !== latest.endpointDigest) {
+          throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+        }
+        current.remoteAcquisition = Object.freeze({
+          endpointRevisionId: id(row.acquisition_endpoint_revision_id),
+          endpointDigest: id(row.acquisition_endpoint_digest),
+          credentialScopeId: id(row.acquisition_credential_scope_id),
+          credentialRevision: row.acquisition_credential_revision as number,
+          snapshotDigest: id(row.acquisition_snapshot_digest),
+        })
+      }
+      byModel.set(record.modelId, current)
+    }
+    return Object.freeze([...byModel.entries()].map(([modelId, binding]) => Object.freeze({
+      modelId,
+      manual: binding.manual,
+      ...(binding.remoteAcquisition ? { remoteAcquisition: binding.remoteAcquisition } : {}),
+    })))
+  }
+
+  replaceRemoteModels(input: Readonly<{
+    providerInstanceId: string
+    endpointRevisionId: string
+    endpointDigest: string
+    credentialScopeId: string
+    credentialRevision: number
+    models: readonly Readonly<{ modelId: string; metadata: unknown }>[]
+  }>): readonly CompatibleMergedModel[] {
+    const provider = this.get(input.providerInstanceId); const at = this.nowMs()
+    if (provider.status !== 'active' || !Array.isArray(input.models) || input.models.length > 10_000 ||
+        !Number.isSafeInteger(input.credentialRevision) || input.credentialRevision < 0) {
       throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     }
-    const normalized = models.map((item) => Object.freeze({ modelId: compatibleModelIdSchema.parse(item.modelId),
+    const endpointRevisionId = id(input.endpointRevisionId)
+    const endpointDigest = id(input.endpointDigest)
+    const credentialScopeId = id(input.credentialScopeId)
+    if (!/^[0-9a-f]{64}$/u.test(endpointDigest)) {
+      throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
+    }
+    const normalized = input.models.map((item) => Object.freeze({ modelId: compatibleModelIdSchema.parse(item.modelId),
       metadata: compatibleModelMetadataSchema.parse(item.metadata) }))
     if (new Set(normalized.map((item) => item.modelId)).size !== normalized.length) {
       throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
     }
+    const snapshotDigest = digest({ schemaVersion: 1, providerInstanceId: provider.providerInstanceId,
+      endpointRevisionId, endpointDigest, credentialScopeId, credentialRevision: input.credentialRevision,
+      models: [...normalized].sort((left, right) => left.modelId.localeCompare(right.modelId, 'en')).map((item) =>
+        Object.freeze({ modelId: item.modelId, metadataDigest: digest(item.metadata) })) })
     return this.db.transaction(() => {
+      const latest = this.latestEndpoint(provider.providerInstanceId)
+      if (latest.endpointRevisionId !== endpointRevisionId || latest.endpointDigest !== endpointDigest) {
+        throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_CONFLICT')
+      }
       this.db.prepare(`UPDATE openai_compatible_model_v2 SET state='stale', updated_at_ms=?
         WHERE provider_instance_id=? AND source='remote_sync'`).run(at, provider.providerInstanceId)
       const write = this.db.prepare(`INSERT INTO openai_compatible_model_v2
-        (provider_instance_id, model_id, source, state, metadata_json, metadata_digest, updated_at_ms)
-        VALUES (?, ?, 'remote_sync', 'active', ?, ?, ?)
+        (provider_instance_id, model_id, source, state, acquisition_endpoint_revision_id,
+         acquisition_endpoint_digest, acquisition_credential_scope_id, acquisition_credential_revision,
+         acquisition_snapshot_digest, metadata_json, metadata_digest, updated_at_ms)
+        VALUES (?, ?, 'remote_sync', 'active', ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(provider_instance_id, model_id, source) DO UPDATE SET
-          state='active', metadata_json=excluded.metadata_json, metadata_digest=excluded.metadata_digest, updated_at_ms=excluded.updated_at_ms`)
+          state='active', acquisition_endpoint_revision_id=excluded.acquisition_endpoint_revision_id,
+          acquisition_endpoint_digest=excluded.acquisition_endpoint_digest,
+          acquisition_credential_scope_id=excluded.acquisition_credential_scope_id,
+          acquisition_credential_revision=excluded.acquisition_credential_revision,
+          acquisition_snapshot_digest=excluded.acquisition_snapshot_digest,
+          metadata_json=excluded.metadata_json, metadata_digest=excluded.metadata_digest,
+          updated_at_ms=excluded.updated_at_ms`)
       for (const item of normalized) write.run(provider.providerInstanceId, item.modelId,
+        endpointRevisionId, endpointDigest, credentialScopeId, input.credentialRevision, snapshotDigest,
         stableSerializeProviderRequestV2(item.metadata), digest(item.metadata), at)
       this.touch(provider.providerInstanceId, at)
       return this.listMergedModels(provider.providerInstanceId, true)
@@ -387,8 +481,10 @@ export class OpenAICompatibleV2Repo {
     const provider = this.get(providerInstanceId); const parsedModelId = compatibleModelIdSchema.parse(modelId)
     const parsedMetadata = compatibleModelMetadataSchema.parse(metadata); const at = this.nowMs()
     this.db.prepare(`INSERT INTO openai_compatible_model_v2
-      (provider_instance_id, model_id, source, state, metadata_json, metadata_digest, updated_at_ms)
-      VALUES (?, ?, 'manual', 'active', ?, ?, ?)
+      (provider_instance_id, model_id, source, state, acquisition_endpoint_revision_id,
+       acquisition_endpoint_digest, acquisition_credential_scope_id, acquisition_credential_revision,
+       acquisition_snapshot_digest, metadata_json, metadata_digest, updated_at_ms)
+      VALUES (?, ?, 'manual', 'active', NULL, NULL, NULL, NULL, NULL, ?, ?, ?)
       ON CONFLICT(provider_instance_id, model_id, source) DO UPDATE SET
         state='active', metadata_json=excluded.metadata_json, metadata_digest=excluded.metadata_digest, updated_at_ms=excluded.updated_at_ms`)
       .run(provider.providerInstanceId, parsedModelId, stableSerializeProviderRequestV2(parsedMetadata), digest(parsedMetadata), at)
@@ -558,6 +654,9 @@ export class OpenAICompatibleV2Repo {
         stableSerializeProviderRequestV2(value.auth), stableSerializeProviderRequestV2(value.ordinaryHeaders), stableSerializeProviderRequestV2(value.query),
         value.requestProfileId, value.requestProfileVersion, value.responseProfileId, value.responseProfileVersion, endpointDigest, timestamp(input.createdAtMs))
     } catch { throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_CONFLICT') }
+    this.db.prepare(`UPDATE openai_compatible_model_v2 SET state='stale', updated_at_ms=?
+      WHERE provider_instance_id=? AND source='remote_sync' AND state='active'`)
+      .run(timestamp(input.createdAtMs), value.providerInstanceId)
   }
   private latestEndpoint(providerInstanceId: string): OpenAICompatibleEndpointRevisionV2 {
     const row = this.db.prepare('SELECT * FROM openai_compatible_endpoint_revision_v2 WHERE provider_instance_id=? ORDER BY revision DESC LIMIT 1').get(providerInstanceId) as Row | undefined

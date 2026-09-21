@@ -11,6 +11,13 @@ export type ProviderAuthorityRegistryEntryV1 = Readonly<{
   registryEntryRevision: string
 }>
 
+export type ScopedProviderAuthorityBindingV1 = Readonly<{
+  implementationProviderId: 'openai_compatible'
+  scopeKind: 'provider_instance_id'
+  authorityIdNamespace: 'openai-compatible-provider-instance-v1'
+  registryEntryRevision: string
+}>
+
 export class ProviderAuthorityRegistryV1Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_PROVIDER_AUTHORITY_REGISTRY_INVALID'
@@ -51,14 +58,27 @@ export const PROVIDER_AUTHORITY_REGISTRY_ENTRIES_V1 = Object.freeze([
     executionBindings: [{ implementationProviderId: 'openrouter', endpointProfileKind: 'openrouter-first-party-v1' }],
     modelsDevProviderKeys: ['openrouter'] }),
   entry({ providerAuthorityId: 'lmstudio-local', providerNativeSurfaceIds: ['lmstudio-models-v1'],
-    // Local endpoint profiles have exact per-installation IDs but no persisted authority-profile kind yet.
-    // Keep execution binding unmapped rather than inventing a string join from protocol compatibility.
     executionBindings: [],
     modelsDevProviderKeys: [] }),
   entry({ providerAuthorityId: 'ollama-local', providerNativeSurfaceIds: ['ollama-tags-v1'],
     executionBindings: [],
     modelsDevProviderKeys: [] }),
+  entry({ providerAuthorityId: 'generic-local', providerNativeSurfaceIds: [],
+    executionBindings: [],
+    modelsDevProviderKeys: [] }),
 ] as const)
+
+const SCOPED_AUTHORITY_BINDINGS_V1 = Object.freeze([
+  Object.freeze({ implementationProviderId: 'openai_compatible' as const,
+    scopeKind: 'provider_instance_id' as const,
+    authorityIdNamespace: 'openai-compatible-provider-instance-v1' as const }),
+])
+
+const LOCAL_PROFILE_AUTHORITY_BINDINGS_V1 = Object.freeze([
+  Object.freeze({ implementationProviderId: 'lmstudio' as const, providerAuthorityId: 'lmstudio-local' }),
+  Object.freeze({ implementationProviderId: 'ollama' as const, providerAuthorityId: 'ollama-local' }),
+  Object.freeze({ implementationProviderId: 'generic_local' as const, providerAuthorityId: 'generic-local' }),
+])
 
 function validate(entries: readonly ProviderAuthorityRegistryEntryV1[]): void {
   const authorities = entries.map((candidate) => candidate.providerAuthorityId)
@@ -66,8 +86,12 @@ function validate(entries: readonly ProviderAuthorityRegistryEntryV1[]): void {
   const modelsDevKeys = entries.flatMap((candidate) => candidate.modelsDevProviderKeys)
   const executionKeys = entries.flatMap((candidate) => candidate.executionBindings.map((binding) =>
     `${binding.implementationProviderId}\0${binding.endpointProfileKind}`))
+  const localProfileKeys = LOCAL_PROFILE_AUTHORITY_BINDINGS_V1.map((binding) => binding.implementationProviderId)
+  const localAuthoritiesValid = LOCAL_PROFILE_AUTHORITY_BINDINGS_V1.every((binding) =>
+    entries.filter((candidate) => candidate.providerAuthorityId === binding.providerAuthorityId).length === 1)
   if (new Set(authorities).size !== authorities.length || new Set(nativeKeys).size !== nativeKeys.length ||
-      new Set(modelsDevKeys).size !== modelsDevKeys.length || new Set(executionKeys).size !== executionKeys.length) {
+      new Set(modelsDevKeys).size !== modelsDevKeys.length || new Set(executionKeys).size !== executionKeys.length ||
+      new Set(localProfileKeys).size !== localProfileKeys.length || !localAuthoritiesValid) {
     throw new ProviderAuthorityRegistryV1Error('GENERATION_V2_PROVIDER_AUTHORITY_REGISTRY_INVALID')
   }
 }
@@ -75,8 +99,50 @@ function validate(entries: readonly ProviderAuthorityRegistryEntryV1[]): void {
 validate(PROVIDER_AUTHORITY_REGISTRY_ENTRIES_V1)
 
 export const PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 = `provider-authority-registry-v1:${canonicalSourceFactDigestV1(
-  PROVIDER_AUTHORITY_REGISTRY_ENTRIES_V1,
+  Object.freeze({ entries: PROVIDER_AUTHORITY_REGISTRY_ENTRIES_V1,
+    scopedAuthorityBindings: SCOPED_AUTHORITY_BINDINGS_V1,
+    localProfileAuthorityBindings: LOCAL_PROFILE_AUTHORITY_BINDINGS_V1 }),
 )}`
+
+function scopedBinding(input: Omit<ScopedProviderAuthorityBindingV1, 'registryEntryRevision'>):
+ScopedProviderAuthorityBindingV1 {
+  return Object.freeze({ ...input,
+    registryEntryRevision: `provider-authority-scoped-entry-v1:${canonicalSourceFactDigestV1(input)}` })
+}
+
+export const OPENAI_COMPATIBLE_SCOPED_AUTHORITY_BINDING_V1 = scopedBinding(
+  SCOPED_AUTHORITY_BINDINGS_V1[0]!,
+)
+
+export function providerAuthorityForCompatibleProviderInstanceV1(providerInstanceId: string): Readonly<{
+  providerAuthorityId: string
+  endpointProfileId: string
+  registryEntryRevision: string
+}> {
+  if (!/^[A-Za-z0-9._:/-]{1,256}$/u.test(providerInstanceId)) {
+    throw new ProviderAuthorityRegistryV1Error('GENERATION_V2_PROVIDER_AUTHORITY_UNMAPPED')
+  }
+  const binding = OPENAI_COMPATIBLE_SCOPED_AUTHORITY_BINDING_V1
+  return Object.freeze({
+    providerAuthorityId: `${binding.authorityIdNamespace}:${providerInstanceId}`,
+    endpointProfileId: providerInstanceId,
+    registryEntryRevision: binding.registryEntryRevision,
+  })
+}
+
+export function providerAuthorityForLocalProfileV1(
+  implementationProviderId: 'lmstudio' | 'ollama' | 'generic_local',
+): ProviderAuthorityRegistryEntryV1 {
+  const bindings = LOCAL_PROFILE_AUTHORITY_BINDINGS_V1.filter((candidate) =>
+    candidate.implementationProviderId === implementationProviderId)
+  if (bindings.length !== 1) {
+    throw new ProviderAuthorityRegistryV1Error(bindings.length === 0
+      ? 'GENERATION_V2_PROVIDER_AUTHORITY_UNMAPPED'
+      : 'GENERATION_V2_PROVIDER_AUTHORITY_AMBIGUOUS')
+  }
+  return unique(PROVIDER_AUTHORITY_REGISTRY_ENTRIES_V1.filter((candidate) =>
+    candidate.providerAuthorityId === bindings[0]!.providerAuthorityId))
+}
 
 function unique(matches: readonly ProviderAuthorityRegistryEntryV1[]): ProviderAuthorityRegistryEntryV1 {
   if (matches.length === 0) throw new ProviderAuthorityRegistryV1Error('GENERATION_V2_PROVIDER_AUTHORITY_UNMAPPED')
