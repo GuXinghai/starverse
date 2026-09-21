@@ -110,6 +110,31 @@ describe('CloudRulesApplicationV1Service', () => {
     } finally { db.close() }
   })
 
+  it('atomically republishes the same Rules source when a Cloud activation override changes emitted claims', async () => {
+    const db = database()
+    try {
+      const prepared = candidate('1.0.0')
+      publish(db, prepared, 10)
+      const subjects = subjectSet()
+      const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjects }, () => 20)
+      const applied = await service.applyCandidate({
+        expectedCandidateRecordRevision: prepared.candidateRecordRevision,
+        expectedAppliedRecordRevision: null,
+      })
+      const current = new CloudRulesApplicationV1Repo(db).readState()
+      const changed = await service.replaceActivationOverrides({
+        expectedAppliedRecordRevision: current.appliedRecordRevision!,
+        expectedOverrideRevision: current.overrides.revision,
+        overrides: [{ kind: 'rule', ruleId: 'rule.reasoning', configured: 'off' }],
+      })
+      expect(changed.canonicalSourceRevision).not.toBe(applied.canonicalSourceRevision)
+      expect(changed.overrides).toMatchObject({ revision: current.overrides.revision + 1,
+        overrides: [{ kind: 'rule', ruleId: 'rule.reasoning', configured: 'off' }] })
+      expect(new CapabilityRuleCoreV1Repo(db).readOwnershipSnapshot({ ownership: 'cloud', ownerId: 'official' })
+        ?.projected.definition.packs[0]?.rules[0]?.configured).toBe('off')
+    } finally { db.close() }
+  })
+
   it('rolls back every authority write and retains the candidate when LKG persistence fails', async () => {
     const db = database()
     try {
