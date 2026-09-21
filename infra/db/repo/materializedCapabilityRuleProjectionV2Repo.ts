@@ -11,6 +11,8 @@ import {
   '../../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
   '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+import { CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1 } from
+  '../../../src/next/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 import { CanonicalModelFactSourceV1Repo } from './canonicalModelFactSourceV1Repo'
 
 export class MaterializedCapabilityRuleProjectionV2RepoError extends Error {
@@ -133,7 +135,8 @@ export class MaterializedCapabilityRuleProjectionV2Repo {
     })
     const providerAuthorityId = boundedIdentity(input.providerAuthorityId)
     const state = this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
-    if (!state?.currentSourceRevision) {
+    if (!state?.currentSourceRevision ||
+        state.staleReason === CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1) {
       throw new MaterializedCapabilityRuleProjectionV2RepoError(
         'GENERATION_V2_CAPABILITY_RULE_SOURCE_UNAVAILABLE')
     }

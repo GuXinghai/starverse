@@ -196,4 +196,21 @@ describe('CapabilityRuleCoreV1Repo', () => {
         .toEqual({ name: 'nested_transaction_survived' })
     } finally { db.close() }
   })
+
+  it('installs a prevalidated ownership write inside a caller-owned transaction', () => {
+    const db = database()
+    try {
+      const repo = new CapabilityRuleCoreV1Repo(db, () => 10)
+      const prepared = prepareCapabilityRuleOwnershipSnapshotWriteV1(snapshot())
+      db.transaction(() => {
+        const installed = repo.replacePreparedOwnershipSnapshot({
+          expectedSnapshotRevision: null,
+          prepared,
+        })
+        expect(installed.projected.snapshotRevision).toBe(prepared.projected.snapshotRevision)
+      }).immediate()
+      expect(repo.readOwnershipSnapshot({ ownership: 'cloud', ownerId: 'official' })
+        ?.projected.snapshotRevision).toBe(prepared.projected.snapshotRevision)
+    } finally { db.close() }
+  })
 })

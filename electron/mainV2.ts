@@ -30,6 +30,9 @@ import { createMagikaUtilityProcessRunner } from './services/magikaUtilityProces
 import { Epoch2FileTypeDetectionService, GENERATION_V2_FILE_TYPE_DETECTION_UPDATED_CHANNEL } from './services/epoch2FileTypeDetectionService'
 import { ModelsDevOfficialSourceRefreshV1 } from './services/modelsDevOfficialSourceRefreshV1'
 import { CloudRulesCandidateRefreshV1 } from './services/cloudRulesCandidateRefreshV1'
+import { CloudRulesApplicationV1Service } from './services/cloudRulesApplicationV1Service'
+import { AuthoritativeModelSubjectSetV1Service } from
+  '../infra/db/services/authoritativeModelSubjectSetV1Service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -115,9 +118,26 @@ export async function startMainV2(): Promise<void> {
   db: runtime.epoch2.database,
   fetchImpl: cloudFetch,
   })
+  const cloudRulesSubjectSet = new AuthoritativeModelSubjectSetV1Service(
+  runtime.epoch2.database,
+  runtime.epoch2.credentialService,
+  runtime.epoch2.openAICompatibleCredentialService,
+  )
+  const cloudRulesApplication = new CloudRulesApplicationV1Service(
+  runtime.epoch2.database,
+  cloudRulesSubjectSet,
+  )
+  // This synchronous health gate runs before Generation IPC registration, so a corrupt
+  // applied LKG cannot remain readable while the asynchronous network check is pending.
+  cloudRulesApplication.ensureCurrentLkgHealth()
   void cloudRulesCandidateRefresh.start().then((result) => {
     if (!result.ok) console.warn('[cloud-rules-candidate-v1] refresh failed', { code: result.code })
   }).catch(() => console.warn('[cloud-rules-candidate-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
+    .finally(() => cloudRulesApplication.applyBootstrapCandidate().then((result) => {
+      if (result) console.info('[cloud-rules-application-v1] bootstrap applied')
+    }).catch((error: unknown) => console.warn('[cloud-rules-application-v1] bootstrap failed', {
+      code: error instanceof Error ? error.message : 'UNEXPECTED_BOOTSTRAP_FAILURE',
+    })))
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
   const magikaProcessRunner = createMagikaUtilityProcessRunner()

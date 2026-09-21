@@ -169,4 +169,50 @@ describe('CloudRulesDistributionV1Repo', () => {
       expect(repo.readReleaseVersionBinding('1.0.0')).not.toBeNull()
     } finally { db.close() }
   })
+
+  it('marks only the expected persisted candidate as applied and is transaction-safe', () => {
+    const db = database()
+    try {
+      const repo = new CloudRulesDistributionV1Repo(db, () => 2_000)
+      const prepared = candidate('1.0.0', 1_000)
+      repo.publishSuccessfulCheck({ checkedAtMs: 1_000, candidate: prepared })
+
+      expect(() => repo.markApplied({
+        expectedCandidateRecordRevision: 'cloud-rules-candidate-v1:'.concat('f'.repeat(64)),
+        expectedAppliedContentRevision: null,
+        appliedContentRevision: prepared.contentRevision,
+        consumeCandidate: true,
+      })).toThrowError(new CloudRulesDistributionV1RepoError(
+        'GENERATION_V2_CLOUD_RULES_DISTRIBUTION_STALE'))
+      expect(repo.readState().candidate?.candidateRecordRevision).toBe(prepared.candidateRecordRevision)
+
+      db.transaction(() => {
+        const state = repo.markApplied({
+          expectedCandidateRecordRevision: prepared.candidateRecordRevision,
+          expectedAppliedContentRevision: null,
+          appliedContentRevision: prepared.contentRevision,
+          consumeCandidate: true,
+        })
+        expect(state.appliedContentRevision).toBe(prepared.contentRevision)
+        expect(state.candidate).toBeNull()
+      }).immediate()
+      expect(repo.readState()).toMatchObject({ appliedContentRevision: prepared.contentRevision,
+        candidate: null })
+    } finally { db.close() }
+  })
+
+  it('suppresses candidates while retaining successful freshness and version bindings', () => {
+    const db = database()
+    try {
+      const repo = new CloudRulesDistributionV1Repo(db, () => 1_100)
+      const prepared = candidate('1.0.0', 1_000)
+      const state = repo.publishSuccessfulCheck({ checkedAtMs: 1_000, candidate: prepared,
+        suppressCandidate: true })
+      expect(state.candidate).toBeNull()
+      expect(state.latestObserved).toMatchObject({ releaseVersion: '1.0.0',
+        contentRevision: prepared.contentRevision })
+      expect(state.lastSuccessfulCheckAtMs).toBe(1_000)
+      expect(repo.readReleaseVersionBinding('1.0.0')).toBe(prepared.contentRevision)
+    } finally { db.close() }
+  })
 })

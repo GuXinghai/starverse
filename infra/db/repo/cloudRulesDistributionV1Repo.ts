@@ -75,7 +75,8 @@ type StateRow = Readonly<{
 export class CloudRulesDistributionV1RepoError extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_CLOUD_RULES_DISTRIBUTION_INVALID'
-    | 'GENERATION_V2_CLOUD_RULES_RELEASE_VERSION_DRIFT') {
+    | 'GENERATION_V2_CLOUD_RULES_RELEASE_VERSION_DRIFT'
+    | 'GENERATION_V2_CLOUD_RULES_DISTRIBUTION_STALE') {
     super(code)
     this.name = 'CloudRulesDistributionV1RepoError'
   }
@@ -206,6 +207,8 @@ export function prepareCloudRulesCandidateV1(input: Readonly<{
 }
 
 export class CloudRulesDistributionV1Repo {
+  private savepointSequence = 0
+
   constructor(
     private readonly db: BetterSqlite3.Database,
     private readonly nowMs: () => number = Date.now,
@@ -236,9 +239,10 @@ export class CloudRulesDistributionV1Repo {
   publishSuccessfulCheck(input: Readonly<{
     checkedAtMs: number
     candidate: PreparedCloudRulesCandidateV1 | null
+    suppressCandidate?: boolean
   }>): CloudRulesDistributionStateV1 {
     const checkedAtMs = safeTime(input.checkedAtMs)
-    return this.db.transaction(() => {
+    return this.runImmediate(() => {
       const current = decodeStateRow(this.readRow())
       const prepared = input.candidate
       if (prepared) {
@@ -253,7 +257,8 @@ export class CloudRulesDistributionV1Repo {
         WHERE cloud_rules_release_version_ledger_v1.content_revision=excluded.content_revision`).run(
           prepared.releaseVersion, prepared.contentRevision, checkedAtMs, checkedAtMs)
       }
-      const nextCandidate = prepared === null || prepared.contentRevision === current.appliedContentRevision
+      const nextCandidate = input.suppressCandidate || prepared === null ||
+        prepared.contentRevision === current.appliedContentRevision
         ? null
         : current.candidate?.contentRevision === prepared.contentRevision
           ? current.candidate
@@ -274,7 +279,45 @@ export class CloudRulesDistributionV1Repo {
         updatedAtMs,
       })
       return decodeStateRow(this.readRow())
-    }).immediate()
+    })
+  }
+
+  markApplied(input: Readonly<{
+    expectedCandidateRecordRevision: string | null
+    expectedAppliedContentRevision: string | null
+    appliedContentRevision: string
+    consumeCandidate: boolean
+  }>): CloudRulesDistributionStateV1 {
+    const appliedContentRevision = contentRevision(input.appliedContentRevision)
+    return this.runImmediate(() => {
+      const current = decodeStateRow(this.readRow())
+      if ((current.candidate?.candidateRecordRevision ?? null) !== input.expectedCandidateRecordRevision ||
+          current.appliedContentRevision !== input.expectedAppliedContentRevision) {
+        throw new CloudRulesDistributionV1RepoError('GENERATION_V2_CLOUD_RULES_DISTRIBUTION_STALE')
+      }
+      const updatedAtMs = Math.max(safeTime(this.nowMs()), current.updatedAtMs)
+      this.writeState({ ...current, stateRevision: current.stateRevision + 1,
+        candidate: input.consumeCandidate ? null : current.candidate,
+        appliedContentRevision, updatedAtMs })
+      return decodeStateRow(this.readRow())
+    })
+  }
+
+  clearCandidateForPin(input: Readonly<{
+    expectedCandidateRecordRevision: string | null
+    expectedAppliedContentRevision: string | null
+  }>): CloudRulesDistributionStateV1 {
+    return this.runImmediate(() => {
+      const current = decodeStateRow(this.readRow())
+      if ((current.candidate?.candidateRecordRevision ?? null) !== input.expectedCandidateRecordRevision ||
+          current.appliedContentRevision !== input.expectedAppliedContentRevision) {
+        throw new CloudRulesDistributionV1RepoError('GENERATION_V2_CLOUD_RULES_DISTRIBUTION_STALE')
+      }
+      const updatedAtMs = Math.max(safeTime(this.nowMs()), current.updatedAtMs)
+      this.writeState({ ...current, stateRevision: current.stateRevision + 1,
+        candidate: null, updatedAtMs })
+      return decodeStateRow(this.readRow())
+    })
   }
 
   private readRow(): StateRow | undefined {
@@ -325,5 +368,25 @@ export class CloudRulesDistributionV1Repo {
       candidate ? stableSerializeProviderRequestV2(candidate.document) : null,
       candidate?.documentSha256 ?? null, candidate?.rawAssetSha256 ?? null,
       candidate?.fetchedAtMs ?? null, state.appliedContentRevision, state.updatedAtMs)
+  }
+
+  private runImmediate<T>(run: () => T): T {
+    if (!this.db.inTransaction) return this.db.transaction(run).immediate()
+    this.savepointSequence += 1
+    const savepoint = `cloud_rules_distribution_v1_${this.savepointSequence}`
+    this.db.exec(`SAVEPOINT ${savepoint}`)
+    try {
+      const result = run()
+      this.db.exec(`RELEASE SAVEPOINT ${savepoint}`)
+      return result
+    } catch (error) {
+      try {
+        this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+        this.db.exec(`RELEASE SAVEPOINT ${savepoint}`)
+      } catch {
+        return invalid()
+      }
+      throw error
+    }
   }
 }

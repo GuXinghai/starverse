@@ -315,6 +315,21 @@ export class CapabilityRuleCoreV1Repo {
     snapshot: unknown
   }>): CapabilityRuleOwnershipSnapshotFactV1 {
     const prepared = prepareCapabilityRuleOwnershipSnapshotWriteV1(input.snapshot)
+    return this.replacePreparedOwnershipSnapshot({
+      expectedSnapshotRevision: input.expectedSnapshotRevision,
+      prepared,
+    })
+  }
+
+  /**
+   * Installs a snapshot that was fully validated and serialized before the caller's write
+   * transaction. This is the short-transaction entry point used by atomic Cloud Apply.
+   */
+  replacePreparedOwnershipSnapshot(input: Readonly<{
+    expectedSnapshotRevision: string | null
+    prepared: PreparedCapabilityRuleOwnershipSnapshotWriteV1
+  }>): CapabilityRuleOwnershipSnapshotFactV1 {
+    const prepared = input.prepared
     const projected = prepared.projected
     const run = () => {
       const currentRow = this.db.prepare(`SELECT ownership, owner_id, snapshot_revision, content_digest,
