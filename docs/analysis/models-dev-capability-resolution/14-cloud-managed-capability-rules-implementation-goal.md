@@ -119,7 +119,23 @@ Slice 1 is complete only when focused tests prove:
 
 Run only Slice 1 and directly affected schema/repository/type checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
 
-## 6. Current implementation status
+## 6. Slice 4 acceptance
+
+Slice 4 is complete only when focused tests prove:
+
+1. Discovery reads the fixed `GuXinghai/starverse` GitHub Releases authority, follows every page, ignores unrelated or malformed tags plus draft/prerelease Releases, and selects the highest canonical stable `cloud-rules-vX.Y.Z` tag without using the repository-wide latest-release endpoint. A malformed selected Release fails the check without falling down to an older Release.
+2. Every request and redirect hop is HTTPS and confined to `api.github.com`, `github.com`, or a proper DNS subdomain of `githubusercontent.com`; user-info URLs, HTTP downgrade, illegal hosts, redirect loops, and timeout fail the check without forwarding credentials across hosts.
+3. The selected release has exactly one uploaded `starverse-cloud-rules.json` asset, and its closed V1 document has an exactly matching release version, valid shared Pack/Rule content, unique stable identities, and a recomputed deterministic `contentRevision`.
+4. A successfully validated `releaseVersion` is permanently bound to one `contentRevision`; later content drift is rejected without changing candidate or successful freshness state.
+5. The validated candidate, latest-observed metadata, refresh diagnostics, and version-binding ledger are persisted atomically. Candidate record revisions are deterministic and suitable for later stale Apply checks.
+6. A higher release with unchanged candidate/applied content updates latest-observed metadata and successful freshness without creating a new content candidate or Rules source revision.
+7. A failed or incomplete check leaves the current candidate, applied-state reference, and last-successful-check timestamp unchanged. The selected highest release is never replaced by a lower fallback after validation failure.
+8. A later successful complete check atomically replaces or withdraws an unapplied candidate according to the current highest official publication; failed/incomplete checks never withdraw it.
+9. Slice 4 does not install Cloud content into the shared Rule core, publish Capability Rules facts, implement Apply/LKG/history/rollback/pin, expose product UI/IPC, or enter Goal 3.
+
+Run only Slice 4 and directly affected schema/repository/service/type/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
+
+## 7. Current implementation status
 
 Slice 1 completed on 2026-09-21 with focused acceptance evidence:
 
@@ -162,4 +178,22 @@ Slice 3.5 completed on 2026-09-21 with focused acceptance evidence:
 - Rule evidence can use `verifiedAt=null` only for `capability_rule`; mapped field evidence is effect-compatible with the resulting state, and invalid overlays—including empty numeric domains and out-of-domain explicit defaults—fail closed instead of silently returning provider base fields;
 - a static authority gate prevents the removed repository, installer, bundled packs, request-time adapter, and selector matcher from returning to production code.
 
-Slices 1–3.5 are therefore complete. Slice 4 is next. Cloud candidate acquisition, Cloud Apply/LKG/rollback/pin, User drafts, UI, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+Slice 4 completed on 2026-09-21 with focused acceptance evidence:
+
+- one fixed `GuXinghai/starverse` GitHub Releases discovery path paginates the formal Release API, selects the highest canonical stable Cloud tag, and never uses the repository-wide latest endpoint or falls down after selected-release failure;
+- every request and redirect hop is manually constrained to HTTPS GitHub authority hosts with DNS-label-safe `*.githubusercontent.com` matching, user-info rejection, cross-host sensitive-header stripping, loop detection, and one bounded check timeout;
+- the exact uploaded asset is bound to the fixed repository asset API path, then decoded through one closed Release Document V1 and the shared Pack/Rule core; `contentRevision` is recomputed from normalized Rule content and GitHub digest metadata remains audit-only;
+- candidate/latest-observed/freshness/failure state and the permanent `releaseVersion -> contentRevision` ledger are stored atomically without becoming a fourth Model Facts source;
+- candidate identity is the normalized `contentRevision`: metadata-only higher Releases advance latest-observed/freshness while preserving the existing candidate and stale-Apply token;
+- failed or incomplete checks preserve candidate, applied-reference and successful freshness; only a successful complete check may replace or withdraw the unapplied candidate;
+- process startup schedules acquisition through the governed product network stack, while Apply, Cloud ownership installation, canonical Rules publication, LKG/history/rollback/pin, product IPC/UI, and Goal 3 remain absent.
+
+Slices 1–4 are therefore complete. Slice 5 is next. Cloud Apply/LKG/rollback/pin, User drafts, UI, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+
+## 8. Deferred findings ledger
+
+| Finding | Classification | blocksCurrentSlice | Disposition |
+|---|---|---:|---|
+| Additive migration from the immediately preceding development schema was suggested during Slice 4 review. | Contract conflict, not a deferred defect | no | Rejected: the frozen development policy remains epoch-2 closed-schema digest replacement with no old decoder or compatibility migration. Schema-mismatch replacement smoke is the acceptance path. |
+| Per-family IPC mutation rejection coverage could be broader after Slice 3.5. | Polish / additional regression coverage | no | Defer to the bounded hardening/cleanup pass; the shared scheduler rejection path and current authority cutover acceptance remain covered. |
+| Item 13 still contains one historical sentence saying Goal 2C-era production paths remain, although item 14 and this README record their later removal. | Deferred documentation cleanup | no | Keep item 13's frozen contract semantics unchanged during Slice 4; reconcile the historical implementation-status sentence in the bounded cleanup pass. |
