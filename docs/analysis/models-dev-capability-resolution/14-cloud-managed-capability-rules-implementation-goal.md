@@ -141,4 +141,14 @@ Slice 2 completed on 2026-09-21 with focused acceptance evidence:
 - explicit isolated authority registration for configured compatible instances, LM Studio, Ollama, and Generic Local;
 - focused contributor tests plus a static import guard proving that only approved identity sources feed the service; models.dev, Rules, selectors, aliases, and display names are not inputs.
 
-The Slice 1 core and Slice 2 service remain intentionally dormant: no runtime, canonical publisher, Rules adapter, IPC, or renderer consumes them as authority. The Goal 2C bundled/query-bound path remains the sole production Rules authority until the Slice 3.5 atomic cutover. Slice 3 revision-bound materialization is the next implementation slice.
+Slice 3 completed on 2026-09-21 with focused acceptance evidence:
+
+- one enumerable materializer projects the shared Cloud/User Rule core onto the revisioned authoritative exact-subject set;
+- exact and constrained-regex selectors run only during materialization, are provider-authority/profile scoped, and cannot create subjects;
+- every enabled matched Rule remains an independent exact-subject canonical claim; the materializer performs no winner selection, cross-source merge, conflict resolution, or final capability resolution;
+- the canonical Rule source revision binds the Rule definition/policy inputs and authoritative subject-set membership revision; proof-only subject metadata changes do not cause materialization churn;
+- heavy validation/canonicalization happens before the SQLite write boundary, while staging rechecks the expected stage revision, current Rule snapshot revisions, and a freshly read authoritative subject-set revision;
+- complete subject facts, raw provenance, and their source revision are persisted behind a dedicated dormant stage pointer and protected from retention pruning;
+- staging never updates `canonical_model_fact_source_state_v1`, so the Goal 2C bundled/query-bound source remains the only active Rules authority.
+
+Slices 1–3 therefore remain intentionally dormant from runtime, IPC, and renderer consumers. Slice 3.5 is the next implementation slice and must atomically cut runtime to the staged exact canonical Rule claims while deleting the bundled/query-bound/request-time authority paths; it must not add a fallback or enter Goal 3.
