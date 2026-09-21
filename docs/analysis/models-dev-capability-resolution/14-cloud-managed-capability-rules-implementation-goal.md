@@ -104,6 +104,16 @@ This Goal must not implement:
 
 After Goal 3 cuts normal consumers over, delete the temporary Rules-only consumer projection retained by Slice 3.5.
 
+### Acceptance-driven Slice closure
+
+Each Slice closes against the acceptance criteria frozen before implementation. Review findings are classified independently from severity:
+
+- **Current-Slice Blocker**: violates the frozen contract, fails a current acceptance criterion, creates data/authority safety risk, or directly blocks the next Slice. It must be fixed now.
+- **Deferred Finding**: a real defect or gap that does not prevent the current Slice from completing correctly. Record it in the deferred ledger without expanding the Slice.
+- **Polish**: optional refactoring, performance, diagnostics, extra testing, or other non-essential optimization. Defer by default.
+
+`P0/P1/P2` severity does not by itself determine `blocksCurrentSlice`. After a blocker fix, review only that fix and its direct regression surface. Once every acceptance criterion passes and no Current-Slice Blocker remains, close, commit, and proceed; the deferred ledger is handled by a later bounded hardening/cleanup pass.
+
 ## 5. Slice 1 acceptance
 
 Slice 1 is complete only when focused tests prove:
@@ -135,7 +145,25 @@ Slice 4 is complete only when focused tests prove:
 
 Run only Slice 4 and directly affected schema/repository/service/type/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
 
-## 7. Current implementation status
+## 7. Slice 5 acceptance
+
+Slice 5 is complete only when focused tests prove:
+
+1. Apply and rollback consume only locally persisted, independently validated snapshots and never fetch from the network.
+2. Apply binds both the expected candidate record revision and expected currently applied snapshot revision. Rollback binds the expected current applied snapshot and exact retained history target. Any stale input fails without substitution, retry, or partial mutation.
+3. Candidate/LKG integrity validation, activation-overlay preparation, exact-subject materialization, and canonical publication preparation are deterministic and repeatable outside the SQLite write transaction. The short `BEGIN IMMEDIATE` boundary revalidates every expected candidate/applied/Rule/source revision before writing the prepared result.
+4. One transaction installs the remote content, reconciles local per-field activation overrides by stable Pack/Rule identity, switches the applied Cloud snapshot, publishes the same single Capability Rules canonical source, records the Apply event/history state, and only then makes the new snapshot LKG. Any failure rolls back all of it and leaves the candidate available.
+5. New identities use remote activation baselines; surviving local overrides remain field-specific across Apply and rollback; removed identities lose their overrides; Rule/Pack content and activation continue to use the shared core semantics rather than a Cloud-only Rule model.
+6. With no LKG, the first valid candidate may bootstrap Apply automatically. Later candidates remain notify-only until explicit Apply. Downloaded or validated-but-unapplied content is never called LKG.
+7. LKG does not expire with age. Refresh failure preserves it. Local LKG integrity failure marks Cloud Rules unavailable and cannot silently promote history, clear Cloud content, or invent recovery.
+8. Current LKG is retained outside the configurable history window. History limit defaults to `4`, accepts only `0–20`, and pruning removes oldest user-visible history immediately while existing provenance pins may still retain underlying evidence.
+9. Rollback is a new Apply event: the chosen retained snapshot becomes LKG, the prior LKG enters bounded history, current activation overrides are reconciled by stable identity, and rollback can be undone while retained.
+10. Optional rollback pin is explicit and persistent. While pinned, checks may update freshness/availability but cannot publish higher-version candidates, badges, or auto-Apply. `Resume updates` removes the policy and the next normal check observes the highest current stable Release without replaying intermediate versions.
+11. Slice 5 does not add Cloud/User UI, product IPC, User drafts, a fourth Model Facts source, cross-source merge/winner/conflict logic, or final `capabilityRevision`.
+
+Run only Slice 5 and directly affected schema/repository/service/materialization/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
+
+## 8. Current implementation status
 
 Slice 1 completed on 2026-09-21 with focused acceptance evidence:
 
@@ -186,11 +214,24 @@ Slice 4 completed on 2026-09-21 with focused acceptance evidence:
 - candidate/latest-observed/freshness/failure state and the permanent `releaseVersion -> contentRevision` ledger are stored atomically without becoming a fourth Model Facts source;
 - candidate identity is the normalized `contentRevision`: metadata-only higher Releases advance latest-observed/freshness while preserving the existing candidate and stale-Apply token;
 - failed or incomplete checks preserve candidate, applied-reference and successful freshness; only a successful complete check may replace or withdraw the unapplied candidate;
-- process startup schedules acquisition through the governed product network stack, while Apply, Cloud ownership installation, canonical Rules publication, LKG/history/rollback/pin, product IPC/UI, and Goal 3 remain absent.
+- process startup schedules acquisition through the governed product network stack; at the Slice 4 checkpoint, Apply and the remaining lifecycle were still absent.
 
-Slices 1–4 are therefore complete. Slice 5 is next. Cloud Apply/LKG/rollback/pin, User drafts, UI, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+Slice 5 completed on 2026-09-21 with focused acceptance evidence:
 
-## 8. Deferred findings ledger
+- persisted candidates and retained history are independently revalidated before use; Apply and rollback never fetch from the network;
+- candidate, applied-record, Cloud core, activation-override, materialization-stage, active-source, and exact-subject-set revisions form one stale-fail boundary;
+- heavy overlay, core-write, materialization, and canonical publication preparation happens before a short synchronous `BEGIN IMMEDIATE`; one transaction writes the shared Cloud core, promotes the same single Capability Rules source, updates LKG/history/event/pin state, and consumes or preserves the candidate as required;
+- injected LKG persistence failure rolls back core, staged/source publication, applied state, and candidate consumption together;
+- remote activation baselines remain immutable release content while surviving local per-field overrides are retained by stable identity and removed identities are discarded;
+- the current LKG is separate from the configurable `0–20` history window (default `4`); rollback is a new Apply event and can retain the pre-rollback LKG for undo;
+- persistent rollback pin suppresses higher-version candidates without suppressing freshness checks, while Resume Updates removes that local policy;
+- first-run bootstrap applies only a persisted validated candidate when no LKG exists; later updates remain candidates;
+- current LKG integrity failure marks the materialized Rules source unavailable without promoting history or clearing content, and explicit candidate Apply or retained-history rollback can recover atomically;
+- normal logs contain no full `contentRevision`, and the Slice remains outside product IPC/UI, User drafts, and every Goal 3 merge/winner/conflict/final-resolution concern.
+
+Slices 1–5 are therefore complete. Slice 6 is next. User committed Rules/drafts/import-export, product UI/IPC, and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+
+## 9. Deferred findings ledger
 
 | Finding | Classification | blocksCurrentSlice | Disposition |
 |---|---|---:|---|
