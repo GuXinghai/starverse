@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { t } from '@/shared/i18n'
-import { evaluateCapabilityRuleActivationV1 } from '@/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import { evaluateCapabilityRuleActivationV1, planCapabilityRuleRewriteV1 } from '@/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 type Rule = Readonly<{ ruleId: string; label: string | null; configured: 'default' | 'on' | 'off'; assertion: Readonly<{ path: string }> }>
 type Pack = Readonly<{ packId: string; displayName: string; priority: number; mode: 'override' | 'default_only' | 'no_control'; target: 'enabled' | 'disabled'; rules: readonly Rule[] }>
@@ -102,6 +102,24 @@ function activationText(pack: Pack, rule: Rule): string {
   return activation.enabled ? t('common.enabled') : t('common.disabled')
 }
 
+function activationSourceText(pack: Pack, rule: Rule): string {
+  const activation = evaluateCapabilityRuleActivationV1({ mode: pack.mode, target: pack.target,
+    configured: rule.configured, defaultPolicy: 'enabled' })
+  return t(`settings.modelsCapabilities.activationSource.${activation.source}`)
+}
+
+function packModeText(mode: Pack['mode']): string {
+  return t(`settings.modelsCapabilities.packMode.${mode}`)
+}
+
+function packTargetText(target: Pack['target']): string {
+  return t(`settings.modelsCapabilities.packTarget.${target}`)
+}
+
+function rewriteCount(pack: Pack): number {
+  return planCapabilityRuleRewriteV1({ mode: pack.mode, target: pack.target, rules: pack.rules }).changedRules.length
+}
+
 function cloudRuleOverride(ruleId: string): CloudOverride | undefined {
   return cloud.value?.application.overrides.overrides.find((override) =>
     override.kind === 'rule' && override.ruleId === ruleId)
@@ -177,9 +195,14 @@ onMounted(() => { void load() })
           <span class="font-medium text-gray-900">{{ pack.displayName }}</span>
           <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
         </div>
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+          <span>{{ t('settings.modelsCapabilities.packModeLabel') }}: {{ packModeText(pack.mode) }}</span>
+          <span>{{ t('settings.modelsCapabilities.packTargetLabel') }}: {{ packTargetText(pack.target) }}</span>
+          <span>{{ t('settings.modelsCapabilities.rewriteCount') }}: {{ rewriteCount(pack) }}</span>
+        </div>
         <ul class="mt-2 space-y-1 text-[11px] text-gray-600">
           <li v-for="rule in pack.rules" :key="rule.ruleId" class="flex flex-wrap items-center justify-between gap-2">
-            <span>{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }} · {{ activationText(pack, rule) }}</span>
+            <span>{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }} · {{ t('settings.modelsCapabilities.configured') }}: {{ rule.configured }} · {{ activationText(pack, rule) }} ({{ activationSourceText(pack, rule) }})</span>
             <select v-if="props.ownership === 'cloud'" class="rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px]"
               :value="cloudRuleSelection(rule.ruleId, rule.configured)" :disabled="changingActivation === rule.ruleId" @change="setCloudRuleSelection(rule.ruleId, ($event.target as HTMLSelectElement).value)">
               <option :value="`remote:${rule.configured}`">{{ t('settings.modelsCapabilities.followRemoteBaseline') }}</option>
