@@ -94,6 +94,23 @@ describe('CloudRulesCandidateRefreshV1', () => {
     } finally { db.close() }
   })
 
+  it('keeps checking freshness while a local version pin suppresses update candidates', async () => {
+    const db = database()
+    const current = document('1.0.0')
+    db.prepare(`INSERT INTO cloud_rules_application_policy_v1 (
+      singleton_id, policy_revision, history_limit, pinned_release_version,
+      pinned_content_revision, updated_at_ms
+    ) VALUES (1, 1, 4, ?, ?, 1)`).run('1.0.0', current.contentRevision)
+    const fetchImpl = listingFetcher([[release('2.0.0')]], [document('2.0.0', 1)])
+    try {
+      const result = await new CloudRulesCandidateRefreshV1({ db, fetchImpl }).refreshIfDue()
+      expect(result).toMatchObject({ ok: true, status: 'refreshed' })
+      expect(result.ok && result.state.candidate).toBeNull()
+      expect(result.ok && result.state.latestObserved?.releaseVersion).toBe('2.0.0')
+      expect(result.ok && result.state.lastSuccessfulCheckAtMs).not.toBeNull()
+    } finally { db.close() }
+  })
+
   it('fails the highest release without falling down to an older release', async () => {
     const db = database()
     const fetchImpl = listingFetcher([[release('1.0.0'), release('2.0.0', { assets: [] })]], [])

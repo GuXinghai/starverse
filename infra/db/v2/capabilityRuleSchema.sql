@@ -257,3 +257,132 @@ BEFORE DELETE ON cloud_rules_release_version_ledger_v1
 BEGIN
   SELECT RAISE(ABORT, 'CLOUD_RULES_RELEASE_VERSION_LEDGER_PERMANENT');
 END;
+
+-- Slice 5 Cloud Apply persistence. The document stored here is the validated
+-- remote baseline. Activation overrides are deliberately stored separately.
+CREATE TABLE IF NOT EXISTS cloud_rules_apply_event_v1 (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('apply', 'rollback')),
+  release_version TEXT NOT NULL CHECK (length(release_version) BETWEEN 5 AND 64),
+  content_revision TEXT NOT NULL CHECK (
+    length(content_revision) = 71
+    AND content_revision GLOB 'sha256:*'
+    AND substr(content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  previous_content_revision TEXT CHECK (
+    previous_content_revision IS NULL OR (
+      length(previous_content_revision) = 71
+      AND previous_content_revision GLOB 'sha256:*'
+      AND substr(previous_content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  event_metadata_json TEXT NOT NULL CHECK (
+    length(CAST(event_metadata_json AS BLOB)) BETWEEN 2 AND 65536
+    AND json_valid(event_metadata_json)
+    AND json_type(event_metadata_json) = 'object'
+  ),
+  occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms >= 0),
+  applied_record_revision INTEGER NOT NULL CHECK (applied_record_revision >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_applied_snapshot_v1 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  applied_record_revision INTEGER NOT NULL CHECK (applied_record_revision >= 1),
+  release_version TEXT NOT NULL CHECK (length(release_version) BETWEEN 5 AND 64),
+  content_revision TEXT NOT NULL CHECK (
+    length(content_revision) = 71
+    AND content_revision GLOB 'sha256:*'
+    AND substr(content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  release_metadata_json TEXT NOT NULL CHECK (
+    length(CAST(release_metadata_json AS BLOB)) BETWEEN 2 AND 65536
+    AND json_valid(release_metadata_json)
+    AND json_type(release_metadata_json) = 'object'
+  ),
+  document_json TEXT NOT NULL CHECK (
+    length(CAST(document_json AS BLOB)) BETWEEN 2 AND 16 * 1024 * 1024
+    AND json_valid(document_json)
+    AND json_type(document_json) = 'object'
+  ),
+  document_sha256 TEXT NOT NULL CHECK (
+    length(document_sha256) = 64 AND document_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  raw_asset_sha256 TEXT NOT NULL CHECK (
+    length(raw_asset_sha256) = 64 AND raw_asset_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  applied_at_ms INTEGER NOT NULL CHECK (applied_at_ms >= 0),
+  applied_event_id INTEGER NOT NULL REFERENCES cloud_rules_apply_event_v1(event_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_applied_history_v1 (
+  history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  applied_record_revision INTEGER NOT NULL UNIQUE CHECK (applied_record_revision >= 1),
+  release_version TEXT NOT NULL CHECK (length(release_version) BETWEEN 5 AND 64),
+  content_revision TEXT NOT NULL CHECK (
+    length(content_revision) = 71
+    AND content_revision GLOB 'sha256:*'
+    AND substr(content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  release_metadata_json TEXT NOT NULL CHECK (
+    length(CAST(release_metadata_json AS BLOB)) BETWEEN 2 AND 65536
+    AND json_valid(release_metadata_json)
+    AND json_type(release_metadata_json) = 'object'
+  ),
+  document_json TEXT NOT NULL CHECK (
+    length(CAST(document_json AS BLOB)) BETWEEN 2 AND 16 * 1024 * 1024
+    AND json_valid(document_json)
+    AND json_type(document_json) = 'object'
+  ),
+  document_sha256 TEXT NOT NULL CHECK (
+    length(document_sha256) = 64 AND document_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  raw_asset_sha256 TEXT NOT NULL CHECK (
+    length(raw_asset_sha256) = 64 AND raw_asset_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  applied_at_ms INTEGER NOT NULL CHECK (applied_at_ms >= 0),
+  applied_event_id INTEGER NOT NULL REFERENCES cloud_rules_apply_event_v1(event_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS cloud_rules_applied_history_order_v1
+  ON cloud_rules_applied_history_v1(applied_record_revision DESC, history_id DESC);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_application_policy_v1 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  policy_revision INTEGER NOT NULL CHECK (policy_revision >= 0),
+  history_limit INTEGER NOT NULL CHECK (history_limit BETWEEN 0 AND 20),
+  pinned_release_version TEXT,
+  pinned_content_revision TEXT CHECK (
+    pinned_content_revision IS NULL OR (
+      length(pinned_content_revision) = 71
+      AND pinned_content_revision GLOB 'sha256:*'
+      AND substr(pinned_content_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  CHECK ((pinned_release_version IS NULL AND pinned_content_revision IS NULL)
+    OR (pinned_release_version IS NOT NULL AND pinned_content_revision IS NOT NULL))
+);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_activation_override_state_v1 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  override_revision INTEGER NOT NULL CHECK (override_revision >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS cloud_rules_activation_override_v1 (
+  identity_kind TEXT NOT NULL CHECK (identity_kind IN ('pack', 'rule')),
+  identity_id TEXT NOT NULL CHECK (length(identity_id) BETWEEN 1 AND 256),
+  field_name TEXT NOT NULL CHECK (field_name IN ('mode', 'target', 'configured')),
+  field_value TEXT NOT NULL CHECK (
+    field_value IN ('override', 'default_only', 'no_control', 'enabled', 'disabled', 'default', 'on', 'off')
+  ),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  PRIMARY KEY (identity_kind, identity_id, field_name),
+  CHECK ((identity_kind = 'pack' AND field_name IN ('mode', 'target'))
+    OR (identity_kind = 'rule' AND field_name = 'configured'))
+);
+
+CREATE INDEX IF NOT EXISTS cloud_rules_activation_override_identity_v1
+  ON cloud_rules_activation_override_v1(identity_kind, identity_id);

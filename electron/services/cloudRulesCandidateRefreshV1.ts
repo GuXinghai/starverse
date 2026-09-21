@@ -15,6 +15,7 @@ import {
   prepareCloudRulesCandidateV1,
   type CloudRulesDistributionStateV1,
 } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
+import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import type { ProviderFetch } from '../net/providerHttpTransport'
 
 export const CLOUD_RULES_GITHUB_RELEASES_LISTING_URL_V1 =
@@ -288,6 +289,7 @@ function toSuccess(
 
 export class CloudRulesCandidateRefreshV1 {
   private readonly repo: CloudRulesDistributionV1Repo
+  private readonly applicationRepo: CloudRulesApplicationV1Repo
   private readonly nowMs: () => number
   private readonly refreshCadenceMs: number
   private readonly timeoutMs: number
@@ -304,6 +306,7 @@ export class CloudRulesCandidateRefreshV1 {
     timeoutMs?: number
   }>) {
     this.repo = new CloudRulesDistributionV1Repo(input.db, input.nowMs ?? Date.now)
+    this.applicationRepo = new CloudRulesApplicationV1Repo(input.db, input.nowMs ?? Date.now)
     this.nowMs = input.nowMs ?? Date.now
     this.refreshCadenceMs = input.refreshCadenceMs ?? CLOUD_RULES_DEFAULT_REFRESH_CADENCE_MS_V1
     this.timeoutMs = input.timeoutMs ?? CLOUD_RULES_DEFAULT_TIMEOUT_MS_V1
@@ -378,6 +381,7 @@ export class CloudRulesCandidateRefreshV1 {
         return toSuccess('refreshed', this.repo.publishSuccessfulCheck({
           checkedAtMs: attemptedAtMs,
           candidate: null,
+          suppressCandidate: this.applicationRepo.readPolicy().pin !== null,
         }))
       }
 
@@ -402,6 +406,7 @@ export class CloudRulesCandidateRefreshV1 {
       return toSuccess('refreshed', this.repo.publishSuccessfulCheck({
         checkedAtMs: attemptedAtMs,
         candidate,
+        suppressCandidate: this.applicationRepo.readPolicy().pin !== null,
       }))
     } catch (error) {
       const code = mapFailureCode(error, controller.signal, timedOut)
