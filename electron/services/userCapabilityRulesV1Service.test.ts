@@ -52,7 +52,7 @@ describe('UserCapabilityRulesV1Service', () => {
       const set = subjects()
       const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set }, () => 20)
       const opened = service.openDraft({ sessionId: 'session.one' })
-      const changed = service.addRule({ expectedDraftRevision: opened.draftRevision,
+      const changed = service.addRule({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
         targetPackId: null, firstPack: { packId: 'pack.generated', displayName: 'My Rules' },
         rule: rule(), note: 'Local verification' })
       expect(changed.projected.definition.packs[0]).toMatchObject({ packId: 'pack.generated',
@@ -75,7 +75,7 @@ describe('UserCapabilityRulesV1Service', () => {
       const set = subjects()
       const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set }, () => 20)
       const opened = service.openDraft({ sessionId: 'session.one' })
-      const changed = service.addRule({ expectedDraftRevision: opened.draftRevision,
+      const changed = service.addRule({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
         targetPackId: null, firstPack: { packId: 'pack.user', displayName: 'User Pack' }, rule: rule() })
       db.exec(`CREATE TRIGGER user_rules_save_test_abort
         BEFORE DELETE ON user_capability_rule_editing_session_v1
@@ -100,7 +100,7 @@ describe('UserCapabilityRulesV1Service', () => {
       const opened = service.openDraft({ sessionId: 'session.one' })
       const imported = createUserRulePackTransferV1({ pack: pack('pack.user', [rule('rule.imported', 'on')]),
         notes: [{ ruleId: 'rule.imported', note: 'Imported' }] })
-      const changed = service.importPack({ expectedDraftRevision: opened.draftRevision, transfer: imported })
+      const changed = service.importPack({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision, transfer: imported })
       expect(() => service.exportCommittedPack({ packId: 'pack.user' })).toThrowError(
         new UserCapabilityRulesV1ServiceError('GENERATION_V2_USER_CAPABILITY_RULES_EXPORT_DIRTY'))
       await service.saveDraft({ sessionId: changed.sessionId, expectedDraftRevision: changed.draftRevision })
@@ -108,7 +108,7 @@ describe('UserCapabilityRulesV1Service', () => {
 
       const reopened = service.openDraft({ sessionId: 'session.two' })
       const replacement = createUserRulePackTransferV1({ pack: pack('pack.user', [rule('rule.replaced')]) })
-      const replaced = service.importPack({ expectedDraftRevision: reopened.draftRevision,
+      const replaced = service.importPack({ sessionId: reopened.sessionId, expectedDraftRevision: reopened.draftRevision,
         transfer: replacement })
       expect(replaced.projected.definition.packs[0]?.rules.map((entry) => entry.ruleId))
         .toEqual(['rule.replaced'])
@@ -127,13 +127,13 @@ describe('UserCapabilityRulesV1Service', () => {
       const set = subjects()
       const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set })
       const opened = service.openDraft({ sessionId: 'session.one' })
-      const rewritten = service.rewritePack({ expectedDraftRevision: opened.draftRevision,
+      const rewritten = service.rewritePack({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
         packId: 'pack.user' })
       expect(rewritten.projected.definition.packs[0]?.rules.map((entry) => entry.configured))
         .toEqual(['off', 'on'])
       expect(core.readOwnershipSnapshot({ ownership: 'user', ownerId: 'local-user' })
         ?.projected.definition.packs[0]?.rules.map((entry) => entry.configured)).toEqual(['default', 'on'])
-      service.cancelDraft({ expectedDraftRevision: rewritten.draftRevision })
+      service.cancelDraft({ sessionId: rewritten.sessionId, expectedDraftRevision: rewritten.draftRevision })
       expect(new UserCapabilityRuleDraftV1Repo(db).readDraft()).toBeNull()
     } finally { db.close() }
   })
@@ -144,14 +144,14 @@ describe('UserCapabilityRulesV1Service', () => {
       const set = subjects()
       const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set }, () => 20)
       const opened = service.openDraft({ sessionId: 'session.one' })
-      const changed = service.addRule({ expectedDraftRevision: opened.draftRevision,
+      const changed = service.addRule({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
         targetPackId: null, firstPack: { packId: 'pack.user', displayName: 'User Pack' },
         rule: rule(), note: 'First note' })
       const first = await service.saveDraft({ sessionId: changed.sessionId,
         expectedDraftRevision: changed.draftRevision })
 
       const reopened = service.openDraft({ sessionId: 'session.two' })
-      const noteOnly = service.replaceDraft({ expectedDraftRevision: reopened.draftRevision,
+      const noteOnly = service.replaceDraft({ sessionId: reopened.sessionId, expectedDraftRevision: reopened.draftRevision,
         snapshot: reopened.projected.definition, notes: [{ ruleId: 'rule.user', note: 'Updated note' }] })
       const second = await service.saveDraft({ sessionId: noteOnly.sessionId,
         expectedDraftRevision: noteOnly.draftRevision })
@@ -174,15 +174,15 @@ describe('UserCapabilityRulesV1Service', () => {
       const set = subjects()
       const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set }, () => 20)
       const opened = service.openDraft({ sessionId: 'session.one' })
-      const changed = service.addRule({ expectedDraftRevision: opened.draftRevision,
+      const changed = service.addRule({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
         targetPackId: null, firstPack: { packId: 'pack.user', displayName: 'User Pack' }, rule: rule() })
       const saved = await service.saveDraft({ sessionId: changed.sessionId,
         expectedDraftRevision: changed.draftRevision })
       const draft = service.openDraft({ sessionId: 'session.two' })
-      const edited = service.replaceDraft({ expectedDraftRevision: draft.draftRevision,
+      const edited = service.replaceDraft({ sessionId: draft.sessionId, expectedDraftRevision: draft.draftRevision,
         snapshot: { ...draft.projected.definition, packs: draft.projected.definition.packs.map((pack) =>
           pack.packId === 'pack.user' ? { ...pack, priority: 10 } : pack) }, notes: draft.notes })
-      service.cancelDraft({ expectedDraftRevision: edited.draftRevision })
+      service.cancelDraft({ sessionId: edited.sessionId, expectedDraftRevision: edited.draftRevision })
       const scope = buildCapabilityRuleSourceScopeIdV1({
         ruleStoreId: CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1,
       })
@@ -191,6 +191,21 @@ describe('UserCapabilityRulesV1Service', () => {
         ?.currentSourceRevision).toBe(saved.canonicalSourceRevision)
       expect(new CapabilityRuleCoreV1Repo(db).readOwnershipSnapshot({ ownership: 'user',
         ownerId: 'local-user' })?.projected.definition.packs[0]?.rules[0]?.configured).toBe('default')
+    } finally { db.close() }
+  })
+
+  it('rejects a different session before it can mutate or discard the durable draft', () => {
+    const db = database()
+    try {
+      const set = subjects()
+      const service = new UserCapabilityRulesV1Service(db, { readCurrent: async () => set })
+      const opened = service.openDraft({ sessionId: 'session.one' })
+      expect(() => service.addRule({ sessionId: 'session.two', expectedDraftRevision: opened.draftRevision,
+        targetPackId: null, firstPack: { packId: 'pack.user', displayName: 'User Pack' }, rule: rule() }))
+        .toThrowError(new UserCapabilityRulesV1ServiceError('GENERATION_V2_USER_CAPABILITY_RULES_STALE'))
+      expect(() => service.cancelDraft({ sessionId: 'session.two', expectedDraftRevision: opened.draftRevision }))
+        .toThrowError(new UserCapabilityRulesV1ServiceError('GENERATION_V2_USER_CAPABILITY_RULES_STALE'))
+      expect(service.openDraft({ sessionId: 'session.one' }).draftRevision).toBe(opened.draftRevision)
     } finally { db.close() }
   })
 })

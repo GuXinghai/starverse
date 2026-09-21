@@ -180,7 +180,24 @@ Slice 6 is complete only when focused tests prove:
 
 Run only Slice 6 and directly affected shared-core/schema/repository/service/materialization/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
 
-## 9. Current implementation status
+## 9. Slice 7 acceptance
+
+Slice 7 is complete only when focused tests prove:
+
+1. Every Cloud/User Rules, authoritative-subject, Facts Inspector, evidence/raw-view, and per-source refresh-policy renderer call crosses a closed, revision-aware main-process IPC contract. The renderer neither opens the database nor parses persisted raw source payloads.
+2. Cloud/User ownership remains one Capability Rules source in every UI-safe projection. No read model, status API, cache, or component exposes either ownership as an additional Model Facts source, and no Slice 7 path chooses a cross-source winner, resolves a conflict, or computes final resolved facts/capability revisions.
+3. Cloud content is read-only. Its activation mutation is immediately atomic, requires expected revision(s), reports stale state without substitution, and republishes the one Capability Rules source only when effective emitted claims change. Check, deterministic candidate diff, Apply, rollback, pin/resume, history, attention and freshness use the already frozen Cloud lifecycle rather than an alternate UI-specific state store.
+4. User Rules uses the durable draft service through session-bound UI-safe operations. All content and activation edits, including ordinary first-Pack creation, cross-Pack moves, Rewrite, Import/Replace and delete confirmation state, remain draft-only until one batch Save; Cancel/discard and recovered-draft flows preserve committed authority exactly as Slice 6 established.
+5. Rule list/detail projections use stable identities, priority-descending / last-modified-descending / identity tie-break ordering, typed canonical assertion/domain projections, exact selector candidates that are not a whitelist, and no arbitrary JSON or derived-claim authoring surface. Import preview and committed-only Export preserve the Slice 6 transfer boundary.
+6. Facts Inspector searches only authoritative exact subjects and accepts Model Picker deep-links only by already-resolved exact identity. Overview, Fields, matched Rule claims, Evidence slice and full sanitized payload lazy-read preserve no-coverage/missing/invalid/unsupported/source-absence/LKG distinctions and expose mechanical `Values differ` only; they do not infer conflict or winner semantics.
+7. Settings contains one `Models & Capabilities` category with sibling Cloud-managed Rules, User Rules and Facts Inspector tabs. The implementation reuses the existing categorized Settings navigation and supplies the frozen keyboard, ARIA, focus-trap and focus-restoration behavior without a new router or Rules-specific navigation system. Cloud/User Pack flows use breadcrumb/back rather than a third nested tab, accordion, permanent split pane or drag ordering.
+8. Model Picker/Model details uses the same Inspector route/state and passes the exact subject identity it already resolved; it never re-identifies from alias/display name or creates a source/subject from models.dev, Rules or a selector.
+9. Refresh UI uses per-source explicit Save and revision CAS, source-scoped status/freshness, and the frozen background cadence/notification policy. Page open, renderer network state and renderer time must not independently refresh a source or derive attention severity.
+10. Slice 7 does not change the closed Pack/Rule core semantics, Cloud distribution authority, canonical source materialization, normal Composer/Preflight/Runtime/Compiler consumers, or any Goal 3 merge/winner/conflict/final-resolution behavior.
+
+Run only Slice 7 and directly affected IPC/preload/client/UI/i18n/schema/service/static checks. Leave the native ABI in the Node target after database tests and commit no rebuild artifacts.
+
+## 10. Current implementation status
 
 Slice 1 completed on 2026-09-21 with focused acceptance evidence:
 
@@ -259,11 +276,10 @@ Slice 6 completed on 2026-09-21 with focused acceptance evidence:
 
 Slices 1–6 are therefore complete. Slice 7 is next. Product UI/IPC and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
 
-## 10. Deferred findings ledger
+## 11. Deferred findings ledger
 
 | Finding | Classification | blocksCurrentSlice | Disposition |
 |---|---|---:|---|
 | Additive migration from the immediately preceding development schema was suggested during Slice 4 review. | Contract conflict, not a deferred defect | no | Rejected: the frozen development policy remains epoch-2 closed-schema digest replacement with no old decoder or compatibility migration. Schema-mismatch replacement smoke is the acceptance path. |
 | Per-family IPC mutation rejection coverage could be broader after Slice 3.5. | Polish / additional regression coverage | no | Defer to the bounded hardening/cleanup pass; the shared scheduler rejection path and current authority cutover acceptance remain covered. |
 | Item 13 still contains one historical sentence saying Goal 2C-era production paths remain, although item 14 and this README record their later removal. | Deferred documentation cleanup | no | Keep item 13's frozen contract semantics unchanged during Slice 4; reconcile the historical implementation-status sentence in the bounded cleanup pass. |
-| User draft mutations currently use revision CAS but do not require the persisted `sessionId` except at Save. | Deferred Finding | no | Slice 6 has one local durable-draft owner and no product IPC; bind mutations to renderer/session authority in Slice 7 when multi-caller UI-safe IPC is introduced. |
