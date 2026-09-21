@@ -40,6 +40,8 @@ It does not implement Cloud acquisition, User drafts, materialization, runtime c
 
 Build one revisioned exact-subject-set service from Provider Native active catalogs, compatible-provider remote/manual exact IDs, and local endpoint-profile exact bindings. models.dev, Rule selectors/examples, aliases, and display names must not contribute subjects.
 
+The implemented boundary resolves only each currently configured first-party credential scope's complete, unfiltered active/LKG catalog. Pending snapshots, obsolete credential scopes, category subsets, disabled/deleted compatible providers, and stale compatible remote acquisitions do not contribute subjects. OpenAI-compatible provider instances receive isolated registry-scoped authorities; LM Studio, Ollama, and Generic Local use explicit local-profile registry bindings and never inherit OpenAI authority from protocol compatibility.
+
 ### Slice 3 — Revision-bound materialization
 
 Materialize exact and constrained-regex Rules only when the Rule definition revision or authoritative-subject-set revision changes. Persist all matched exact-subject canonical claims without choosing a winner, and bind the Capability Rules source revision to the authoritative-subject-set revision.
@@ -129,4 +131,14 @@ Slice 1 completed on 2026-09-21 with focused acceptance evidence:
 - canonical/JSON write preparation outside the SQLite write transaction and bulk metadata reads inside it;
 - closed-schema integration and schema semantic digest coverage.
 
-The new core is intentionally dormant: no runtime, canonical publisher, adapter, IPC, renderer, or provider imports it as an authority. The Goal 2C bundled/query-bound path remains the sole production Rules authority until the Slice 3.5 atomic cutover. Slice 2 is the next implementation slice.
+Slice 2 completed on 2026-09-21 with focused acceptance evidence:
+
+- one dormant exact-subject-set service over current first-party active/LKG catalogs, active compatible remote/manual IDs, and explicit local endpoint-profile bindings;
+- deterministic exact-triple membership revision separated from a proof/currentness input revision;
+- current credential scope captured before the coherent SQLite read and revalidated afterward;
+- Provider Native operation/credential/category retained only as membership proof, never base subject identity;
+- durable OpenAI-compatible remote acquisition binding to endpoint, credential scope/revision, and snapshot digest; endpoint replacement marks prior remote rows stale, while the subject-set reader excludes acquisitions whose credential binding is no longer current;
+- explicit isolated authority registration for configured compatible instances, LM Studio, Ollama, and Generic Local;
+- focused contributor tests plus a static import guard proving that only approved identity sources feed the service; models.dev, Rules, selectors, aliases, and display names are not inputs.
+
+The Slice 1 core and Slice 2 service remain intentionally dormant: no runtime, canonical publisher, Rules adapter, IPC, or renderer consumes them as authority. The Goal 2C bundled/query-bound path remains the sole production Rules authority until the Slice 3.5 atomic cutover. Slice 3 revision-bound materialization is the next implementation slice.
