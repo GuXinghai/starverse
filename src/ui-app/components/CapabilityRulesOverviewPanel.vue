@@ -17,8 +17,10 @@ type CloudRead = Readonly<{
     appliedIntegrity: 'missing' | 'valid' | 'invalid'
     overrides: Readonly<{ revision: number; overrides: readonly CloudOverride[] }>
     applied: Readonly<{ releaseVersion: string; document: Readonly<{ packs: readonly Pack[] }> }> | null
+    policy: Readonly<{ policyRevision: number; historyLimit: number; pin: Readonly<{ releaseVersion: string; contentRevision: string }> | null }>
   }>
   active: Readonly<{ activeSnapshot: Readonly<{ projected: Readonly<{ definition: Readonly<{ packs: readonly Pack[] }> }> }> | null }>
+  history: readonly Readonly<{ appliedRecordRevision: number; releaseVersion: string; contentRevision: string }>[]
 }>
 type CloudOverride = Readonly<{ kind: 'pack'; packId: string; mode?: Pack['mode']; target?: Pack['target'] }> |
   Readonly<{ kind: 'rule'; ruleId: string; configured: Rule['configured'] }>
@@ -32,6 +34,9 @@ const candidateDiff = ref<Readonly<{ current: string | null; candidate: string }
 const applying = ref(false)
 const applyConfirming = ref(false)
 const changingActivation = ref<string | null>(null)
+const rollbackConfirming = ref<number | null>(null)
+const rollbackPin = ref(false)
+const rollingBack = ref(false)
 
 function capabilityRules() {
   const value = window.generationV2?.capabilityRules
@@ -151,6 +156,47 @@ async function setCloudRuleSelection(ruleId: string, selection: string) {
   finally { changingActivation.value = null }
 }
 
+async function rollbackCloud() {
+  const state = cloud.value
+  const targetRevision = rollbackConfirming.value
+  if (!state || targetRevision === null || state.application.appliedRecordRevision === null) return
+  rollingBack.value = true
+  error.value = null
+  try {
+    await capabilityRules().cloud.rollback({ expectedAppliedRecordRevision: state.application.appliedRecordRevision,
+      expectedHistoryTargetRecordRevision: targetRevision, pinTarget: rollbackPin.value })
+    rollbackConfirming.value = null
+    rollbackPin.value = false
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { rollingBack.value = false }
+}
+
+async function setCloudHistoryLimit(value: string) {
+  const state = cloud.value
+  const historyLimit = Number(value)
+  if (!state?.application.policy || !Number.isSafeInteger(historyLimit) || historyLimit < 0 || historyLimit > 20) return
+  loading.value = true
+  error.value = null
+  try {
+    await capabilityRules().cloud.setHistoryLimit({ expectedPolicyRevision: state.application.policy.policyRevision, historyLimit })
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { loading.value = false }
+}
+
+async function resumeCloudUpdates() {
+  const state = cloud.value
+  if (!state?.application.policy) return
+  loading.value = true
+  error.value = null
+  try {
+    await capabilityRules().cloud.resumeUpdates({ expectedPolicyRevision: state.application.policy.policyRevision })
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { loading.value = false }
+}
+
 onMounted(() => { if (props.ownership === 'cloud') void load() })
 </script>
 
@@ -177,6 +223,16 @@ onMounted(() => { if (props.ownership === 'cloud') void load() })
       {{ t('settings.modelsCapabilities.appliedRelease') }}: {{ cloud.application.applied.releaseVersion }}
       <span v-if="cloud.distribution.candidate"> · {{ t('settings.modelsCapabilities.candidateAvailable') }}</span>
     </p>
+    <div v-if="props.ownership === 'cloud' && cloud?.application.policy" class="rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
+      <div class="flex flex-wrap items-center gap-2">
+        <span>{{ t('settings.modelsCapabilities.historyLimit') }}</span>
+        <select :value="cloud.application.policy.historyLimit" class="rounded border border-gray-300 bg-white px-1 py-0.5" :disabled="loading" @change="setCloudHistoryLimit(($event.target as HTMLSelectElement).value)">
+          <option v-for="limit in 21" :key="limit - 1" :value="limit - 1">{{ limit - 1 }}</option>
+        </select>
+        <span v-if="cloud.application.policy.pin"> · {{ t('settings.modelsCapabilities.updatesPinned') }}: {{ cloud.application.policy.pin.releaseVersion }}</span>
+        <button v-if="cloud.application.policy.pin" type="button" class="rounded border border-gray-300 bg-white px-2 py-0.5" :disabled="loading" @click="resumeCloudUpdates">{{ t('settings.modelsCapabilities.resumeUpdates') }}</button>
+      </div>
+    </div>
     <div v-if="props.ownership === 'cloud' && cloud?.distribution.candidate" class="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
       <div>{{ t('settings.modelsCapabilities.candidateRelease') }}: {{ cloud.distribution.candidate.releaseVersion }}</div>
       <div class="mt-2 flex flex-wrap gap-2">
@@ -191,6 +247,20 @@ onMounted(() => { if (props.ownership === 'cloud') void load() })
           <button type="button" class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50" :disabled="applying" @click="applyConfirming = false">{{ t('common.cancel') }}</button>
         </div>
       </div>
+    </div>
+    <div v-if="props.ownership === 'cloud' && cloud?.history?.length" class="rounded border border-gray-200 bg-white p-3">
+      <h4 class="text-xs font-semibold text-gray-800">{{ t('settings.modelsCapabilities.appliedHistory') }}</h4>
+      <ul class="mt-2 space-y-1 text-[11px] text-gray-600">
+        <li v-for="entry in cloud.history" :key="entry.appliedRecordRevision" class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-1">
+          <span>{{ entry.releaseVersion }} · {{ entry.contentRevision }}</span>
+          <span v-if="rollbackConfirming === entry.appliedRecordRevision" class="flex flex-wrap items-center gap-1">
+            <label class="flex items-center gap-1"><input v-model="rollbackPin" type="checkbox" />{{ t('settings.modelsCapabilities.pinAfterRollback') }}</label>
+            <button type="button" class="rounded bg-amber-600 px-1.5 py-0.5 text-white" :disabled="rollingBack" @click="rollbackCloud">{{ t('common.confirm') }}</button>
+            <button type="button" class="rounded border border-gray-300 px-1.5 py-0.5" :disabled="rollingBack" @click="rollbackConfirming = null">{{ t('common.cancel') }}</button>
+          </span>
+          <button v-else type="button" class="rounded border border-gray-300 px-1.5 py-0.5" :disabled="loading || rollingBack" @click="rollbackConfirming = entry.appliedRecordRevision">{{ t('settings.modelsCapabilities.rollback') }}</button>
+        </li>
+      </ul>
     </div>
     <ul class="space-y-2">
       <li v-for="pack in packs()" :key="pack.packId" class="rounded border border-gray-200 bg-white p-3">
