@@ -38,6 +38,7 @@ import PluginManagementPanel from './PluginManagementPanel.vue'
 import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSettingsPanel.vue'
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
+import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -434,6 +435,7 @@ type SettingsCategoryId =
   | 'general'
   | 'providers'
   | 'model-catalog'
+  | 'models-capabilities'
   | 'generation'
   | 'privacy-data'
   | 'network'
@@ -443,6 +445,7 @@ const SETTINGS_CATEGORIES: ReadonlyArray<Readonly<{ id: SettingsCategoryId; labe
   { id: 'general', labelKey: 'settings.categories.general' },
   { id: 'providers', labelKey: 'settings.categories.providers' },
   { id: 'model-catalog', labelKey: 'settings.categories.modelCatalog' },
+  { id: 'models-capabilities', labelKey: 'settings.categories.modelsCapabilities' },
   { id: 'generation', labelKey: 'settings.categories.generation' },
   { id: 'privacy-data', labelKey: 'settings.categories.privacyData' },
   { id: 'network', labelKey: 'settings.categories.network' },
@@ -2789,6 +2792,17 @@ onMounted(() => {
           </template>
         </div>
       </div>
+        </section>
+
+        <section
+          :id="settingsCategoryPanelId('models-capabilities')"
+          v-show="activeCategory === 'models-capabilities'"
+          role="tabpanel"
+          :aria-labelledby="settingsCategoryTabId('models-capabilities')"
+          class="space-y-3"
+          data-testid="settings-pane-models-capabilities"
+        >
+          <ModelFactsInspectorPanel />
         </section>
 
         <section
