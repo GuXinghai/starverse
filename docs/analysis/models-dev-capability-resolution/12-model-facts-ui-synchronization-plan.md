@@ -1,8 +1,8 @@
 # Goal：Model Facts UI 同步规划与 Owner 决策冻结
 
-- **Lifecycle Status**: frozen planning; production implementation not authorized by this document
+- **Lifecycle Status**: frozen planning; Goal 3 production implementation and final bounded correction completed under item 15; this document remains non-authorizing
 - **Document Role**: controlling Model Facts UI/product plan and post-Goal 2C Owner amendment
-- **Last updated**: 2026-09-21
+- **Last updated**: 2026-09-22
 - **Authority**: Owner decisions in this document, current checkout UI audit, and documents 06/09/10/11 subject to the amendments recorded here
 
 ## 0. 摘要与停止边界
@@ -546,7 +546,7 @@ Item 13 本身解除的是设计决策阻断，不是生产实现授权；后续
 - 有界 retention、显式 rollback 与可选 version pin；
 - Cloud/User 最终仍共同发布为唯一 Capability Rules canonical source revision。
 
-实施 Agent 不得自行替换 source、Release、Manifest、完整性或生命周期策略，也不得将 item 13 单独解释为 Goal 3、schema 或生产迁移授权。当前生产迁移权限与顺序来自 item 14，Goal 3 仍未授权。
+实施 Agent 不得自行替换 source、Release、Manifest、完整性或生命周期策略，也不得将 item 13 单独解释为 Goal 3、schema 或生产迁移授权。当前生产迁移权限与顺序曾来自 item 14；在本文件冻结后，Goal 3 已由 item 15 授权并完成。
 
 ## 12. Item 14 实施顺序
 

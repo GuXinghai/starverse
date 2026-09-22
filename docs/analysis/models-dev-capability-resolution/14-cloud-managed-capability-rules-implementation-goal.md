@@ -1,11 +1,11 @@
 # Cloud-managed Capability Rules Implementation Goal
 
-- **Lifecycle Status**: Slice 7 complete; Goal 3 not started
+- **Lifecycle Status**: Slice 7 complete; Goal 3 implementation and final bounded correction complete under item 15
 - **Document Role**: production implementation plan derived from frozen Owner contracts
 - **Last updated**: 2026-09-22
 - **Authority**: implementation sequencing only; Owner semantics remain controlled by items 06, 12, and 13
 - **Controlling inputs**: items 06, 12, and 13
-- **Goal 3 status**: production implementation not started and not authorized by this Goal; Owner contract frozen and implementation planning may begin
+- **Goal 3 status**: production implementation and final bounded correction complete under item 15; this document remains the frozen Owner-contract implementation sequence and does not itself authorize Goal 3
 
 ---
 
@@ -283,7 +283,7 @@ Slice 7 completed on 2026-09-22 with focused acceptance evidence:
 - Facts Inspector supports authoritative-subject paging, exact deep-link inspection, Overview/Fields/Evidence views, mechanical Values differ, evidence slices, and lazy persisted sanitized payload reads without winner/conflict/final-resolution logic.
 - Focused UI and identity tests passed: 5 UI files / 76 tests plus 3 identity tests. `vue-tsc` reports only the four pre-existing ChatSessionConsole fixture errors documented outside this Slice; `git diff --check` has no whitespace errors.
 
-Slices 1–7 are therefore complete. Goal 3 remains the next phase and is still prohibited by this Goal until separately authorized.
+Slices 1–7 are therefore complete. Goal 3 was subsequently authorized and completed under item 15; this document's own scope remains limited to the completed Capability Rules implementation sequence.
 
 ## 11. Deferred findings ledger
 

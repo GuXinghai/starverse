@@ -9,9 +9,9 @@
 >
 > 设计顺序：实际 Raw Data → source-neutral ontology → Source Adapter contract → Capability Rules 对齐。现有 Rules 和现有 Generation Intent 路径不是本设计的上游输入。
 >
-> 后续 Owner amendment：本文中的`built-in/user`与`query_bound` Rules描述的是Goal 2B设计及Goal 2C实施时点。未来目标不保留bundled built-in Rules，也不在按请求的subject fact读取/send/preflight/Goal 3 resolution中执行regex。Cloud-managed与User Rules改用同构Pack/Rule core，共同形成唯一Capability Rules source；regex只在authoritative exact-subject-set revision绑定的materialization阶段选择身份并输出exact-subject claims。该后续修订及UI/lifecycle边界以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准，尚未完成生产迁移，且不改变本文冻结的ontology、三来源边界或Goal 3停止点。
+> 后续 Owner amendment：本文中的`built-in/user`与`query_bound` Rules描述的是Goal 2B设计及Goal 2C实施时点。未来目标不保留bundled built-in Rules，也不在按请求的subject fact读取/send/preflight/Goal 3 resolution中执行regex。Cloud-managed与User Rules改用同构Pack/Rule core，共同形成唯一Capability Rules source；regex只在authoritative exact-subject-set revision绑定的materialization阶段选择身份并输出exact-subject claims。该后续修订及UI/lifecycle边界以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准，相关生产迁移状态由 item 14/15 记录，且不改变本文冻结的ontology、三来源边界或Goal 3停止点。
 >
-> 2026-09-22 Goal 3 Owner closure：Provider Native/models.dev 的 stale current/LKG 继续按已配置的原 source priority 参与 resolution；stale 只属于 freshness/diagnostics，不自动降级或排除。Facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化时，freshness-only 变化不产生新的 final `capabilityRevision`。Goal 3 Owner contract is sufficiently frozen；Owner-question phase closed；implementation planning may begin，但本文仍不授权生产实现。
+> 2026-09-22 Goal 3 Owner closure：Provider Native/models.dev 的 stale current/LKG 继续按已配置的原 source priority 参与 resolution；stale 只属于 freshness/diagnostics，不自动降级或排除。Facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化时，freshness-only 变化不产生新的 final `capabilityRevision`。Goal 3 Owner contract is sufficiently frozen；Owner-question phase closed；Goal 3 implementation and final bounded correction are complete under item 15, but this document remains design-only and does not authorize production implementation。
 
 ## 0. 结论摘要
 
@@ -1193,7 +1193,7 @@ Resolved Model Facts 之后，Generation Authorization 才加入 API Contract、
 
 ## 16. Goal 2B 停止点与后续授权
 
-以下列表记录 Goal 2B 冻结时的停止点，不是当前 checkout 的实施状态。Goal 2C 后续已获单独授权实施前三项及 Rules source迁移；2026-09-22 Goal 3 Owner-question phase 已关闭且 implementation planning may begin，但仍不得把本文解释为 Resolver、priority/conflict或 Goal 3生产实现授权：
+以下列表记录 Goal 2B 冻结时的停止点，不是当前 checkout 的实施状态。Goal 2C 后续已获单独授权实施前三项及 Rules source迁移；2026-09-22 Goal 3 Owner-question phase 已关闭，Goal 3 implementation and final bounded correction 已由 item 15 完成，但仍不得把本文解释为 Resolver、priority/conflict或 Goal 3生产实现授权：
 
 - Provider Native/models.dev/Rules adapters；
 - source snapshot数据库；

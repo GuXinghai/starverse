@@ -177,8 +177,80 @@ describe('Goal 3 model facts runtime projection V1', () => {
       state: 'supported', defaultValue: 'low', domain: { kind: 'enum', values: ['high', 'low'] },
     })
     expect(projected.fields.find((field) => field.path === 'generation.temperature')).toMatchObject({
-      state: 'supported', domain: { kind: 'range', min: 0, max: 1.25 },
+      state: 'supported',
     })
+    expect(projected.fields.find((field) => field.path === 'generation.temperature')?.domain).toBeUndefined()
+  })
+
+  it('does not turn a partial native string set into an exhaustive enum', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('reasoning.effort.nativeValues', {
+        kind: 'native_string_set', values: ['low'], completeness: 'partial',
+      }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'reasoning.effort')!
+    expect(field.state).toBe('supported')
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('does not turn a partial aspect-ratio set into an exhaustive enum', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('image.generation.aspectRatios', {
+        kind: 'aspect_ratio_set', values: [{ width: 1, height: 1 }], completeness: 'partial',
+      }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'image.aspectRatio')!
+    expect(field.state).toBe('supported')
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('does not invent a lower or upper bound for an integer domain with only min', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('limits.output.maxTokens', {
+        kind: 'integer_domain', interval: { min: 8, minInclusive: true, maxInclusive: true },
+        completeness: 'partial_bounds',
+      }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'generation.maxOutputTokens')!
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('does not invent a lower or upper bound for an integer domain with only max', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('limits.output.maxTokens', {
+        kind: 'integer_domain', interval: { max: 24576, minInclusive: true, maxInclusive: true },
+        completeness: 'partial_bounds',
+      }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'generation.maxOutputTokens')!
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('does not manufacture a lower bound from a scalar maxTokens fact', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('limits.output.maxTokens', { kind: 'integer', value: 24576 }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'generation.maxOutputTokens')!
+    expect(field.state).toBe('supported')
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('does not manufacture a lower bound from a temperature model maximum', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('sampling.temperature.modelMaximum', { kind: 'decimal', value: 1.25 }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'generation.temperature')!
+    expect(field.state).toBe('supported')
+    expect(field.domain).toBeUndefined()
+  })
+
+  it('keeps a provider default as a default rather than an exhaustive domain', () => {
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding, resolvedFacts: facts(
+      resolvedField('reasoning.effort.providerDefault', { kind: 'native_string', value: 'low' }),
+    ) })
+    const field = projected.fields.find((candidate) => candidate.path === 'reasoning.effort')!
+    expect(field).toMatchObject({ state: 'supported', defaultValue: 'low' })
+    expect(field.domain).toBeUndefined()
   })
 
   it('keeps same-value multi-source provenance compatible with the runtime field effect', () => {

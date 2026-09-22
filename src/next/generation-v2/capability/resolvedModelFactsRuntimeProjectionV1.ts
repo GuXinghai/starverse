@@ -116,33 +116,31 @@ function stringValues(value: CanonicalFactValueV1): readonly string[] | undefine
   return undefined
 }
 
-function domainFor(sourcePath: CanonicalSemanticPathV1, runtimePath: ModelCapabilitySemanticPathV2,
+function domainFor(runtimePath: ModelCapabilitySemanticPathV2,
   value: CanonicalFactValueV1 | undefined): ModelCapabilityDomainV2 | undefined {
   if (!value) return undefined
   if (value.kind === 'native_string_set' || value.kind === 'media_kind_set' || value.kind === 'operation_kind_set' ||
-      value.kind === 'aspect_ratio_set' || value.kind === 'native_string') {
+      value.kind === 'aspect_ratio_set') {
     const values = stringValues(value)
-    if (values && values.length > 0 && ['reasoning.mode', 'reasoning.effort', 'image.aspectRatio', 'image.resolution'].includes(runtimePath)) {
+    if (value.completeness === 'complete' && values && values.length > 0 &&
+        ['reasoning.mode', 'reasoning.effort', 'image.aspectRatio', 'image.resolution'].includes(runtimePath)) {
       return { kind: 'enum', values: [...new Set(values)] }
     }
   }
   if (value.kind === 'dimensions_set' && value.completeness === 'complete') {
     return { kind: 'dimensions_enum', values: value.values }
   }
-  if (value.kind === 'integer_domain' && value.interval) {
-    const min = value.interval.min ?? 0
-    const max = value.interval.max ?? min
-    return { kind: 'range', min, max, integer: true, ...(value.excludedValues === undefined ? {} : {
+  if (value.kind === 'integer_domain' && value.completeness === 'complete' && value.interval &&
+      value.interval.min !== undefined && value.interval.max !== undefined &&
+      value.interval.minInclusive && value.interval.maxInclusive) {
+    return { kind: 'range', min: value.interval.min, max: value.interval.max, integer: true, ...(value.excludedValues === undefined ? {} : {
       excludedValues: value.excludedValues,
     }) }
   }
-  if (sourcePath === 'limits.output.maxTokens' && value.kind === 'integer') {
-    return { kind: 'range', min: 1, max: value.value, integer: true }
-  }
-  if (sourcePath === 'sampling.temperature.modelMaximum' &&
-      (value.kind === 'decimal' || value.kind === 'integer')) {
-    return { kind: 'range', min: 0, max: value.value, integer: false }
-  }
+  // Scalar defaults and one-sided maxima remain factual values. The runtime
+  // schema cannot represent an open or one-sided domain without inventing a
+  // boundary, so leave the field domain-less and let the downstream contract
+  // enforce its own request bounds.
   return undefined
 }
 
@@ -206,9 +204,9 @@ function projectedField(rule: RuntimeProjectionRule, fields: readonly ResolvedMo
     evidenceIds.push(evidenceId)
   }
   const domainField = fields.find((field) => field.selectedValue !== undefined &&
-    domainFor(field.path, rule.runtimePath, field.selectedValue) !== undefined)
+    domainFor(rule.runtimePath, field.selectedValue) !== undefined)
   const domain = state === 'unknown' || state === 'unsupported' || state === 'conflict' ? undefined
-    : domainFor(domainField?.path ?? rule.sourcePaths[0], rule.runtimePath, domainField?.selectedValue ?? selected) ??
+    : domainFor(rule.runtimePath, domainField?.selectedValue ?? selected) ??
       undefined
   const defaultCandidate = state === 'supported'
     ? defaultValue(fields.find((field) => field.path.endsWith('.providerDefault'))?.selectedValue ?? selected)
