@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice F complete; Slice G closeout in progress
+- **Lifecycle Status**: Goal 3 complete; closeout evidence recorded
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -45,8 +45,6 @@
 - **Validation**: `npm run rebuild:node` (Slice B ABI target retained); schema integration (19 passed), resolved repository/service integration (22 passed), resolver/boundary unit tests (10 passed), `npx tsc --noEmit --pretty false` (passed), targeted ESLint (no errors; complexity warnings only), and `git diff --check` (passed). D post-implementation Sol-medium review completed; P1 findings were repaired and the focused checks were rerun.
 - **Boundary**: no IPC/UI, Settings binding, provider snapshot cutover, compiler/runtime authority, retry/replay migration, or legacy deletion. Resolved snapshots are publication/cache infrastructure only.
 
-### Next Slice
-
 ### Slice E — Atomic consumer cutover and snapshot continuity
 
 - **Status**: complete on 2026-09-22 (`261f137b`).
@@ -61,20 +59,20 @@
 - **Validation**: `npm run gate:generation-v2-zero-residual` (PASS); `npm run gate:generation-v2-capability-rule-authority` (PASS); retired-symbol scan (no production matches); `npm exec tsc -- --noEmit --pretty false` (PASS); `npx vue-tsc --noEmit --pretty false` (PASS); focused integration (4 files, 29 passed); focused provider/runtime unit tests (6 files, 10 passed); Gemini image integration (9 passed). `npm run gate:model-identity-purge` remains blocked by its pre-existing allowlist rejection of `nativeModelId` in `canonicalModelFactsV2.ts`, unchanged by Slice F. F post-review cleared with P0: None and P1: None.
 - **Boundary**: `supportedParameters` and `inputModalities` remain only in catalog/source-evidence ingestion; Catalog and temporary projection data do not authorize new sends. Canonical Rules remain a Goal 3 source.
 
-### Next Slice
+### Closeout
 
-Slice G — End-to-end closeout.
+Slice G — End-to-end closeout complete on 2026-09-22; evidence and non-green checks are recorded below.
 
 ## Sol-medium review budget
 
-Consumed: 4 / 6. Slice A requires no Sol-medium review.
+Consumed: 5 / 6. Slice A requires no Sol-medium review.
 
 - [ ] C pre-implementation
 - [x] D post-implementation
 - [x] E pre-cutover
 - [x] E post-cutover
 - [x] F residual authority audit
-- [ ] G closeout
+- [x] G closeout
 
 ---
 
@@ -415,7 +413,16 @@ Complete full-chain acceptance, negative authority audit, and documentation stat
 - Retry, replay, and continuation retain their originating revision.
 - Concurrent refresh/send produces a complete old or complete new snapshot.
 - Static authority scans report no temporary or legacy fallback.
-- README and items 06/10/12/13/14/15 report actual, evidence-backed status without calling unrun checks successful.
+- Items 06/10/12/13/14/15 and this plan report actual, evidence-backed status without calling unrun checks successful. The pre-existing README working-tree edit is preserved outside this checkpoint and is not claimed as synchronized.
+
+**Closeout evidence (2026-09-22)**
+
+- Goal 3 focused integration after the final Node ABI rebuild: 5 files, 31 passed.
+- Full partitions: `npm run test:unit` reported 315 passed files / 4 unrelated failures (2,675 passed tests / 8 failed); `npm run test:ui` reported 66 passed files / 1 unrelated timeout file (477 passed tests / 2 failed); final `npm run test:integration` reported 170 passed files / 1 unrelated Epoch-2 schema-recovery failure / 3 skipped tests (1,243 passed tests / 1 failed). The earlier Goal 3 OpenAI Responses expectation residue was repaired and the focused set was rerun successfully.
+- Authority gates: `npm run gate:generation-v2-zero-residual` PASS; `npm run gate:generation-v2-capability-rule-authority` PASS. `npm run gate:model-identity-purge` remains BLOCKED by the pre-existing `canonicalModelFactsV2.ts uses nativeModelId outside the discovery/observation allowlist` rejection; this is unchanged by Goal 3 Slice F.
+- Type validation: `npm exec tsc -- --noEmit --pretty false` PASS; `npx vue-tsc --noEmit --pretty false` PASS. Vite development build PASS. Electron smoke PASS, including renderer/preload boundary, DFC attachment, and visual-diagnostics checks.
+- `npm run verify:ssot` was not rerun because its first stage is the already-recorded non-green full unit partition; no full-SSOT pass is claimed. Final ABI was returned to Node with `npm run rebuild:node` after Electron smoke.
+- Full-suite failures remain preserved as evidence: DeepSeek/Gemini legacy unit expectations and timeout cases, AppChatApp early-access UI timeouts, the Epoch-2 schema-mismatch classification, Magika lifecycle timing/cleanup, and provider-key-vault timing. None are in the Goal 3 residual-authority cutover; the focused Goal 3 set is green.
 
 **Explicit exclusions**
 
@@ -465,21 +472,21 @@ Provider-specific compose/apply callsites may be deleted as each internal migrat
 
 ## 5. Delete-after-migration checklist
 
-- [ ] Temporary Rules-only projection and repository
-- [ ] Rules winner/overlay/apply helpers
-- [ ] Local/compatible/image `compose*WithMaterializedRulesV2`
-- [ ] Provider-specific Model Facts overlays and matrices
-- [ ] OpenRouter `supportedParameters`/`inputModalities` send authority
-- [ ] Legacy Catalog capability booleans authority
-- [ ] Compatible manual/remote capability overlay authority
-- [ ] Duplicated supported-parameter decision paths
-- [ ] Hard-coded model capability allowlists
-- [ ] Request-time capability regex
-- [ ] Silent capability fallbacks
+- [x] Temporary Rules-only projection and repository
+- [x] Rules winner/overlay/apply helpers
+- [x] Local/compatible/image `compose*WithMaterializedRulesV2`
+- [x] Provider-specific Rules overlays and duplicated current-send Model Facts overlays
+- [x] OpenRouter `supportedParameters`/`inputModalities` send authority
+- [x] Legacy Catalog capability booleans authority
+- [x] Compatible manual/remote capability overlay authority
+- [x] Duplicated supported-parameter decision paths
+- [ ] Hard-coded model identity/operation allowlists outside Goal 3 semantic resolution
+- [ ] Request-time identity/validation regex outside Goal 3 semantic resolution
+- [ ] Silent capability fallbacks outside Goal 3 semantic resolution
 - [ ] Dead file-capability mapping utilities after reference proof
-- [ ] Old authority fixtures, tests, and gate exceptions
+- [x] Old Goal 3 authority fixtures, tests, and gate exceptions
 
-Materialized Rules source, raw Catalog evidence, identity regex, and execution constraints are explicitly outside this delete list.
+Materialized Rules source, raw Catalog evidence, identity/operation validation, execution constraints, and unrelated cleanup rows left unchecked are explicitly outside the Goal 3 semantic-authority deletion boundary. They are not Slice G blockers.
 
 ## 6. Test and gate strategy
 
@@ -536,15 +543,15 @@ Severity and blocking status are independent. The following findings do not add 
 
 ## 8. True Slice blockers
 
-The current implementation blockers are:
+The Goal 3 implementation blockers were:
 
-1. no pure resolved-facts ontology;
-2. no deterministic all-claims three-source resolver;
-3. no atomic resolved publication/cache;
-4. new snapshot producers still use provider-specific and temporary Rules authorities;
-5. legacy authority cannot be deleted until the complete consumer closure migrates.
+1. [x] no pure resolved-facts ontology;
+2. [x] no deterministic all-claims three-source resolver;
+3. [x] no atomic resolved publication/cache;
+4. [x] new snapshot producers still use provider-specific and temporary Rules authorities;
+5. [x] legacy authority cannot be deleted until the complete consumer closure migrates.
 
-Slices 1–6 cover these blockers directly. No blocker requires reopening the frozen Owner contract.
+Slices 1–6 cover these blockers directly. No Goal 3 blocker remains and none requires reopening the frozen Owner contract. The pre-existing README working-tree edit is intentionally preserved and not part of this checkpoint; its stale historical authorization wording is not evidence of the code’s current branch status.
 
 ## 9. Stop boundary
 
