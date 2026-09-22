@@ -37,6 +37,8 @@ const changingActivation = ref<string | null>(null)
 const rollbackConfirming = ref<number | null>(null)
 const rollbackPin = ref(false)
 const rollingBack = ref(false)
+const selectedPackId = ref<string | null>(null)
+const selectedRuleId = ref<string | null>(null)
 
 function capabilityRules() {
   const value = window.generationV2?.capabilityRules
@@ -50,6 +52,35 @@ function packs(): readonly Pack[] {
     return cloud.value.active.activeSnapshot?.projected.definition.packs ?? []
   }
   return user.value?.packs.map((pack) => pack.definition) ?? []
+}
+
+function selectedPack(): Pack | null {
+  const packId = selectedPackId.value
+  return packId ? packs().find((pack) => pack.packId === packId) ?? null : null
+}
+
+function selectedRule(): Rule | null {
+  const pack = selectedPack()
+  const ruleId = selectedRuleId.value
+  return pack && ruleId ? pack.rules.find((rule) => rule.ruleId === ruleId) ?? null : null
+}
+
+function showPack(packId: string) {
+  selectedPackId.value = packId
+  selectedRuleId.value = null
+}
+
+function showRule(ruleId: string) {
+  selectedRuleId.value = ruleId
+}
+
+function backToPacks() {
+  selectedPackId.value = null
+  selectedRuleId.value = null
+}
+
+function backToRules() {
+  selectedRuleId.value = null
 }
 
 async function load() {
@@ -262,34 +293,73 @@ onMounted(() => { if (props.ownership === 'cloud') void load() })
         </li>
       </ul>
     </div>
-    <ul class="space-y-2">
-      <li v-for="pack in packs()" :key="pack.packId" class="rounded border border-gray-200 bg-white p-3">
+    <nav v-if="selectedPack()" class="flex items-center gap-1 text-xs text-gray-500" aria-label="Rule navigation">
+      <button type="button" class="text-blue-700 hover:underline" @click="backToPacks">{{ t('settings.modelsCapabilities.packs') }}</button>
+      <span aria-hidden="true">/</span>
+      <button v-if="selectedRule()" type="button" class="text-blue-700 hover:underline" @click="backToRules">{{ selectedPack()?.displayName }}</button>
+      <template v-if="selectedRule()"><span aria-hidden="true">/</span><span>{{ selectedRule()?.label ?? selectedRule()?.ruleId }}</span></template>
+      <span v-else>{{ selectedPack()?.displayName }}</span>
+    </nav>
+
+    <div v-if="!selectedPack()">
+      <ul class="space-y-2">
+        <li v-for="pack in packs()" :key="pack.packId">
+          <button type="button" class="w-full rounded border border-gray-200 bg-white p-3 text-left hover:bg-gray-50" @click="showPack(pack.packId)">
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span class="font-medium text-gray-900">{{ pack.displayName }}</span>
+              <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+              <span>{{ packModeText(pack.mode) }}</span><span>{{ packTargetText(pack.target) }}</span><span>{{ pack.rules.length }} {{ t('settings.modelsCapabilities.rules') }}</span>
+            </div>
+          </button>
+        </li>
+        <li v-if="!loading && packs().length === 0" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500">
+          {{ t('settings.modelsCapabilities.noPacks') }}
+        </li>
+      </ul>
+    </div>
+
+    <template v-else-if="!selectedRule()">
+      <section class="rounded border border-gray-200 bg-white p-3">
         <div class="flex items-center justify-between gap-2 text-xs">
-          <span class="font-medium text-gray-900">{{ pack.displayName }}</span>
-          <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
+          <span class="font-medium text-gray-900">{{ selectedPack()!.displayName }}</span>
+          <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ selectedPack()!.priority }}</span>
         </div>
         <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
-          <span>{{ t('settings.modelsCapabilities.packModeLabel') }}: {{ packModeText(pack.mode) }}</span>
-          <span>{{ t('settings.modelsCapabilities.packTargetLabel') }}: {{ packTargetText(pack.target) }}</span>
-          <span>{{ t('settings.modelsCapabilities.rewriteCount') }}: {{ rewriteCount(pack) }}</span>
+          <span>{{ t('settings.modelsCapabilities.packModeLabel') }}: {{ packModeText(selectedPack()!.mode) }}</span>
+          <span>{{ t('settings.modelsCapabilities.packTargetLabel') }}: {{ packTargetText(selectedPack()!.target) }}</span>
+          <span>{{ t('settings.modelsCapabilities.rewriteCount') }}: {{ rewriteCount(selectedPack()!) }}</span>
         </div>
-        <ul class="mt-2 space-y-1 text-[11px] text-gray-600">
-          <li v-for="rule in pack.rules" :key="rule.ruleId" class="flex flex-wrap items-center justify-between gap-2">
-            <span>{{ rule.label ?? rule.ruleId }} · {{ rule.assertion.path }} · {{ t('settings.modelsCapabilities.configured') }}: {{ rule.configured }} · {{ activationText(pack, rule) }} ({{ activationSourceText(pack, rule) }})</span>
-            <select v-if="props.ownership === 'cloud'" class="rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px]"
-              :value="cloudRuleSelection(rule.ruleId, rule.configured)" :disabled="changingActivation === rule.ruleId" @change="setCloudRuleSelection(rule.ruleId, ($event.target as HTMLSelectElement).value)">
-              <option :value="`remote:${rule.configured}`">{{ t('settings.modelsCapabilities.followRemoteBaseline') }}</option>
-              <option value="default">{{ t('settings.modelsCapabilities.activationDefault') }}</option>
-              <option value="on">{{ t('common.on') }}</option>
-              <option value="off">{{ t('common.off') }}</option>
-            </select>
-          </li>
-        </ul>
-      </li>
-      <li v-if="!loading && packs().length === 0" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500">
-        {{ t('settings.modelsCapabilities.noPacks') }}
-      </li>
-    </ul>
+      </section>
+      <ul class="space-y-2">
+        <li v-for="rule in selectedPack()!.rules" :key="rule.ruleId">
+          <button type="button" class="w-full rounded border border-gray-200 bg-white p-3 text-left text-[11px] text-gray-700 hover:bg-gray-50" @click="showRule(rule.ruleId)">
+            <span class="font-medium text-gray-900">{{ rule.label ?? rule.ruleId }}</span> · {{ rule.assertion.path }} · {{ t('settings.modelsCapabilities.configured') }}: {{ rule.configured }}
+          </button>
+        </li>
+        <li v-if="selectedPack()!.rules.length === 0" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500">{{ t('settings.modelsCapabilities.noRules') }}</li>
+      </ul>
+    </template>
+
+    <section v-else class="rounded border border-gray-200 bg-white p-3">
+      <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <h4 class="font-semibold text-gray-900">{{ selectedRule()!.label ?? selectedRule()!.ruleId }}</h4>
+        <span>{{ selectedRule()!.assertion.path }}</span>
+      </div>
+      <div class="mt-3 grid gap-2 text-[11px] text-gray-700">
+        <div>{{ t('settings.modelsCapabilities.configured') }}: {{ selectedRule()!.configured }}</div>
+        <div>{{ t('settings.modelsCapabilities.activation') }}: {{ activationText(selectedPack()!, selectedRule()!) }} ({{ activationSourceText(selectedPack()!, selectedRule()!) }})</div>
+        <label>{{ t('settings.modelsCapabilities.activation') }}
+          <select class="ml-1 rounded border border-gray-300 bg-white px-1 py-0.5" :value="cloudRuleSelection(selectedRule()!.ruleId, selectedRule()!.configured)" :disabled="changingActivation === selectedRule()!.ruleId" @change="setCloudRuleSelection(selectedRule()!.ruleId, ($event.target as HTMLSelectElement).value)">
+            <option :value="`remote:${selectedRule()!.configured}`">{{ t('settings.modelsCapabilities.followRemoteBaseline') }}</option>
+            <option value="default">{{ t('settings.modelsCapabilities.activationDefault') }}</option>
+            <option value="on">{{ t('common.on') }}</option>
+            <option value="off">{{ t('common.off') }}</option>
+          </select>
+        </label>
+      </div>
+    </section>
     </template>
   </section>
 </template>

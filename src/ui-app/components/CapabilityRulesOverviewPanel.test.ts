@@ -42,7 +42,10 @@ describe('CapabilityRulesOverviewPanel', () => {
       apply: vi.fn(async () => null), rollback: vi.fn(async () => null), setHistoryLimit: vi.fn(async () => null),
       resumeUpdates: vi.fn(async () => null),
     }, user: { readCommitted: vi.fn(async () => ({ snapshot: null, notes: [] })) } } }
+    const user = userEvent.setup()
     render(CapabilityRulesOverviewPanel, { props: { ownership: 'cloud' } })
+    await user.click(await screen.findByRole('button', { name: /Pack.*1 Rules/ }))
+    await user.click(await screen.findByRole('button', { name: /rule:one.*reasoning\.support/ }))
     const select = await screen.findByRole('combobox')
     await fireEvent.update(select, 'remote:off')
     await waitFor(() => expect(replaceActivationOverrides).toHaveBeenCalledWith({
@@ -91,7 +94,9 @@ describe('CapabilityRulesOverviewPanel', () => {
     const user = userEvent.setup()
     render(CapabilityRulesOverviewPanel, { props: { ownership: 'user' } })
     await user.click(await screen.findByRole('button', { name: '编辑规则' }))
-    await user.selectOptions((await screen.findAllByRole('combobox'))[2]!, 'off')
+    await user.click(await screen.findByRole('button', { name: /User Pack.*1 Rules/ }))
+    await user.click(await screen.findByRole('button', { name: /rule:one.*reasoning\.support/ }))
+    await user.selectOptions((await screen.findAllByRole('combobox'))[0]!, 'off')
     await waitFor(() => expect(replaceDraft).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session:1', expectedDraftRevision: 1,
     })))
