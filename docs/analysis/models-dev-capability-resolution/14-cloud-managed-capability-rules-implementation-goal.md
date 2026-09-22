@@ -1,8 +1,8 @@
 # Cloud-managed Capability Rules Implementation Goal
 
-- **Lifecycle Status**: active implementation
+- **Lifecycle Status**: Slice 7 complete; Goal 3 not started
 - **Document Role**: production implementation plan derived from frozen Owner contracts
-- **Last updated**: 2026-09-21
+- **Last updated**: 2026-09-22
 - **Authority**: implementation sequencing only; Owner semantics remain controlled by items 06, 12, and 13
 - **Controlling inputs**: items 06, 12, and 13
 - **Goal 3 status**: prohibited by this Goal
@@ -274,7 +274,16 @@ Slice 6 completed on 2026-09-21 with focused acceptance evidence:
 - this Slice adds no Settings UI, renderer database access, product IPC, Cloud-content mutation, derived Rule authoring, normal consumer migration, or Goal 3 source merge/winner/conflict/final-resolution behavior;
 - the schema change uses the frozen epoch-2 closed-schema digest replacement policy rather than an old-schema migration; the schema-mismatch recovery smoke passed.
 
-Slices 1–6 are therefore complete. Slice 7 is next. Product UI/IPC and all Goal 3 merge/winner/conflict/final-resolution behavior remain unimplemented.
+Slice 7 completed on 2026-09-22 with focused acceptance evidence:
+
+- Cloud/User Rules, authoritative-subject search, Inspector, evidence/raw reads, and source-policy actions remain behind the closed main-process IPC/client boundary; renderer code does not open the database or interpret persisted raw payloads.
+- Cloud and User remain two ownership views of one Capability Rules source. Cloud content is read-only while activation, candidate Apply, rollback, history, pin/resume, and freshness use the existing revision-CAS lifecycle; User content and activation changes remain in a durable draft until one batch Save.
+- Settings now exposes one Models & Capabilities category with sibling Cloud-managed Rules, User Rules, and Facts Inspector tabs. Cloud and User flows use Pack list → Rule list → Rule detail with breadcrumb/back navigation rather than nested Rules tabs, accordions, permanent split panes, or drag ordering.
+- SettingsModal now traps Tab focus while open and restores focus to the opener after close. Model Picker standard and compatible entries deep-link to the Inspector using identities obtained from explicit catalog/authority/provider-instance registries; no alias, display-name, fuzzy, or Rule/models.dev subject creation is used.
+- Facts Inspector supports authoritative-subject paging, exact deep-link inspection, Overview/Fields/Evidence views, mechanical Values differ, evidence slices, and lazy persisted sanitized payload reads without winner/conflict/final-resolution logic.
+- Focused UI and identity tests passed: 5 UI files / 76 tests plus 3 identity tests. `vue-tsc` reports only the four pre-existing ChatSessionConsole fixture errors documented outside this Slice; `git diff --check` has no whitespace errors.
+
+Slices 1–7 are therefore complete. Goal 3 remains the next phase and is still prohibited by this Goal until separately authorized.
 
 ## 11. Deferred findings ledger
 
