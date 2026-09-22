@@ -38,7 +38,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 20),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 21),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -66,6 +66,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'capability_rule_v2', fileName: 'capabilityRuleSchema.sql' }),
   Object.freeze({ id: 'canonical_model_fact_source_v1', fileName: 'canonicalModelFactSourceSchema.sql' }),
   Object.freeze({ id: 'model_facts_source_priority_v1', fileName: 'modelFactsSourcePrioritySchema.sql' }),
+  Object.freeze({ id: 'resolved_model_facts_v1', fileName: 'resolvedModelFactsSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
