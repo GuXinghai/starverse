@@ -1,6 +1,14 @@
 - **Lifecycle Status**: active
 - **Document Role**: owner-decision
-- **Last updated**: 2026-09-21
+- **Last updated**: 2026-09-22
+
+## Owner amendment：Goal 3 freshness / stale resolution closure（2026-09-22）
+
+Provider Native 或 models.dev 的 current/LKG snapshot 进入 stale 后，仍按当前已配置的 source priority 参与 Goal 3 resolution。Stale 只属于 freshness/diagnostics；不得仅因 stale 自动降低该来源的 priority，也不得自动排除该来源。
+
+当 facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化时，`fetchedAt`、`lastSucceededAt`、`lastAttemptedAt`、`staleReason` 或 fresh/stale 状态的单独变化不产生新的 final `capabilityRevision`。若 canonical facts、refs 或 resolution config 同时变化，仍按后文既有 revision 规则重新计算。
+
+该 amendment 不改变 Cloud-managed Rules 已冻结的 LKG/distribution contract，不授权 Goal 3 生产实现，也不新增 freshness-based winner policy。Goal 3 Owner contract is sufficiently frozen. Owner-question phase closed. Implementation planning may begin.
 
 ## Owner amendment：Cloud-managed Rules distribution contract（2026-09-21）
 
@@ -1389,10 +1397,10 @@ merged capabilityRevision
 
 # 四十九、Final Resolved Facts 有自己的 Revision
 
-以下任一变化都必须导致重新计算：
+以下任一 semantic input 变化都必须导致重新计算：
 
-* Provider fact snapshot；
-* models.dev snapshot；
+* Provider canonical facts/source refs；
+* models.dev canonical facts/source refs；
 * Capability Rule；
 * source priority；
 * 未来 conflict strategy。
@@ -1404,6 +1412,8 @@ capabilityRevision
 ```
 
 现有代码已有该机制基础，应继续复用。
+
+仅 freshness/diagnostics 变化不属于上述 semantic input。若 facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化，则 fresh/stale、`fetchedAt`、`lastSucceededAt`、`lastAttemptedAt` 或 `staleReason` 的单独变化不得产生新的 final `capabilityRevision`。
 
 ---
 

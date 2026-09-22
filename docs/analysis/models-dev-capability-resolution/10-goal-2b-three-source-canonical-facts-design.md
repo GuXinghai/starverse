@@ -2,7 +2,7 @@
 
 - **Lifecycle Status**: frozen Goal 2B design; subsequent Goal 2C implementation authorized
 - **Document Role**: controlling Goal 2B raw-first ontology and source-adapter design
-- **Last updated**: 2026-08-31
+- **Last updated**: 2026-09-22
 - **Authority**: current checkout, preserved source-native raw snapshots, linked primary documentation, and Owner-frozen model-facts boundary
 
 > 状态：本文档本身只记录 Goal 2B 冻结设计，不包含生产实现。Owner 后续已单独授权 Goal 2C 按本文档实施 ingestion；这不授权 Goal 3 Resolver。
@@ -10,6 +10,8 @@
 > 设计顺序：实际 Raw Data → source-neutral ontology → Source Adapter contract → Capability Rules 对齐。现有 Rules 和现有 Generation Intent 路径不是本设计的上游输入。
 >
 > 后续 Owner amendment：本文中的`built-in/user`与`query_bound` Rules描述的是Goal 2B设计及Goal 2C实施时点。未来目标不保留bundled built-in Rules，也不在按请求的subject fact读取/send/preflight/Goal 3 resolution中执行regex。Cloud-managed与User Rules改用同构Pack/Rule core，共同形成唯一Capability Rules source；regex只在authoritative exact-subject-set revision绑定的materialization阶段选择身份并输出exact-subject claims。该后续修订及UI/lifecycle边界以[`12-model-facts-ui-synchronization-plan.md`](12-model-facts-ui-synchronization-plan.md)为准，尚未完成生产迁移，且不改变本文冻结的ontology、三来源边界或Goal 3停止点。
+>
+> 2026-09-22 Goal 3 Owner closure：Provider Native/models.dev 的 stale current/LKG 继续按已配置的原 source priority 参与 resolution；stale 只属于 freshness/diagnostics，不自动降级或排除。Facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化时，freshness-only 变化不产生新的 final `capabilityRevision`。Goal 3 Owner contract is sufficiently frozen；Owner-question phase closed；implementation planning may begin，但本文仍不授权生产实现。
 
 ## 0. 结论摘要
 
@@ -946,7 +948,7 @@ Provider raw model-list revision、canonical source revision、subject fact revi
 
 ### 9.2 Freshness
 
-Freshness metadata包括 `fetchedAt`, `lastSucceededAt`, `lastAttemptedAt`, `staleReason`，但 timestamp 不进入 semantic payload digest。是否因 stale降低信任或影响 winner属于 Goal 3/Source Policy，Adapter 不决定。
+Freshness metadata包括 `fetchedAt`, `lastSucceededAt`, `lastAttemptedAt`, `staleReason`，但 timestamp 不进入 semantic payload digest。Owner 已冻结：Provider Native/models.dev 的 stale current/LKG 继续按已配置的原 source priority 参与 Goal 3 resolution；stale 只属于 freshness/diagnostics，不自动降低 priority，也不自动排除。Facts、canonical source/subject-fact refs 与 source-priority configuration 均未变化时，freshness-only 变化不产生新的 final `capabilityRevision`。Adapter 仍只记录本 source 的 freshness，不执行 priority/winner resolution。
 
 ### 9.3 LKG 行为
 
@@ -988,7 +990,7 @@ sourceKind
 + provider-specific catalog category（若有）
 ```
 
-该稳定 tuple的 digest形成 `sourceScopeId`。不同 credential或endpoint不能共享 current source pointer/LKG；credential轮换也不能静默复用旧 snapshot。models.dev和Rules使用各自显式 source scope，不伪造 credential维度。三类 source的 refresh cadence、manual refresh与staleness配置相互独立且可由用户配置；它们只影响 source selection/freshness，不进入 base subject identity。
+该稳定 tuple的 digest形成 `sourceScopeId`。不同 credential或endpoint不能共享 current source pointer/LKG；credential轮换也不能静默复用旧 snapshot。models.dev和Rules使用各自显式 source scope，不伪造 credential维度。三类 source的 refresh cadence、manual refresh与staleness配置相互独立且可由用户配置；它们只影响 source-local refresh scheduling与freshness diagnostics，不进入 base subject identity，也不改变 cross-source priority、winner或source eligibility。
 
 ### 9.5 Raw reference pinning 与 retention
 
@@ -1191,7 +1193,7 @@ Resolved Model Facts 之后，Generation Authorization 才加入 API Contract、
 
 ## 16. Goal 2B 停止点与后续授权
 
-以下列表记录 Goal 2B 冻结时的停止点，不是当前 checkout 的实施状态。Goal 2C 后续已获单独授权实施前三项及 Rules source迁移，但仍不得开始 Resolver、priority/conflict或 Goal 3：
+以下列表记录 Goal 2B 冻结时的停止点，不是当前 checkout 的实施状态。Goal 2C 后续已获单独授权实施前三项及 Rules source迁移；2026-09-22 Goal 3 Owner-question phase 已关闭且 implementation planning may begin，但仍不得把本文解释为 Resolver、priority/conflict或 Goal 3生产实现授权：
 
 - Provider Native/models.dev/Rules adapters；
 - source snapshot数据库；
