@@ -146,31 +146,6 @@ function domainFor(sourcePath: CanonicalSemanticPathV1, runtimePath: ModelCapabi
   return undefined
 }
 
-/**
- * The runtime codec requires a domain for a supported/confirmation field. A
- * fallback is only a shape-safe execution envelope; source-provided limits,
- * enums, dimensions, and defaults take precedence above and remain the actual
- * Model Facts authority.
- */
-function fallbackDomain(path: ModelCapabilitySemanticPathV2): ModelCapabilityDomainV2 | undefined {
-  switch (path) {
-    case 'generation.maxOutputTokens': return { kind: 'range', min: 1, max: 2_000_000, integer: true }
-    case 'generation.temperature': return { kind: 'range', min: 0, max: 2, integer: false }
-    case 'generation.topP': return { kind: 'range', min: 0, max: 1, integer: false }
-    case 'generation.topK': return { kind: 'range', min: 0, max: 1_000_000, integer: true }
-    case 'reasoning.mode': return { kind: 'enum', values: ['disabled', 'enabled'] }
-    case 'reasoning.effort': return { kind: 'enum', values: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }
-    case 'tools.mode': return { kind: 'enum', values: ['disabled', 'enabled'] }
-    case 'providerExtension.responseFormat': return { kind: 'response_format', types: ['text', 'json_object', 'json_schema'] }
-    case 'image.mode': return { kind: 'enum', values: ['disabled', 'generate'] }
-    case 'image.aspectRatio': return { kind: 'enum', values: ['auto'] }
-    case 'image.resolution': return { kind: 'enum', values: ['auto'] }
-    case 'web.mode': return { kind: 'enum', values: ['disabled', 'provider_search'] }
-    case 'web.types': return { kind: 'enum_list', values: ['web', 'image'], maxItems: 2 }
-    default: return undefined
-  }
-}
-
 function defaultValue(value: CanonicalFactValueV1 | undefined): string | number | boolean | undefined {
   if (!value) return undefined
   if (value.kind === 'native_string' || value.kind === 'integer' || value.kind === 'decimal' || value.kind === 'boolean') return value.value
@@ -178,11 +153,22 @@ function defaultValue(value: CanonicalFactValueV1 | undefined): string | number 
 }
 
 function stateFor(fields: readonly ResolvedModelFactFieldV1[]): PersistedModelCapabilityFieldV2['state'] {
-  if (fields.some((field) => field.state === 'conflict')) return 'requires_confirmation'
   const selected = fields.map((field) => field.selectedValue).filter((value): value is CanonicalFactValueV1 => value !== undefined)
+  if (selected.some((value) => value.kind === 'support' && value.value === 'unsupported')) return 'unsupported'
+  if (fields.some((field) => field.state === 'conflict')) return 'conflict'
   if (selected.some((value) => value.kind === 'support' && value.value === 'supported') ||
       selected.some((value) => value.kind !== 'support')) return 'supported'
-  if (selected.some((value) => value.kind === 'support' && value.value === 'unsupported')) return 'unsupported'
+  return 'unknown'
+}
+
+function evidenceEffectFor(field: ResolvedModelFactFieldV1, role: EvidenceRole): ModelCapabilityEvidenceEffectV2 {
+  if (field.state === 'conflict' && role === 'opposing') return 'conflict'
+  if (field.state === 'conflict' && role === 'overridden') return 'unknown'
+  if (role === 'supporting' && field.selectedValue?.kind === 'support' && field.selectedValue.value === 'unsupported') {
+    return 'rejects'
+  }
+  if (role === 'supporting') return 'supports'
+  if (role === 'opposing') return 'rejects'
   return 'unknown'
 }
 
@@ -192,12 +178,25 @@ function projectedField(rule: RuntimeProjectionRule, fields: readonly ResolvedMo
   const selectedField = fields.find((field) => field.selectedValue !== undefined)
   const selected = selectedField?.selectedValue
   const effect: ModelCapabilityEvidenceEffectV2 = state === 'supported' ? 'supports'
-    : state === 'unsupported' ? 'rejects' : state === 'requires_confirmation' ? 'requires_confirmation' : 'unknown'
-  const evidenceIds = [...new Set(fields.flatMap((field) => [
-    ...evidenceFor(field, 'supporting', 'supports', evidence),
-    ...evidenceFor(field, 'opposing', 'rejects', evidence),
-    ...evidenceFor(field, 'overridden', 'unknown', evidence),
-  ]))].sort()
+    : state === 'unsupported' ? 'rejects' : state === 'conflict' ? 'conflict'
+      : state === 'requires_confirmation' ? 'requires_confirmation' : 'unknown'
+  for (const field of fields) {
+    for (const role of ['supporting', 'opposing', 'overridden'] as const) {
+      evidenceFor(field, role, evidenceEffectFor(field, role), evidence)
+    }
+  }
+  const evidenceIds = [...new Set(fields.flatMap((field) => {
+    if (state === 'supported') return evidenceFor(field, 'supporting', 'supports', evidence)
+    if (state === 'unsupported') {
+      return field.selectedValue?.kind === 'support' && field.selectedValue.value === 'unsupported'
+        ? evidenceFor(field, 'supporting', 'rejects', evidence) : []
+    }
+    if (state === 'conflict') {
+      return field.state === 'conflict' ? evidenceFor(field, 'opposing', 'conflict', evidence) : []
+    }
+    if (state === 'requires_confirmation') return evidenceFor(field, 'opposing', 'requires_confirmation', evidence)
+    return []
+  }))].sort()
   if (evidenceIds.length === 0) {
     const evidenceId = `goal3.unknown.${digest({ path: rule.runtimePath, state })}`
     if (!evidence.has(evidenceId)) evidence.set(evidenceId, Object.freeze({
@@ -208,9 +207,9 @@ function projectedField(rule: RuntimeProjectionRule, fields: readonly ResolvedMo
   }
   const domainField = fields.find((field) => field.selectedValue !== undefined &&
     domainFor(field.path, rule.runtimePath, field.selectedValue) !== undefined)
-  const domain = state === 'unknown' || state === 'unsupported' ? undefined
+  const domain = state === 'unknown' || state === 'unsupported' || state === 'conflict' ? undefined
     : domainFor(domainField?.path ?? rule.sourcePaths[0], rule.runtimePath, domainField?.selectedValue ?? selected) ??
-      fallbackDomain(rule.runtimePath)
+      undefined
   const defaultCandidate = state === 'supported'
     ? defaultValue(fields.find((field) => field.path.endsWith('.providerDefault'))?.selectedValue ?? selected)
     : undefined

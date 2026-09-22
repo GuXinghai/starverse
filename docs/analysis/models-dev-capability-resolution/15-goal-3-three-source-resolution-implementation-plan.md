@@ -424,6 +424,16 @@ Complete full-chain acceptance, negative authority audit, and documentation stat
 - `npm run verify:ssot` was not rerun because its first stage is the already-recorded non-green full unit partition; no full-SSOT pass is claimed. Final ABI was returned to Node with `npm run rebuild:node` after Electron smoke.
 - Full-suite failures remain preserved as evidence: DeepSeek/Gemini legacy unit expectations and timeout cases, AppChatApp early-access UI timeouts, the Epoch-2 schema-mismatch classification, Magika lifecycle timing/cleanup, and provider-key-vault timing. None are in the Goal 3 residual-authority cutover; the focused Goal 3 set is green.
 
+**Bounded post-closeout correction evidence (2026-09-22)**
+
+- Scope was limited to the GitHub review's runtime projection and cutover-contract findings. No general hardening campaign, Goal 4 work, or unrelated ledger expansion was started.
+- Runtime projection no longer fabricates fallback domains. An explicit `conflict` field/evidence state preserves equal-priority Model Facts conflict semantics; `unsupported` support facts gate sibling metadata; field evidence references only semantically relevant provenance, while overridden provenance remains global `unknown` evidence rather than being attached to a conflicting field.
+- The transitional current-send revision bypass and its production callers were removed. Final Goal 3 snapshot creation retains the strict final `capabilityRevision` assertion, and retry/replay continues to validate the persisted originating snapshot.
+- Added `npm run gate:generation-v2-goal3-authority` and wired it into `verify:ssot`; the new gate, `npm run gate:generation-v2-zero-residual`, and `npm run gate:generation-v2-capability-rule-authority` all PASS.
+- Final focused validation after returning to the Node ABI: unit 5 files / 45 tests PASS; integration 6 files / 30 tests PASS; `npm exec tsc -- --noEmit --pretty false` and `npx vue-tsc --noEmit --pretty false` PASS; final Electron smoke PASS, including renderer/preload, DFC attachment, and visual diagnostics.
+- ABI discipline: `npm run rebuild:electron` ran through the Electron smoke, followed by `npm run rebuild:node`; final ABI target is Node and no native artifacts are committed.
+- Latest bounded Sol-medium risk review result: P0/P1/P2 review CLEARED. Existing deferred findings remain deferred.
+
 **Explicit exclusions**
 
 - No conflict DSL, automatic repair, telemetry platform, or infinite hardening campaign.

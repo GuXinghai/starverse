@@ -45,7 +45,7 @@ import {
   type OpenRouterImageRegenerateCommandV2,
   type OpenRouterImageRetryCommandV2,
 } from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
-import { assertExpectedCapabilityRevisionV2, assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class OpenRouterImageInitialSnapshotCommitV2Error extends Error {
@@ -117,7 +117,6 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
-  assertExpectedCurrentSendCapabilityRevisionV2(input.capability.revision.value)
   const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
     capability: resolvedCapabilityFromRuntimeSnapshotV2(input.capability), binding,
     credentialRevision: input.credentialRevision, resolvedAt: input.capability.resolvedAt,
@@ -200,7 +199,6 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
-  assertExpectedCurrentSendCapabilityRevisionV2(input.capability.revision.value)
   if (input.commandFacts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
       input.commandFacts.attachmentSet.urlReferenceIntents.some((attachment) =>
         attachment.include && attachment.mediaKind !== 'image')) {

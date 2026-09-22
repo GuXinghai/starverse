@@ -14,7 +14,6 @@ import {
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiInteractionsDefinitionV2,
@@ -207,7 +206,6 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   validateFacts(input.commandFacts)
   const binding = composeBinding(input.modelEvidence, input.modelId)
   const capability = composeCapability(binding)
-  assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => { binding.assertCurrent(); capability.assertCurrent(); validateFacts(input.commandFacts) },

@@ -289,7 +289,7 @@ export function projectGenerationControlsProjectionV2(capability: ResolvedCapabi
   const facts = capability.modelFacts
   const binding = capability.executionContext.binding
   const controls = Object.fromEntries(facts.fields.map((field) => [field.path, Object.freeze({
-    visibility: field.state === 'missing' || field.state === 'unsupported' ? 'hidden' : 'visible', state: field.state,
+    visibility: field.state === 'missing' || field.state === 'unsupported' || field.state === 'conflict' ? 'hidden' : 'visible', state: field.state,
     ...(field.domain ? { domain: field.domain } : {}),
     ...(field.defaultValue === undefined ? {} : { defaultValue: field.defaultValue }),
     constraints: field.constraints, evidenceIds: field.evidenceIds,
@@ -376,12 +376,12 @@ export function validateSemanticIntentAgainstResolvedCapabilityV2(
   const values = explicitValues(intent)
   for (const [path, value] of values) {
     const field = fields.get(path)
-    if (!field || field.state === 'unsupported' || field.state === 'missing') {
+    if (!field || field.state === 'unsupported' || field.state === 'conflict' || field.state === 'missing') {
       throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
     }
     if (!covered.has(path)) throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
     if (field.state === 'unknown') continue
-    if (!contains(field.domain, value)) {
+    if (field.domain !== undefined && !contains(field.domain, value)) {
       throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
     }
     for (const constraint of field.constraints) {

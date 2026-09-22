@@ -67,4 +67,23 @@ describe('CanonicalModelFactsV2 evidence schema', () => {
     expect(() => canonicalizeModelFactsV2(facts({ evidence: [aliasedEvidence] })))
       .toThrow('GENERATION_V2_CANONICAL_MODEL_FACTS_INVALID')
   })
+
+  it('allows supported facts without a domain but rejects blocked states with defaults', () => {
+    const supported = facts() as { fields: Array<Record<string, unknown>> }
+    const supportedField = supported.fields.find((field) => field.path === 'generation.maxOutputTokens')!
+    delete supportedField.domain
+    supportedField.defaultValue = 1
+    expect(() => canonicalizeModelFactsV2(supported)).not.toThrow()
+
+    const blocked = facts() as { evidence: Array<Record<string, unknown>>; fields: Array<Record<string, unknown>> }
+    const blockedField = blocked.fields.find((field) => field.path === 'generation.maxOutputTokens')!
+    blockedField.state = 'unknown'
+    delete blockedField.domain
+    blocked.evidence[0].effect = 'unknown'
+    blockedField.evidenceIds = ['capability.rule.example']
+    blockedField.constraints = []
+    blockedField.defaultValue = 1
+    expect(() => canonicalizeModelFactsV2(blocked))
+      .toThrow('GENERATION_V2_CANONICAL_MODEL_FACTS_INVALID')
+  })
 })

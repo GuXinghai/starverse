@@ -284,8 +284,8 @@ const EVIDENCE_KINDS = Object.freeze([
   'contract_invariant', 'endpoint_descriptor', 'signed_provider_record',
   'official_documentation', 'live_probe', 'capability_rule',
 ] as const)
-const EVIDENCE_EFFECTS = Object.freeze(['supports', 'rejects', 'requires_confirmation', 'unknown'] as const)
-const FIELD_STATES = Object.freeze(['supported', 'unsupported', 'requires_confirmation', 'missing', 'unknown'] as const)
+const EVIDENCE_EFFECTS = Object.freeze(['supports', 'rejects', 'requires_confirmation', 'conflict', 'unknown'] as const)
+const FIELD_STATES = Object.freeze(['supported', 'unsupported', 'requires_confirmation', 'conflict', 'missing', 'unknown'] as const)
 
 function canonicalEvidence(input: readonly Readonly<Record<string, unknown>>[]): readonly CanonicalModelCapabilityEvidenceV2[] {
   const evidence = input.map((item) => {
@@ -320,10 +320,12 @@ export function canonicalizeModelCapabilityFieldV2(value: unknown): PersistedMod
     const state = value.state as ModelCapabilityFieldStateV2
     const fieldDomain = value.domain === undefined ? undefined : domain(value.domain)
     const fieldDefault = value.defaultValue === undefined ? undefined : scalar(value.defaultValue)
-    if ((state === 'unsupported' || state === 'missing' || state === 'unknown') !== (fieldDomain === undefined) ||
+    if ((state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown') && fieldDomain !== undefined ||
         !Array.isArray(value.constraints) || !Array.isArray(value.evidenceIds) ||
-        (state === 'unsupported' || state === 'missing' || state === 'unknown') && value.constraints.length > 0 ||
-        fieldDefault !== undefined && (!fieldDomain || !defaultValueFitsDomain(fieldDefault, fieldDomain))) invalid()
+        (state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown') && value.constraints.length > 0 ||
+        fieldDefault !== undefined && (
+          (fieldDomain === undefined && (state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown')) ||
+          fieldDomain !== undefined && !defaultValueFitsDomain(fieldDefault, fieldDomain))) invalid()
     if (fieldDomain && !isModelCapabilityDomainCompatibleWithPathV2(
       value.path as ModelCapabilitySemanticPathV2,
       fieldDomain,
@@ -366,7 +368,8 @@ export function canonicalizeModelFactsV2(value: unknown): CanonicalModelFactsV2 
     const fields = canonicalFields(value.fields as readonly PersistedModelCapabilityFieldV2[])
     const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]))
     const effectForState: Partial<Record<ModelCapabilityFieldStateV2, ModelCapabilityEvidenceEffectV2>> = {
-      supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation', unknown: 'unknown',
+      supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation',
+      conflict: 'conflict', unknown: 'unknown',
     }
     for (const field of fields) {
       if (field.state === 'missing') {

@@ -133,9 +133,9 @@ describe('OpenAI Responses Goal 3 capability resolution', () => {
         credentialService: credentialService(), openAICompatibleCredentialService: {} as never })
       for (const nativeModelId of models) {
         const resolved = (await service.resolve(request(nativeModelId) as never)).resolvedCapability.modelFacts
-        expect(resolved.fields.find((field) => field.path === 'reasoning.mode')).toMatchObject({
-          state: 'supported', domain: { kind: 'enum', values: ['disabled', 'enabled'] },
-        })
+        const reasoningMode = resolved.fields.find((field) => field.path === 'reasoning.mode')
+        expect(reasoningMode).toMatchObject({ state: 'supported' })
+        expect(reasoningMode?.domain).toBeUndefined()
         expect(resolved.fields.find((field) => field.path === 'reasoning.effort')?.state).toBe('unknown')
       }
     } finally { db.close() }

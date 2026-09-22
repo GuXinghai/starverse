@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   assertExpectedCapabilityRevisionV2,
-  assertExpectedCurrentSendCapabilityRevisionV2,
   readExpectedCapabilityRevisionV2,
   runWithExpectedCapabilityRevisionV2,
 } from './capabilityRevisionExpectationV2'
@@ -37,14 +36,10 @@ describe('Generation V2 capability revision expectation', () => {
     },
   )
 
-  it('defers only a legacy current-send capability to the Goal 3 snapshot cutover', () => {
+  it('strictly compares the Goal 3 revision on current-send paths', () => {
     expect(() => runWithExpectedCapabilityRevisionV2(
       `capability-revision-v1:${'a'.repeat(64)}`,
-      () => assertExpectedCurrentSendCapabilityRevisionV2(`capability-v2:${'b'.repeat(64)}`),
-    )).not.toThrow()
-    expect(() => runWithExpectedCapabilityRevisionV2(
-      `capability-revision-v1:${'a'.repeat(64)}`,
-      () => assertExpectedCurrentSendCapabilityRevisionV2(`capability-revision-v1:${'b'.repeat(64)}`),
+      () => assertExpectedCapabilityRevisionV2(`capability-revision-v1:${'b'.repeat(64)}`),
     )).toThrowError(expect.objectContaining({ code: 'STALE_CAPABILITY_REVISION' }))
   })
 })

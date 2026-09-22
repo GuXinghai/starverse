@@ -94,7 +94,7 @@ function capabilityFromProjection(key: GenerationParamKey): GenerationParamCapab
     ui: { visibleByDefault: supported && field?.visibility !== 'hidden', editable: supported && field?.visibility !== 'hidden' },
     ...extra,
   })
-  if (!field || field.state === 'missing' || field.state === 'unsupported') return base(false, {
+  if (!field || field.state === 'missing' || field.state === 'unsupported' || field.state === 'conflict') return base(false, {
     ui: { visibleByDefault: false, editable: false, warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }) },
   })
   if (field.state === 'unknown') {

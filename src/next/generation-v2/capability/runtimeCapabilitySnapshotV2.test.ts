@@ -38,6 +38,7 @@ type MutableField = {
   path: RuntimeCapabilitySemanticPathV2
   state: string
   domain?: Record<string, unknown>
+  defaultValue?: string | number | boolean
   constraints: unknown[]
   evidenceIds: string[]
 }
@@ -97,7 +98,7 @@ function draft(): MutableDraft {
 
 describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
   it('includes the optional Goal 3 binding grammar in the closed codec schema digest', () => {
-    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v4-goal3-resolution-binding')
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v5-goal3-conflict-facts')
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2.modelFactsResolution).toEqual(expect.objectContaining({ optional: true }))
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2).toMatch(/^[0-9a-f]{64}$/u)
   })
@@ -249,6 +250,18 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     const unknown = draft()
     unknown.fields[0] = { ...unknown.fields[0], path: 'wire.temperature' as typeof unknown.fields[number]['path'] }
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(unknown))
+      .toThrow('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  })
+
+  it('rejects defaults on blocked fields without a domain', () => {
+    const value = draft()
+    const field = value.fields.find((candidate) => candidate.path === 'generation.maxOutputTokens')!
+    field.state = 'unknown'
+    delete field.domain
+    field.defaultValue = 1
+    value.evidence[0].effect = 'unknown'
+    field.evidenceIds = ['contract.openai.responses.v1']
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value))
       .toThrow('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   })
 
