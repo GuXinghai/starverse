@@ -259,7 +259,12 @@ function canonicalizeSourceFactProvenance(
   if (value.ruleClaim !== undefined) allowed.push('ruleClaim')
   if (value.derivation !== undefined) allowed.push('derivation')
   exactKeys(value, allowed)
-  if (value.sourceKind !== expectedKind || value.canonicalSourceRevision !== sourceFactRef.sourceRevision.canonicalSourceRevision ||
+  const allowedSourceRevisions = new Set([
+    sourceFactRef.sourceRevision.canonicalSourceRevision,
+    sourceFactRef.sourceRevision.previousLkgSourceRevision,
+  ].filter((revision): revision is string => revision !== undefined))
+  if (typeof value.canonicalSourceRevision !== 'string' ||
+      value.sourceKind !== expectedKind || !allowedSourceRevisions.has(value.canonicalSourceRevision) ||
       value.assertionKind !== 'explicit' && value.assertionKind !== 'derived' ||
       expectedKind === 'capability_rule' && value.ruleClaim === undefined ||
       expectedKind !== 'capability_rule' && value.ruleClaim !== undefined) invalid()
@@ -270,7 +275,7 @@ function canonicalizeSourceFactProvenance(
     adapterId: value.adapterId,
     adapterRevision: value.adapterRevision,
     mappingId: value.mappingId,
-  }, expectedKind, sourceFactRef.sourceRevision.canonicalSourceRevision)
+  }, expectedKind, value.canonicalSourceRevision as string)
   const assertionKind = value.assertionKind as 'explicit' | 'derived'
   const derivation = value.derivation === undefined ? undefined : canonicalizeDerivation(value.derivation)
   if (assertionKind === 'derived' && derivation === undefined || assertionKind === 'explicit' && derivation !== undefined) invalid()
