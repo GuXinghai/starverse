@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   canonicalizeCanonicalModelSubjectV1,
+  canonicalSourceFactDigestV1,
   type CanonicalModelSubjectV1,
   type CanonicalSubjectFactPayloadV1,
   type CanonicalSubjectFactRefV1,
@@ -71,6 +72,17 @@ export class ResolvedModelFactsV1Service {
     resolverRevision?: string
     ontologyRevision?: string
   }>): ResolvedModelFactsCurrentV1 {
+    const transaction = this.db.transaction(() => this.resolveAndPublishInActiveTransaction(input))
+    return transaction.immediate()
+  }
+
+  resolveAndPublishInActiveTransaction(input: Readonly<{
+    subject: CanonicalModelSubjectV1
+    sourceScopeSelection: ResolvedModelFactsSourceScopeSelectionV1
+    resolverRevision?: string
+    ontologyRevision?: string
+  }>): ResolvedModelFactsCurrentV1 {
+    if (!this.db.inTransaction) throw new Error('GENERATION_V2_RESOLVED_MODEL_FACTS_TRANSACTION_REQUIRED')
     const subject = canonicalizeCanonicalModelSubjectV1(input.subject)
     const sourceScopeSelection = Object.freeze({
       providerNative: boundedScope(input.sourceScopeSelection.providerNative),
@@ -82,27 +94,46 @@ export class ResolvedModelFactsV1Service {
     if (resolverRevision.length < 1 || resolverRevision.length > 256 || ontologyRevision.length < 1 || ontologyRevision.length > 256) {
       throw new Error('GENERATION_V2_RESOLVED_MODEL_FACTS_INPUT_INVALID')
     }
-    const transaction = this.db.transaction(() => {
-      const configFact = this.#priorityRepo.get()
-      const resolutionInput = {
-        schemaVersion: 1 as const,
-        subject,
-        sources: {
-          providerNative: sourceInput(this.#sourceRepo, 'provider_native', sourceScopeSelection.providerNative, subject),
-          modelsDev: sourceInput(this.#sourceRepo, 'models_dev', sourceScopeSelection.modelsDev, subject),
-          capabilityRules: sourceInput(this.#sourceRepo, 'capability_rule', sourceScopeSelection.capabilityRules, subject),
-        },
-        sourcePriorityConfigRevision: configFact.config.sourcePriorityConfigRevision,
-        resolverRevision,
-        ontologyRevision,
-      }
-      const resolvedFacts = resolveModelFactsV1({
-        resolutionInput,
-        sourcePriorityConfig: configFact.config,
-      })
-      return this.#resolvedRepo.publishInActiveTransaction({ subject, sourceScopeSelection, resolvedFacts })
+    const configFact = this.#priorityRepo.get()
+    const resolutionInput = {
+      schemaVersion: 1 as const,
+      subject,
+      sources: {
+        providerNative: sourceInput(this.#sourceRepo, 'provider_native', sourceScopeSelection.providerNative, subject),
+        modelsDev: sourceInput(this.#sourceRepo, 'models_dev', sourceScopeSelection.modelsDev, subject),
+        capabilityRules: sourceInput(this.#sourceRepo, 'capability_rule', sourceScopeSelection.capabilityRules, subject),
+      },
+      sourcePriorityConfigRevision: configFact.config.sourcePriorityConfigRevision,
+      resolverRevision,
+      ontologyRevision,
+    }
+    const resolvedFacts = resolveModelFactsV1({
+      resolutionInput,
+      sourcePriorityConfig: configFact.config,
     })
-    return transaction.immediate()
+    const previous = (() => {
+      try { return this.#resolvedRepo.readCurrent(subject) } catch { return null }
+    })()
+    const current = this.#resolvedRepo.publishInActiveTransaction({ subject, sourceScopeSelection, resolvedFacts })
+    const snapshotOwner = current.snapshot.resolvedSnapshotRevision
+    const currentOwner = `resolved-model-facts-current-v1:${canonicalSourceFactDigestV1(subject)}`
+    const presentSources = [resolvedFacts.input.sources.providerNative, resolvedFacts.input.sources.modelsDev,
+      resolvedFacts.input.sources.capabilityRules]
+    if (previous?.snapshot.resolvedSnapshotRevision !== current.snapshot.resolvedSnapshotRevision) {
+      this.#sourceRepo.releaseRetentionPins('resolved_model_facts_current_v1', currentOwner)
+    }
+    for (const source of presentSources) {
+      if (source.kind !== 'present') continue
+      this.#sourceRepo.pinRetention({ ownerKind: 'resolved_model_facts_snapshot_v1', ownerId: snapshotOwner,
+        target: { kind: 'source_revision', canonicalSourceRevision: source.ref.sourceRevision.canonicalSourceRevision } })
+      this.#sourceRepo.pinRetention({ ownerKind: 'resolved_model_facts_snapshot_v1', ownerId: snapshotOwner,
+        target: { kind: 'subject_fact', canonicalSubjectFactRevision: source.ref.canonicalSubjectFactRevision } })
+      this.#sourceRepo.pinRetention({ ownerKind: 'resolved_model_facts_current_v1', ownerId: currentOwner,
+        target: { kind: 'source_revision', canonicalSourceRevision: source.ref.sourceRevision.canonicalSourceRevision } })
+      this.#sourceRepo.pinRetention({ ownerKind: 'resolved_model_facts_current_v1', ownerId: currentOwner,
+        target: { kind: 'subject_fact', canonicalSubjectFactRevision: source.ref.canonicalSubjectFactRevision } })
+    }
+    return current
   }
 
   readCurrent(subject: CanonicalModelSubjectV1): ResolvedModelFactsCurrentV1 {

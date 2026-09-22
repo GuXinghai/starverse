@@ -38,11 +38,11 @@
 ### Slice D — Resolved publication, cache, and service seam
 
 - **Status**: complete on 2026-09-22.
-- **Implementation**: added the immutable `resolved_model_facts_snapshot_v1` store and exact-subject `resolved_model_facts_current_v1` pointer with monotonic pointer revisions, snapshot identity digest, immutable snapshot triggers, and transaction-scoped publication; added `ResolvedModelFactsV1Repo` and `ResolvedModelFactsV1Service`.
+- **Implementation**: added the immutable `resolved_model_facts_snapshot_v1` store and exact-subject `resolved_model_facts_current_v1` pointer with monotonic pointer revisions, composite subject binding, immutable snapshot/current-pointer triggers, source-provenance retention pins, and transaction-scoped publication; added `ResolvedModelFactsV1Repo` and `ResolvedModelFactsV1Service`.
 - **Source read seam**: the service accepts explicit Provider Native, models.dev, and Capability Rules source scopes, reads each current source revision and exact subject fact inside one immediate transaction, emits explicit source absence markers for unavailable/non-eligible subjects, reads the durable source-priority revision, invokes the pure resolver, and publishes the resolved snapshot/current pointer atomically. It does not infer Provider Native scope from subject identity and does not read raw payloads.
 - **Schema integration**: added `resolvedModelFactsSchema.sql`, raised the closed manifest fragment count from 20 to 21, and extended schema-composer coverage for both resolved tables.
-- **Tests**: added repository tests for immutable snapshots, idempotent publication, exact-subject pointer advancement, and trigger protection; added service coverage for all-source absence and stable repeated publication.
-- **Validation**: `npm run rebuild:node` (Slice B ABI target retained); schema integration (19 passed), resolved repository integration (1 passed), service integration (1 passed), resolver/boundary unit tests (10 passed), `npx tsc --noEmit --pretty false` (passed), targeted ESLint (no errors; complexity warnings only), and `git diff --check` (passed).
+- **Tests**: added repository tests for immutable snapshots, idempotent publication, exact-subject pointer advancement, composite subject binding, pointer deletion/regression protection, and trigger protection; added service coverage for all-source absence, stable repeated publication, and retention of prior source provenance/raw evidence after source advancement and pruning.
+- **Validation**: `npm run rebuild:node` (Slice B ABI target retained); schema integration (19 passed), resolved repository/service integration (22 passed), resolver/boundary unit tests (10 passed), `npx tsc --noEmit --pretty false` (passed), targeted ESLint (no errors; complexity warnings only), and `git diff --check` (passed). D post-implementation Sol-medium review completed; P1 findings were repaired and the focused checks were rerun.
 - **Boundary**: no IPC/UI, Settings binding, provider snapshot cutover, compiler/runtime authority, retry/replay migration, or legacy deletion. Resolved snapshots are publication/cache infrastructure only.
 
 ### Next Slice
@@ -51,10 +51,10 @@ Slice E — One-authority consumer and snapshot cutover.
 
 ## Sol-medium review budget
 
-Consumed: 0 / 6. Slice A requires no Sol-medium review.
+Consumed: 1 / 6. Slice A requires no Sol-medium review.
 
 - [ ] C pre-implementation
-- [ ] D post-implementation
+- [x] D post-implementation
 - [ ] E pre-cutover
 - [ ] E post-cutover
 - [ ] F residual authority audit
