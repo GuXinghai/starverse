@@ -39,6 +39,7 @@ import {
   type GenerationCapabilityResolutionRequestV2,
   type GenerationCapabilityResolutionResultV2,
 } from '../../src/next/generation-v2/capability/capabilityResolutionV2'
+import { canonicalizeResolvedCapabilityV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
 import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
 import {
   readVerifiedAnthropicEndpointProfileV2,
@@ -48,6 +49,8 @@ import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import { listEncodingCoverageRegistriesV2 } from '../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
+import { decodeProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import { resolveGoal3ModelFactsForBindingV1 } from './goal3ModelFactsCapabilityV1'
 /* eslint-enable no-restricted-imports */
 
 export class GenerationV2CapabilityResolutionServiceError extends Error {
@@ -365,7 +368,30 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
     resolve: async (request: GenerationCapabilityResolutionRequestV2): Promise<GenerationCapabilityResolutionResultV2> => {
       const resolver = resolverRegistry.get(capabilityResolutionScopeKeyV2(request.providerId, request.protocolId, request.operation))
       if (!resolver) throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_UNSUPPORTED_SCOPE')
-      return resolver(request)
+      const executionResolution = await resolver(request)
+      const binding = decodeProviderBindingRecordV2(executionResolution.resolvedCapability.executionContext.binding)
+      const goal3 = resolveGoal3ModelFactsForBindingV1({ db: input.db, binding,
+        credentialRevision: request.credentialRevision })
+      const goal3EvidenceIds = new Set(goal3.modelFacts.evidence.map((item) => item.evidenceId as string))
+      const evidence = [
+        ...goal3.modelFacts.evidence,
+        ...executionResolution.resolvedCapability.modelFacts.evidence
+          .filter((item) => !goal3EvidenceIds.has(item.evidenceId as string)),
+      ]
+      return projectGenerationCapabilityResolutionV2(canonicalizeResolvedCapabilityV2({
+        binding: executionResolution.resolvedCapability.executionContext.binding,
+        ...(executionResolution.resolvedCapability.executionContext.catalogAuthority === undefined ? {} : {
+          catalogAuthority: executionResolution.resolvedCapability.executionContext.catalogAuthority,
+        }),
+        evidence: evidence.map((item) => ({ evidenceId: item.evidenceId, kind: item.kind,
+          effect: item.effect, sourceRef: item.sourceRef, verifiedAt: item.verifiedAt,
+          contentDigest: typeof item.contentDigest === 'string' ? item.contentDigest
+            : (item.contentDigest as { value: string }).value })),
+        fields: goal3.modelFacts.fields,
+        capabilityRevision: goal3.modelFacts.capabilityRevision,
+        modelFactsResolution: goal3.snapshot,
+        continuation: executionResolution.resolvedCapability.executionContext.continuation,
+      }))
     },
   })
 }

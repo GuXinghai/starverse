@@ -6,6 +6,7 @@ import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/dom
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
 import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
@@ -44,7 +45,8 @@ import {
   type OpenRouterImageRegenerateCommandV2,
   type OpenRouterImageRetryCommandV2,
 } from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2, assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class OpenRouterImageInitialSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -99,6 +101,7 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: OpenRouterImageBindingRepositoryFactV2
   capability: DecodedRuntimeCapabilitySnapshotV2
+  credentialRevision: number
 }>): Readonly<{ bundle: GenerationExecutionOperationBundleV2 }> {
   const regenerate = isOpenRouterImageRegenerateCommandV2(input.command) &&
     isPendingAnswerActionForContextV2(input.pending, input.context) && input.pending.actionKind === 'regenerate_question'
@@ -114,16 +117,20 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
-  assertExpectedCapabilityRevisionV2(input.capability.revision.value)
-  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, input.capability.canonicalJson, input.pending.createdAtMs)
+  assertExpectedCurrentSendCapabilityRevisionV2(input.capability.revision.value)
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: resolvedCapabilityFromRuntimeSnapshotV2(input.capability), binding,
+    credentialRevision: input.credentialRevision, resolvedAt: input.capability.resolvedAt,
+    tools: input.capability.tools })
+  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact)) return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_RESULT_INVALID')
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: projectDecodedProviderBindingRecordV2(binding),
-    capabilityBinding: { capabilityRevision: input.capability.revision.value, evidenceDigest: input.capability.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.semanticFieldsDigest.value, snapshotHash: input.capability.snapshotHash.value },
+    capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value, evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value, snapshotHash: goal3Snapshot.snapshotHash.value },
     attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
   }))
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
@@ -175,6 +182,7 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: OpenRouterImageBindingRepositoryFactV2
   capability: DecodedRuntimeCapabilitySnapshotV2
+  credentialRevision: number
 }>): OpenRouterImageInitialSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -192,17 +200,21 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
-  assertExpectedCapabilityRevisionV2(input.capability.revision.value)
+  assertExpectedCurrentSendCapabilityRevisionV2(input.capability.revision.value)
   if (input.commandFacts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
       input.commandFacts.attachmentSet.urlReferenceIntents.some((attachment) =>
         attachment.include && attachment.mediaKind !== 'image')) {
     return fail('GENERATION_V2_OPENROUTER_IMAGE_ATTACHMENT_REFERENCE_UNAVAILABLE')
   }
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: resolvedCapabilityFromRuntimeSnapshotV2(input.capability), binding,
+    credentialRevision: input.credentialRevision, resolvedAt: input.capability.resolvedAt,
+    tools: input.capability.tools })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(
@@ -216,10 +228,10 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
       })),
       providerBinding: projectDecodedProviderBindingRecordV2(binding),
       capabilityBinding: {
-        capabilityRevision: input.capability.revision.value,
-        evidenceDigest: input.capability.evidenceDigest.value,
-        semanticFieldsDigest: input.capability.semanticFieldsDigest.value,
-        snapshotHash: input.capability.snapshotHash.value,
+        capabilityRevision: goal3Snapshot.revision.value,
+        evidenceDigest: goal3Snapshot.evidenceDigest.value,
+        semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+        snapshotHash: goal3Snapshot.snapshotHash.value,
       },
       attachmentProviderFileBindings: [],
       toolAuthority: { kind: 'none' },

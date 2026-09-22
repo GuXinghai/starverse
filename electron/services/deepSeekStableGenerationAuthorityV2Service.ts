@@ -7,10 +7,9 @@ import type { PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityField
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-  validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
@@ -546,11 +545,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       resolvedAt,
       toolRegistry,
     })
-    validateSemanticIntentAgainstResolvedCapabilityV2(
-      capability.resolvedCapability,
-      input.commandFacts.semanticIntent,
-    )
-    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
+    assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)
       if (binding) bindingAuthorities.delete(binding)

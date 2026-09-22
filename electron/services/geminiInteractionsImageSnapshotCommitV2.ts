@@ -38,6 +38,7 @@ import {
   type VerifiedGeminiInteractionsImageProviderBindingAuthorityV2,
   type VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2,
 } from './geminiInteractionsImageGenerationAuthorityV2Service'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class GeminiInteractionsImageSnapshotCommitV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_GEMINI_INTERACTIONS_SNAPSHOT_INPUT_INVALID' |
@@ -74,7 +75,11 @@ function commitCurrent(input: Readonly<{
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_SNAPSHOT_INPUT_INVALID')
   }
   input.binding.assertCurrent(); input.capability.assertCurrent()
-  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs)
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
+  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact)) return fail('GENERATION_V2_GEMINI_INTERACTIONS_SNAPSHOT_RESULT_INVALID')
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
@@ -82,10 +87,10 @@ function commitCurrent(input: Readonly<{
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind,
       ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: readVerifiedGeminiInteractionsImageProviderBindingRecordV2(input.binding),
-    capabilityBinding: { capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value },
+    capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value },
     attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
   }))
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {

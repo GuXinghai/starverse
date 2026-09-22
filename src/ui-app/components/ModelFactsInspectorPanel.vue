@@ -22,7 +22,30 @@ type InspectorSourceRow = Readonly<{
     ref?: Readonly<{ canonicalSubjectFactRevision: string; subjectFactPayloadDigest: string }>
   }> | null
 }>
-type InspectorSnapshot = Readonly<{ subjectSetRevision: string; subject: ExactSubject; sources: readonly InspectorSourceRow[] }>
+type ResolvedSnapshot = Readonly<{
+  resolvedSnapshotRevision: string
+  sourceScopeSelection: Readonly<{ providerNative: string; modelsDev: string; capabilityRules: string }>
+  resolvedFacts: Readonly<{
+    capabilityRevision: string
+    fields: readonly Readonly<{
+      path: string
+      state: string
+      completenessDisposition: string
+      selectionReason: string
+      selectedValue?: unknown
+      supportingProvenance: readonly unknown[]
+      opposingProvenance: readonly unknown[]
+      overriddenProvenance: readonly unknown[]
+      diagnostics: readonly unknown[]
+    }>[]
+  }>
+}>
+type InspectorSnapshot = Readonly<{
+  subjectSetRevision: string
+  subject: ExactSubject
+  sources: readonly InspectorSourceRow[]
+  resolved: ResolvedSnapshot | null
+}>
 type SelectedField = Readonly<{ source: InspectorSourceRow; outcome: FieldOutcome }>
 type View = 'overview' | 'fields' | 'evidence'
 
@@ -107,6 +130,15 @@ function fields(): readonly Readonly<{ source: InspectorSourceRow; outcome: Fiel
     for (const outcome of source.subjectFact?.payload.outcomes ?? []) rows.push({ source, outcome })
   }
   return rows
+}
+
+function resolvedFields() {
+  return snapshot.value?.resolved?.resolvedFacts.fields ?? []
+}
+
+function resolvedValueText(value: unknown): string {
+  if (value === undefined) return t('settings.modelsCapabilities.sourceAbsent')
+  try { return JSON.stringify(value) } catch { return String(value) }
 }
 
 function valueFor(outcome: FieldOutcome): unknown {
@@ -214,6 +246,22 @@ onMounted(async () => {
           </nav>
 
           <div v-if="view === 'overview'" class="mt-3 space-y-2">
+            <div class="rounded border border-blue-100 bg-blue-50 p-2 text-xs text-blue-950">
+              <div class="font-medium">{{ t('settings.modelsCapabilities.resolvedTitle') }}</div>
+              <template v-if="snapshot.resolved">
+                <div class="mt-1 break-all text-[10px]">{{ t('settings.modelsCapabilities.capabilityRevision') }}: {{ snapshot.resolved.resolvedFacts.capabilityRevision }}</div>
+                <div class="break-all text-[10px]">{{ t('settings.modelsCapabilities.resolvedSnapshotRevision') }}: {{ snapshot.resolved.resolvedSnapshotRevision }}</div>
+                <div class="mt-1 text-[11px]">{{ snapshot.resolved.resolvedFacts.fields.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
+                <div class="mt-2 max-h-64 space-y-1 overflow-auto">
+                  <div v-for="field in resolvedFields()" :key="field.path" class="rounded border border-blue-100 bg-white p-2 text-[10px]">
+                    <div class="font-medium text-gray-800">{{ field.path }} · {{ field.state }}</div>
+                    <div class="text-gray-500">{{ resolvedValueText(field.selectedValue) }} · {{ field.completenessDisposition }} · {{ field.selectionReason }}</div>
+                    <div class="text-gray-400">{{ field.supportingProvenance.length }} {{ t('settings.modelsCapabilities.supportingClaims') }} · {{ field.opposingProvenance.length }} {{ t('settings.modelsCapabilities.opposingClaims') }} · {{ field.overriddenProvenance.length }} {{ t('settings.modelsCapabilities.overriddenClaims') }} · {{ field.diagnostics.length }} {{ t('settings.modelsCapabilities.diagnostics') }}</div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="mt-1 text-[11px] text-blue-800">{{ t('settings.modelsCapabilities.resolvedAbsent') }}</div>
+            </div>
             <div v-for="source in snapshot.sources" :key="`${source.state.sourceKind}:${source.state.sourceScopeId}`" class="rounded border border-gray-100 p-2 text-xs text-gray-700">
               <div class="font-medium">{{ source.state.sourceKind }} · {{ source.state.sourceScopeId }}</div>
               <div class="mt-1 text-[11px] text-gray-500">{{ source.subjectFact ? t('settings.modelsCapabilities.subjectFactPresent') : t('settings.modelsCapabilities.sourceAbsent') }}<span v-if="source.state.staleReason"> · {{ source.state.staleReason }}</span></div>

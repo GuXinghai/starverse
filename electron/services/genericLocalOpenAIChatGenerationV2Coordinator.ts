@@ -21,7 +21,7 @@ import { decodeGenericLocalOpenAIChatEditResendCommandV2, decodeGenericLocalOpen
 import { compileGenericLocalOpenAIChatPreparedRequestV2 } from './genericLocalOpenAIChatPreparedRequestCompilerV2'
 import { commitGenericLocalCurrentSnapshotV2, commitGenericLocalRetrySnapshotV2 } from './genericLocalPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2, assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type Current = GenericLocalOpenAIChatInitialCommandV2 | GenericLocalOpenAIChatRegenerateCommandV2 | GenericLocalOpenAIChatEditResendCommandV2
 export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Readonly<{ db: BetterSqlite3.Database; nowMs?: () => number;
@@ -77,7 +77,7 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
         })
         const capability = composeGenericLocalOpenAIChatCapabilityWithMaterializedRulesV2({ binding,
           resolvedAt: new Date(at).toISOString(), capabilityRules })
-        assertExpectedCapabilityRevisionV2(capability.revision.value)
+        assertExpectedCurrentSendCapabilityRevisionV2(capability.revision.value)
         const persisted = commitGenericLocalCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability })
         if (command.kind === 'generic_local_openai_chat_initial') graph.commitInitialTurnProjection(context, pending as PendingInitialTurnV2)

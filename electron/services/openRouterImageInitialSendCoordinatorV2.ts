@@ -222,6 +222,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
               })
               const persisted = commitOpenRouterImageInitialSnapshotV2({
                 context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
+                credentialRevision: request.expectedCredentialRevision,
               })
               graphRepo.commitInitialTurnProjection(context, pending)
               const preparedRequest = compileOpenRouterImagePreparedRequestV2({

@@ -1149,6 +1149,12 @@ interface Window {
       readEvidenceSlice: (payload: unknown) => Promise<unknown>
       readSanitizedRawPayload: (payload: unknown) => Promise<unknown>
     }>
+    modelFacts: Readonly<{
+      sourcePriority: Readonly<{
+        get: (payload?: unknown) => Promise<unknown>
+        update: (payload: unknown) => Promise<unknown>
+      }>
+    }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
       create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;

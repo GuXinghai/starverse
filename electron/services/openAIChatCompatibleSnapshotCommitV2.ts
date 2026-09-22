@@ -19,7 +19,9 @@ import { isGenerationCommandFactsAuthorityForContextV2, type GenerationCommandFa
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 // eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority persists validated Generation V2 capability facts.
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
 import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { OpenAICompatibleActiveConfigurationV2, OpenAICompatibleEndpointRevisionV2, OpenAICompatibleProviderDetailsV2 } from '../../infra/db/repo/openAICompatibleV2Repo'
 // eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority constructs the verified compatible provider binding.
@@ -110,14 +112,18 @@ export function commitOpenAIChatCompatibleCurrentSnapshotV2(input: Readonly<{
       stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(input.capability.binding))) {
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_AUTHORITY_INVALID')
   }
-  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, input.capability.canonicalJson, input.pending.createdAtMs)
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: resolvedCapabilityFromRuntimeSnapshotV2(input.capability), binding,
+    credentialRevision: input.credentialRevision, resolvedAt: input.capability.resolvedAt,
+    tools: input.capability.tools })
+  const persistedCapability = input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: projectDecodedProviderBindingRecordV2(binding),
-    capabilityBinding: { capabilityRevision: input.capability.revision.value, evidenceDigest: input.capability.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.semanticFieldsDigest.value, snapshotHash: input.capability.snapshotHash.value },
+    capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value, evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value, snapshotHash: goal3Snapshot.snapshotHash.value },
     attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
     providerConfiguration: provenance(input.configuration, input.endpoint, input.provider.providerInstanceId,
       input.credentialRevision),
@@ -128,7 +134,7 @@ export function commitOpenAIChatCompatibleCurrentSnapshotV2(input: Readonly<{
     targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
-  if (persistedCapability.fact.capability.canonicalJson !== input.capability.canonicalJson ||
+  if (persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson ||
       execution.bundle.snapshot.providerConfiguration.kind !== 'openai_chat_compatible') {
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_RESULT_INVALID')

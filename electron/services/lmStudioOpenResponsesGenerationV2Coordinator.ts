@@ -24,7 +24,7 @@ import { compileLmStudioOpenResponsesPreparedRequestV2 } from './lmStudioOpenRes
 import { commitLmStudioCurrentSnapshotV2, commitLmStudioRetrySnapshotV2 } from './lmStudioPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2, resolveGenerationToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2, assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type CurrentCommand = LmStudioPlainTextInitialCommandV2 | LmStudioPlainTextRegenerateCommandV2 | LmStudioPlainTextEditResendCommandV2
 export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readonly<{
@@ -102,7 +102,7 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
           binding: providerBinding, resolvedAt: new Date(at).toISOString(),
           selectedTools: toolRegistry?.selectedDefinitions, capabilityRules,
         })
-        assertExpectedCapabilityRevisionV2(capability.revision.value)
+        assertExpectedCurrentSendCapabilityRevisionV2(capability.revision.value)
         const persisted = commitLmStudioCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability, toolRegistry })
         if (command.kind === 'lmstudio_plain_text_initial') {

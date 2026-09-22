@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
 import CapabilityRulesOverviewPanel from './CapabilityRulesOverviewPanel.vue'
 import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
+import ModelFactsSourcePrioritySettingsPanel from './ModelFactsSourcePrioritySettingsPanel.vue'
 import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
 
 type TabId = 'cloud' | 'user' | 'inspector'
@@ -49,7 +50,7 @@ function keydown(event: KeyboardEvent, current: TabId) {
         :aria-selected="active === tab.id" :aria-controls="panelId(tab.id)" :tabindex="active === tab.id ? 0 : -1"
         @click="select(tab.id)" @keydown="keydown($event, tab.id)">{{ t(tab.label) }}</button>
     </nav>
-    <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')"><CapabilityRulesOverviewPanel ownership="cloud" /></div>
+    <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')" class="space-y-3"><CapabilityRulesOverviewPanel ownership="cloud" /><ModelFactsSourcePrioritySettingsPanel /></div>
     <div :id="panelId('user')" v-show="active === 'user'" role="tabpanel" :aria-labelledby="tabId('user')"><CapabilityRulesOverviewPanel ownership="user" /></div>
     <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel :initialSubject="props.inspectorSubject" /></div>
   </section>

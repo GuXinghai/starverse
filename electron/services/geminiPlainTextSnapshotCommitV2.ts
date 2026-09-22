@@ -51,6 +51,7 @@ import {
   type VerifiedGeminiGenerateContentProviderBindingAuthorityV2,
   type VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2,
 } from './geminiGenerateContentGenerationAuthorityV2Service'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class GeminiPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -120,6 +121,10 @@ function commitCurrentSnapshot(input: Readonly<{
   })()
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let complete = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -129,7 +134,7 @@ function commitCurrentSnapshot(input: Readonly<{
     committed: () => undefined,
     rolledBack: () => undefined,
   })
-  input.capabilityRepo.insertCanonical(input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs)
+  input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2,
     answerRootId: input.pending.answerRootId.value,
@@ -140,10 +145,10 @@ function commitCurrentSnapshot(input: Readonly<{
     })),
     providerBinding: readVerifiedGeminiGenerateContentProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
     toolAuthority,

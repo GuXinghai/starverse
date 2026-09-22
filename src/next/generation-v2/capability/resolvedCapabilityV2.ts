@@ -31,11 +31,16 @@ import type {
   ModelCapabilitySemanticPathV2,
   PersistedModelCapabilityFieldV2,
 } from './modelCapabilitySchemaV2'
+import {
+  canonicalizeResolvedModelFactsSnapshotBindingV1,
+  type ResolvedModelFactsSnapshotBindingV1,
+} from '../model-facts/resolvedModelFactsV1'
 
 /** Generation authorization. `modelFacts` is its only model-capability authority. */
 export type ResolvedCapabilityV2 = Readonly<{
   schemaVersion: 2
   modelFacts: CanonicalModelFactsV2
+  modelFactsResolution?: ResolvedModelFactsSnapshotBindingV1
   executionContext: Readonly<{
     binding: DecodedProviderBindingRecordV2
     catalogAuthority?: DecodedRuntimeCapabilitySnapshotV2['catalogAuthority']
@@ -49,6 +54,7 @@ export type ResolvedCapabilityDraftV2 = Readonly<{
   catalogAuthority?: DecodedRuntimeCapabilitySnapshotV2['catalogAuthority']
   evidence: readonly Readonly<Record<string, unknown>>[]
   fields: readonly PersistedModelCapabilityFieldV2[]
+  capabilityRevision?: string
   continuation: PersistedRuntimeContinuationCapabilityV2
 }>
 
@@ -166,6 +172,7 @@ function canonicalCatalogAuthority(value: unknown): DecodedRuntimeCapabilitySnap
  */
 export function authorizeResolvedCapabilityV2(input: Readonly<{
   modelFacts: CanonicalModelFactsV2
+  modelFactsResolution?: ResolvedModelFactsSnapshotBindingV1
   binding: DecodedProviderBindingRecordV2
   catalogAuthority?: unknown
   continuation: PersistedRuntimeContinuationCapabilityV2
@@ -190,7 +197,11 @@ export function authorizeResolvedCapabilityV2(input: Readonly<{
     if (continuation.kind !== 'unavailable' &&
         continuation.evidenceIds.some((id) => evidenceById.get(id)?.effect !== 'supports')) invalid()
     const catalogAuthority = canonicalCatalogAuthority(input.catalogAuthority)
-    return Object.freeze({ schemaVersion: 2, modelFacts, executionContext: Object.freeze({ binding: input.binding,
+    const modelFactsResolution = input.modelFactsResolution === undefined ? undefined
+      : canonicalizeResolvedModelFactsSnapshotBindingV1(input.modelFactsResolution)
+    return Object.freeze({ schemaVersion: 2, modelFacts,
+      ...(modelFactsResolution ? { modelFactsResolution } : {}),
+      executionContext: Object.freeze({ binding: input.binding,
       ...(catalogAuthority ? { catalogAuthority } : {}), continuation, encodingCoverage }) })
   } catch (error) {
     if (error instanceof ResolvedCapabilityV2Error) throw error
@@ -202,14 +213,21 @@ export function authorizeResolvedCapabilityV2(input: Readonly<{
 export function canonicalizeResolvedCapabilityV2(value: unknown): ResolvedCapabilityV2 {
   try {
     if (!plainObject(value)) invalid()
-    exactKeys(value, value.catalogAuthority === undefined
-      ? ['binding', 'evidence', 'fields', 'continuation']
-      : ['binding', 'catalogAuthority', 'evidence', 'fields', 'continuation'])
+    const optional = [
+      ...(value.catalogAuthority === undefined ? [] : ['catalogAuthority']),
+      ...(value.capabilityRevision === undefined ? [] : ['capabilityRevision']),
+      ...(value.modelFactsResolution === undefined ? [] : ['modelFactsResolution']),
+    ]
+    exactKeys(value, ['binding', 'evidence', 'fields', 'continuation', ...optional])
     if (!Array.isArray(value.evidence) || !Array.isArray(value.fields)) invalid()
     const binding = decodeProviderBindingRecordV2(value.binding)
     const modelFacts = canonicalizeModelFactsV2({ identity: projectCanonicalModelIdentityV2(binding),
-      evidence: value.evidence, fields: value.fields })
+      evidence: value.evidence, fields: value.fields,
+      ...(value.capabilityRevision === undefined ? {} : { capabilityRevision: value.capabilityRevision }) })
     return authorizeResolvedCapabilityV2({ modelFacts, binding,
+      ...(value.modelFactsResolution === undefined ? {} : {
+        modelFactsResolution: canonicalizeResolvedModelFactsSnapshotBindingV1(value.modelFactsResolution),
+      }),
       ...(value.catalogAuthority === undefined ? {} : { catalogAuthority: value.catalogAuthority }),
       continuation: value.continuation as PersistedRuntimeContinuationCapabilityV2 })
   } catch (error) {
@@ -224,6 +242,9 @@ export function resolvedCapabilityFromRuntimeSnapshotV2(snapshot: DecodedRuntime
     ...(snapshot.catalogAuthority ? { catalogAuthority: snapshot.catalogAuthority } : {}),
     evidence: snapshot.evidence.map((item) => ({ evidenceId: item.evidenceId, kind: item.kind, effect: item.effect,
       sourceRef: item.sourceRef, verifiedAt: item.verifiedAt, contentDigest: item.contentDigest.value })),
+    ...(snapshot.revision.value.startsWith('capability-revision-v1:')
+      ? { capabilityRevision: snapshot.revision.value } : {}),
+    ...(snapshot.modelFactsResolution === undefined ? {} : { modelFactsResolution: snapshot.modelFactsResolution }),
     fields: snapshot.fields, continuation: snapshot.continuation })
   if (capability.modelFacts.capabilityRevision !== snapshot.revision.value ||
       capability.executionContext.encodingCoverage.encoderRevision !== snapshot.encoderRevision) {
@@ -248,7 +269,8 @@ export function runtimeSnapshotRecordFromResolvedCapabilityV2(input: Readonly<{
     ...(execution.catalogAuthority ? { catalogAuthority: execution.catalogAuthority } : {}),
     evidence: facts.evidence.map((item) => ({ evidenceId: item.evidenceId, kind: item.kind, effect: item.effect,
       sourceRef: item.sourceRef, verifiedAt: item.verifiedAt, contentDigest: item.contentDigest.value })),
-    fields: facts.fields, tools: input.tools, continuation: execution.continuation })
+    fields: facts.fields, tools: input.tools, continuation: execution.continuation,
+    ...(input.capability.modelFactsResolution ? { modelFactsResolution: input.capability.modelFactsResolution } : {}) })
   if (record.revision !== facts.capabilityRevision || record.encoderRevision !== execution.encodingCoverage.encoderRevision) {
     throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_STALE')
   }

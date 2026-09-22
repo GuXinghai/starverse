@@ -35,6 +35,7 @@ import {
   RuntimeCapabilityV2Repo,
   isRuntimeCapabilityRepositoryFactV2,
 } from '../../infra/db/repo/runtimeCapabilityV2Repo'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import {
   isVerifiedDeepSeekStableProviderBindingAuthorityV2,
   isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2,
@@ -58,6 +59,7 @@ import {
   isDeepSeekPlainTextEditResendCommandV2,
   type DeepSeekPlainTextEditResendCommandV2,
 } from '../../src/next/generation-v2/providers/deepseek/plainTextEditResendCommandV2'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class DeepSeekPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -142,7 +144,7 @@ function assertCommittedProjection(
   pending: PendingInitialTurnV2,
   commandFacts: GenerationCommandFactsAuthorityV2,
   binding: VerifiedDeepSeekStableProviderBindingAuthorityV2,
-  capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2,
+  capability: DecodedRuntimeCapabilitySnapshotV2,
   bundle: GenerationExecutionOperationBundleV2,
   expectedCanonicalJson: string,
 ): void {
@@ -169,10 +171,10 @@ function assertCommittedProjection(
         ownerId: entry.ownerId,
         revision: entry.revision.value,
       }))) !== stableSerializeProviderRequestV2(expectedRevisions) ||
-      snapshot.capabilityBinding.snapshotHash.value !== capability.snapshot.snapshotHash.value ||
-      snapshot.capabilityBinding.capabilityRevision.value !== capability.snapshot.revision.value ||
-      snapshot.capabilityBinding.evidenceDigest.value !== capability.snapshot.evidenceDigest.value ||
-      snapshot.capabilityBinding.semanticFieldsDigest.value !== capability.snapshot.semanticFieldsDigest.value ||
+      snapshot.capabilityBinding.snapshotHash.value !== capability.snapshotHash.value ||
+      snapshot.capabilityBinding.capabilityRevision.value !== capability.revision.value ||
+      snapshot.capabilityBinding.evidenceDigest.value !== capability.evidenceDigest.value ||
+      snapshot.capabilityBinding.semanticFieldsDigest.value !== capability.semanticFieldsDigest.value ||
       snapshot.providerBinding.operation !== 'text' || binding.binding.operation !== 'text') {
     throw new DeepSeekPlainTextSnapshotCommitV2Error(
       'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
@@ -218,6 +220,10 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
   const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let commitCompleted = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -235,11 +241,11 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
 
   const persistedCapability = input.capabilityRepo.insertCanonical(
     input.context,
-    input.capability.snapshot.canonicalJson,
+    goal3Snapshot.canonicalJson,
     input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     throw new DeepSeekPlainTextSnapshotCommitV2Error(
       'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
     )
@@ -257,10 +263,10 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     })),
     providerBinding: readVerifiedDeepSeekStableProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
     toolAuthority,
@@ -282,7 +288,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     input.pending,
     input.commandFacts,
     input.binding,
-    input.capability,
+    goal3Snapshot,
     execution.bundle,
     snapshot.canonicalJson,
   )
@@ -401,6 +407,10 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
   const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let commitCompleted = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -416,7 +426,7 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
     rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2,
@@ -430,10 +440,10 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
     })),
     providerBinding: readVerifiedDeepSeekStableProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
     toolAuthority,
@@ -535,6 +545,10 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
   const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let commitCompleted = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -550,7 +564,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
     rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2,
@@ -564,10 +578,10 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
     })),
     providerBinding: readVerifiedDeepSeekStableProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
     toolAuthority,

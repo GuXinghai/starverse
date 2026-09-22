@@ -56,6 +56,7 @@ import {
   type VerifiedAnthropicProviderBindingAuthorityV2,
   type VerifiedAnthropicRuntimeCapabilityAuthorityV2,
 } from './anthropicGenerationAuthorityV2Service'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class AnthropicPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -167,6 +168,10 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
   assertPlainTextFacts(input.commandFacts, input.context, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -178,10 +183,10 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
     rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     fail('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(
@@ -195,10 +200,10 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
       })),
       providerBinding: readVerifiedAnthropicProviderBindingRecordV2(input.binding),
       capabilityBinding: {
-        capabilityRevision: input.capability.snapshot.revision.value,
-        evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-        semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-        snapshotHash: input.capability.snapshot.snapshotHash.value,
+        capabilityRevision: goal3Snapshot.revision.value,
+        evidenceDigest: goal3Snapshot.evidenceDigest.value,
+        semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+        snapshotHash: goal3Snapshot.snapshotHash.value,
       },
       attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors ?? []),
       toolAuthority: snapshotToolAuthority(input.commandFacts, input.toolRegistry),
@@ -220,7 +225,7 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
       execution.bundle.operation.sourceAnswerId !== null ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson ||
       execution.bundle.snapshot.providerBinding.providerId.value !== 'anthropic' ||
-      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== input.capability.snapshot.snapshotHash.value) {
+      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== goal3Snapshot.snapshotHash.value) {
     fail('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   completed = true
@@ -265,6 +270,10 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
   assertPlainTextFacts(input.commandFacts, input.context, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -277,10 +286,10 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
   })
 
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(
@@ -294,10 +303,10 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
       })),
       providerBinding: readVerifiedAnthropicProviderBindingRecordV2(input.binding),
       capabilityBinding: {
-        capabilityRevision: input.capability.snapshot.revision.value,
-        evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-        semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-        snapshotHash: input.capability.snapshot.snapshotHash.value,
+        capabilityRevision: goal3Snapshot.revision.value,
+        evidenceDigest: goal3Snapshot.evidenceDigest.value,
+        semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+        snapshotHash: goal3Snapshot.snapshotHash.value,
       },
       attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors ?? []),
       toolAuthority: snapshotToolAuthority(input.commandFacts, input.toolRegistry),
@@ -320,7 +329,7 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
       execution.bundle.operation.targetAnswerId.value !== input.pending.answerRootId.value ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson ||
       execution.bundle.snapshot.providerBinding.providerId.value !== 'anthropic' ||
-      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== input.capability.snapshot.snapshotHash.value ||
+      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== goal3Snapshot.snapshotHash.value ||
       stableSerializeProviderRequestV2(projectGenerationIntentLayerV2(execution.bundle.snapshot.semanticIntent)) !==
         stableSerializeProviderRequestV2(projectGenerationIntentLayerV2(input.commandFacts.semanticIntent))) {
     throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_RESULT_INVALID')
