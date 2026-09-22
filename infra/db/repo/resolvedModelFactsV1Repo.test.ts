@@ -44,6 +44,17 @@ describe('ResolvedModelFactsV1Repo', () => {
       expect(repo.readCurrent(subject).snapshot.resolvedFacts.input.resolverRevision).toBe('resolver-v1:changed')
       expect(() => db.prepare('UPDATE resolved_model_facts_snapshot_v1 SET resolved_json = resolved_json WHERE resolved_snapshot_revision = ?')
         .run(first.snapshot.resolvedSnapshotRevision)).toThrow('RESOLVED_MODEL_FACTS_SNAPSHOT_IMMUTABLE')
+      expect(() => db.prepare('DELETE FROM resolved_model_facts_current_v1 WHERE provider_authority_id=? AND endpoint_profile_id=? AND native_model_id=?')
+        .run(subject.providerAuthorityId, subject.endpointProfileId, subject.nativeModelId)).toThrow('RESOLVED_MODEL_FACTS_CURRENT_IMMUTABLE')
+      expect(() => db.prepare(`UPDATE resolved_model_facts_current_v1 SET resolved_snapshot_revision=?, pointer_revision=?
+        WHERE provider_authority_id=? AND endpoint_profile_id=? AND native_model_id=?`)
+        .run(first.snapshot.resolvedSnapshotRevision, 1, subject.providerAuthorityId, subject.endpointProfileId, subject.nativeModelId))
+        .toThrow('RESOLVED_MODEL_FACTS_CURRENT_POINTER_NON_MONOTONIC')
+      expect(() => db.prepare(`INSERT INTO resolved_model_facts_current_v1
+        (provider_authority_id, endpoint_profile_id, native_model_id, resolved_snapshot_revision, pointer_revision, updated_at_ms)
+        VALUES (?, ?, ?, ?, 1, 10)`)
+        .run('provider:other', 'endpoint:other', 'model:other', first.snapshot.resolvedSnapshotRevision))
+        .toThrow()
     } finally { db.close() }
   })
 })

@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS resolved_model_facts_snapshot_v1 (
     AND json_type(resolved_json) = 'object'
   ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  UNIQUE (provider_authority_id, endpoint_profile_id, native_model_id, resolved_snapshot_revision)
+  UNIQUE (resolved_snapshot_revision, provider_authority_id, endpoint_profile_id, native_model_id)
 );
 
 CREATE TABLE IF NOT EXISTS resolved_model_facts_current_v1 (
@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS resolved_model_facts_current_v1 (
   PRIMARY KEY (provider_authority_id, endpoint_profile_id, native_model_id),
   FOREIGN KEY (resolved_snapshot_revision)
     REFERENCES resolved_model_facts_snapshot_v1(resolved_snapshot_revision) ON DELETE RESTRICT
+  ,FOREIGN KEY (resolved_snapshot_revision, provider_authority_id, endpoint_profile_id, native_model_id)
+    REFERENCES resolved_model_facts_snapshot_v1(
+      resolved_snapshot_revision, provider_authority_id, endpoint_profile_id, native_model_id
+    ) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER IF NOT EXISTS resolved_model_facts_snapshot_v1_immutable
@@ -57,4 +61,26 @@ CREATE TRIGGER IF NOT EXISTS resolved_model_facts_current_v1_identity_immutable
 BEFORE UPDATE OF provider_authority_id, endpoint_profile_id, native_model_id ON resolved_model_facts_current_v1
 BEGIN
   SELECT RAISE(ABORT, 'RESOLVED_MODEL_FACTS_CURRENT_IDENTITY_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS resolved_model_facts_current_v1_no_delete
+BEFORE DELETE ON resolved_model_facts_current_v1
+BEGIN
+  SELECT RAISE(ABORT, 'RESOLVED_MODEL_FACTS_CURRENT_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS resolved_model_facts_current_v1_monotonic_pointer
+BEFORE UPDATE ON resolved_model_facts_current_v1
+WHEN NEW.resolved_snapshot_revision <> OLD.resolved_snapshot_revision
+  AND (NEW.pointer_revision <> OLD.pointer_revision + 1 OR NEW.updated_at_ms < OLD.updated_at_ms)
+BEGIN
+  SELECT RAISE(ABORT, 'RESOLVED_MODEL_FACTS_CURRENT_POINTER_NON_MONOTONIC');
+END;
+
+CREATE TRIGGER IF NOT EXISTS resolved_model_facts_current_v1_no_pointer_regression
+BEFORE UPDATE ON resolved_model_facts_current_v1
+WHEN NEW.resolved_snapshot_revision = OLD.resolved_snapshot_revision
+  AND (NEW.pointer_revision <> OLD.pointer_revision OR NEW.updated_at_ms < OLD.updated_at_ms)
+BEGIN
+  SELECT RAISE(ABORT, 'RESOLVED_MODEL_FACTS_CURRENT_POINTER_NON_MONOTONIC');
 END;
