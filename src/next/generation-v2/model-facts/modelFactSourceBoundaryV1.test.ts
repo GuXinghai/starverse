@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const root = path.resolve(process.cwd(), 'src', 'next', 'generation-v2', 'model-facts')
 const productionFiles = fs.readdirSync(root)
-  .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+  .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && file !== 'resolvedModelFactsV1.ts')
 
 describe('Canonical Source Facts Goal 2C boundary', () => {
   it('does not import downstream resolution, runtime, compiler authorization, or encoding authority', () => {

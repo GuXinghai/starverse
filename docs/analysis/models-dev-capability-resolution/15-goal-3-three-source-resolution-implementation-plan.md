@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice B complete; Slice C not started
+- **Lifecycle Status**: Slice C complete; Slice D not started
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -26,9 +26,18 @@
 - **Validation**: `npm run rebuild:node`; `npx vitest --run src/next/generation-v2/model-facts/sourcePriorityConfigV1.test.ts` (4 passed); `npx vitest --run --config vitest.integration.config.ts infra/db/repo/sourcePriorityConfigV1Repo.test.ts` (2 passed); `npx vitest --run --config vitest.integration.config.ts electron/ipc/generationV2SourcePriorityConfigIpc.test.ts` (1 passed); `npx vitest --run --config vitest.integration.config.ts infra/db/v2/schemaComposerV2.test.ts` (19 passed); `npx tsc --noEmit --pretty false` (passed); targeted ESLint (no errors; existing complexity/length warnings); `git diff --check` (passed).
 - **Boundary**: no resolver, resolved-facts cache/publication, Settings UI, provider snapshot cutover, compiler/runtime authority, or legacy deletion. Node ABI is the active validation target.
 
+### Slice C — Deterministic three-source resolver
+
+- **Status**: complete on 2026-09-22.
+- **Implementation**: added pure `resolveModelFactsV1` over the exact-subject Provider Native, models.dev, and full Capability Rules canonical outcomes. It applies configured cross-source priority, source-local explicit-over-derived selection, Rules exact-over-regex and effective Rule priority, lower-priority fill, equal-priority conflict, complete atomic values, explicit partial set/range supplementation, and invalid-observation/LKG diagnostics while preserving supporting/opposing/overridden provenance.
+- **Tests**: added table-driven resolver coverage for priority and overridden provenance, invalid fill, retained LKG, equal-priority conflict, source-local explicit-over-derived, complete versus partial collection semantics, partial integer-bound supplementation, Rules exact/effective priority, deterministic final revision, and all-materialized-claim provenance.
+- **Boundary fix**: the Goal 2C source-boundary scan now explicitly excludes the Goal 3 resolved-facts ontology, whose `capabilityRevision` field is part of the frozen Goal 3 contract; the pure resolver itself remains free of DB, time, renderer, provider runtime, compiler, and execution-authority imports.
+- **Validation**: `npx vitest --run --config vitest.unit.config.ts src/next/generation-v2/model-facts/resolveModelFactsV1.test.ts src/next/generation-v2/model-facts/modelFactSourceBoundaryV1.test.ts` (2 files, 10 passed); `npx tsc --noEmit --pretty false` (passed); targeted ESLint (no errors; complexity/length warnings only); `git diff --check` (passed).
+- **Boundary**: no DB/cache/publication, unified source reader, IPC/UI, provider snapshot cutover, compiler/runtime authority, or legacy deletion.
+
 ### Next Slice
 
-Slice C — Deterministic three-source resolver.
+Slice D — Resolved publication, cache, and service seam.
 
 ## Sol-medium review budget
 
