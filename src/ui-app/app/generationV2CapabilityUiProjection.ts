@@ -119,8 +119,8 @@ export function projectImageAttachmentInputSupportV2(
   if (!projection) return null
   const include = field(projection, 'attachments[].include')
   const sendAs = field(projection, 'attachments[].sendAs')
-  if (!include || !sendAs || include.state === 'missing' || include.state === 'unsupported' ||
-      sendAs.state === 'missing' || sendAs.state === 'unsupported') return false
+  if (!include || !sendAs || include.state === 'missing' || include.state === 'unsupported' || include.state === 'conflict' ||
+      sendAs.state === 'missing' || sendAs.state === 'unsupported' || sendAs.state === 'conflict') return false
   if (include.state === 'unknown' || sendAs.state === 'unknown') return true
   if (sendAs.domain?.kind !== 'enum') return false
   return sendAs.domain.values.includes('image_reference')

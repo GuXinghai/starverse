@@ -30,7 +30,7 @@ import { compileOpenAIChatCompatiblePreparedRequestV2 } from './openAIChatCompat
 import { commitOpenAIChatCompatibleCurrentSnapshotV2, commitOpenAIChatCompatibleRetrySnapshotV2 } from './openAIChatCompatibleSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { assertOpenAICompatibleTransportPolicyV2 } from './openAICompatibleNetworkV2'
-import { assertExpectedCapabilityRevisionV2, assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type Current = OpenAIChatCompatibleInitialCommandV2 | OpenAIChatCompatibleRegenerateCommandV2 | OpenAIChatCompatibleEditResendCommandV2
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
@@ -134,7 +134,6 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
             const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding,
               resolvedAt: new Date(pending.createdAtMs).toISOString(),
               mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
-            assertExpectedCurrentSendCapabilityRevisionV2(capability.revision.value)
             const persisted = commitOpenAIChatCompatibleCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
               pending, command, commandFacts: facts, provider: currentDetails, endpoint: currentEndpoint,
               configuration: currentConfiguration, credentialScopeId: credential.credentialScopeId,

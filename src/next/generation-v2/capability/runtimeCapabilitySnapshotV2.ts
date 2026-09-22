@@ -44,6 +44,7 @@ export const RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
 const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = MODEL_CAPABILITY_SEMANTIC_PATHS_V2
 type RuntimeCapabilitySemanticPathV2 = ModelCapabilitySemanticPathV2
 type RuntimeCapabilityFieldStateV2 = ModelCapabilityFieldStateV2
+type RuntimeCapabilityToolStateV2 = Exclude<RuntimeCapabilityFieldStateV2, 'conflict'>
 type RuntimeCapabilityEvidenceEffectV2 = ModelCapabilityEvidenceEffectV2
 type RuntimeCapabilityScalarV2 = ModelCapabilityScalarV2
 type RuntimeCapabilityDomainV2 = ModelCapabilityDomainV2
@@ -55,7 +56,7 @@ type PersistedRuntimeCapabilityFieldV2 = PersistedModelCapabilityFieldV2
 export type PersistedRuntimeToolCapabilityV2 = Readonly<{
   toolId: string
   kind: 'function' | 'provider_server'
-  state: RuntimeCapabilityFieldStateV2
+  state: RuntimeCapabilityToolStateV2
   sideEffectPolicy: 'none' | 'confirmation_required_each_execution'
   evidenceIds: readonly string[]
 }>
@@ -165,11 +166,13 @@ const EVIDENCE_KINDS: readonly RuntimeCapabilityEvidenceKindV2[] = [
   'official_documentation', 'live_probe', 'capability_rule',
 ]
 const EVIDENCE_EFFECTS: readonly RuntimeCapabilityEvidenceEffectV2[] = [
-  'supports', 'rejects', 'requires_confirmation', 'unknown',
+  'supports', 'rejects', 'requires_confirmation', 'conflict', 'unknown',
 ]
 const FIELD_STATES: readonly RuntimeCapabilityFieldStateV2[] = [
-  'supported', 'unsupported', 'requires_confirmation', 'missing', 'unknown',
+  'supported', 'unsupported', 'requires_confirmation', 'conflict', 'missing', 'unknown',
 ]
+const TOOL_FIELD_STATES: readonly RuntimeCapabilityToolStateV2[] =
+  ['supported', 'unsupported', 'requires_confirmation', 'missing', 'unknown']
 const MAX_EVIDENCE = 256
 const MAX_CONSTRAINTS_PER_FIELD = 32
 const MAX_ENUM_VALUES = 256
@@ -450,7 +453,7 @@ const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>(MODEL_CAPABILITY
  * revision alongside the codec grammar and validation tables so a codec
  * change cannot silently reuse an installed database schema digest.
  */
-export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v4-goal3-resolution-binding'
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v5-goal3-conflict-facts'
 export const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   revision: RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
   schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
@@ -558,26 +561,28 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const state = input.state as RuntimeCapabilityFieldStateV2
-  if ((state === 'unsupported' || state === 'missing' || state === 'unknown') !== (input.domain === undefined)) {
+  if ((state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown') && input.domain !== undefined) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const domain = input.domain === undefined ? undefined : decodeDomain(input.domain)
   if (domain) assertDomainMatchesPath(path, domain)
   const defaultValue = input.defaultValue === undefined ? undefined : decodeScalar(input.defaultValue)
-  if (defaultValue !== undefined && (!domain ||
-      domain.kind === 'boolean' && typeof defaultValue !== 'boolean' ||
-      (domain.kind === 'identity' || domain.kind === 'string') && typeof defaultValue !== 'string' ||
-      domain.kind === 'string' && typeof defaultValue === 'string' && defaultValue.length > domain.maxLength ||
-      domain.kind === 'enum' && !domain.values.includes(defaultValue) ||
-      domain.kind === 'range' && (typeof defaultValue !== 'number' || defaultValue < domain.min || defaultValue > domain.max ||
-        domain.integer && !Number.isSafeInteger(defaultValue) || domain.excludedValues?.includes(defaultValue)))) {
+  if (defaultValue !== undefined && (
+      domain === undefined && (state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown') ||
+      domain !== undefined && (
+        domain.kind === 'boolean' && typeof defaultValue !== 'boolean' ||
+        (domain.kind === 'identity' || domain.kind === 'string') && typeof defaultValue !== 'string' ||
+        domain.kind === 'string' && typeof defaultValue === 'string' && defaultValue.length > domain.maxLength ||
+        domain.kind === 'enum' && !domain.values.includes(defaultValue) ||
+        domain.kind === 'range' && (typeof defaultValue !== 'number' || defaultValue < domain.min || defaultValue > domain.max ||
+          domain.integer && !Number.isSafeInteger(defaultValue) || domain.excludedValues?.includes(defaultValue))))) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const constraints = closedDenseArray(input.constraints).map((item) => decodeConstraint(item, path))
   if (constraints.length > MAX_CONSTRAINTS_PER_FIELD) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
-  if ((state === 'unsupported' || state === 'missing' || state === 'unknown') && constraints.length > 0) {
+  if ((state === 'unsupported' || state === 'conflict' || state === 'missing' || state === 'unknown') && constraints.length > 0) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   constraints.sort((left, right) => compareCodePoints(serializeBounded(left), serializeBounded(right)))
@@ -621,11 +626,11 @@ function decodeEvidenceIds(value: unknown): readonly string[] {
 function decodeToolCapability(value: unknown): PersistedRuntimeToolCapabilityV2 {
   const input = closedObject(value, ['toolId', 'kind', 'state', 'sideEffectPolicy', 'evidenceIds'])
   if ((input.kind !== 'function' && input.kind !== 'provider_server') ||
-      !FIELD_STATES.includes(input.state as RuntimeCapabilityFieldStateV2) ||
+      !TOOL_FIELD_STATES.includes(input.state as RuntimeCapabilityToolStateV2) ||
       (input.sideEffectPolicy !== 'none' && input.sideEffectPolicy !== 'confirmation_required_each_execution')) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
-  const state = input.state as RuntimeCapabilityFieldStateV2
+  const state = input.state as RuntimeCapabilityToolStateV2
   const evidenceIds = decodeEvidenceIds(input.evidenceIds)
   if ((state === 'missing') !== (evidenceIds.length === 0) ||
       (state === 'unknown' && evidenceIds.length === 0) ||
@@ -812,7 +817,8 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   const modelFactsResolution = decodeModelFactsResolution(input.modelFactsResolution)
   const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]))
   const effectForState: Partial<Record<RuntimeCapabilityFieldStateV2, RuntimeCapabilityEvidenceEffectV2>> = {
-    supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation', unknown: 'unknown',
+    supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation',
+    conflict: 'conflict', unknown: 'unknown',
   }
   for (const field of fields) {
     const expectedEffect = effectForState[field.state]

@@ -37,19 +37,6 @@ export function assertExpectedCapabilityRevisionV2(actualCapabilityRevision: str
   }
 }
 
-/**
- * Transitional current-send bridge: pre-cutover provider authorities may
- * still expose a legacy capability-v2 revision while the persisted snapshot
- * is about to be resolved from Goal 3. The shared snapshot cutover performs
- * the strict Goal 3 comparison before persistence. Historical replay paths
- * must continue using assertExpectedCapabilityRevisionV2 directly.
- */
-export function assertExpectedCurrentSendCapabilityRevisionV2(actualCapabilityRevision: string): void {
-  const expected = context.getStore()?.expectedCapabilityRevision
-  if (expected?.startsWith('capability-revision-v1:') && actualCapabilityRevision.startsWith('capability-v2:')) return
-  assertExpectedCapabilityRevisionV2(actualCapabilityRevision)
-}
-
 export function readExpectedCapabilityRevisionV2(): string | null {
   return context.getStore()?.expectedCapabilityRevision ?? null
 }

@@ -281,10 +281,9 @@ describe('Generation V2 capability resolution scope', () => {
     expect(knownField).toMatchObject({ state: 'supported', domain: fixture.expectedDomain,
       defaultValue: fixture.expectedDefault })
     if (fixture.providerId === 'openai_responses') {
-      expect(known.resolvedCapability.modelFacts.fields.find((field) => field.path === 'reasoning.mode')).toEqual(
-        expect.objectContaining({ state: 'supported',
-          domain: { kind: 'enum', values: ['disabled', 'enabled'] } }),
-      )
+      const reasoningMode = known.resolvedCapability.modelFacts.fields.find((field) => field.path === 'reasoning.mode')
+      expect(reasoningMode).toMatchObject({ state: 'supported' })
+      expect(reasoningMode?.domain).toBeUndefined()
     }
     expect(known.controlsProjection.capabilityRevision).toBe(known.resolvedCapability.modelFacts.capabilityRevision)
 

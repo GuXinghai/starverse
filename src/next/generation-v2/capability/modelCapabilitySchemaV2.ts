@@ -118,10 +118,11 @@ export type ModelCapabilityFieldStateV2 =
   | 'supported'
   | 'unsupported'
   | 'requires_confirmation'
+  | 'conflict'
   | 'missing'
   | 'unknown'
 
-export type ModelCapabilityEvidenceEffectV2 = 'supports' | 'rejects' | 'requires_confirmation' | 'unknown'
+export type ModelCapabilityEvidenceEffectV2 = 'supports' | 'rejects' | 'requires_confirmation' | 'conflict' | 'unknown'
 export type ModelCapabilityScalarV2 = string | number | boolean
 
 export type ModelCapabilityDomainV2 =

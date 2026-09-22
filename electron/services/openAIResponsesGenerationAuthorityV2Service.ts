@@ -12,7 +12,6 @@ import {
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
@@ -405,7 +404,6 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
       binding, modelEvidence: input.modelEvidence, commandFacts: input.commandFacts,
       resolvedAt: new Date(resolvedAtMs).toISOString(), toolRegistry: input.toolRegistry,
     })
-    assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)
       if (binding) bindingAuthorities.delete(binding)

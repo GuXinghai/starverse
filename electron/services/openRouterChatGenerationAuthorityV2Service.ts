@@ -11,7 +11,6 @@ import {
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import { listReviewedProviderContractDefinitionsV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
@@ -328,7 +327,6 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
   const resolvedCapability = resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence)
   const snapshot = composeOpenRouterChatSnapshot(resolvedCapability, input.modelEvidence, input.toolRegistry)
   validateIntent(input.commandFacts, input.toolRegistry)
-  assertExpectedCurrentSendCapabilityRevisionV2(snapshot.revision.value)
   const capability: VerifiedOpenRouterChatCapabilityAuthorityV2 = Object.freeze({
     trust: 'verified_openrouter_chat_capability_v2', bindingAuthority: binding, resolvedCapability, snapshot,
     assertCurrent: () => {
