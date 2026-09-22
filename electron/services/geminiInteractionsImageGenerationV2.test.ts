@@ -185,10 +185,12 @@ describe('Gemini Interactions image generation V2', () => {
       const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
         credentialService: credentialService(), nowMs: () => 100,
         createGraphId: (kind) => `${kind}:unknown` })
-      await expect(coordinator.submit({ command: { operationId: 'operation:unknown-image', branchId: 'branch:1',
+      const result = await coordinator.submit({ command: { operationId: 'operation:unknown-image', branchId: 'branch:1',
         expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3.1-flash-image-future', commandAttachments: [] },
-        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
-        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      expect(result.kind).toBe('created')
+      expect(result.execution.capability.fields.find((field) => field.path === 'image.mode')?.state)
+        .toBe('unknown')
     } finally { db.close() }
   })
 
@@ -224,10 +226,12 @@ describe('Gemini Interactions image generation V2', () => {
       })
       const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
         credentialService: credentialService(), nowMs: () => 100, createGraphId: (kind) => `${kind}:search` })
-      await expect(coordinator.submit({ command: { operationId: 'operation:unsupported-search', branchId: 'branch:1',
+      const result = await coordinator.submit({ command: { operationId: 'operation:unsupported-search', branchId: 'branch:1',
         expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3-pro-image', commandAttachments: [] },
-        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
-        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      expect(result.kind).toBe('created')
+      expect(result.execution.capability.fields.find((field) => field.path === 'web.mode')?.state)
+        .toBe('unknown')
     } finally { db.close() }
   })
 

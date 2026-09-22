@@ -9,7 +9,6 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { OpenAIChatCompatibleNativeHistoryV2Repo } from '../../infra/db/repo/openAIChatCompatibleNativeHistoryV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 // Approved Generation V2 main-process composition boundary: renderer never receives these domain facts.
@@ -18,7 +17,7 @@ import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation
 // eslint-disable-next-line no-restricted-imports
 import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
 // eslint-disable-next-line no-restricted-imports
-import { composeOpenAIChatCompatibleCapabilityWithMaterializedRulesV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
+import { composeOpenAIChatCompatibleBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
 // eslint-disable-next-line no-restricted-imports
 import {
   decodeOpenAIChatCompatibleEditResendCommandV2, decodeOpenAIChatCompatibleInitialCommandV2,
@@ -60,7 +59,6 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
   const requests = new GenerationRequestV2Repo(input.db, nowMs); const history = new OpenAIChatCompatibleNativeHistoryV2Repo(input.db)
   const providers = new OpenAICompatibleV2Repo(input.db, nowMs); const config = new GenerationConfigV2Repo(input.db, nowMs)
   const attachments = new AttachmentAssetV2Repo(input.db, nowMs); const capabilities = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleProjection = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
 
   async function credentialFact(providerInstanceId: string, endpoint: { auth: unknown; endpointDigest: string }): Promise<CredentialFact> {
     const auth = endpoint.auth as { mode?: unknown; credentialVersionRef?: unknown }
@@ -133,12 +131,9 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
           projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
             const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
               credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
-            const capabilityRules = capabilityRuleProjection.resolveForCompatibleIdentity({
-              providerInstanceId: binding.endpointProfileId.value, nativeModelId: binding.modelId.value,
-            })
-            const capability = composeOpenAIChatCompatibleCapabilityWithMaterializedRulesV2({ binding,
+            const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding,
               resolvedAt: new Date(pending.createdAtMs).toISOString(),
-              mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration), capabilityRules })
+              mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
             assertExpectedCurrentSendCapabilityRevisionV2(capability.revision.value)
             const persisted = commitOpenAIChatCompatibleCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
               pending, command, commandFacts: facts, provider: currentDetails, endpoint: currentEndpoint,

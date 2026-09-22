@@ -54,11 +54,6 @@ import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
-import {
-  applyCapabilityRuleProjectionV2,
-  assertCapabilityRuleProjectionIdentityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 
 export type VerifiedGeminiGenerateContentProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_gemini_generate_content_provider_binding'
@@ -161,7 +156,7 @@ function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly Persisted
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
-function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: ActiveCatalogModelAuthorityV2,
+function validateFacts(facts: GenerationCommandFactsAuthorityV2,
   toolRegistry: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools
@@ -208,7 +203,6 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Activ
       attachmentUnsupported ||
       !validReasoning || !validWeb || intent.image.mode !== 'disabled' ||
       intent.generation.candidateCount !== undefined ||
-      (intent.generation.maxOutputTokens !== undefined && intent.generation.maxOutputTokens > evidence.model.outputTokenLimit) ||
       intent.generation.seed !== undefined || intent.generation.frequencyPenalty !== undefined ||
       intent.generation.presencePenalty !== undefined || intent.generation.repetitionPenalty !== undefined) {
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_INTENT_UNSUPPORTED')
@@ -261,7 +255,7 @@ function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedGemini
 }
 
 function composeCapability(binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2,
-  evidence: ActiveCatalogModelAuthorityV2, capabilityRules: CapabilityRuleProjectionV2,
+  evidence: ActiveCatalogModelAuthorityV2,
   toolRegistry: ToolRegistryRepositoryFactV2 | null) {
   const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
   const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
@@ -278,14 +272,11 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
         effect: 'requires_confirmation' as const, sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
         verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
     ]
-  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
-    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
-  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(evidence), projection: capabilityRules })
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(evidence),
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
-    evidence: merged.evidence,
-    fields: merged.fields,
+    evidence: baseEvidence,
+    fields: baseFields(evidence),
     continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
@@ -318,10 +309,9 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
 /** Command-independent resolver; tools and attachments are not command facts. */
 export function resolveGeminiGenerateContentCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
-  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const binding = composeBinding(modelEvidence)
-  return composeCapability(binding, modelEvidence, capabilityRules, null).resolvedCapability
+  return composeCapability(binding, modelEvidence, null).resolvedCapability
 }
 
 export function readVerifiedGeminiGenerateContentProviderBindingRecordV2(
@@ -339,7 +329,6 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
-  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2
     capability: VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 }>) => T
 }>): T {
@@ -355,14 +344,14 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
   input.modelEvidence.assertCurrent()
-  validateFacts(input.commandFacts, input.modelEvidence, toolRegistry)
+  validateFacts(input.commandFacts, toolRegistry)
   let binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2 | undefined
   let capability: VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 | undefined
   let registered = false
   let completed = false
   try {
     binding = composeBinding(input.modelEvidence)
-    capability = composeCapability(binding, input.modelEvidence, input.capabilityRules, toolRegistry)
+    capability = composeCapability(binding, input.modelEvidence, toolRegistry)
     assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => { if (capability) capabilities.delete(capability); if (binding) bindings.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {

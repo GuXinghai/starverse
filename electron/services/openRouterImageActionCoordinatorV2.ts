@@ -7,7 +7,6 @@ import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db
 import type { GenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { OpenRouterImageBindingRepo } from '../../infra/db/repo/openRouterImageBindingRepo'
 import { OpenRouterImageEndpointRepo } from '../../infra/db/repo/openRouterImageEndpointRepo'
 import { OpenRouterImageSettingsRepo } from '../../infra/db/repo/openRouterImageSettingsRepo'
@@ -54,7 +53,6 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs); const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const graphRepo = new ConversationGraphV2Repo(input.db); const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs); const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const bindingRepo = new OpenRouterImageBindingRepo(input.db, nowMs); const endpointRepo = new OpenRouterImageEndpointRepo(input.db, nowMs)
   const settingsRepo = new OpenRouterImageSettingsRepo(input.db, nowMs)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service(input)
@@ -115,9 +113,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       expectedDescriptorRowGeneration: decision.expectedDescriptorRowGeneration })
     const selected = descriptorCandidate(descriptor, candidate.providerTag, candidate.providerSlug)
     return Object.freeze({ binding, capability: composeOpenRouterImageRuntimeCapabilityV2({ binding: binding.record,
-      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString(),
-      capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: binding.record.providerId.value,
-        endpointProfileId: binding.record.endpointProfileId.value, nativeModelId: binding.record.modelId.value }), }) })
+      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString() }) })
   }
 
   async function retry(raw: unknown, signal?: AbortSignal): Promise<OpenRouterImageActionResultV2> {

@@ -159,6 +159,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
                 observedAtMs: Date.UTC(2026, 5, 25),
               },
             ],
+            rawSourcePayloads: [],
             models: [
               {
                 providerKey: 'google_ai_studio',

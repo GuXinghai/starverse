@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { listReviewedProviderContractDefinitionsV2 } from '../../contracts/providerContractRegistryV2'
-import { buildCanonicalSourceRevisionRefV1, buildCanonicalSubjectFactV1 } from '../../model-facts/canonicalSourceFactsV1'
-import { buildExplicitAssertionV1, buildObservationProvenanceV1, presentOutcomeV1 } from '../../model-facts/sourceAdapterV1'
-import { projectMaterializedCapabilityRuleProjectionV2 } from '../../capability-rules/materializedCapabilityRuleProjectionV2'
 import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
 import {
   composeOpenRouterImageRuntimeCapabilityV2,
@@ -55,43 +52,10 @@ function bindingRaw(providerTag: string, selectedAt = '2026-07-18T00:00:00.000Z'
   }
 }
 
-function exactImageRuleProjection() {
-  const subject = Object.freeze({ providerAuthorityId: 'openrouter',
-    endpointProfileId: 'openrouter-first-party-v1', nativeModelId: 'google/gemini-3.1-flash-image' })
-  const sourceRevision = buildCanonicalSourceRevisionRefV1({ sourceKind: 'capability_rule', sourceScopeId: 'scope:rules',
-    rawSourceSnapshotRevision: 'raw-snapshot:v1', adapterRevision: 'adapter:v1', coverageManifestRevision: 'coverage:v1',
-    providerAuthorityRegistryRevision: 'registry:v1' })
-  const provenance = buildObservationProvenanceV1({ sourceRevision,
-    sourceFieldRefs: [{ rawPayloadRef: { storeId: `canonical-raw-v1:${'a'.repeat(64)}`, persistedPayloadSha256: 'a'.repeat(64),
-      recordKey: 'rules', sanitizerRevision: 'sanitizer:v1' }, sourceRecordIdentity: 'exact-image-rule',
-      sourceFieldPath: 'rule.exact-image-rule', observedPresence: 'present' }],
-    adapterId: 'materialized-rules:test', adapterRevision: sourceRevision.adapterRevision, mappingId: 'rules:test' })
-  const assertion = buildExplicitAssertionV1({ subject, sourceRevision, path: 'image.generation.support',
-    value: { kind: 'support', value: 'unsupported' }, sourceClaimIdentity: 'claim:exact-image-rule',
-    evidenceRefs: ['test-rule'], observationProvenance: provenance,
-    ruleClaim: { ownerKind: 'built_in', ownerId: 'owner', packId: 'pack', ruleId: 'exact-image-rule',
-      packRevision: 'pack-revision', ruleRevision: 'rule-revision', selectorKind: 'exact', selectorRef: 'exact-selector',
-      packPriority: 0, rulePriority: 0, effectiveRulePriority: 0, prioritySemanticsRevision: 'priority:v1' } })
-  const fact = buildCanonicalSubjectFactV1({ schemaVersion: 1, subject, sourceRevision, recordOutcome: 'present',
-    outcomes: [presentOutcomeV1({ assertion, observationIdentity: 'observation:claim:exact-image-rule' })], unmappedSourceFields: [] })
-  return projectMaterializedCapabilityRuleProjectionV2(fact.payload)
-}
-
-function emptyImageRuleProjection() {
-  const subject = Object.freeze({ providerAuthorityId: 'openrouter',
-    endpointProfileId: 'openrouter-first-party-v1', nativeModelId: 'google/gemini-3.1-flash-image' })
-  const sourceRevision = buildCanonicalSourceRevisionRefV1({ sourceKind: 'capability_rule', sourceScopeId: 'scope:rules',
-    rawSourceSnapshotRevision: 'raw-snapshot:v1', adapterRevision: 'adapter:v1', coverageManifestRevision: 'coverage:v1',
-    providerAuthorityRegistryRevision: 'registry:v1' })
-  return projectMaterializedCapabilityRuleProjectionV2(buildCanonicalSubjectFactV1({ schemaVersion: 1, subject,
-    sourceRevision, recordOutcome: 'no_matching_claims', outcomes: [], unmappedSourceFields: [] }).payload)
-}
-
 describe('OpenRouter selected image runtime capability V2', () => {
   it('persists descriptor-backed expressible fields without a model-specific format allowlist', () => {
     const snapshot = composeOpenRouterImageRuntimeCapabilityV2({
       binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
-      capabilityRules: emptyImageRuleProjection(),
     })
     expect(snapshot.fields.find((field) => field.path === 'image.size')?.domain).toEqual({
       kind: 'dimensions_enum', values: [{ width: 1024, height: 1024 }, { width: 1536, height: 1024 }],
@@ -107,30 +71,20 @@ describe('OpenRouter selected image runtime capability V2', () => {
   it('rejects a binding that does not identify the selected descriptor', () => {
     const invalid = decodeProviderBindingRecordV2(bindingRaw('other'))
     expect(() => composeOpenRouterImageRuntimeCapabilityV2({
-      binding: invalid, descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', capabilityRules: emptyImageRuleProjection(),
+      binding: invalid, descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
     })).toThrow(OpenRouterImageRuntimeCapabilityV2Error)
   })
 
   it('keeps selectedAt and verifiedAt out of the base revision', () => {
     const first = composeOpenRouterImageRuntimeCapabilityV2({
-      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', capabilityRules: emptyImageRuleProjection(),
+      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
     })
     const second = composeOpenRouterImageRuntimeCapabilityV2({
       binding: decodeProviderBindingRecordV2(bindingRaw('google-ai-studio', '2026-07-19T00:00:00.000Z')),
-      descriptor, resolvedAt: '2026-07-19T00:00:02.000Z', capabilityRules: emptyImageRuleProjection(),
+      descriptor, resolvedAt: '2026-07-19T00:00:02.000Z',
     })
     expect(first.fields).toEqual(second.fields)
     expect(first.revision.value).toBe(second.revision.value)
   })
 
-  it('applies an exact materialized Rule claim before creating the runtime snapshot', () => {
-    const snapshot = composeOpenRouterImageRuntimeCapabilityV2({
-      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
-      capabilityRules: exactImageRuleProjection(),
-    })
-    const mode = snapshot.fields.find((field) => field.path === 'image.mode')
-    expect(mode?.state).toBe('unsupported')
-    expect(mode?.evidenceIds.some((evidenceId) => snapshot.evidence.some((evidence) =>
-      evidence.evidenceId === evidenceId && evidence.kind === 'capability_rule'))).toBe(true)
-  })
 })

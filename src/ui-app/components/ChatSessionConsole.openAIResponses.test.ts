@@ -105,6 +105,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
                 observedAtMs: Date.UTC(2026, 5, 25),
               },
             ],
+            rawSourcePayloads: [],
             models: [
               {
                 providerKey: 'openai_responses',

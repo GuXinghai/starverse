@@ -43,11 +43,6 @@ import {
   readVerifiedGeminiDeveloperApiEndpointProfileV2,
 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import {
-  applyCapabilityRuleProjectionV2,
-  assertCapabilityRuleProjectionIdentityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
-import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
   type ActiveCatalogModelAuthorityV2,
@@ -154,22 +149,18 @@ function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId
   bindings.add(authority)
   return authority
 }
-function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2,
-  capabilityRules: CapabilityRuleProjectionV2) {
+function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2) {
   const baseEvidence = [
       { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const,
         sourceRef: 'https://ai.google.dev/gemini-api/docs/image-generation', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const,
         sourceRef: 'generation-v2-gemini-interactions-api-boundary', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
     ]
-  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
-    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
-  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(), projection: capabilityRules })
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
-    evidence: merged.evidence,
+    evidence: baseEvidence,
     ...projectActiveCatalogSnapshotAuthorityV2(binding.catalogAuthority),
-    fields: merged.fields, continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
+    fields: baseFields(), continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({ capability: resolvedCapability,
     resolvedAt: new Date(Date.now()).toISOString(), tools: [] })
@@ -188,9 +179,8 @@ function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindi
 export function resolveGeminiInteractionsImageCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
   modelId: string,
-  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
-  return composeCapability(composeBinding(modelEvidence, modelId), capabilityRules).resolvedCapability
+  return composeCapability(composeBinding(modelEvidence, modelId)).resolvedCapability
 }
 export function isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2(value: unknown): value is VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 {
   return Boolean(value && typeof value === 'object' && bindings.has(value))
@@ -210,14 +200,13 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   modelEvidence: ActiveCatalogModelAuthorityV2
   modelId: string
   commandFacts: GenerationCommandFactsAuthorityV2
-  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2;
     capability: VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2 }>) => T
 }>): T {
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) invalid()
   validateFacts(input.commandFacts)
   const binding = composeBinding(input.modelEvidence, input.modelId)
-  const capability = composeCapability(binding, input.capabilityRules)
+  const capability = composeCapability(binding)
   assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {

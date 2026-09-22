@@ -8,10 +8,6 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
 } from '../../capability/modelCapabilitySchemaV2'
 import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
-import {
-  applyCapabilityRuleProjectionToResolvedCapabilityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../capability-rules/materializedCapabilityRuleProjectionV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/verifiedFirstPartyEndpointProfileV2'
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageParameterV2 } from './canonicalDescriptorV2'
@@ -161,11 +157,8 @@ export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   descriptor: CanonicalOpenRouterImageDescriptorV2
   resolvedAt: string
-  capabilityRules: CapabilityRuleProjectionV2
 }>): DecodedRuntimeCapabilitySnapshotV2 {
-  const capability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
-    capability: resolveOpenRouterImageCapabilityRecordV2(input), projection: input.capabilityRules,
-  })
+  const capability = resolveOpenRouterImageCapabilityRecordV2(input)
   return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({ capability, resolvedAt: input.resolvedAt, tools: [] }))
 }
 
