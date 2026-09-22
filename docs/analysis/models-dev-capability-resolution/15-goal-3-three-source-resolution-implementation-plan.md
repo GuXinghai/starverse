@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice C complete; Slice D not started
+- **Lifecycle Status**: Slice D complete; Slice E not started
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -35,9 +35,19 @@
 - **Validation**: `npx vitest --run --config vitest.unit.config.ts src/next/generation-v2/model-facts/resolveModelFactsV1.test.ts src/next/generation-v2/model-facts/modelFactSourceBoundaryV1.test.ts` (2 files, 10 passed); `npx tsc --noEmit --pretty false` (passed); targeted ESLint (no errors; complexity/length warnings only); `git diff --check` (passed).
 - **Boundary**: no DB/cache/publication, unified source reader, IPC/UI, provider snapshot cutover, compiler/runtime authority, or legacy deletion.
 
+### Slice D — Resolved publication, cache, and service seam
+
+- **Status**: complete on 2026-09-22.
+- **Implementation**: added the immutable `resolved_model_facts_snapshot_v1` store and exact-subject `resolved_model_facts_current_v1` pointer with monotonic pointer revisions, snapshot identity digest, immutable snapshot triggers, and transaction-scoped publication; added `ResolvedModelFactsV1Repo` and `ResolvedModelFactsV1Service`.
+- **Source read seam**: the service accepts explicit Provider Native, models.dev, and Capability Rules source scopes, reads each current source revision and exact subject fact inside one immediate transaction, emits explicit source absence markers for unavailable/non-eligible subjects, reads the durable source-priority revision, invokes the pure resolver, and publishes the resolved snapshot/current pointer atomically. It does not infer Provider Native scope from subject identity and does not read raw payloads.
+- **Schema integration**: added `resolvedModelFactsSchema.sql`, raised the closed manifest fragment count from 20 to 21, and extended schema-composer coverage for both resolved tables.
+- **Tests**: added repository tests for immutable snapshots, idempotent publication, exact-subject pointer advancement, and trigger protection; added service coverage for all-source absence and stable repeated publication.
+- **Validation**: `npm run rebuild:node` (Slice B ABI target retained); schema integration (19 passed), resolved repository integration (1 passed), service integration (1 passed), resolver/boundary unit tests (10 passed), `npx tsc --noEmit --pretty false` (passed), targeted ESLint (no errors; complexity warnings only), and `git diff --check` (passed).
+- **Boundary**: no IPC/UI, Settings binding, provider snapshot cutover, compiler/runtime authority, retry/replay migration, or legacy deletion. Resolved snapshots are publication/cache infrastructure only.
+
 ### Next Slice
 
-Slice D — Resolved publication, cache, and service seam.
+Slice E — One-authority consumer and snapshot cutover.
 
 ## Sol-medium review budget
 
