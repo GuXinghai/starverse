@@ -112,6 +112,22 @@ export type ResolvedModelFactsV1 = Readonly<{
   capabilityRevision: string
 }>
 
+export type ResolvedModelFactsSnapshotBindingV1 = Readonly<{
+  resolvedSnapshotRevision: string
+  sourceScopeSelection: Readonly<{
+    providerNative: string
+    modelsDev: string
+    capabilityRules: string
+  }>
+  sourcePriorityConfigRevision: string
+  resolverRevision: string
+  ontologyRevision: string
+  capabilityRevision: string
+}>
+
+const SNAPSHOT_REVISION_PATTERN_V1 = /^resolved-model-facts-snapshot-v1:[a-f0-9]{64}$/u
+const CAPABILITY_REVISION_PATTERN_V1 = /^capability-revision-v1:[a-f0-9]{64}$/u
+
 export class ResolvedModelFactsV1Error extends Error {
   constructor(readonly code: 'GENERATION_V2_RESOLVED_MODEL_FACTS_INVALID') {
     super(code)
@@ -160,6 +176,30 @@ function boundedString(value: unknown, max = 512): string {
   if (typeof value !== 'string' || value.length < 1 || value.length > max || value.trim() !== value ||
       /[\u0000-\u001f\u007f]/u.test(value)) invalid()
   return value
+}
+
+export function canonicalizeResolvedModelFactsSnapshotBindingV1(
+  value: unknown,
+): ResolvedModelFactsSnapshotBindingV1 {
+  if (!plainObject(value)) invalid()
+  exactKeys(value, ['resolvedSnapshotRevision', 'sourceScopeSelection', 'sourcePriorityConfigRevision',
+    'resolverRevision', 'ontologyRevision', 'capabilityRevision'])
+  if (!SNAPSHOT_REVISION_PATTERN_V1.test(value.resolvedSnapshotRevision as string) ||
+      !CAPABILITY_REVISION_PATTERN_V1.test(value.capabilityRevision as string) ||
+      !plainObject(value.sourceScopeSelection)) invalid()
+  exactKeys(value.sourceScopeSelection, ['providerNative', 'modelsDev', 'capabilityRules'])
+  return Object.freeze({
+    resolvedSnapshotRevision: boundedString(value.resolvedSnapshotRevision, 256),
+    sourceScopeSelection: Object.freeze({
+      providerNative: boundedString(value.sourceScopeSelection.providerNative, 1024),
+      modelsDev: boundedString(value.sourceScopeSelection.modelsDev, 1024),
+      capabilityRules: boundedString(value.sourceScopeSelection.capabilityRules, 1024),
+    }),
+    sourcePriorityConfigRevision: boundedString(value.sourcePriorityConfigRevision, 256),
+    resolverRevision: boundedString(value.resolverRevision, 256),
+    ontologyRevision: boundedString(value.ontologyRevision, 256),
+    capabilityRevision: boundedString(value.capabilityRevision, 256),
+  })
 }
 
 function sortedByCanonicalJson<T>(values: readonly T[]): readonly T[] {

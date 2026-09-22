@@ -2,7 +2,9 @@ import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssist
 import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
 import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
   pendingSourceAnswerIdV2, pendingSourceBranchIdV2,
   type PendingAnswerActionV2, type PendingEditedTurnV2, type PendingInitialTurnV2 } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -47,13 +49,17 @@ export function commitGenericLocalCurrentSnapshotV2(input: Readonly<{ context: G
   assertIntent(input.commandFacts)
   const binding = createGenericLocalOpenAIChatProviderBindingV2(input.profile, input.command.modelId.value)
   if (stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(binding)) !== stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(input.capability.binding))) throw new Error('GENERATION_V2_GENERIC_LOCAL_SNAPSHOT_CAPABILITY_INVALID')
-  input.capabilityRepo.insertCanonical(input.context, input.capability.canonicalJson, input.pending.createdAtMs)
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: resolvedCapabilityFromRuntimeSnapshotV2(input.capability), binding,
+    credentialRevision: input.profile.revisionGeneration, resolvedAt: input.capability.resolvedAt,
+    tools: input.capability.tools })
+  input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({ schemaVersion: 2,
     answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent), resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
-    providerBinding: projectDecodedProviderBindingRecordV2(binding), capabilityBinding: { capabilityRevision: input.capability.revision.value,
-      evidenceDigest: input.capability.evidenceDigest.value, semanticFieldsDigest: input.capability.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshotHash.value }, attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' } }))
+    providerBinding: projectDecodedProviderBindingRecordV2(binding), capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value, semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value }, attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' } }))
   return Object.freeze({ bundle: input.executionRepo.insertOperationAndSnapshot(input.context, { operationId: input.pending.operationId.value,
     actionKind: initial ? 'initial_send' : regenerate ? 'regenerate_question' : 'edit_resend', branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,

@@ -76,6 +76,16 @@ export function assertGenerationV2AuthorityTransactionContextV2(
   stateFor(context, db)
 }
 
+export function readGenerationV2AuthorityTransactionDatabaseV2(
+  context: GenerationV2AuthorityTransactionContextV2,
+): BetterSqlite3.Database {
+  const state = contexts.get(context)
+  if (!state || !state.active || !state.db.inTransaction) {
+    throw new GenerationV2AuthorityTransactionError('GENERATION_V2_AUTHORITY_TRANSACTION_INVALID_CONTEXT')
+  }
+  return state.db
+}
+
 export function registerGenerationV2AuthorityTransactionParticipantV2(
   context: GenerationV2AuthorityTransactionContextV2,
   db: BetterSqlite3.Database,

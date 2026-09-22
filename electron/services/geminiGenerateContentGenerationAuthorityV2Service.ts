@@ -17,10 +17,9 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-  validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiGenerateContentDefinitionV2,
@@ -364,11 +363,7 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   try {
     binding = composeBinding(input.modelEvidence)
     capability = composeCapability(binding, input.modelEvidence, input.capabilityRules, toolRegistry)
-    validateSemanticIntentAgainstResolvedCapabilityV2(
-      capability.resolvedCapability,
-      input.commandFacts.semanticIntent,
-    )
-    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
+    assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => { if (capability) capabilities.delete(capability); if (binding) bindings.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
       preCommit: () => { if (!completed) throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_GENERATION_AUTHORITY_INVALID'); capability!.assertCurrent() },

@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice D complete; Slice E not started
+- **Lifecycle Status**: Slice E complete; Slice F residual-authority removal in progress
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -47,16 +47,16 @@
 
 ### Next Slice
 
-Slice E — One-authority consumer and snapshot cutover.
+Slice F — Delete temporary and legacy authorities.
 
 ## Sol-medium review budget
 
-Consumed: 1 / 6. Slice A requires no Sol-medium review.
+Consumed: 3 / 6. Slice A requires no Sol-medium review.
 
 - [ ] C pre-implementation
 - [x] D post-implementation
-- [ ] E pre-cutover
-- [ ] E post-cutover
+- [x] E pre-cutover
+- [x] E post-cutover
 - [ ] F residual authority audit
 - [ ] G closeout
 

@@ -21,6 +21,7 @@ import {
 } from './encodingCoverageRegistryV2'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../domain/generationIntentV2'
 import { canonicalizeModelFactsV2, projectCanonicalModelIdentityV2 } from './canonicalModelFactsV2'
+import type { ResolvedModelFactsSnapshotBindingV1 } from '../model-facts/resolvedModelFactsV1'
 import {
   MODEL_CAPABILITY_SEMANTIC_PATHS_V2,
   MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2,
@@ -93,6 +94,7 @@ export type PersistedRuntimeCapabilitySnapshotV2 = Readonly<{
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
   continuation: PersistedRuntimeContinuationCapabilityV2
+  modelFactsResolution?: ResolvedModelFactsSnapshotBindingV1
   evidenceDigest: string
   semanticFieldsDigest: string
   encoderRevision: string
@@ -117,6 +119,7 @@ export type DecodedRuntimeCapabilitySnapshotV2 = Readonly<{
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
   continuation: PersistedRuntimeContinuationCapabilityV2
+  modelFactsResolution?: ResolvedModelFactsSnapshotBindingV1
   evidenceDigest: GenerationV2Digest<'evidence_digest'>
   semanticFieldsDigest: GenerationV2Digest<'capability_fields_digest'>
   encoderRevision: string
@@ -154,6 +157,7 @@ type DraftSnapshot = Readonly<{
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
   continuation: PersistedRuntimeContinuationCapabilityV2
+  modelFactsResolution?: ResolvedModelFactsSnapshotBindingV1
 }>
 
 const EVIDENCE_KINDS: readonly RuntimeCapabilityEvidenceKindV2[] = [
@@ -170,6 +174,36 @@ const MAX_EVIDENCE = 256
 const MAX_CONSTRAINTS_PER_FIELD = 32
 const MAX_ENUM_VALUES = 256
 const MAX_TOOL_CAPABILITIES = 512
+
+function decodeModelFactsResolution(value: unknown): ResolvedModelFactsSnapshotBindingV1 | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  }
+  const input = value as Record<string, unknown>
+  const keys = Object.keys(input).sort()
+  if (keys.join('\0') !== ['capabilityRevision', 'ontologyRevision', 'resolvedSnapshotRevision',
+    'resolverRevision', 'sourcePriorityConfigRevision', 'sourceScopeSelection'].sort().join('\0') ||
+      !input.sourceScopeSelection || typeof input.sourceScopeSelection !== 'object' || Array.isArray(input.sourceScopeSelection)) {
+    throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  }
+  const scopes = input.sourceScopeSelection as Record<string, unknown>
+  if (Object.keys(scopes).sort().join('\0') !== ['capabilityRules', 'modelsDev', 'providerNative'].join('\0') ||
+      [input.capabilityRevision, input.ontologyRevision, input.resolvedSnapshotRevision, input.resolverRevision,
+        input.sourcePriorityConfigRevision, scopes.providerNative, scopes.modelsDev, scopes.capabilityRules]
+        .some((item) => typeof item !== 'string' || item.length < 1 || item.length > 1024 || item.trim() !== item)) {
+    throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  }
+  return Object.freeze({
+    resolvedSnapshotRevision: input.resolvedSnapshotRevision as string,
+    sourceScopeSelection: Object.freeze({ providerNative: scopes.providerNative as string,
+      modelsDev: scopes.modelsDev as string, capabilityRules: scopes.capabilityRules as string }),
+    sourcePriorityConfigRevision: input.sourcePriorityConfigRevision as string,
+    resolverRevision: input.resolverRevision as string,
+    ontologyRevision: input.ontologyRevision as string,
+    capabilityRevision: input.capabilityRevision as string,
+  })
+}
 
 function closedObject(value: unknown, allowed: readonly string[]): ClosedInput {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -416,8 +450,8 @@ const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>(MODEL_CAPABILITY
  * revision alongside the codec grammar and validation tables so a codec
  * change cannot silently reuse an installed database schema digest.
  */
-export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v3-canonical-model-facts'
-const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v4-goal3-resolution-binding'
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   revision: RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
   schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
   maxUtf8Bytes: RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES,
@@ -432,6 +466,12 @@ const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   domainKinds: ['boolean', 'identity', 'string', 'enum', 'response_format', 'enum_list', 'range',
     'string_list', 'identity_list', 'approximate_location', 'dimensions', 'dimensions_enum'],
   constraintKinds: ['requires_value', 'forbids_value'],
+  modelFactsResolution: {
+    optional: true,
+    keys: ['resolvedSnapshotRevision', 'sourceScopeSelection', 'sourcePriorityConfigRevision',
+      'resolverRevision', 'ontologyRevision', 'capabilityRevision'],
+    sourceScopeSelectionKeys: ['providerNative', 'modelsDev', 'capabilityRules'],
+  },
   domainKindsByPath: Object.entries(DOMAIN_KIND_BY_PATH).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
   identityPaths: [...IDENTITY_PATHS].sort(),
 } as const
@@ -722,7 +762,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
     snapshotHash: string
   }>
 }> {
-  const allowed = ['schemaVersion', 'resolvedAt', 'binding', 'catalogAuthority', 'evidence', 'fields', 'tools', 'continuation']
+  const allowed = ['schemaVersion', 'resolvedAt', 'binding', 'catalogAuthority', 'evidence', 'fields', 'tools', 'continuation', 'modelFactsResolution']
   if (fullRecord) allowed.push('evidenceDigest', 'semanticFieldsDigest', 'encoderRevision', 'revision', 'snapshotHash')
   const input = closedObject(value, allowed)
   if (input.schemaVersion !== 2) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
@@ -769,6 +809,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   }
   tools.sort((left, right) => compareCodePoints(left.toolId, right.toolId))
   const continuation = decodeContinuation(input.continuation)
+  const modelFactsResolution = decodeModelFactsResolution(input.modelFactsResolution)
   const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]))
   const effectForState: Partial<Record<RuntimeCapabilityFieldStateV2, RuntimeCapabilityEvidenceEffectV2>> = {
     supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation', unknown: 'unknown',
@@ -791,6 +832,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
     resolvedAt,
     binding: projectDecodedProviderBindingRecordV2(binding),
     ...(catalogAuthority ? { catalogAuthority } : {}),
+    ...(modelFactsResolution ? { modelFactsResolution } : {}),
     evidence: Object.freeze(canonicalEvidence),
     fields: Object.freeze(fields),
     tools: Object.freeze(tools),
@@ -833,6 +875,7 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
     identity: projectCanonicalModelIdentityV2(binding),
     evidence: draft.evidence,
     fields: draft.fields,
+    ...(draft.modelFactsResolution ? { capabilityRevision: draft.modelFactsResolution.capabilityRevision } : {}),
   })
   const evidence = modelFacts.evidence.map((item) => Object.freeze({
     evidenceId: item.evidenceId,
@@ -898,6 +941,7 @@ export function decodeRuntimeCapabilitySnapshotV2(value: unknown): DecodedRuntim
     resolvedAt: expected.resolvedAt,
     binding,
     ...(expected.catalogAuthority ? { catalogAuthority: expected.catalogAuthority } : {}),
+    ...(expected.modelFactsResolution ? { modelFactsResolution: expected.modelFactsResolution } : {}),
     evidence: Object.freeze(evidence),
     fields: expected.fields,
     tools: expected.tools,

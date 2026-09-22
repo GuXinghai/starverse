@@ -51,6 +51,7 @@ export type CanonicalModelFactsDraftV2 = Readonly<{
   identity: unknown
   evidence: readonly Readonly<Record<string, unknown>>[]
   fields: readonly PersistedModelCapabilityFieldV2[]
+  capabilityRevision?: string
 }>
 
 export class CanonicalModelFactsV2Error extends Error {
@@ -357,7 +358,8 @@ function canonicalFields(input: readonly PersistedModelCapabilityFieldV2[]): rea
 export function canonicalizeModelFactsV2(value: unknown): CanonicalModelFactsV2 {
   try {
     if (!plainObject(value)) return invalid()
-    exactKeys(value, ['identity', 'evidence', 'fields'])
+    exactKeys(value, value.capabilityRevision === undefined
+      ? ['identity', 'evidence', 'fields'] : ['identity', 'evidence', 'fields', 'capabilityRevision'])
     if (!Array.isArray(value.evidence) || !Array.isArray(value.fields)) return invalid()
     const identity = canonicalIdentity(value.identity)
     const evidence = canonicalEvidence(value.evidence as readonly Readonly<Record<string, unknown>>[])
@@ -380,6 +382,9 @@ export function canonicalizeModelFactsV2(value: unknown): CanonicalModelFactsV2 
       effect: item.effect, sourceRef: item.sourceRef, verifiedAt: item.verifiedAt,
       contentDigest: item.contentDigest.value, entryDigest: item.entryDigest.value })))
     const semanticFieldsDigest = hash(fields)
+    const suppliedRevision = value.capabilityRevision
+    if (suppliedRevision !== undefined &&
+        (typeof suppliedRevision !== 'string' || !/^capability-revision-v1:[a-f0-9]{64}$/u.test(suppliedRevision))) invalid()
     return Object.freeze({
       schemaVersion: 1,
       identity,
@@ -387,7 +392,9 @@ export function canonicalizeModelFactsV2(value: unknown): CanonicalModelFactsV2 
       fields,
       evidenceDigest,
       semanticFieldsDigest,
-      capabilityRevision: `capability-v2:${hash({ identity, evidence: evidenceForRevision, semanticFieldsDigest })}`,
+      capabilityRevision: suppliedRevision === undefined
+        ? `capability-v2:${hash({ identity, evidence: evidenceForRevision, semanticFieldsDigest })}`
+        : suppliedRevision,
     })
   } catch (error) {
     if (error instanceof CanonicalModelFactsV2Error) throw error
@@ -407,6 +414,7 @@ export function projectCanonicalModelFactsDraftV2(facts: CanonicalModelFactsV2):
       contentDigest: readGenerationV2Digest(item.contentDigest, 'evidence_digest'),
     }))),
     fields: facts.fields,
+    ...(facts.capabilityRevision.startsWith('capability-revision-v1:') ? { capabilityRevision: facts.capabilityRevision } : {}),
   })
 }
 

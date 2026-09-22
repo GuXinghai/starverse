@@ -59,6 +59,7 @@ import {
   isOpenAIResponsesFileDescriptorV2,
   type OpenAIResponsesFileDescriptorV2,
 } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class OpenAIResponsesPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -163,6 +164,10 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
   if (intent.attachments.length !== input.commandFacts.attachmentSet.attachments.length) return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -172,10 +177,10 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
     committed: () => undefined, rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
@@ -186,10 +191,10 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
     })),
     providerBinding: readVerifiedOpenAIResponsesProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors),
     toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),
@@ -207,7 +212,7 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
       stableSerializeProviderRequestV2(projectGenerationIntentLayerV2(execution.bundle.snapshot.semanticIntent)) !==
         stableSerializeProviderRequestV2(projectGenerationIntentLayerV2(input.commandFacts.semanticIntent)) ||
       execution.bundle.snapshot.providerBinding.providerId.value !== 'openai_responses' ||
-      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== input.capability.snapshot.snapshotHash.value) {
+      execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== goal3Snapshot.snapshotHash.value) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   completed = true
@@ -317,6 +322,10 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
   }
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -328,10 +337,10 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
     rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
@@ -344,10 +353,10 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
     })),
     providerBinding: readVerifiedOpenAIResponsesProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors),
     toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),
@@ -417,6 +426,10 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
   }
   input.binding.assertCurrent()
   input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -428,10 +441,10 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
     rolledBack: () => undefined,
   })
   const persistedCapability = input.capabilityRepo.insertCanonical(
-    input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs,
+    input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs,
   )
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      persistedCapability.fact.capability.canonicalJson !== input.capability.snapshot.canonicalJson) {
+      persistedCapability.fact.capability.canonicalJson !== goal3Snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
@@ -442,10 +455,10 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
     })),
     providerBinding: readVerifiedOpenAIResponsesProviderBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors),
     toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),

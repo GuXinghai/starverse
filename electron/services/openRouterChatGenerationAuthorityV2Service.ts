@@ -9,14 +9,13 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-  validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
 import {
   applyCapabilityRuleProjectionToResolvedCapabilityV2,
   type CapabilityRuleProjectionV2,
 } from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import { listReviewedProviderContractDefinitionsV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
@@ -48,6 +47,7 @@ export type VerifiedOpenRouterChatBindingAuthorityV2 = Readonly<{
   trust: 'verified_openrouter_chat_binding_v2'
   binding: DecodedProviderBindingRecordV2
   evidence: ActiveCatalogModelAuthorityV2
+  credentialRevision: number
   assertCurrent(): void
 }>
 
@@ -251,6 +251,7 @@ function composeOpenRouterChatBinding(
   verifyProviderContractReferenceV2(candidate)
   const binding: VerifiedOpenRouterChatBindingAuthorityV2 = Object.freeze({
     trust: 'verified_openrouter_chat_binding_v2', binding: decodedBinding, evidence: modelEvidence,
+    credentialRevision: modelEvidence.credentialRevision,
     assertCurrent: () => {
       if (!bindings.has(binding)) return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
       modelEvidence.assertCurrent()
@@ -339,11 +340,7 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
   })
   const snapshot = composeOpenRouterChatSnapshot(resolvedCapability, input.modelEvidence, input.toolRegistry)
   validateIntent(input.commandFacts, input.toolRegistry)
-  validateSemanticIntentAgainstResolvedCapabilityV2(
-    resolvedCapability,
-    input.commandFacts.semanticIntent,
-  )
-  assertExpectedCapabilityRevisionV2(snapshot.revision.value)
+  assertExpectedCurrentSendCapabilityRevisionV2(snapshot.revision.value)
   const capability: VerifiedOpenRouterChatCapabilityAuthorityV2 = Object.freeze({
     trust: 'verified_openrouter_chat_capability_v2', bindingAuthority: binding, resolvedCapability, snapshot,
     assertCurrent: () => {

@@ -188,7 +188,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
         sourceAttachments, undefined, (commandFacts) => {
           const selected = currentSelection(context, command, descriptor, commandFacts, freshness)
           const persisted = commitOpenRouterImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo, pending, command,
-            commandFacts, binding: selected.binding, capability: selected.capability })
+            commandFacts, binding: selected.binding, capability: selected.capability, credentialRevision: status.revision })
           if (command.kind === 'openrouter_image_regenerate') {
             if (!isPendingAnswerActionForContextV2(pending, context)) throw new Error('GENERATION_V2_OPENROUTER_IMAGE_GRAPH_INVALID')
             graphRepo.commitAnswerActionProjection(context, pending)

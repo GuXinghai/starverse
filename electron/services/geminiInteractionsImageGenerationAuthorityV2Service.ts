@@ -12,10 +12,9 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-  validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiInteractionsDefinitionV2,
@@ -219,11 +218,7 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   validateFacts(input.commandFacts)
   const binding = composeBinding(input.modelEvidence, input.modelId)
   const capability = composeCapability(binding, input.capabilityRules)
-  validateSemanticIntentAgainstResolvedCapabilityV2(
-    capability.resolvedCapability,
-    input.commandFacts.semanticIntent,
-  )
-  assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
+  assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => { binding.assertCurrent(); capability.assertCurrent(); validateFacts(input.commandFacts) },

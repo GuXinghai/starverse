@@ -10,10 +10,9 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-  validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
@@ -444,11 +443,7 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
       resolvedAt: new Date(resolvedAtMs).toISOString(), toolRegistry: input.toolRegistry,
       capabilityRules: input.capabilityRules,
     })
-    validateSemanticIntentAgainstResolvedCapabilityV2(
-      capability.resolvedCapability,
-      input.commandFacts.semanticIntent,
-    )
-    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
+    assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)
       if (binding) bindingAuthorities.delete(binding)

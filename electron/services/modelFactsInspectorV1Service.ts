@@ -13,6 +13,11 @@ import {
   type CanonicalModelFactSourceStateV1,
   type CanonicalModelFactSubjectPublicationV1,
 } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
+import {
+  ResolvedModelFactsV1Repo,
+  ResolvedModelFactsV1RepoError,
+  type ResolvedModelFactsSnapshotV1,
+} from '../../infra/db/repo/resolvedModelFactsV1Repo'
 
 type AuthoritativeSubjectSetReader = Readonly<{ readCurrent: () => Promise<AuthoritativeModelSubjectSetV1> }>
 
@@ -65,9 +70,11 @@ function exactSubjectIn(set: AuthoritativeModelSubjectSetV1, subject: CanonicalM
  */
 export class ModelFactsInspectorV1Service {
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
+  readonly #resolvedRepo: ResolvedModelFactsV1Repo
 
   constructor(db: BetterSqlite3.Database, private readonly subjectSets: AuthoritativeSubjectSetReader) {
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db)
+    this.#resolvedRepo = new ResolvedModelFactsV1Repo(db)
   }
 
   async searchSubjects(input: Readonly<{ query?: string; cursor?: string | null; limit: number }>): Promise<ModelFactsInspectorSubjectPageV1> {
@@ -92,6 +99,7 @@ export class ModelFactsInspectorV1Service {
     subjectSetRevision: string
     subject: CanonicalModelSubjectV1
     sources: readonly ModelFactsInspectorSourceRowV1[]
+    resolved: ResolvedModelFactsSnapshotV1 | null
   }>> {
     const subject = canonicalizeCanonicalModelSubjectV1(input.subject)
     const set = await this.subjectSets.readCurrent()
@@ -103,7 +111,13 @@ export class ModelFactsInspectorV1Service {
       subjectFact: state.currentSourceRevision === null ? null : this.#sourceRepo.readSubjectFact({
         canonicalSourceRevision: state.currentSourceRevision, subject,
       }) }))
-    return Object.freeze({ subjectSetRevision: set.subjectSetRevision, subject, sources: Object.freeze(sources) })
+    let resolved: ResolvedModelFactsSnapshotV1 | null = null
+    try { resolved = this.#resolvedRepo.readCurrent(subject).snapshot }
+    catch (cause) {
+      if (!(cause instanceof ResolvedModelFactsV1RepoError) ||
+          cause.code !== 'GENERATION_V2_RESOLVED_MODEL_FACTS_NOT_FOUND') throw cause
+    }
+    return Object.freeze({ subjectSetRevision: set.subjectSetRevision, subject, sources: Object.freeze(sources), resolved })
   }
 
   async readEvidenceSlice(input: Readonly<{

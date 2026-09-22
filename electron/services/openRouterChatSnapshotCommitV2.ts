@@ -51,6 +51,7 @@ import {
   type VerifiedOpenRouterChatBindingAuthorityV2,
   type VerifiedOpenRouterChatCapabilityAuthorityV2,
 } from './openRouterChatGenerationAuthorityV2Service'
+import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class OpenRouterChatSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -96,6 +97,10 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
     toolDefinitionsDigest: input.toolRegistry.registry.definitionsDigest,
   })
   input.binding.assertCurrent(); input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => {
@@ -104,7 +109,7 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
     },
     committed: () => undefined, rolledBack: () => undefined,
   })
-  input.capabilityRepo.insertCanonical(input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs)
+  input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2,
     answerRootId: input.pending.answerRootId.value,
@@ -115,10 +120,10 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
     })),
     providerBinding: readVerifiedOpenRouterChatBindingRecordV2(input.binding),
     capabilityBinding: {
-      capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value,
-      semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value,
+      capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value,
+      semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [], toolAuthority,
   })
@@ -200,20 +205,24 @@ function commitCurrentAnswerSnapshot(input: Readonly<{
     toolDefinitionsDigest: input.toolRegistry.registry.definitionsDigest,
   })
   input.binding.assertCurrent(); input.capability.assertCurrent()
+  const goal3Snapshot = createGoal3RuntimeSnapshotV1({ context: input.context,
+    capability: input.capability.resolvedCapability, binding: input.binding.binding,
+    credentialRevision: input.binding.credentialRevision, resolvedAt: input.capability.snapshot.resolvedAt,
+    tools: input.capability.snapshot.tools })
   let completed = false
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => { if (!completed) throw new OpenRouterChatSnapshotCommitV2Error('GENERATION_V2_OPENROUTER_CHAT_SNAPSHOT_AUTHORITY_INVALID'); input.binding.assertCurrent(); input.capability.assertCurrent() },
     committed: () => undefined, rolledBack: () => undefined,
   })
-  input.capabilityRepo.insertCanonical(input.context, input.capability.snapshot.canonicalJson, input.pending.createdAtMs)
+  input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: readVerifiedOpenRouterChatBindingRecordV2(input.binding),
-    capabilityBinding: { capabilityRevision: input.capability.snapshot.revision.value,
-      evidenceDigest: input.capability.snapshot.evidenceDigest.value, semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
-      snapshotHash: input.capability.snapshot.snapshotHash.value },
+    capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value,
+      evidenceDigest: goal3Snapshot.evidenceDigest.value, semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
+      snapshotHash: goal3Snapshot.snapshotHash.value },
     attachmentProviderFileBindings: [], toolAuthority,
   }))
   const actionKind = isRegenerate ? 'regenerate_question' as const : 'edit_resend' as const

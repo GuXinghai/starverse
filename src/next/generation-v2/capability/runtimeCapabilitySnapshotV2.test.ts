@@ -4,6 +4,9 @@ import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotJsonV2,
   decodeRuntimeCapabilitySnapshotV2,
+  RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2,
+  RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2,
+  RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
 } from './runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from './modelCapabilitySchemaV2'
@@ -93,6 +96,12 @@ function draft(): MutableDraft {
 }
 
 describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
+  it('includes the optional Goal 3 binding grammar in the closed codec schema digest', () => {
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v4-goal3-resolution-binding')
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2.modelFactsResolution).toEqual(expect.objectContaining({ optional: true }))
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2).toMatch(/^[0-9a-f]{64}$/u)
+  })
+
   it('allows an unverified capability-rule assertion without inventing a verification timestamp', () => {
     const value = draft()
     value.evidence[0] = {
@@ -171,6 +180,28 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
       kind: 'dimensions_enum',
       values: [{ width: 1024, height: 1024 }, { width: 1536, height: 1024 }],
     })
+  })
+
+  it('keeps legacy runtime snapshots decodable and round-trips the optional Goal 3 binding', () => {
+    const legacy = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(draft())
+    expect(legacy.revision).toMatch(/^capability-v2:[0-9a-f]{64}$/u)
+    const goal3 = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
+      ...draft(),
+      modelFactsResolution: {
+        resolvedSnapshotRevision: `resolved-model-facts-snapshot-v1:${'d'.repeat(64)}`,
+        sourceScopeSelection: {
+          providerNative: `canonical-source-scope-v1:${'e'.repeat(64)}`,
+          modelsDev: `canonical-source-scope-v1:${'f'.repeat(64)}`,
+          capabilityRules: `canonical-source-scope-v1:${'0'.repeat(64)}`,
+        },
+        sourcePriorityConfigRevision: `source-priority-config-v1:${'1'.repeat(64)}`,
+        resolverRevision: 'model-facts-resolver-v1:test', ontologyRevision: 'model-facts-ontology-v1:test',
+        capabilityRevision: `capability-revision-v1:${'2'.repeat(64)}`,
+      },
+    })
+    expect(goal3.revision).toBe(`capability-revision-v1:${'2'.repeat(64)}`)
+    expect(decodeRuntimeCapabilitySnapshotV2(goal3).modelFactsResolution?.resolvedSnapshotRevision)
+      .toBe(`resolved-model-facts-snapshot-v1:${'d'.repeat(64)}`)
   })
 
   it('accepts capability-owned open string domains within the shared safety ceiling', () => {

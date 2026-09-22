@@ -49,6 +49,7 @@ export type ResolvedCapabilityV2Wire = Readonly<{
     semanticFieldsDigest: string
     capabilityRevision: string
   }>
+  modelFactsResolution?: ResolvedCapabilityV2['modelFactsResolution']
   executionContext: Readonly<{
     binding: Readonly<Record<string, unknown>>
     catalogAuthority?: Readonly<Record<string, unknown>>
@@ -120,6 +121,7 @@ function wireCapability(capability: ResolvedCapabilityV2): ResolvedCapabilityV2W
   return Object.freeze({
     schemaVersion: 2,
     modelFacts: projectCanonicalModelFactsV2(facts),
+    ...(capability.modelFactsResolution ? { modelFactsResolution: capability.modelFactsResolution } : {}),
     executionContext: Object.freeze({ binding,
       ...(execution.catalogAuthority ? { catalogAuthority: execution.catalogAuthority } : {}),
       continuation: execution.continuation,

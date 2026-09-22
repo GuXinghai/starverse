@@ -8,6 +8,11 @@ describe('ModelFactsInspectorPanel', () => {
     const readInspector = vi.fn(async () => ({
       subjectSetRevision: 'subject-set:1',
       subject: { providerAuthorityId: 'openai', endpointProfileId: 'openai-default', nativeModelId: 'gpt-test' },
+      resolved: { resolvedSnapshotRevision: 'resolved-model-facts-snapshot-v1:' + 'a'.repeat(64),
+        sourceScopeSelection: { providerNative: 'scope:native', modelsDev: 'scope:models', capabilityRules: 'scope:rules' },
+        resolvedFacts: { capabilityRevision: 'capability-revision-v1:' + 'b'.repeat(64), fields: [{ path: 'reasoning.support', state: 'resolved',
+          completenessDisposition: 'complete', selectionReason: 'single_claim', selectedValue: { kind: 'support', value: 'supported' },
+          supportingProvenance: [{}], opposingProvenance: [], overriddenProvenance: [], diagnostics: [] }] } },
       sources: [{ state: { sourceKind: 'provider_native', sourceScopeId: 'scope:1',
         currentSourceRevision: 'source:1', staleReason: null }, subjectFact: { payload: {
         recordOutcome: 'present', outcomes: [{ observationId: 'obs:1', path: 'reasoning.support', disposition: 'current',
@@ -29,6 +34,8 @@ describe('ModelFactsInspectorPanel', () => {
     const user = userEvent.setup()
     render(ModelFactsInspectorPanel)
     await user.click(await screen.findByRole('button', { name: /gpt-test/ }))
+    expect(await screen.findByText(/resolved-model-facts-snapshot-v1/)).toBeInTheDocument()
+    expect(await screen.findByText(/reasoning\.support · resolved/)).toBeInTheDocument()
     await waitFor(() => expect(readInspector).toHaveBeenCalledWith({
       subject: { providerAuthorityId: 'openai', endpointProfileId: 'openai-default', nativeModelId: 'gpt-test' },
       expectedSubjectSetRevision: 'subject-set:1',
