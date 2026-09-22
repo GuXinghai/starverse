@@ -11,10 +11,6 @@ import {
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import {
-  applyCapabilityRuleProjectionToResolvedCapabilityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 import { assertExpectedCurrentSendCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
@@ -90,9 +86,9 @@ function fail(code: OpenRouterChatGenerationAuthorityV2Error['code']): never {
 
 function field(
   path: RuntimeCapabilitySemanticPathV2,
-  supportedParameters: ReadonlySet<string>,
+  contractParameters: ReadonlySet<string>,
   toolsSupported: boolean,
-  inputModalities: ReadonlySet<string>,
+  contractModalities: ReadonlySet<string>,
   supportEvidence: string,
   rejectEvidence: string,
 ): PersistedRuntimeCapabilityFieldV2 {
@@ -103,7 +99,7 @@ function field(
     path, state: 'unsupported' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([rejectEvidence]),
   })
   const byParameter = (parameter: string, domain: NonNullable<PersistedRuntimeCapabilityFieldV2['domain']>) =>
-    supportedParameters.has(parameter) ? supported(domain) : unsupported()
+    contractParameters.has(parameter) ? supported(domain) : unsupported()
   switch (path) {
     case 'attachments[].kind':
     case 'attachments[].referenceId':
@@ -122,8 +118,8 @@ function field(
     case 'attachments[].sendAs': {
       const values = [
         'inline_text' as const,
-        ...(inputModalities.has('image') ? ['image_reference' as const] : []),
-        ...(inputModalities.has('file') ? ['provider_file' as const, 'converted_document' as const] : []),
+        ...(contractModalities.has('image') ? ['image_reference' as const] : []),
+        ...(contractModalities.has('file') ? ['provider_file' as const, 'converted_document' as const] : []),
       ]
       return values.length > 0 ? supported({ kind: 'enum', values: Object.freeze(values) }) : unsupported()
     }
@@ -138,10 +134,10 @@ function field(
     case 'generation.frequencyPenalty': return byParameter('frequency_penalty', { kind: 'range', min: -2, max: 2, integer: false })
     case 'generation.presencePenalty': return byParameter('presence_penalty', { kind: 'range', min: -2, max: 2, integer: false })
     case 'generation.repetitionPenalty': return byParameter('repetition_penalty', { kind: 'range', min: 0.000001, max: 2, integer: false })
-    case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(supportedParameters.has('reasoning') ? ['disabled', 'enabled'] : ['disabled']) })
-    case 'reasoning.effort': return supportedParameters.has('reasoning')
+    case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(contractParameters.has('reasoning') ? ['disabled', 'enabled'] : ['disabled']) })
+    case 'reasoning.effort': return contractParameters.has('reasoning')
       ? supported({ kind: 'enum', values: Object.freeze(['minimal', 'low', 'medium', 'high', 'xhigh']) }) : unsupported()
-    case 'reasoning.exclude': return supportedParameters.has('reasoning') ? supported({ kind: 'boolean' }) : unsupported()
+    case 'reasoning.exclude': return contractParameters.has('reasoning') ? supported({ kind: 'boolean' }) : unsupported()
     case 'reasoning.summary': return unsupported()
     case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) })
     case 'web.types': return supported({ kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 })
@@ -164,11 +160,11 @@ function field(
     case 'image.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled']) })
     case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none', 'openrouter_chat']) })
     case 'providerExtension.verbosity': return byParameter('verbosity', { kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) })
-    case 'providerExtension.parallelToolCalls': return toolsSupported && supportedParameters.has('parallel_tool_calls')
+    case 'providerExtension.parallelToolCalls': return toolsSupported && contractParameters.has('parallel_tool_calls')
       ? supported({ kind: 'boolean' }) : unsupported()
     case 'providerExtension.responseFormat': {
-      const types = supportedParameters.has('response_format')
-        ? ['text', 'json_object', ...(supportedParameters.has('structured_outputs') || supportedParameters.has('json_schema') ? ['json_schema'] : [])]
+      const types = contractParameters.has('response_format')
+        ? ['text', 'json_object', ...(contractParameters.has('structured_outputs') || contractParameters.has('json_schema') ? ['json_schema'] : [])]
         : []
       return types.length > 0 ? supported({ kind: 'response_format', types: Object.freeze(types as ('text' | 'json_object' | 'json_schema')[]) }) : unsupported()
     }
@@ -265,16 +261,12 @@ function resolveOpenRouterChatCapabilityRecord(
   binding: VerifiedOpenRouterChatBindingAuthorityV2,
   modelEvidence: ActiveCatalogModelAuthorityV2,
 ): ResolvedCapabilityV2 {
+  void field
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
-  const supportedParameters = new Set<string>((modelEvidence.supportedParameters as unknown[])
-    .filter((value): value is string => typeof value === 'string'))
-  const toolsSupported = supportedParameters.has('tools')
   const supportEvidence = `openrouter.chat.models.${modelEvidence.responseDigest.value}.supports`
   const rejectEvidence = `openrouter.chat.models.${modelEvidence.responseDigest.value}.rejects`
-  const inputModalities = new Set<string>((modelEvidence.inputModalities as unknown[])
-    .filter((value): value is string => typeof value === 'string'))
   const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
-    field(path, supportedParameters, toolsSupported, inputModalities, supportEvidence, rejectEvidence)))
+    Object.freeze({ path, state: 'missing' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })))
   return canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(modelEvidence),
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
@@ -322,7 +314,6 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
-  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{
     binding: VerifiedOpenRouterChatBindingAuthorityV2
     capability: VerifiedOpenRouterChatCapabilityAuthorityV2
@@ -334,10 +325,7 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
     return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
   }
   const binding = composeOpenRouterChatBinding(input.modelEvidence)
-  const resolvedCapability = applyCapabilityRuleProjectionToResolvedCapabilityV2({
-    capability: resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence),
-    projection: input.capabilityRules,
-  })
+  const resolvedCapability = resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence)
   const snapshot = composeOpenRouterChatSnapshot(resolvedCapability, input.modelEvidence, input.toolRegistry)
   validateIntent(input.commandFacts, input.toolRegistry)
   assertExpectedCurrentSendCapabilityRevisionV2(snapshot.revision.value)

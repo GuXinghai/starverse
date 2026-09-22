@@ -10,9 +10,8 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type Generation
 import { GenericLocalOpenAIChatNativeHistoryV2Repo } from '../../infra/db/repo/genericLocalOpenAIChatNativeHistoryV2Repo'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { composeGenericLocalOpenAIChatCapabilityWithMaterializedRulesV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
+import { composeGenericLocalOpenAIChatBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
 import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
 import { decodeGenericLocalOpenAIChatEditResendCommandV2, decodeGenericLocalOpenAIChatInitialCommandV2,
   decodeGenericLocalOpenAIChatRegenerateCommandV2, decodeGenericLocalOpenAIChatRetryCommandV2,
@@ -32,7 +31,6 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
   const history = new GenericLocalOpenAIChatNativeHistoryV2Repo(input.db); const profiles = new LocalEndpointProfileV2Repo(input.db, nowMs)
   const config = new GenerationConfigV2Repo(input.db, nowMs); const attachments = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilities = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleProjection = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   function compile(context: GenerationV2AuthorityTransactionContextV2, bundle: GenerationExecutionOperationBundleV2) {
     return compileGenericLocalOpenAIChatPreparedRequestV2({ context, execution: bundle,
       profile: profiles.get(bundle.snapshot.providerBinding.endpointProfileId.value),
@@ -72,11 +70,8 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
       projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
         const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
-        const capabilityRules = capabilityRuleProjection.resolveForLocalIdentity({
-          providerId: profile.providerId, endpointProfileId: binding.endpointProfileId.value, nativeModelId: binding.modelId.value,
-        })
-        const capability = composeGenericLocalOpenAIChatCapabilityWithMaterializedRulesV2({ binding,
-          resolvedAt: new Date(at).toISOString(), capabilityRules })
+        const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding,
+          resolvedAt: new Date(at).toISOString() })
         assertExpectedCurrentSendCapabilityRevisionV2(capability.revision.value)
         const persisted = commitGenericLocalCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability })

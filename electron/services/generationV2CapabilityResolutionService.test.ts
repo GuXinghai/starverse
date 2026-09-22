@@ -261,8 +261,8 @@ describe('Generation V2 capability resolution scope', () => {
       expectedDomain: { kind: 'enum', values: ['high', 'low', 'medium', 'none', 'xhigh'] }, expectedDefault: 'none' },
     { providerKey: 'openrouter' as const, providerId: 'openrouter', endpointProfileId: 'openrouter-first-party-v1',
       protocolId: 'openrouter-chat-completions-v1', known: 'openrouter/test-model', path: 'reasoning.effort',
-      expectedDomain: { kind: 'enum', values: ['high', 'medium'] }, expectedDefault: 'medium',
-      expectedUnresolvedState: 'unsupported' as const },
+       expectedDomain: { kind: 'enum', values: ['high', 'medium'] }, expectedDefault: 'medium',
+       expectedUnresolvedState: 'unknown' as const },
   ] as const)('applies exact $providerId rules through authority and leaves unknown models unresolved', async (fixture) => {
     const unknown = `${fixture.known}-future`
     seedCloudCatalog(db, fixture.providerKey, [fixture.known, unknown])
@@ -290,7 +290,7 @@ describe('Generation V2 capability resolution scope', () => {
 
     const unresolved = await service.resolve(request(unknown) as never)
     expect(unresolved.resolvedCapability.modelFacts.fields.find((field) => field.path === fixture.path)?.state)
-      .toBe('expectedUnresolvedState' in fixture ? fixture.expectedUnresolvedState : 'missing')
+       .toBe('expectedUnresolvedState' in fixture ? fixture.expectedUnresolvedState : 'unknown')
   })
 
   it('resolves sparse Anthropic facts only for an archived exact native identity', async () => {

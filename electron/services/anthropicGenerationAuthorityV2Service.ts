@@ -47,11 +47,6 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
-import {
-  applyCapabilityRuleProjectionV2,
-  assertCapabilityRuleProjectionIdentityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 
 export type VerifiedAnthropicProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_anthropic_provider_binding'
@@ -162,7 +157,7 @@ function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly Persisted
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
-function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: ActiveCatalogModelAuthorityV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
+function validateFacts(facts: GenerationCommandFactsAuthorityV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools ?? { mode: 'disabled' as const }
   if (intent.attachments.length !== facts.attachmentSet.attachments.length + facts.attachmentSet.urlReferenceIntents.length ||
@@ -198,9 +193,6 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Activ
       throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
     }
   } else if (toolRegistry !== undefined && toolRegistry !== null) {
-    throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
-  }
-  if (intent.generation.maxOutputTokens === undefined || intent.generation.maxOutputTokens > evidence.maxTokens) {
     throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
   }
 }
@@ -245,7 +237,6 @@ function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedAnthro
 }
 
 function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, modelEvidence: ActiveCatalogModelAuthorityV2,
-  capabilityRules: CapabilityRuleProjectionV2,
   toolRegistry: ToolRegistryRepositoryFactV2 | null): VerifiedAnthropicRuntimeCapabilityAuthorityV2 {
   binding.assertCurrent()
   const observedAt = new Date(modelEvidence.observedAtMs).toISOString()
@@ -255,15 +246,11 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
       { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant' as const, effect: 'requires_confirmation' as const, sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
       { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const, sourceRef: modelEvidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(modelEvidence.modelResponseDigest, 'evidence_digest') },
     ]
-  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
-    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
-  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(modelEvidence),
-    projection: capabilityRules })
   const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1, supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(modelEvidence),
-    binding: projectDecodedProviderBindingRecordV2(binding.binding), evidence: merged.evidence,
-    fields: merged.fields, continuation,
+    binding: projectDecodedProviderBindingRecordV2(binding.binding), evidence: baseEvidence,
+    fields: baseFields(modelEvidence), continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
     capability: resolvedCapability, resolvedAt: new Date(Date.now()).toISOString(),
@@ -291,10 +278,9 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
  */
 export function resolveAnthropicCapabilityV2(
   evidence: ActiveCatalogModelAuthorityV2,
-  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const binding = composeBinding(evidence)
-  return composeCapability(binding, evidence, capabilityRules, null).resolvedCapability
+  return composeCapability(binding, evidence, null).resolvedCapability
 }
 
 export function readVerifiedAnthropicProviderBindingRecordV2(authority: VerifiedAnthropicProviderBindingAuthorityV2): Readonly<Record<string, unknown>> {
@@ -313,7 +299,6 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
-  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedAnthropicProviderBindingAuthorityV2; capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2 }>) => T extends PromiseLike<unknown> ? never : T
 }>): T {
   if (!isActiveCatalogModelAuthorityV2(input.modelEvidence, 'anthropic_messages') || !isGenerationCommandFactsAuthorityV2(input.commandFacts) ||
@@ -327,14 +312,14 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
     }
   }
   input.modelEvidence.assertCurrent()
-  validateFacts(input.commandFacts, input.modelEvidence, input.toolRegistry)
+  validateFacts(input.commandFacts, input.toolRegistry)
   let binding: VerifiedAnthropicProviderBindingAuthorityV2 | undefined
   let capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2 | undefined
   let registered = false
   let completed = false
   try {
     binding = composeBinding(input.modelEvidence)
-    capability = composeCapability(binding, input.modelEvidence, input.capabilityRules, input.toolRegistry ?? null)
+    capability = composeCapability(binding, input.modelEvidence, input.toolRegistry ?? null)
     assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => { if (capability) capabilityAuthorities.delete(capability); if (binding) bindingAuthorities.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {

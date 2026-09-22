@@ -58,11 +58,6 @@ import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import {
-  applyCapabilityRuleProjectionV2,
-  assertCapabilityRuleProjectionIdentityV2,
-  type CapabilityRuleProjectionV2,
-} from '../../src/next/generation-v2/capability-rules/materializedCapabilityRuleProjectionV2'
 
 export type VerifiedOpenAIResponsesProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_openai_responses_provider_binding'
@@ -282,34 +277,12 @@ function validateIntent(
   }
 }
 
-/**
- * `disabled` means the caller omits the optional OpenAI reasoning object. That
- * is an API-contract authorization, not a model fact. Capability Rules only
- * prove the model-side `enabled` state; this projection combines both facts
- * for the final UI/preflight domain without adding `disabled` to the rule.
- */
-function projectOpenAIResponsesReasoningModeAuthorizationV2(
-  input: ReturnType<typeof applyCapabilityRuleProjectionV2>,
-  ids: ReturnType<typeof evidenceIds>,
-): ReturnType<typeof applyCapabilityRuleProjectionV2> {
-  const mode = input.fields.find((item) => item.path === 'reasoning.mode')
-  if (mode?.state !== 'supported' || mode.domain?.kind !== 'enum' ||
-      !mode.domain.values.includes('enabled')) return input
-  const authorizedMode = Object.freeze({ ...mode,
-    domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['disabled', 'enabled']) }),
-    evidenceIds: Object.freeze([...new Set([ids.contractSupport, ...mode.evidenceIds])].sort()),
-  })
-  return Object.freeze({ evidence: input.evidence,
-    fields: Object.freeze(input.fields.map((item) => item.path === 'reasoning.mode' ? authorizedMode : item)) })
-}
-
 function composeCapability(input: Readonly<{
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts?: GenerationCommandFactsAuthorityV2
   resolvedAt: string
   toolRegistry: ToolRegistryRepositoryFactV2 | null
-  capabilityRules: CapabilityRuleProjectionV2
 }>): VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2 {
   input.binding.assertCurrent()
   const definition = readReviewedOpenAIResponsesDefinitionV2()
@@ -335,16 +308,8 @@ function composeCapability(input: Readonly<{
       verifiedAt, contentDigest: ids.contract.sha256,
     }),
   ])
-  assertCapabilityRuleProjectionIdentityV2(input.capabilityRules, {
-    providerId: input.binding.binding.providerId.value,
-    endpointProfileId: input.binding.binding.endpointProfileId.value,
-    nativeModelId: input.binding.binding.modelId.value,
-  })
-  const ruleResolved = applyCapabilityRuleProjectionV2({ baseEvidence,
-    baseFields: Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
-      field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, visibilityEvidenceId))),
-    projection: input.capabilityRules })
-  const merged = projectOpenAIResponsesReasoningModeAuthorizationV2(ruleResolved, ids)
+  const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
+    field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, visibilityEvidenceId)))
   if (input.commandFacts) validateIntent(input.commandFacts, input.toolRegistry)
   const continuation = {
     kind: 'client_managed_native_replay' as const, artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
@@ -352,7 +317,7 @@ function composeCapability(input: Readonly<{
   }
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
-    binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence: merged.evidence, fields: merged.fields,
+    binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence: baseEvidence, fields,
     continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
@@ -388,14 +353,13 @@ function composeCapability(input: Readonly<{
 /** Command-independent capability projection shared by UI and send paths. */
 export function resolveOpenAIResponsesCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
-  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const binding = composeBinding(modelEvidence)
   return composeCapability({
     binding,
     modelEvidence,
     resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
-    toolRegistry: null, capabilityRules,
+    toolRegistry: null,
   }).resolvedCapability
 }
 
@@ -409,7 +373,6 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
-  capabilityRules: CapabilityRuleProjectionV2
   operation: 'text'
   use: (authorities: Readonly<{
     binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
@@ -441,7 +404,6 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
     capability = composeCapability({
       binding, modelEvidence: input.modelEvidence, commandFacts: input.commandFacts,
       resolvedAt: new Date(resolvedAtMs).toISOString(), toolRegistry: input.toolRegistry,
-      capabilityRules: input.capabilityRules,
     })
     assertExpectedCurrentSendCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {

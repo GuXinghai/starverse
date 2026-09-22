@@ -6,7 +6,6 @@ import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Re
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
@@ -43,7 +42,6 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const catalogAuthorityService = createActiveCatalogModelAuthorityV2Service(input)
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 
@@ -134,8 +132,6 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
           pending.conversationId.value, attachments, undefined, (commandFacts) =>
             withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
               modelEvidence, commandFacts, modelId: command.modelId.value,
-              capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
-                endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
               use: ({ binding, capability }) => {
                 const persisted = commitGeminiInteractionsImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo,
                   pending, command, commandFacts, binding, capability })

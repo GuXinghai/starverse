@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import {
   ConversationGraphV2Repo,
 } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -69,7 +68,6 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
-  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
@@ -161,8 +159,6 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
                   return withVerifiedDeepSeekStableGenerationAuthoritiesV2({
                   context, modelEvidence, commandFacts, operation: 'text',
                   toolRegistry,
-                  capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
-                    endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
                   use: (authorities) => {
                     const persisted = commitVerifiedDeepSeekPlainTextInitialSnapshotV2({
                       context,

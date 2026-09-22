@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice E complete; Slice F residual-authority removal in progress
+- **Lifecycle Status**: Slice F complete; Slice G closeout in progress
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -47,17 +47,33 @@
 
 ### Next Slice
 
-Slice F — Delete temporary and legacy authorities.
+### Slice E — Atomic consumer cutover and snapshot continuity
+
+- **Status**: complete on 2026-09-22 (`261f137b`).
+- **Implementation**: current Generation V2 capability resolution and new operation snapshot producers now bind semantic Model Facts through the Goal 3 resolver; runtime snapshots preserve the Goal 3 resolution binding and revision while retaining execution-only continuation/tool evidence. Retry/replay/continuation continue to consume originating snapshots; regenerate/edit-resend re-resolve current facts.
+- **Validation**: Slice E post-cutover Sol-medium review cleared after the required revision-race repair. Focused provider/runtime and Goal 3 integration validation passed before Slice F.
+- **Boundary**: API Contract, operation, encoding, runtime, and execution policy remain downstream authorization; no provider wire compiler rewrite was introduced.
+
+### Slice F — Delete temporary and legacy authorities
+
+- **Status**: complete on 2026-09-22.
+- **Implementation**: deleted the temporary materialized Rules projection repository/ontology/tests; removed provider-specific Rules overlays, duplicated current-send Rules payloads, and OpenRouter Catalog semantic send authority; retained canonical Cloud Rules publication and raw Catalog/source evidence for non-authoritative uses. Removed raw-catalog `maxOutputTokens` decisions from Anthropic/Gemini current-send validators. Updated unknown image/search coverage to assert Goal 3 `unknown` facts rather than reviving legacy rejection authority.
+- **Validation**: `npm run gate:generation-v2-zero-residual` (PASS); `npm run gate:generation-v2-capability-rule-authority` (PASS); retired-symbol scan (no production matches); `npm exec tsc -- --noEmit --pretty false` (PASS); `npx vue-tsc --noEmit --pretty false` (PASS); focused integration (4 files, 29 passed); focused provider/runtime unit tests (6 files, 10 passed); Gemini image integration (9 passed). `npm run gate:model-identity-purge` remains blocked by its pre-existing allowlist rejection of `nativeModelId` in `canonicalModelFactsV2.ts`, unchanged by Slice F. F post-review cleared with P0: None and P1: None.
+- **Boundary**: `supportedParameters` and `inputModalities` remain only in catalog/source-evidence ingestion; Catalog and temporary projection data do not authorize new sends. Canonical Rules remain a Goal 3 source.
+
+### Next Slice
+
+Slice G — End-to-end closeout.
 
 ## Sol-medium review budget
 
-Consumed: 3 / 6. Slice A requires no Sol-medium review.
+Consumed: 4 / 6. Slice A requires no Sol-medium review.
 
 - [ ] C pre-implementation
 - [x] D post-implementation
 - [x] E pre-cutover
 - [x] E post-cutover
-- [ ] F residual authority audit
+- [x] F residual authority audit
 - [ ] G closeout
 
 ---

@@ -19,9 +19,6 @@ import {
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CapabilityRuleCoreV1Repo } from '../../infra/db/repo/capabilityRuleCoreV1Repo'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo,
-  MaterializedCapabilityRuleProjectionV2RepoError } from
-  '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 } from
   './capabilityRuleMaterializationSchedulerV1Service'
 import { CloudRulesApplicationV1Service, CloudRulesApplicationV1ServiceError } from
@@ -266,13 +263,9 @@ describe('CloudRulesApplicationV1Service', () => {
         Partial<CloudRulesApplicationV1ServiceError>>({
         code: 'GENERATION_V2_CLOUD_RULES_APPLICATION_STALE',
       }))
-      const projectionRepo = new MaterializedCapabilityRuleProjectionV2Repo(db)
-      expect(() => projectionRepo.resolveForAuthoritySubject({ identity: {
-        providerId: 'openai_responses', endpointProfileId: 'openai-default', nativeModelId: 'gpt-test',
-      }, providerAuthorityId: 'openai' })).toThrowError(expect.objectContaining<
-        Partial<MaterializedCapabilityRuleProjectionV2RepoError>>({
-        code: 'GENERATION_V2_CAPABILITY_RULE_SOURCE_UNAVAILABLE',
-      }))
+      expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('capability_rule',
+        buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 }))
+        ?.staleReason).not.toBeNull()
 
       const second = candidate('2.0.0', 'on')
       publish(db, second, 30)
@@ -287,9 +280,6 @@ describe('CloudRulesApplicationV1Service', () => {
       expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('capability_rule',
         buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 }))
         ?.staleReason).toBeNull()
-      expect(() => projectionRepo.resolveForAuthoritySubject({ identity: {
-        providerId: 'openai_responses', endpointProfileId: 'openai-default', nativeModelId: 'gpt-test',
-      }, providerAuthorityId: 'openai' })).not.toThrow()
     } finally { db.close() }
   })
 

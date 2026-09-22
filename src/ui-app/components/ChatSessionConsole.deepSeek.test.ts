@@ -93,6 +93,7 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
                 observedAtMs: Date.UTC(2026, 5, 21),
               },
             ],
+            rawSourcePayloads: [],
             models: [
               {
                 providerKey: 'deepseek',

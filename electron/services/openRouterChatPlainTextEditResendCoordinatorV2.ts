@@ -6,7 +6,6 @@ import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Re
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
-import { MaterializedCapabilityRuleProjectionV2Repo } from '../../infra/db/repo/materializedCapabilityRuleProjectionV2Repo'
 import { OpenRouterNativeHistoryV2Repo } from '../../infra/db/repo/openRouterNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
@@ -36,7 +35,6 @@ export function createOpenRouterChatPlainTextEditResendCoordinatorV2(input: Read
   const historyRepo = new OpenRouterNativeHistoryV2Repo(input.db); const graphRepo = new ConversationGraphV2Repo(input.db)
   const configRepo = new GenerationConfigV2Repo(input.db); const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db); const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const capabilityRuleRepo = new MaterializedCapabilityRuleProjectionV2Repo(input.db)
   const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   function replay(command: OpenRouterPlainTextEditResendCommandV2): GenerationTextCommandResultV2 | null {
@@ -76,8 +74,6 @@ export function createOpenRouterChatPlainTextEditResendCoordinatorV2(input: Read
             projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedOpenRouterChatGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry,
-                capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
-                  endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
                 use: ({ binding, capability }) => {
                   const persisted = commitVerifiedOpenRouterChatEditResendSnapshotV2({ context, executionRepo, capabilityRepo,
                     pending, command, commandFacts, binding, capability, toolRegistry })
