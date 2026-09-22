@@ -434,6 +434,13 @@ Complete full-chain acceptance, negative authority audit, and documentation stat
 - ABI discipline: `npm run rebuild:electron` ran through the Electron smoke, followed by `npm run rebuild:node`; final ABI target is Node and no native artifacts are committed.
 - Latest bounded Sol-medium risk review result: P0/P1/P2 review CLEARED. Existing deferred findings remain deferred.
 
+**Final bounded correction evidence (2026-09-22)**
+
+- Runtime projection now emits a domain only for complete, losslessly representable collections or complete inclusive two-sided integer intervals. Partial collections, one-sided integer bounds, `maxTokens` maxima, and temperature model maxima remain domain-less; provider defaults remain defaults rather than exhaustive domains.
+- Focused runtime projection: 1 file / 16 tests passed. Goal 3 unit set: 4 files / 43 tests passed. Goal 3 integration set: 2 files / 9 tests passed. Unsupported gating, conflict preservation, and provenance/effect regression coverage remained green.
+- TypeScript and Vue typecheck passed. `gate:generation-v2-goal3-authority`, `gate:generation-v2-zero-residual`, `gate:generation-v2-capability-rule-authority`, `gate:docs`, and `git diff --check` passed. Electron shell smoke passed after the Electron ABI rebuild; the final ABI was returned to Node.
+- Items 12, 14, this plan, and the bundle README now distinguish their frozen/non-authorizing contract roles from the completed Goal 3 implementation. No general hardening or deferred-ledger expansion was performed.
+
 **Explicit exclusions**
 
 - No conflict DSL, automatic repair, telemetry platform, or infinite hardening campaign.

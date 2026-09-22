@@ -2,8 +2,8 @@
 
 - **Lifecycle Status**: Owner-frozen
 - **Document Role**: controlling Cloud-managed Rules distribution contract
-- **Last updated**: 2026-09-21
-- **Implementation Status**: documentation only; production migration and Goal 3 remain prohibited until separately authorized
+- **Last updated**: 2026-09-22
+- **Implementation Status**: documentation-only contract; production migration and Goal 3 were separately authorized and completed under items 14 and 15; this document itself remains non-authorizing
 
 ---
 
