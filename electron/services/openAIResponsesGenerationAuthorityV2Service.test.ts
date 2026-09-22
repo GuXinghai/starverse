@@ -83,7 +83,7 @@ function request(modelId: string) {
     endpointProfileId: 'openai-api-v1', protocolId: 'openai-responses-v1', modelId, operation: 'text' as const }
 }
 
-describe('OpenAI Responses materialized capability authority', () => {
+describe('OpenAI Responses Goal 3 capability resolution', () => {
   it('consumes exact materialized effort claims without projecting the generic API enum', async () => {
     const models = ['gpt-5', 'gpt-5-pro', 'gpt-5.4-pro-2026-03-05', 'gpt-5.6-sol', 'gpt-5.6-sol-preview']
     const rules = [
@@ -117,13 +117,13 @@ describe('OpenAI Responses materialized capability authority', () => {
       expect((await resolve('gpt-5.6-sol')).fields.find((field) => field.path === 'reasoning.effort')).toMatchObject({
         domain: { kind: 'enum', values: ['high', 'low', 'max', 'medium', 'none', 'xhigh'] },
       })
-      expect((await resolve('gpt-5.6-sol')).fields.find((field) => field.path === 'image.size')?.state).toBe('missing')
+      expect((await resolve('gpt-5.6-sol')).fields.find((field) => field.path === 'image.size')?.state).toBe('unknown')
       expect((await resolve('gpt-5.6-sol-preview')).fields.find((field) => field.path === 'reasoning.effort')?.state)
-        .toBe('missing')
+        .toBe('unknown')
     } finally { db.close() }
   })
 
-  it('consumes exact o-series support claims while leaving undocumented effort missing', async () => {
+  it('consumes exact o-series support claims while leaving undocumented effort unknown', async () => {
     const models = ['o1', 'o1-2024-12-17', 'o3', 'o3-pro', 'o4-mini-2025-04-16']
     const rules = models.map((nativeModelId) => exactRule({ ruleId: `${nativeModelId}.reasoning.support`, nativeModelId,
       path: 'reasoning.support', value: { kind: 'support', value: 'supported' } }))
@@ -136,7 +136,7 @@ describe('OpenAI Responses materialized capability authority', () => {
         expect(resolved.fields.find((field) => field.path === 'reasoning.mode')).toMatchObject({
           state: 'supported', domain: { kind: 'enum', values: ['disabled', 'enabled'] },
         })
-        expect(resolved.fields.find((field) => field.path === 'reasoning.effort')?.state).toBe('missing')
+        expect(resolved.fields.find((field) => field.path === 'reasoning.effort')?.state).toBe('unknown')
       }
     } finally { db.close() }
   })
