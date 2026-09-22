@@ -1,6 +1,6 @@
 # Goal 3 Three-Source Model Facts Resolution Implementation Plan
 
-- **Lifecycle Status**: Slice A complete; Slice B not started
+- **Lifecycle Status**: Slice B complete; Slice C not started
 - **Document Role**: production implementation plan derived from the frozen Goal 3 Owner contract
 - **Last updated**: 2026-09-22
 - **Baseline**: `models-dev-capability-resolution` at `e928b5cc02c1092c1e80f3f78eaabe1c6a0be3ff`
@@ -17,9 +17,18 @@
 - **Validation**: `npx vitest --run src/next/generation-v2/model-facts/resolvedModelFactsV1.test.ts` (4 passed); `npx tsc --noEmit --pretty false` (passed); targeted ESLint (no errors; two existing-style warnings for function complexity/length); `git diff --check` (passed for Slice A files).
 - **Boundary**: no DB/schema, IPC, service, UI, runtime snapshot, compiler, provider, or consumer changes. No ABI rebuild was required.
 
+### Slice B — Source-priority configuration and revision
+
+- **Status**: complete on 2026-09-22.
+- **Implementation**: added `sourcePriorityConfigV1` with exact three-source keys, safe-integer priorities, equal-priority support, canonical semantic JSON, deterministic `sourcePriorityConfigRevision`, and schema digest; added the seeded `model_facts_source_priority_v1` Epoch-2 table with monotonic timestamps and identity protection; added `SourcePriorityConfigV1Repo` CAS persistence and `SourcePriorityConfigV1Service`; registered strict main-process IPC and preload `generationV2.modelFacts.sourcePriority` read/update access; added a typed renderer bridge adapter without binding Settings UI yet.
+- **Schema integration**: added the source-priority SQL fragment, raised the closed manifest fragment count from 19 to 20, and included the resolved-facts ontology and source-priority ontology digests in the Epoch-2 schema digest.
+- **Tests**: added codec, repository/CAS, and IPC tests; extended schema-composer coverage for the new fragment/table. Equal priorities, insertion-order independence, stale CAS, seeded defaults, semantic corruption rejection, and strict IPC payloads are covered.
+- **Validation**: `npm run rebuild:node`; `npx vitest --run src/next/generation-v2/model-facts/sourcePriorityConfigV1.test.ts` (4 passed); `npx vitest --run --config vitest.integration.config.ts infra/db/repo/sourcePriorityConfigV1Repo.test.ts` (2 passed); `npx vitest --run --config vitest.integration.config.ts electron/ipc/generationV2SourcePriorityConfigIpc.test.ts` (1 passed); `npx vitest --run --config vitest.integration.config.ts infra/db/v2/schemaComposerV2.test.ts` (19 passed); `npx tsc --noEmit --pretty false` (passed); targeted ESLint (no errors; existing complexity/length warnings); `git diff --check` (passed).
+- **Boundary**: no resolver, resolved-facts cache/publication, Settings UI, provider snapshot cutover, compiler/runtime authority, or legacy deletion. Node ABI is the active validation target.
+
 ### Next Slice
 
-Slice B — Source-priority configuration and revision.
+Slice C — Deterministic three-source resolver.
 
 ## Sol-medium review budget
 
@@ -495,20 +504,18 @@ Severity and blocking status are independent. The following findings do not add 
 The current implementation blockers are:
 
 1. no pure resolved-facts ontology;
-2. no source-priority SSOT or revision;
-3. no deterministic all-claims three-source resolver;
-4. no atomic resolved publication/cache;
-5. new snapshot producers still use provider-specific and temporary Rules authorities;
-6. legacy authority cannot be deleted until the complete consumer closure migrates.
+2. no deterministic all-claims three-source resolver;
+3. no atomic resolved publication/cache;
+4. new snapshot producers still use provider-specific and temporary Rules authorities;
+5. legacy authority cannot be deleted until the complete consumer closure migrates.
 
 Slices 1–6 cover these blockers directly. No blocker requires reopening the frozen Owner contract.
 
 ## 9. Stop boundary
 
-This plan is ready for implementation but does not authorize it. Until separate production implementation authorization is given:
+The current task explicitly authorizes Goal 3 implementation on `models-dev-capability-resolution`. Continue only through the recorded slice checkpoints:
 
-- do not add or modify production source, schema, IPC, configuration, UI, or tests;
-- do not begin Slice 1 implicitly;
-- do not delete the temporary Rules-only path;
+- do not delete the temporary Rules-only path before the complete consumer cutover;
 - do not treat the current provider/Catalog assembly as the Goal 3 resolver;
-- do not report Goal 3 as started or complete.
+- do not report Goal 3 complete until Slices C–G and their acceptance evidence are finished;
+- preserve unrelated user changes and never touch `pelican-bicycle.html`.

@@ -5,6 +5,8 @@ import BetterSqlite3 from 'better-sqlite3'
 import { ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
 import { RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import { RESOLVED_MODEL_FACTS_ONTOLOGY_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/model-facts/resolvedModelFactsV1'
+import { SOURCE_PRIORITY_CONFIG_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/model-facts/sourcePriorityConfigV1'
 import { CAPABILITY_RULE_CORE_SCHEMA_DIGEST_V1 } from '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
@@ -36,7 +38,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 19),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 20),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -63,6 +65,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'conversation_route_preference_v1', fileName: 'conversationRoutePreferenceSchema.sql' }),
   Object.freeze({ id: 'capability_rule_v2', fileName: 'capabilityRuleSchema.sql' }),
   Object.freeze({ id: 'canonical_model_fact_source_v1', fileName: 'canonicalModelFactSourceSchema.sql' }),
+  Object.freeze({ id: 'model_facts_source_priority_v1', fileName: 'modelFactsSourcePrioritySchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
@@ -244,6 +247,12 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
   hasher.update('\0', 'utf8')
   hasher.update('canonical-model-fact-ontology-schema\0', 'utf8')
   hasher.update(CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1, 'utf8')
+  hasher.update('\0', 'utf8')
+  hasher.update('resolved-model-facts-ontology-schema\0', 'utf8')
+  hasher.update(RESOLVED_MODEL_FACTS_ONTOLOGY_SCHEMA_DIGEST_V1, 'utf8')
+  hasher.update('\0', 'utf8')
+  hasher.update('source-priority-config-schema\0', 'utf8')
+  hasher.update(SOURCE_PRIORITY_CONFIG_SCHEMA_DIGEST_V1, 'utf8')
   hasher.update('\0', 'utf8')
   hasher.update('capability-rule-core-schema\0', 'utf8')
   hasher.update(CAPABILITY_RULE_CORE_SCHEMA_DIGEST_V1, 'utf8')
