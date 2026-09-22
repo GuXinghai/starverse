@@ -35,6 +35,7 @@ import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRu
 import { registerGenerationV2CapabilityIpc } from './generationV2CapabilityIpc'
 import { registerGenerationV2UserCapabilityRulesIpc } from './generationV2UserCapabilityRulesIpc'
 import { registerGenerationV2ModelFactsInspectorIpc } from './generationV2ModelFactsInspectorIpc'
+import { registerGenerationV2SourcePriorityConfigIpc } from './generationV2SourcePriorityConfigIpc'
 import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/authoritativeModelSubjectSetV1Service'
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
@@ -74,6 +75,8 @@ export function registerGenerationV2Ipc(input: Readonly<{
       openAICompatibleCredentialService: input.epoch2.openAICompatibleCredentialService }),
     ...registerGenerationV2ModelFactsInspectorIpc({ registerInvoke: input.registerInvoke,
       service: modelFactsInspector }),
+    ...registerGenerationV2SourcePriorityConfigIpc({ registerInvoke: input.registerInvoke,
+      db: input.epoch2.database }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),

@@ -98,6 +98,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       'conversation_route_preference_v1',
       'capability_rule_v2',
       'canonical_model_fact_source_v1',
+      'model_facts_source_priority_v1',
     ])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
@@ -108,13 +109,15 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 19,
+        schema_digest: first.schemaDigest, fragment_count: 20,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
         .toEqual({ name: 'openrouter_image_endpoint_bindings' })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='canonical_model_fact_source_state_v1'").get())
         .toEqual({ name: 'canonical_model_fact_source_state_v1' })
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='model_facts_source_priority_v1'").get())
+        .toEqual({ name: 'model_facts_source_priority_v1' })
       expect(db.pragma('foreign_key_check')).toEqual([])
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
       db.prepare("UPDATE generation_v2_schema_manifest SET schema_digest = ? WHERE manifest_id = 'generation_compiler_v2'")

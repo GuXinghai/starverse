@@ -294,6 +294,12 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     readEvidenceSlice: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:read-evidence-slice', payload),
     readSanitizedRawPayload: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:read-sanitized-raw-payload', payload),
   }),
+  modelFacts: Object.freeze({
+    sourcePriority: Object.freeze({
+      get: (payload?: unknown) => ipcRenderer.invoke('generation-v2:model-facts:source-priority:get', payload),
+      update: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-facts:source-priority:update', payload),
+    }),
+  }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
     create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
