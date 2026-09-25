@@ -230,3 +230,24 @@ One additional opaque bearer value, duplicated twice in the archived debug reque
 
 History findings remain unresolved by design: no history rewrite, reset, rebase, push, force push, or tag mutation was performed. History remediation requires a separate owner-approved ref and clone coordination plan.
 
+
+## 11. Post-commit validation results
+
+Validation after the four Phase A implementation commits:
+
+- `npm run rebuild:node`: passed. No `better-sqlite3` ABI mismatch was encountered.
+- `npm run verify:ssot`: did not complete because its first step, the unit suite, failed. Results: 317 of 319 test files passed; 2,692 of 2,698 tests passed. Six failures were in `src/next/generation-v2/providers/gemini/interactionsImageCommandsV2.test.ts` (five) and `src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.test.ts` (one). These source and test files were not changed in Phase A. No clean-baseline run was performed, so the failures are not labeled pre-existing.
+- The remaining `verify:ssot` gates were run individually. `gate:generation-v2-goal3-authority`, `gate:network-egress`, `gate:privacy`, `gate:docs`, and `tc15-git-clean` passed. TC-15 passed while the preserved unrelated `pelican-bicycle.html` was temporarily in an ignored validation directory; its original SHA-256 was verified after restoration.
+- TC-17 failed because it found direct `JSON.parse` calls in five `src/ui-app` files. TC-18 failed on three imports in `src/ui-app`. TC-12 failed because it expected `src/next/generation` to be deleted. TC-16 failed because its expected SSOT document was missing. Those code paths and the expected SSOT document were not changed in Phase A. No clean-baseline run was performed.
+- `npm run i18n:check`, `npm run i18n:scan-hardcoded`, `npm run gate:privacy -- --self-test`, targeted ESLint for `scripts/gates/privacy-scan.mjs` and `electron/preload.ts`, and `git diff --check`: passed. The hardcoded UI scan reported 46 findings within its accepted range.
+- Repository-wide `npm run lint` reported 414 errors and 814 warnings. Targeted ESLint on changed code files passed. A clean-baseline lint run was not performed.
+
+ABI and artifact record:
+
+- `better-sqlite3 ABI mismatch encountered`: no
+- `Rebuild command run`: `npm run rebuild:node`
+- `Current ABI target after task`: node
+- `Tests retried after rebuild`: `npm run verify:ssot` (unit suite failed as detailed above)
+- `Electron smoke retried after rebuild`: no
+- `No native artifacts committed`: confirmed
+
