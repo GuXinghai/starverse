@@ -4,32 +4,29 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { execFileSync } from 'node:child_process'
 
 const REPO_ROOT = process.cwd()
-const SCAN_ROOTS = ['electron', 'src', 'infra', 'docs']
+const SCAN_ROOTS = ['electron', 'src', 'infra', 'docs', 'ops', 'artifacts', '.github', '.codex', '.gemini', 'scripts', 'tests']
+const SCAN_FILES = ['README.md', 'README.zh-CN.md', 'AGENTS.md', '.cursorrules', '.windsurfrules']
 const INCLUDE_EXTENSIONS = new Set([
   '.cjs',
+  '.csv',
   '.js',
   '.json',
   '.jsx',
   '.markdown',
   '.md',
   '.mjs',
+  '.log',
   '.sql',
   '.ts',
   '.tsx',
+  '.toml',
+  '.txt',
+  '.yaml',
+  '.yml',
   '.vue',
-])
-
-const IGNORED_DIR_NAMES = new Set([
-  '.git',
-  '.turbo',
-  'coverage',
-  'dist',
-  'dist-electron',
-  'node_modules',
-  'out',
-  'release',
 ])
 
 const MATCHERS = [
@@ -40,6 +37,17 @@ const MATCHERS = [
   { type: 'starverse_path', regex: /\b[Dd]:(?:\\\\|\\)Starverse\b/u },
   { type: 'windows_drive_path', regex: /\b[A-Za-z]:(?:\\\\|\\)[^\s`'"<>)\]}]+/u },
 ]
+
+const ARTIFACT_MATCHERS = [
+  { type: 'artifact_email', regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu },
+  { type: 'artifact_provider_credential', regex: /\b(?:sk-or-v1-[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9_]{20,})\b/iu },
+  { type: 'artifact_private_key_marker', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u },
+]
+
+const AUTHORIZATION_HEADER_MATCHER = {
+  type: 'authorization_header',
+  regex: /authorization["']?\s*[:=]\s*["']?bearer\s+(?!\[redacted(?:[^\]]*)?\]|\[omitted\]|redacted\b|placeholder\b|<[^>]*(?:token|key|redact|placeholder)[^>]*>|\$\{[^}]+\}|\$[A-Z_][A-Z0-9_]*|(?:test|fake|dummy|example|sample)(?:[-_][A-Z0-9_]+)?\b|your[_-]?[A-Z0-9_]+\b)[^\s"',}]+/iu,
+}
 
 const ALLOWLIST = [
   {
@@ -141,6 +149,38 @@ const ALLOWLIST = [
     path: /^docs\/maintenance\/code-health-audits\/.+\/commands\.md$/u,
     matchTypes: ['starverse_path', 'windows_drive_path'],
   },
+  {
+    id: 'synthetic-artifact-contact-placeholder',
+    reason: 'invalid-domain contact placeholder preserves captured response shape without real contact data',
+    path: /^artifacts\/.+/u,
+    matchTypes: ['artifact_email'],
+    line: /\bprivacy-placeholder@example\.invalid\b/iu,
+  },
+  {
+    id: 'privacy-gate-detectors-and-synthetic-fixtures',
+    reason: 'the gate must name sensitive field patterns and use synthetic values in its self-tests',
+    path: /^scripts\/gates\/privacy-scan\.mjs$/u,
+    line: /\b(contentToken|fullHash|absolutePath|scanText|assertSelfTest|privacy-placeholder@example\.invalid)\b|[CD]:\\\\/iu,
+  },
+  {
+    id: 'official-runtime-packaging-input-paths',
+    reason: 'packaging tools use absolute source paths transiently for file reads; package metadata records relative paths',
+    path: /^scripts\/dev\/package-official-magika-v0(?:11|20)\.mjs$/u,
+    matchTypes: ['absolutePath'],
+  },
+  {
+    id: 'dfc-package-input-paths',
+    reason: 'the package builder uses absolute local inputs transiently for size and hash calculation; emitted inventory uses relative paths',
+    path: /^scripts\/dfc\/prepare-libreoffice-svpkg-dry-run\.mjs$/u,
+    matchTypes: ['absolutePath'],
+  },
+  {
+    id: 'dfc-smoke-privacy-assertions',
+    reason: 'smoke checks contain synthetic path and sensitive-text detectors plus explicit redaction assertions',
+    path: /^scripts\/dfc\/office-pdf-libreoffice-(?:live-installed-state|packaged-electron)-smoke\.mjs$/u,
+    matchTypes: ['contentToken', 'absolutePath'],
+    line: /(previewSensitive|PRIVATE KEY|contentToken|storageRef|redact|sanitize|file:\/\/|A-Za-z.*\\\\)/iu,
+  },
 ]
 
 function toRepoPath(filePath) {
@@ -157,19 +197,41 @@ function isAllowed(relPath, line, matchType) {
   return null
 }
 
-function lineExcerpt(line) {
-  const compact = line.trim().replace(/\s+/gu, ' ')
-  return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact
-}
-
 function scanText(relPath, text) {
   const allowed = []
   const violations = []
   const lines = text.split(/\r?\n/u)
 
+  if (/^artifacts\/disk_audit_[^/]+\//u.test(relPath)) {
+    violations.push({
+      file: relPath,
+      line: 1,
+      type: 'raw_disk_audit_output',
+      excerpt: 'generated local storage inventory',
+      reason: 'raw disk-audit reports must remain local and ignored',
+    })
+  }
+
+  if (/(^|\/)\.env(?:\..+)?$/u.test(relPath) && !/\.env\.(?:example|sample|template)$/u.test(relPath)) {
+    violations.push({
+      file: relPath,
+      line: 1,
+      type: 'private_environment_file',
+      reason: 'private environment files must remain local and ignored',
+    })
+  }
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
-    for (const matcher of MATCHERS) {
+    const isArtifact = relPath.startsWith('artifacts/')
+    const isLogCapture = ['.log', '.txt'].includes(path.extname(relPath).toLowerCase())
+      || relPath.startsWith('docs/archive/debug/')
+    const matchers = isArtifact
+      ? [...MATCHERS, ...ARTIFACT_MATCHERS, AUTHORIZATION_HEADER_MATCHER]
+      : isLogCapture
+        ? [...MATCHERS, AUTHORIZATION_HEADER_MATCHER]
+        : MATCHERS
+    for (const matcher of matchers) {
       matcher.regex.lastIndex = 0
       if (!matcher.regex.test(line)) continue
 
@@ -178,7 +240,6 @@ function scanText(relPath, text) {
         file: relPath,
         line: index + 1,
         type: matcher.type,
-        excerpt: lineExcerpt(line),
       }
 
       if (allowRule) {
@@ -192,33 +253,49 @@ function scanText(relPath, text) {
   return { allowed, violations }
 }
 
-function walkFiles(dirAbs, files) {
-  let entries
-  try {
-    entries = fs.readdirSync(dirAbs, { withFileTypes: true })
-  } catch {
-    return
-  }
+function collectFiles() {
+  const files = []
+  const candidatePaths = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  }).split('\0').filter(Boolean)
+  const rootPrefixes = SCAN_ROOTS.map((root) => root + '/')
 
-  for (const entry of entries) {
-    const abs = path.join(dirAbs, entry.name)
-    if (entry.isDirectory()) {
-      if (!IGNORED_DIR_NAMES.has(entry.name)) walkFiles(abs, files)
+  for (const relPath of candidatePaths) {
+    const isPrivateEnvFile = /(^|\/)\.env(?:\..+)?$/u.test(relPath)
+      && !/\.env\.(?:example|sample|template)$/u.test(relPath)
+    const isLogCapture = ['.log', '.txt'].includes(path.extname(relPath).toLowerCase())
+    if (!SCAN_FILES.includes(relPath) && !isPrivateEnvFile && !isLogCapture && !rootPrefixes.some((prefix) => relPath.startsWith(prefix))) {
       continue
     }
 
-    if (!entry.isFile()) continue
-    const ext = path.extname(entry.name)
-    if (INCLUDE_EXTENSIONS.has(ext)) files.push(abs)
-  }
-}
-
-function collectFiles() {
-  const files = []
-  for (const root of SCAN_ROOTS) {
-    walkFiles(path.join(REPO_ROOT, root), files)
+    const abs = path.join(REPO_ROOT, relPath)
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue
+    if (isPrivateEnvFile || isLogCapture || INCLUDE_EXTENSIONS.has(path.extname(relPath))) files.push(abs)
   }
   return files
+}
+
+function decodeTextBuffer(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(buffer.subarray(2))
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(buffer.subarray(2))
+  }
+
+  let evenNulls = 0
+  let oddNulls = 0
+  for (let index = 0; index < buffer.length; index += 1) {
+    if (buffer[index] !== 0) continue
+    if (index % 2 === 0) evenNulls += 1
+    else oddNulls += 1
+  }
+  const nullRate = (evenNulls + oddNulls) / Math.max(buffer.length, 1)
+  if (nullRate > 0.15) {
+    return new TextDecoder(evenNulls > oddNulls ? 'utf-16be' : 'utf-16le').decode(buffer)
+  }
+  return new TextDecoder('utf-8').decode(buffer)
 }
 
 function scanRepo() {
@@ -228,7 +305,7 @@ function scanRepo() {
 
   for (const fileAbs of files) {
     const relPath = toRepoPath(path.relative(REPO_ROOT, fileAbs))
-    const text = fs.readFileSync(fileAbs, 'utf8')
+    const text = decodeTextBuffer(fs.readFileSync(fileAbs))
     const result = scanText(relPath, text)
     allowed.push(...result.allowed)
     violations.push(...result.violations)
@@ -258,7 +335,6 @@ function printResult(result) {
     console.error(`\n[privacy-scan] FAIL violations=${result.violations.length}`)
     for (const item of result.violations.slice(0, 100)) {
       console.error(`  - ${item.file}:${item.line} ${item.type} - ${item.reason}`)
-      console.error(`    ${item.excerpt}`)
     }
     if (result.violations.length > 100) {
       console.error(`  ... ${result.violations.length - 100} more violations`)
@@ -299,6 +375,39 @@ function runSelfTest() {
     'Do not paste D:\\Starverse\\secret.txt into logs.\n',
   )
   assertSelfTest('unclassified docs are still scanned', doc.violations.length > 0)
+
+  const artifact = scanText(
+    'artifacts/openrouter/response.json',
+    '{"contact":"person@example.test","Authorization":"Bearer sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n',
+  )
+  assertSelfTest('captured contact and credential values are rejected', artifact.violations.length >= 3)
+
+  const syntheticArtifact = scanText(
+    'artifacts/openrouter/response.json',
+    '{"contact":"privacy-placeholder@example.invalid"}\n',
+  )
+  assertSelfTest('synthetic invalid-domain contact is allowlisted', syntheticArtifact.violations.length === 0)
+
+  const rawDiskAudit = scanText(
+    'artifacts/disk_audit_20260926/summary.json',
+    '{"files":0}\n',
+  )
+  assertSelfTest('raw disk-audit output is rejected by path', rawDiskAudit.violations.some((item) => item.type === 'raw_disk_audit_output'))
+
+  const privateEnv = scanText('.env.local', 'OPENAI_API_KEY=synthetic-placeholder\n')
+  assertSelfTest('private environment files are rejected by path', privateEnv.violations.some((item) => item.type === 'private_environment_file'))
+
+  const utf16Artifact = decodeTextBuffer(Buffer.from(
+    '{"Authorization":"Bearer sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n',
+    'utf16le',
+  ))
+  const decodedArtifact = scanText('artifacts/openrouter/response.txt', utf16Artifact)
+  assertSelfTest('UTF-16 artifacts are decoded before privacy scanning', decodedArtifact.violations.some((item) => item.type === 'artifact_provider_credential'))
+
+  const capturedAuth = scanText('docs/archive/debug/request-log.md', 'Authorization: Bearer sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n')
+  assertSelfTest('committed debug logs reject bearer credentials', capturedAuth.violations.some((item) => item.type === 'authorization_header'))
+  const redactedAuth = scanText('docs/archive/debug/request-log.md', 'Authorization: Bearer [redacted]\n')
+  assertSelfTest('redacted bearer examples remain allowed', redactedAuth.violations.length === 0)
 
   console.log(`[privacy-scan] self-test PASS on ${os.platform()}`)
 }
