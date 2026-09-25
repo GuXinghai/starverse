@@ -1,6 +1,6 @@
 # DFC v1.2 Closure Living Plan
 
-Last updated: 2026-06-25 16:03 +08:00
+Last updated: 2026-06-25 08:03 UTC
 
 ## Goal
 
@@ -99,6 +99,6 @@ Completed validation:
 
 | Time | Change |
 | --- | --- |
-| 2026-06-25 15:51 +08:00 | Created closure living plan with support/deferred standard and validation plan. |
-| 2026-06-25 15:58 +08:00 | Updated recovery-state wording after doc-consistency review: current closure anchors are M63, M64 productization docs/ledger rows, and the v1.2 closure docs, not the older M59 install blocker. |
-| 2026-06-25 16:03 +08:00 | Added legacy/future candidate-layer clarification and recorded passing targeted validation. |
+| 2026-06-25 07:51 UTC | Created closure living plan with support/deferred standard and validation plan. |
+| 2026-06-25 07:58 UTC | Updated recovery-state wording after doc-consistency review: current closure anchors are M63, M64 productization docs/ledger rows, and the v1.2 closure docs, not the older M59 install blocker. |
+| 2026-06-25 08:03 UTC | Added legacy/future candidate-layer clarification and recorded passing targeted validation. |

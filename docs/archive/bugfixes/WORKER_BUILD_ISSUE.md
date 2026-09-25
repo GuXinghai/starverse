@@ -2,7 +2,7 @@
 
 **日期**: 2025-11-29  
 **问题**: Electron Worker 线程文件未被正确构建为独立文件  
-**影响**: 应用启动时报错 `Cannot find module 'D:\Starverse\dist-electron\db\worker.cjs'`
+**影响**: 应用启动时报错 `Cannot find module '{repo-root}\dist-electron\db\worker.cjs'`
 
 ---
 
@@ -12,7 +12,7 @@
 每次启动 Electron 应用时都会报 JavaScript 错误：
 ```
 Uncaught Exception:
-Error: Cannot find module 'D:\Starverse\dist-electron\db\worker.cjs'
+Error: Cannot find module '{repo-root}\dist-electron\db\worker.cjs'
     at Module._resolveFilename (node:internal/modules/cjs/loader:1390:15)
     ...
 ```
@@ -282,7 +282,7 @@ built in 1649ms.
 
 ### 运行时错误堆栈
 ```
-Error: Cannot find module 'D:\Starverse\dist-electron\db\worker.cjs'
+Error: Cannot find module '{repo-root}\dist-electron\db\worker.cjs'
     at Module._resolveFilename (node:internal/modules/cjs/loader:1390:15)
     at defaultResolveImpl (node:internal/modules/cjs/loader:1032:19)
     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1037:22)
@@ -347,6 +347,5 @@ const db = new Database(dbPath)
 
 ## 联系信息
 
-**报告人**: GitHub Copilot (Claude Sonnet 4.5)  
 **日期**: 2025-11-29  
 **问题 ID**: WORKER-BUILD-001

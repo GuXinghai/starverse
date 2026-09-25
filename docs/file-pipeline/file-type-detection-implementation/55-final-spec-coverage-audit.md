@@ -3,8 +3,8 @@
 ## 1. Scope and Baseline
 
 - **Baseline commit**: `bc70785` — "docs: finalize phase 7 file content identification closeout"
-- **Model used**: DeepSeek V4 Flash (primary agent)
-- **Subagents used**: 3x `flash-code-reader` for code exploration (src/next/file-type/, UI/IPC/logs, test files)
+- **Primary role**: Reasoning agent
+- **Exploration roles**: Read-only code mapper for code exploration (src/next/file-type/, UI/IPC/logs, test files)
 - **Commands run**: `git status`, `git diff --check`, `git log`, `rg` scans (shell:true, contentToken/fullHash leaks, provider_file_ref, conversion engines, forbidden claims), `npx vitest --run` on 9 key test files
 
 ### Documents Audited

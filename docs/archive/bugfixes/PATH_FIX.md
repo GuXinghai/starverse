@@ -6,19 +6,19 @@
 
 **错误的 PATH 片段：**
 ```
-C:\nvm4w\nodejs<redacted-user-home>\.vscode\extensions\...
+{invalid-path-entry}
 ```
 
 **正确的格式应该是：**
 ```
-C:\nvm4w\nodejs;<redacted-user-home>\.vscode\extensions\...
+{valid-path-entry}
 ```
 
 ## 已执行的临时修复
 
 在当前 PowerShell 会话中，已通过以下命令临时修复：
 ```powershell
-$env:PATH = $env:PATH -replace 'C:\\nvm4w\\nodejsc:', 'C:\nvm4w\nodejs;c:'
+$env:PATH = $env:PATH -replace '{invalid-path-entry}', '{valid-path-entry}'
 ```
 
 ## 永久修复方法
@@ -33,7 +33,7 @@ $env:PATH = $env:PATH -replace 'C:\\nvm4w\\nodejsc:', 'C:\nvm4w\nodejs;c:'
 6. 找到包含 `C:\nvm4w\nodejsc:` 的条目
 7. 将其拆分为两个独立的条目：
    - `C:\nvm4w\nodejs`
-   - `<redacted-user-home>\.vscode\extensions\ms-python.debugpy-2025.14.1-win32-x64\bundled\scripts\noConfigScripts`
+   - `{user-home}\.vscode\extensions\ms-python.debugpy-2025.14.1-win32-x64\bundled\scripts\noConfigScripts`
 8. 点击 "确定" 保存所有更改
 9. **重启终端或 VS Code** 使更改生效
 

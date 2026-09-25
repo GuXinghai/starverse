@@ -39,41 +39,41 @@ P3-A 仅建立“外部 runtime 安全底座”最小闭环，覆盖以下能力
 
 ### 4.1 Phase 文档与约束依据
 
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/README.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/08-acceptance-command-matrix.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/09-risk-and-decision-register.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/10-phase1-mvp-closeout-report.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/11-phase2-stabilization-gap-review.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/12-phase3-external-runtime-planning.md`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/starverse_file_type_detection_engineering_final.markdown`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/README.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/08-acceptance-command-matrix.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/09-risk-and-decision-register.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/10-phase1-mvp-closeout-report.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/11-phase2-stabilization-gap-review.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/12-phase3-external-runtime-planning.md`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/starverse_file_type_detection_engineering_final.markdown`
 
 ### 4.2 external engine scaffold / file-type 相关代码
 
-- `D:/Starverse/src/next/file-type/externalEngineTypes.ts`
-- `D:/Starverse/src/next/file-type/externalEngineManifest.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.ts`
-- `D:/Starverse/src/next/file-type/magikaAdapter.ts`
-- `D:/Starverse/src/next/file-type/index.ts`
+- `{repo-root}/src/next/file-type/externalEngineTypes.ts`
+- `{repo-root}/src/next/file-type/externalEngineManifest.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.ts`
+- `{repo-root}/src/next/file-type/magikaAdapter.ts`
+- `{repo-root}/src/next/file-type/index.ts`
 
 ### 4.3 相关测试
 
-- `D:/Starverse/src/next/file-type/externalEngineManifest.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.test.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.test.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.test.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.fixtures.test.ts`
-- `D:/Starverse/infra/files/sendPlanService.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineManifest.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.test.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.test.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.test.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.fixtures.test.ts`
+- `{repo-root}/infra/files/sendPlanService.test.ts`
 
 ### 4.4 日志与脱敏 / 路径边界相关
 
-- `D:/Starverse/electron/ipc/logSanitizer.ts`
-- `D:/Starverse/electron/ipc/dbBridge.ts`
-- `D:/Starverse/electron/ipc/imageIpc.ts`
-- `D:/Starverse/src/shared/files/localStorageResolver.ts`
+- `{repo-root}/electron/ipc/logSanitizer.ts`
+- `{repo-root}/electron/ipc/dbBridge.ts`
+- `{repo-root}/electron/ipc/imageIpc.ts`
+- `{repo-root}/src/shared/files/localStorageResolver.ts`
 
 ## 5. 当前 scaffold 与可复用能力
 
@@ -121,28 +121,28 @@ P3-A 仅建立“外部 runtime 安全底座”最小闭环，覆盖以下能力
 
 ### 7.1 拟修改文件（最小）
 
-- `D:/Starverse/src/next/file-type/externalEngineHealth.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.ts`
-- `D:/Starverse/src/next/file-type/externalEngineTypes.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.ts`
+- `{repo-root}/src/next/file-type/externalEngineTypes.ts`
 
 ### 7.2 拟新增文件（最小）
 
-- `D:/Starverse/src/next/file-type/externalProcessRunner.ts`（统一安全执行入口）
-- `D:/Starverse/src/next/file-type/externalProcessPolicy.ts`（`.bat/.cmd`/shell policy）
-- `D:/Starverse/src/next/file-type/externalProcessRunner.test.ts`
-- `D:/Starverse/src/next/file-type/externalProcessPolicy.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.integration.test.ts`（fake runner + policy + timeout/output cap）
+- `{repo-root}/src/next/file-type/externalProcessRunner.ts`（统一安全执行入口）
+- `{repo-root}/src/next/file-type/externalProcessPolicy.ts`（`.bat/.cmd`/shell policy）
+- `{repo-root}/src/next/file-type/externalProcessRunner.test.ts`
+- `{repo-root}/src/next/file-type/externalProcessPolicy.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.integration.test.ts`（fake runner + policy + timeout/output cap）
 
 ### 7.3 拟复用模块
 
-- `D:/Starverse/electron/ipc/logSanitizer.ts`（脱敏策略复用）
-- `D:/Starverse/src/shared/files/localStorageResolver.ts`（受控路径边界复用）
+- `{repo-root}/electron/ipc/logSanitizer.ts`（脱敏策略复用）
+- `{repo-root}/src/shared/files/localStorageResolver.ts`（受控路径边界复用）
 
 ## 8. 禁止修改范围
 
-1. 不重构 `D:/Starverse/src/ui-app/app/appChatApp.logic.ts`。
-2. 不改 `D:/Starverse/infra/files/sendPlanService.ts` 主逻辑。
+1. 不重构 `{repo-root}/src/ui-app/app/appChatApp.logic.ts`。
+2. 不改 `{repo-root}/infra/files/sendPlanService.ts` 主逻辑。
 3. 不改 OpenRouter request serializer 主行为。
 4. 不改 UI 附件组件业务判断。
 5. 不改数据库 schema / migration（除非后续 Owner 明确确认）。
@@ -206,4 +206,4 @@ rg -n "exec\(|execFile\(|spawn\(" src infra electron
 
 ## 13. 给 P3-A 实现 Agent 的下一条提示词草案
 
-> 在 `D:/Starverse` 执行 P3-A 外部 runtime 安全底座 implementation。仅实现安全 external process runner 与 engine health check 最小真实闭环：参数数组调用、默认 shell:false、Windows `.bat/.cmd` 默认禁止、timeout、stdout/stderr cap、kill process tree、受控输入边界、日志脱敏。health 失败只能影响 engine availability 与 sendRouteMapping candidate，不能阻断 core detector。禁止改 sendPlanService 主逻辑、禁止改 UI 主流程、禁止接入真实 Magika/Tika/LibreOffice/ffprobe/Pandoc、禁止新增依赖。完成后提交最小测试与禁止项扫描结果。
+> 在 `{repo-root}` 执行 P3-A 外部 runtime 安全底座 implementation。仅实现安全 external process runner 与 engine health check 最小真实闭环：参数数组调用、默认 shell:false、Windows `.bat/.cmd` 默认禁止、timeout、stdout/stderr cap、kill process tree、受控输入边界、日志脱敏。health 失败只能影响 engine availability 与 sendRouteMapping candidate，不能阻断 core detector。禁止改 sendPlanService 主逻辑、禁止改 UI 主流程、禁止接入真实 Magika/Tika/LibreOffice/ffprobe/Pandoc、禁止新增依赖。完成后提交最小测试与禁止项扫描结果。

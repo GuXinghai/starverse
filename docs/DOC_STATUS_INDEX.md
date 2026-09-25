@@ -304,7 +304,7 @@ Last sync: 2026-08-23
 - 修复 `decisions/001-003` 指向 `architecture/overview.md` 的大小写断链（→ `OVERVIEW.md`）。
 - 修复 `archive/` 5 处 `../../` 指向 docs/ 根不存在文件的断链（optimizations/testing/refactoring/ui-implementations README）；删除 0 字节空文件 `archive/optimizations/INCREMENTAL_SERIALIZATION_GUIDE.md` 及其索引链接；清理 archive 各 README 文档列表中指向已不存在文件的死条目（14 处移除、1 处改指 `RECENT_FIXES_2025_11.md`）。
 - `analysis/models-dev-capability-resolution/01-codex-gpt-5-6-sol-assessment.md` 的 Windows 绝对路径链接改为相对路径；compiler projection 引用 `chatIntentProjectionV1.ts`（2026-08-17 收敛重构删除）改为现行 `generation-v2/domain/generationIntentProjectionV2.ts`。
-- `file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md` 的 2 处 `D:\Starverse\...` 绝对路径链接改为相对路径。
+- `file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md` 的 2 处 `{repo-root}\...` 绝对路径链接改为相对路径。
 - 游离草稿 `05-raw-model-capability-evidence-and-discussion.md` 移入 `analysis/models-dev-capability-resolution/`（作为 bundle 第 5 项），删除原空目录。
 - File Pipeline 表补录 `phase-4-message-attachment-semantics.md`（historical / closeout）。
 - `maintenance/document-redirect-map.md` 2026-08-14 Navigation Refresh 段落修正：DOCUMENT_REORGANIZATION_PLAN 实为 move 至 archive/documentation/。

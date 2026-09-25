@@ -82,7 +82,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 - Assume Phase-N docs describe current code. Check `docs/file-pipeline/README.md` first.
 - Treat "preview_optimized" fields as send source unless docs + code explicitly support it.
 - Bypass Send Plan or preflight gate logic. All messages must go through `openRouterSendPlanSerializer.ts`.
-- Add local absolute paths (e.g., `D:\Starverse\...`) to logs, errors, or new docs.
+- Add local absolute paths (e.g., `{repo-root}\...`) to logs, errors, or new docs.
 - Restore deprecated UI paths. If a path is archived or refactored, confirm it's re-enabled in current docs.
 - Change code paths without syncing entry doc links.
 

@@ -439,5 +439,4 @@ const scrollMetrics = {
 ---
 
 *报告生成时间: 2025-11-26*  
-*重构工程师: GitHub Copilot (Claude Sonnet 4.5)*  
 *代码审查: 建议由 GuXinghai 进行最终验收*

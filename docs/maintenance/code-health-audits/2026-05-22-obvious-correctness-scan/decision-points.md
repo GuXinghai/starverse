@@ -8,7 +8,7 @@ Trigger:
 - Batch 5 attempted to satisfy `tsconfig.node.json` by including `src/shared/security/appCsp.ts` in the Node composite project.
 - That made `.\node_modules\.bin\tsc.cmd -p tsconfig.node.json --noEmit --pretty false --tsBuildInfoFile docs/maintenance/code-health-audits/2026-05-22-obvious-correctness-scan/tsconfig.node.audit.tsbuildinfo` pass.
 - It then caused the root Vue-aware check to fail with:
-  `error TS6305: Output file 'D:/Starverse/src/shared/security/appCsp.d.ts' has not been built from source file 'D:/Starverse/src/shared/security/appCsp.ts'.`
+  `error TS6305: Output file '{repo-root}/src/shared/security/appCsp.d.ts' has not been built from source file '{repo-root}/src/shared/security/appCsp.ts'.`
 - `risk_reviewer` classified the overlapping project ownership as a P1 release blocker.
 
 Affected files:

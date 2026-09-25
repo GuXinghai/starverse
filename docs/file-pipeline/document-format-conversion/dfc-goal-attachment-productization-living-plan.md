@@ -1,6 +1,6 @@
 # DFC v1.2 Attachment Productization Living Plan
 
-Last updated: 2026-06-25 15:07 +08:00
+Last updated: 2026-06-25 07:07 UTC
 
 ## Goal
 
@@ -87,7 +87,7 @@ Refined map after the first read-only code mapping pass:
 | P3 Detail Inspector and target cards | Implemented, validating | Users can inspect recommendation, choose available backend options, see warnings/blockers, and keep choice explicit. |
 | P4 Preview and diagnostics | Implemented, validating | Preview reflects the actual selected send asset; diagnostics are sanitized and explainable. |
 | P5 User defaults | Implemented, validating | Minimal default-setting loop persists safe preferences without silently changing unsupported routes. |
-| P6 Validation and docs closeout | Complete | Targeted UI/DFC tests, `vue-tsc`, real Electron automation, `git diff --check`, privacy scan, implementation docs, DFC-only staging, and DFC-only commit are complete. User removed the clean-worktree requirement on 2026-06-25 10:58 +08:00; unrelated provider/runtime dirty work remains outside this DFC goal and outside the DFC commit. |
+| P6 Validation and docs closeout | Complete | Targeted UI/DFC tests, `vue-tsc`, real Electron automation, `git diff --check`, privacy scan, implementation docs, DFC-only staging, and DFC-only commit are complete. User removed the clean-worktree requirement on 2026-06-25 02:58 UTC; unrelated provider/runtime dirty work remains outside this DFC goal and outside the DFC commit. |
 | P7 DeepSeek P2 UI polish | Complete | New DFC UI strings use shared i18n, main Detail Inspector shows human Chinese labels, raw compatibility/decision/diagnostic/debug fields are under default-collapsed advanced info, default-save feedback is visible, and no backend authority/runtime/support behavior changes. Targeted UI/DFC tests, `vue-tsc`, `git diff --check`, privacy gate, and real Electron smoke passed. |
 
 ## Test Plan
@@ -110,7 +110,7 @@ ABI policy:
 
 ## Current Risks
 
-- Existing dirty worktree contains provider/runtime changes outside this DFC goal plus an unverified DOCX smoke seam in the same overlapping file set; they were not reverted or absorbed into the DFC commit. Clean worktree is no longer a DFC-M64 acceptance requirement per the 2026-06-25 10:58 +08:00 user update.
+- Existing dirty worktree contains provider/runtime changes outside this DFC goal plus an unverified DOCX smoke seam in the same overlapping file set; they were not reverted or absorbed into the DFC commit. Clean worktree is no longer a DFC-M64 acceptance requirement per the 2026-06-25 02:58 UTC user update.
 - Existing UI may already be mid-refactor, so the patch must stay narrow and avoid style-only churn.
 - Real Electron validation passed for backend-owned Markdown and HTML PDF attachment routes; final static privacy/diff checks passed for the P2 UI polish.
 - Privacy regressions are easy if diagnostics include raw backend details; tests/scans must verify sanitized output.
@@ -130,16 +130,16 @@ ABI policy:
 
 | Time | Change |
 | --- | --- |
-| 2026-06-25 08:47 +08:00 | Created initial living plan before implementation. |
-| 2026-06-25 08:50 +08:00 | Refined file map and phase status after read-only code mapping. |
-| 2026-06-25 09:04 +08:00 | Implemented initial backend recommendation, chip tooltip, detail target cards, metadata previews, and DFC default preference wiring; validation pending. |
-| 2026-06-25 09:33 +08:00 | Fixed AppChatApp attachment test protocol/runtime harness issues; focused attachment UI suite passes 46/46; validation phase started. |
-| 2026-06-25 10:22 +08:00 | Real Electron DFC attachment smoke passed after tightening metadata-only preview wording; final static checks and commit/worktree closeout pending. |
-| 2026-06-25 10:31 +08:00 | Final static/privacy/docs validation passed; commit and clean-worktree closeout blocked by unrelated provider/runtime dirty worktree overlap. |
-| 2026-06-25 10:37 +08:00 | Prepared a DFC-only staged diff for overlapping files without absorbing provider/runtime changes; clean-worktree closeout remains blocked by unrelated dirty worktree entries. |
-| 2026-06-25 10:39 +08:00 | Created the DFC-only commit; clean-worktree closeout remains blocked by unrelated provider/runtime dirty worktree entries. |
-| 2026-06-25 10:47 +08:00 | Re-audited after commit; DFC-owned files have no remaining diff, but provider/runtime dirty files and an unverified DOCX smoke seam still block clean-worktree completion. |
-| 2026-06-25 10:58 +08:00 | User removed the clean-worktree requirement; DFC-M64 productization is complete with the DFC-only productization commit, validation evidence, and unrelated worktree changes left untouched. |
-| 2026-06-25 11:00 +08:00 | Re-ran doc-scoped `git diff --check` and full privacy scan after the revised objective update; both passed. |
-| 2026-06-25 14:58 +08:00 | Implemented DeepSeek P2 UI polish for DFC attachment copy/i18n, main-view label hygiene, default-collapsed advanced debug info, and visible default-save feedback; final static/privacy validation pending. |
-| 2026-06-25 15:07 +08:00 | Completed DeepSeek P2 UI polish validation: related UI/DFC Vitest, `vue-tsc`, `git diff --check`, privacy gate, and real Electron smoke passed; docs updated with final evidence. |
+| 2026-06-25 00:47 UTC | Created initial living plan before implementation. |
+| 2026-06-25 00:50 UTC | Refined file map and phase status after read-only code mapping. |
+| 2026-06-25 01:04 UTC | Implemented initial backend recommendation, chip tooltip, detail target cards, metadata previews, and DFC default preference wiring; validation pending. |
+| 2026-06-25 01:33 UTC | Fixed AppChatApp attachment test protocol/runtime harness issues; focused attachment UI suite passes 46/46; validation phase started. |
+| 2026-06-25 02:22 UTC | Real Electron DFC attachment smoke passed after tightening metadata-only preview wording; final static checks and commit/worktree closeout pending. |
+| 2026-06-25 02:31 UTC | Final static/privacy/docs validation passed; commit and clean-worktree closeout blocked by unrelated provider/runtime dirty worktree overlap. |
+| 2026-06-25 02:37 UTC | Prepared a DFC-only staged diff for overlapping files without absorbing provider/runtime changes; clean-worktree closeout remains blocked by unrelated dirty worktree entries. |
+| 2026-06-25 02:39 UTC | Created the DFC-only commit; clean-worktree closeout remains blocked by unrelated provider/runtime dirty worktree entries. |
+| 2026-06-25 02:47 UTC | Re-audited after commit; DFC-owned files have no remaining diff, but provider/runtime dirty files and an unverified DOCX smoke seam still block clean-worktree completion. |
+| 2026-06-25 02:58 UTC | User removed the clean-worktree requirement; DFC-M64 productization is complete with the DFC-only productization commit, validation evidence, and unrelated worktree changes left untouched. |
+| 2026-06-25 03:00 UTC | Re-ran doc-scoped `git diff --check` and full privacy scan after the revised objective update; both passed. |
+| 2026-06-25 06:58 UTC | Implemented DeepSeek P2 UI polish for DFC attachment copy/i18n, main-view label hygiene, default-collapsed advanced debug info, and visible default-save feedback; final static/privacy validation pending. |
+| 2026-06-25 07:07 UTC | Completed DeepSeek P2 UI polish validation: related UI/DFC Vitest, `vue-tsc`, `git diff --check`, privacy gate, and real Electron smoke passed; docs updated with final evidence. |

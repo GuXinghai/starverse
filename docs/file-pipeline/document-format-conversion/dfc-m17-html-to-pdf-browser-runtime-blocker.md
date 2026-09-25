@@ -15,7 +15,7 @@ HTML->PDF remains unimplemented.
 The local Playwright Chromium executable is not installed in the current environment. A direct runtime check failed with Playwright reporting a missing executable under the user Playwright cache:
 
 ```text
-<redacted-user-home>\AppData\Local\ms-playwright\chromium_headless_shell-1200\chrome-headless-shell-win64\chrome-headless-shell.exe
+{user-home}\AppData\Local\ms-playwright\chromium_headless_shell-1200\chrome-headless-shell-win64\chrome-headless-shell.exe
 ```
 
 Playwright suggested `npx playwright install`. That command was not run because M17 explicitly forbids adding a browser binary without a new Owner browser runtime / packaging decision.

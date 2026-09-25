@@ -114,9 +114,9 @@ Fixed `magikaManagedPlugin.test.ts` test "maps health timeout and output limit w
 
 | Item | Result |
 |------|--------|
-| Path checked | `D:\Starverse\.starverse-engines\magika\` |
+| Path checked | `{repo-root}\.starverse-engines\magika\` |
 | Exists | No (not created manually) |
-| npm install performed | Yes (`D:\Starverse\.external-runtime-work\magika-js-work\`) |
+| npm install performed | Yes (`{repo-root}\.external-runtime-work\magika-js-work\`) |
 | npm packages installed | `magika@1.0.0`, `@tensorflow/tfjs@4.22.0`, `@tensorflow/tfjs-node@4.22.0` |
 | tfjs-node native binding | ERR_DLOPEN_FAILED — incompatible with this Windows/Node.js v22 combination |
 | Magika classify smoke | **blocked: tfjs-node native binding DLL load failure** |
@@ -126,7 +126,7 @@ Fixed `magikaManagedPlugin.test.ts` test "maps health timeout and output limit w
 ## 7. Manual Package Preparation Attempt
 
 **Route A (npm) attempted**:
-- `npm install magika` succeeded in `D:\Starverse\.external-runtime-work\magika-js-work\`
+- `npm install magika` succeeded in `{repo-root}\.external-runtime-work\magika-js-work\`
 - 125 packages installed including `@tensorflow/tfjs@4.22.0`, `@tensorflow/tfjs-node@4.22.0`
 - `@tensorflow/tfjs-node` native binding `tfjs_binding.node` failed to load (`ERR_DLOPEN_FAILED`)
 - tfjs WASM CPU backend works standalone, but Magika's `model-node.js` hard-requires `@tensorflow/tfjs-node` for `tfn.io.fileSystem(modelPath)`

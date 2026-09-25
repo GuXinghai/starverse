@@ -23,22 +23,22 @@
 
 ## 3. 已审计文件清单
 
-- `D:/Starverse/src/next/file-type/externalProcessPolicy.ts`
-- `D:/Starverse/src/next/file-type/externalProcessRunner.ts`
-- `D:/Starverse/src/next/file-type/externalEngineTypes.ts`
-- `D:/Starverse/src/next/file-type/externalEngineManifest.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.ts`
-- `D:/Starverse/src/next/file-type/externalProcessPolicy.test.ts`
-- `D:/Starverse/src/next/file-type/externalProcessRunner.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineManifest.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.test.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.test.ts`
-- `D:/Starverse/electron/ipc/logSanitizer.ts`
-- `D:/Starverse/docs/file-pipeline/file-type-detection-implementation/13-p3a-runtime-safety-task-package.md`
+- `{repo-root}/src/next/file-type/externalProcessPolicy.ts`
+- `{repo-root}/src/next/file-type/externalProcessRunner.ts`
+- `{repo-root}/src/next/file-type/externalEngineTypes.ts`
+- `{repo-root}/src/next/file-type/externalEngineManifest.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.ts`
+- `{repo-root}/src/next/file-type/externalProcessPolicy.test.ts`
+- `{repo-root}/src/next/file-type/externalProcessRunner.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineManifest.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.test.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.test.ts`
+- `{repo-root}/electron/ipc/logSanitizer.ts`
+- `{repo-root}/docs/file-pipeline/file-type-detection-implementation/13-p3a-runtime-safety-task-package.md`
 
 ## 4. 架构边界复核
 

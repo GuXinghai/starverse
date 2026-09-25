@@ -5,7 +5,7 @@
 ### `Get-Location`
 
 Summary:
-- Current working directory is `D:\Starverse`.
+- Current working directory is `{repo-root}`.
 
 Interpretation:
 - Confirms audit commands are being run from the requested project root.
@@ -525,7 +525,7 @@ Command:
 Summary:
 - Exit code `1`.
 - Reported:
-  `error TS6305: Output file 'D:/Starverse/src/shared/security/appCsp.d.ts' has not been built from source file 'D:/Starverse/src/shared/security/appCsp.ts'.`
+  `error TS6305: Output file '{repo-root}/src/shared/security/appCsp.d.ts' has not been built from source file '{repo-root}/src/shared/security/appCsp.ts'.`
 
 Interpretation:
 - Original FIND-001 through FIND-006 compile errors were cleared from the observed output.

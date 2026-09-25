@@ -17,7 +17,7 @@ This policy applies to local directories used for external runtime workdirs, man
 
 ## Recommended Locations
 
-- Repo-external runtime roots: `D:/Starverse-runtime/` or `D:/Starverse-engines/`
+- Repo-external runtime roots: choose a short local path outside the repository, such as {external-runtime-root}.
 - User-level managed engines: `%LOCALAPPDATA%/Starverse/engines/`
 - Repo-local temporary workdir: `.external-runtime-work/`, only for temporary development/runtime preparation and only when Git-ignored and Vite-ignored
 - Repo-local development cache: `.starverse-engines/`, if used, must also be Git-ignored and Vite-ignored

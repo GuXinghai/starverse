@@ -324,5 +324,4 @@ Test Files  1 passed (1)
 ---
 
 **修复日期**：2025-12-10  
-**修复人员**：GitHub Copilot (Claude Sonnet 4.5)  
 **修复版本**：v0.9.x+

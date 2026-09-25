@@ -33,28 +33,28 @@
 
 ## 4. 已勘察文件清单
 
-- `D:/Starverse/src/next/file-type/magikaAdapter.ts`
-- `D:/Starverse/src/next/file-type/magikaAdapter.test.ts`
-- `D:/Starverse/src/next/file-type/taxonomyMap.ts`
-- `D:/Starverse/src/next/file-type/types.ts`
-- `D:/Starverse/src/next/file-type/evidenceMerge.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineTypes.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.ts`
-- `D:/Starverse/src/next/file-type/externalEngineAvailability.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineManifest.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.ts`
-- `D:/Starverse/src/next/file-type/externalEngineRegistry.test.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.ts`
-- `D:/Starverse/src/next/file-type/externalEngineHealth.test.ts`
-- `D:/Starverse/src/next/file-type/externalProcessPolicy.ts`
-- `D:/Starverse/src/next/file-type/externalProcessRunner.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.test.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.fixtures.test.ts`
-- `D:/Starverse/infra/db/repo/fileTypeVerdictRepo.ts`
-- `D:/Starverse/infra/db/types.ts`
+- `{repo-root}/src/next/file-type/magikaAdapter.ts`
+- `{repo-root}/src/next/file-type/magikaAdapter.test.ts`
+- `{repo-root}/src/next/file-type/taxonomyMap.ts`
+- `{repo-root}/src/next/file-type/types.ts`
+- `{repo-root}/src/next/file-type/evidenceMerge.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineTypes.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.ts`
+- `{repo-root}/src/next/file-type/externalEngineAvailability.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineManifest.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.ts`
+- `{repo-root}/src/next/file-type/externalEngineRegistry.test.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.ts`
+- `{repo-root}/src/next/file-type/externalEngineHealth.test.ts`
+- `{repo-root}/src/next/file-type/externalProcessPolicy.ts`
+- `{repo-root}/src/next/file-type/externalProcessRunner.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.test.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.fixtures.test.ts`
+- `{repo-root}/infra/db/repo/fileTypeVerdictRepo.ts`
+- `{repo-root}/infra/db/types.ts`
 
 ## 5. 当前 Magika scaffold 与可复用能力
 
@@ -87,26 +87,26 @@
 
 拟修改文件（计划）：
 
-- `D:/Starverse/src/next/file-type/magikaAdapter.ts`
-- `D:/Starverse/src/next/file-type/magikaAdapter.test.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.ts`
-- `D:/Starverse/infra/files/fileTypeDetectionService.test.ts`
-- `D:/Starverse/src/next/file-type/sendRouteMapping.ts`（仅当联动口径需要最小补丁）
-- `D:/Starverse/src/next/file-type/sendRouteMapping.test.ts`（联动回归）
-- `D:/Starverse/src/next/file-type/taxonomyMap.ts`（仅在 label 映射缺口确认后最小增补）
+- `{repo-root}/src/next/file-type/magikaAdapter.ts`
+- `{repo-root}/src/next/file-type/magikaAdapter.test.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.ts`
+- `{repo-root}/infra/files/fileTypeDetectionService.test.ts`
+- `{repo-root}/src/next/file-type/sendRouteMapping.ts`（仅当联动口径需要最小补丁）
+- `{repo-root}/src/next/file-type/sendRouteMapping.test.ts`（联动回归）
+- `{repo-root}/src/next/file-type/taxonomyMap.ts`（仅在 label 映射缺口确认后最小增补）
 
 拟新增文件（计划）：
 
-- `D:/Starverse/src/next/file-type/magikaRuntimeLoader.ts`（仅接口与装配边界，非完整外部引擎链路）
-- `D:/Starverse/src/next/file-type/magikaRuntimeLoader.test.ts`
+- `{repo-root}/src/next/file-type/magikaRuntimeLoader.ts`（仅接口与装配边界，非完整外部引擎链路）
+- `{repo-root}/src/next/file-type/magikaRuntimeLoader.test.ts`
 
 说明：以上仅为 P3-B 实施建议清单，本轮不修改运行时代码。
 
 ## 8. 禁止修改范围
 
-- 不重构 `D:/Starverse/src/ui-app/app/appChatApp.logic.ts`。
-- 不改 `D:/Starverse/infra/files/sendPlanService.ts` 主逻辑。
-- 不改 `D:/Starverse/src/next/openrouter/openRouterSendPlanSerializer.ts` 主行为。
+- 不重构 `{repo-root}/src/ui-app/app/appChatApp.logic.ts`。
+- 不改 `{repo-root}/infra/files/sendPlanService.ts` 主逻辑。
+- 不改 `{repo-root}/src/next/openrouter/openRouterSendPlanSerializer.ts` 主行为。
 - 不改 UI 附件组件业务判断。
 - 不改数据库 schema / migration（除非后续 Owner 明确确认）。
 - 不扩大 `externalProcessRunner` 职责（P3-A 安全底座保持稳定，P3-B 不回流重构）。
@@ -166,7 +166,8 @@ rg -n "Phase 3 completed|P3-B implementation completed|真实 Magika runtime 已
 
 ## 14. 给 P3-B 实现 Agent 的下一条提示词草案
 
-请在 `D:/Starverse` 实施 P3-B（Magika runtime 接入与降级闭环），仅做最小闭环实现：  
+请在 `{repo-root}` 实施 P3-B（Magika runtime 接入与降级闭环），仅做最小闭环实现：
+
 1) 在不引入真实 Tika/LibreOffice/ffprobe/Pandoc 的前提下，为 Magika 增加 runtime loader 边界与可注入实现；  
 2) 在 `detectFull` 中接入 runtime availability + fallback（runtime 不可用时必须退回 lightweight detector）；  
 3) 将 `magikaModelVersion` 写入 verdict versionInfo 并通过 repo 持久化；  

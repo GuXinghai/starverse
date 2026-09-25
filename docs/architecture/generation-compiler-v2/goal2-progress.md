@@ -9,7 +9,7 @@
 - Goal 2 baseline SHA: `5b873c5384dad4ac512788ed8223ee5e6ac2885e`
 - `origin/main` at start: `fd65a8023849e0079569b5f8320d8748b55fff6e`
 - Worktree/index/untracked state at start: clean (`git status --porcelain=v1 -uall` count = 0)
-- Started: 2026-07-13 (Asia/Shanghai)
+- Started: 2026-07-13
 - Sole implementation baseline: this directory's final plan, TP1–TP8, traceability matrix, and AC-01…AC-42.
 - Production constraints: no compatibility layer, dual read/write, fallback, unknown wire patch, silent parameter drop/downgrade, or temporary provider bridge. V2 may refactor IPC/UI wiring and internal component structure, but must preserve existing user-visible features, information density, control placement and interaction hierarchy by default. No feature removal, UI simplification or material rearrangement is accepted without a documented technical/product reason, an explicit replacement and focused parity evidence. Destructive epoch-2 activation remains blocked until every currently visible provider/action surface has a complete V2 path.
 

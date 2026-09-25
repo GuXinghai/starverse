@@ -315,16 +315,16 @@ These audit items are NOT identification-layer work. They are listed here for tr
 
 ## 6. Recommended Model/Agent Strategy Per Phase
 
-| Phase | Primary Agent | Recommended Subagents | Lane |
+| Phase | Primary Role | Recommended Supporting Roles | Lane |
 |-------|---------------|----------------------|------|
-| Phase 8 | DeepSeek V4 Pro | flash-code-reader (code mapping), flash-test-runner (smoke) | Safe Lane |
-| Phase 9 | DeepSeek V4 Pro | flash-code-reader (Vue conventions, IPC surface) | Safe Lane |
-| Phase 10 | DeepSeek V4 Pro | flash-risk-review (P0 verification), flash-code-reader | Release Lane |
-| Phase 11 | DeepSeek V4 Pro | flash-code-reader (per subtask), flash-test-runner | Safe Lane |
+| Phase 8 | Primary reasoning agent | Read-only code mapper, targeted test summarizer | Safe Lane |
+| Phase 9 | Primary reasoning agent | Read-only code mapper (Vue conventions, IPC surface) | Safe Lane |
+| Phase 10 | Primary reasoning agent | Risk reviewer (P0 verification), read-only code mapper | Release Lane |
+| Phase 11 | Primary reasoning agent | Read-only code mapper (per subtask), targeted test summarizer | Safe Lane |
 
 Lane definitions from `50-post-p5-user-level-roadmap.md §2.1`:
 - **Safe Lane**: Scoped plan, internal scans only, targeted tests, one compact closeout doc
-- **Release Lane**: External audit required (`flash-risk-review`), manual smoke, full targeted tests + scans
+- **Release Lane**: External audit required (risk reviewer), manual smoke, full targeted tests + scans
 
 ---
 

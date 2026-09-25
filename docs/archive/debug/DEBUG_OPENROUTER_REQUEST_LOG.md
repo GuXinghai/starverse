@@ -21,7 +21,7 @@ OPENROUTER_REQUEST_BEGIN <requestId> <isoTime>
 Endpoint: https://openrouter.ai/api/v1/chat/completions
 API Key (FULL): sk-or-v1-1234567890abcdef...
 Headers (complete):
-  Authorization: Bearer sk-or-v1-1234567890abcdef...
+  Authorization: Bearer [redacted]
   HTTP-Referer: https://github.com/GuXinghai/starverse
   X-Title: Starverse
   Content-Type: application/json
@@ -109,7 +109,7 @@ OR_REQ <id> model=<name> stream=<bool> reasoning=<summary> msgs=<count>
 
 ```
 API Key (FULL): sk-or-v1-1234567890abcdef...
-Authorization: Bearer sk-or-v1-1234567890abcdef...
+Authorization: Bearer [redacted]
 ```
 
 **绝对不要**将包含完整 API Key 的日志分享到公共场合（GitHub Issues、Discord、论坛等）。

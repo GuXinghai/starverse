@@ -1354,7 +1354,7 @@ DFC-M17 should implement a minimal HTML->PDF `pdf_attachment` pilot only after o
 ## DFC-M17 HTML-to-PDF browser runtime blocker recovery notes
 
 - DFC-M17 attempted a minimal HTML->PDF `pdf_attachment` backend pilot after Owner approved Playwright Chromium as the first conversion runtime strategy.
-- The attempt stopped before commit because Playwright Chromium could not launch: the executable was missing from the local Playwright cache at `<redacted-user-home>\AppData\Local\ms-playwright\chromium_headless_shell-1200\chrome-headless-shell-win64\chrome-headless-shell.exe`.
+- The attempt stopped before commit because Playwright Chromium could not launch: the executable was missing from the local Playwright cache at `{user-home}\AppData\Local\ms-playwright\chromium_headless_shell-1200\chrome-headless-shell-win64\chrome-headless-shell.exe`.
 - `npx playwright install chromium` was not run because adding or downloading a browser binary requires a fresh Owner browser runtime / packaging decision.
 - The uncommitted implementation and M17 test diff was reverted from `infra/files/derivativeJobService.ts`, `infra/db/worker/handlers/filePipelineHandlers.ts`, `infra/files/conversationAttachmentService.ts`, and `infra/db/worker.filePipeline.test.ts`.
 - No production HTML->PDF runtime is committed. HTML->PDF remains unimplemented; `pdf_attachment` remains vocabulary/contract plus future heavy-runtime target.
@@ -2163,7 +2163,7 @@ Proceed to M56 only with explicit Owner direction: either use the fixed live smo
 - `npm run test:electron-smoke` rebuilt for Electron, launched Starverse, confirmed scoped preload boundary, seeded backend-owned Markdown attachment, opened Detail Inspector, generated HTML `pdf_attachment`, verified selected derived ref and metadata-only preview, and captured visual diagnostics.
 - Current ABI target after M64 validation is Electron. Do not commit native rebuild side effects, `node_modules`, generated binaries, or build artifacts.
 - Commit isolation used a DFC-only partial staged patch for overlapping files such as `src/ui-app/AppChatApp.vue` and `src/ui-app/app/appChatApp.logic.ts`; the staged hunks exclude provider/runtime and DOCX smoke seam work.
-- Clean-worktree closeout was removed from DFC-M64 acceptance by the user on 2026-06-25 10:58 +08:00. Pre-existing unrelated provider/runtime dirty changes remain outside the DFC-only commit path; an unverified DOCX smoke seam is also mixed into the same dirty `appChatApp.logic.ts` surface. Do not absorb or revert those non-DFC-M64 changes from this DFC goal without an owner decision.
+- Clean-worktree closeout was removed from DFC-M64 acceptance by the user on 2026-06-25 02:58 UTC. Pre-existing unrelated provider/runtime dirty changes remain outside the DFC-only commit path; an unverified DOCX smoke seam is also mixed into the same dirty `appChatApp.logic.ts` surface. Do not absorb or revert those non-DFC-M64 changes from this DFC goal without an owner decision.
 - Final classification: `attachment_productization_verified_dfc_committed_revised_goal_complete`.
 
 ## DFC-M64 DeepSeek P2 attachment UI polish recovery notes

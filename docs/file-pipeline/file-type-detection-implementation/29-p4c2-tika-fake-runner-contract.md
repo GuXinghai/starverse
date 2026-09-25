@@ -101,7 +101,7 @@ Tika JSON 输出 schema（与真实 Tika Server `/rmeta` 输出兼容的简化�
 **不允许 metadata passthrough**。`null` 不表示「无限制」透传，而是表示 capability 未启用，与空数组行为一致。
 
 **敏感值自动脱敏**：所有通过 allowlist 的 metadata 值都会经过 `sanitizeMetadataValue` 处理：
-- Windows 绝对路径 (`C:\Users\...`) → `[redacted-path]`
+- Windows 绝对路径 (`{user-home} → `[redacted-path]`
 - Unix 绝对路径 (`/Users/...`, `/tmp/...`, `/var/...`) → `[redacted-path]`
 - 64+ 字符十六进制 hash → `[redacted-hash]`
 

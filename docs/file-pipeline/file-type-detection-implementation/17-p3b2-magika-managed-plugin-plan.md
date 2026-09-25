@@ -35,7 +35,7 @@ engines/magika/
 
 - `%LOCALAPPDATA%/Starverse/engines/magika/`
 - `StarversePortable/engines/magika/`
-- `D:/Starverse/.starverse-engines/magika/`（dev only）
+- `{repo-root}/.starverse-engines/magika/`（dev only）
 
 ## 4. Magika plugin manifest 草案
 
@@ -200,7 +200,7 @@ engines/magika/
 
 ## 14. 给下一轮 Agent 的提示词草案
 
-请在 `D:/Starverse` 执行 P3-B2 post-implementation audit：
+请在 `{repo-root}` 执行 P3-B2 post-implementation audit：
 1) 复核 managed plugin manifest/discovery/integrity/health/availability 的边界是否满足 Phase 3 约束；
 2) 复核 `detectFull` 在插件 unavailable 时 fallback 行为与 `detectBasic` 不调用插件 runtime 的契约；
 3) 复核 sendRouteMapping 在 Magika unavailable 下不会全局 blocked；

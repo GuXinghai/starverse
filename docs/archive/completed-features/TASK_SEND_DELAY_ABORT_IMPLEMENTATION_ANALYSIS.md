@@ -486,5 +486,4 @@ if (chunk.type === 'usage' && chunk.usage) {
 
 ---
 
-**分析师**: GitHub Copilot (Claude Sonnet 4.5)  
 **参考文档**: `.github/copilot-instructions.md`, `REFACTOR_PROGRESS.md`  

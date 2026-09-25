@@ -1,7 +1,8 @@
 # Starverse 文档归档脚本
 # 将已完成的项目文档移动到归档目录
 
-$docsPath = "d:\Starverse\docs"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$docsPath = Join-Path $repoRoot 'docs'
 $archivePath = "$docsPath\archive"
 
 # 定义归档规则

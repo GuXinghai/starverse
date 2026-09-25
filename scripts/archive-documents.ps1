@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Starverse 文档归档脚本 - 基于五维判断法则的安全归档
+    Archive completed Starverse documentation.
 .DESCRIPTION
-    根据 DOCUMENT_CLEANUP_AUDIT.md 的审查结果，批量归档历史文档到 archive/ 目录
-    执行策略：软删除（移动到 archive/），不物理删除
+    Move reviewed historical documents into the archive directory.
+    Files are moved and preserved; this script does not permanently delete them.
 .NOTES
-    执行前请确认已阅读 docs/DOCUMENT_CLEANUP_AUDIT.md
+    Review docs/DOCUMENT_CLEANUP_AUDIT.md before running.
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -18,17 +18,17 @@ $ErrorActionPreference = "Stop"
 $docsPath = Join-Path $PSScriptRoot "docs"
 $archivePath = Join-Path $docsPath "archive"
 
-# 归档标记模板
+# Archive marker template
 $archiveHeader = @"
-# ⚠️ [ARCHIVED/已归档]
+# [ARCHIVED]
 
-**归档日期**: $(Get-Date -Format "yyyy年MM月dd日")  
-**归档原因**: 功能已实施完成，本文档降级为历史记录  
-**最新文档**: 见 [文档导航中心](../INDEX.md)
+**Archived**: $(Get-Date -Format "yyyy-MM-dd")<br>
+**Reason**: The feature is complete; this document is retained as a historical record.<br>
+**Current documentation**: See the [documentation index](../INDEX.md).
 
 ---
 
-以下是原始内容...
+Original content follows.
 
 ---
 

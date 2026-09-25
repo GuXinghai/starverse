@@ -2,7 +2,7 @@
 
 Append-only log for the attachment productization goal.
 
-## 2026-06-25 08:47 +08:00
+## 2026-06-25 00:47 UTC
 
 Action:
 - Started goal in the Starverse repo workspace.
@@ -30,7 +30,7 @@ Risks:
 Next step:
 - Wait for code-map evidence, then refine file map and implement the smallest viable attachment shelf/detail/defaults loop on top of backend-owned DFC data.
 
-## 2026-06-25 08:50 +08:00
+## 2026-06-25 00:50 UTC
 
 Action:
 - Received read-only code map for DFC attachment UI, IPC, backend contracts, send plan, docs, and tests.
@@ -56,7 +56,7 @@ Risks:
 Next step:
 - Patch the existing attachment components and app-layer view models without changing backend route ownership.
 
-## 2026-06-25 09:04 +08:00
+## 2026-06-25 01:04 UTC
 
 Action:
 - Added a DFC attachment defaults setting shape and DB/IPC/client methods for sanitized target-kind preferences.
@@ -92,7 +92,7 @@ Risks:
 Next step:
 - Run focused UI/contract tests and `vue-tsc`, then fix compile/test regressions before broad validation.
 
-## 2026-06-25 09:33 +08:00
+## 2026-06-25 01:33 UTC
 
 Action:
 - Fixed the focused AppChatApp attachment test regressions exposed by the first validation run.
@@ -115,7 +115,7 @@ Risks:
 Next step:
 - Re-run the full focused DFC/UI/contract test set after adding any missing defaults coverage, then run `vue-tsc`.
 
-## 2026-06-25 09:38 +08:00
+## 2026-06-25 01:38 UTC
 
 Action:
 - Added a focused UI test for saving and applying DFC defaults from the Detail Inspector.
@@ -139,7 +139,7 @@ Risks:
 Next step:
 - Update implementation/closeout docs, then run `git diff --check`, privacy scan, and real Electron automation.
 
-## 2026-06-25 10:18 +08:00
+## 2026-06-25 02:18 UTC
 
 Action:
 - Ran real Electron DFC attachment smoke through `npm run test:electron-smoke`; Electron mounted, backend-owned DFC seeding worked, Markdown preview opened, and HTML-to-PDF target cards rendered.
@@ -161,7 +161,7 @@ Risks:
 Next step:
 - Re-run `npm run test:electron-smoke` and then update ledger/context docs with the final pass or blocker.
 
-## 2026-06-25 10:22 +08:00
+## 2026-06-25 02:22 UTC
 
 Action:
 - Re-ran the real Electron DFC attachment smoke after the metadata-only preview wording fix.
@@ -184,7 +184,7 @@ Risks:
 Next step:
 - Update the final DFC-M64 evidence docs, then run final `vue-tsc`, `git diff --check`, and privacy scan.
 
-## 2026-06-25 10:24 +08:00
+## 2026-06-25 02:24 UTC
 
 Action:
 - Ran final static validation after the Electron smoke and documentation updates.
@@ -207,7 +207,7 @@ Risks:
 Next step:
 - Append DFC-M64 to `progress-ledger.md`, update `important-context.md`, then assess whether a safe partial DFC-only commit is possible.
 
-## 2026-06-25 10:28 +08:00
+## 2026-06-25 02:28 UTC
 
 Action:
 - Appended DFC-M64 to the durable progress ledger.
@@ -230,7 +230,7 @@ Risks:
 Next step:
 - Inspect worktree/diff ownership and decide whether staging a coherent DFC-only commit is safe without absorbing unrelated provider/runtime work.
 
-## 2026-06-25 10:31 +08:00
+## 2026-06-25 02:31 UTC
 
 Action:
 - Inspected `git status --short`, `git diff --name-status`, `git diff --stat`, and focused diffs for overlapping files.
@@ -251,7 +251,7 @@ Risks:
 Next step:
 - Stop for owner/developer decision on commit isolation: either authorize a DFC-only partial staging pass, or first separate/commit/stash the provider/runtime work outside this DFC goal.
 
-## 2026-06-25 10:37 +08:00
+## 2026-06-25 02:37 UTC
 
 Action:
 - Built a DFC-only partial staged patch for the overlapping `src/ui-app/AppChatApp.vue` and `src/ui-app/app/appChatApp.logic.ts` files.
@@ -277,7 +277,7 @@ Risks:
 Next step:
 - Commit the staged DFC-only diff, then report that clean-worktree completion remains blocked by unrelated pre-existing changes.
 
-## 2026-06-25 10:39 +08:00
+## 2026-06-25 02:39 UTC
 
 Action:
 - Created a coherent DFC-only commit from the staged diff.
@@ -298,7 +298,7 @@ Risks:
 Next step:
 - Stop with DFC implementation, validation, docs, and commit complete; report clean-worktree blocker as unrelated dirty worktree state.
 
-## 2026-06-25 10:47 +08:00
+## 2026-06-25 02:47 UTC
 
 Action:
 - Re-audited the worktree after the DFC-only commit.
@@ -325,7 +325,7 @@ Risks:
 Next step:
 - Treat the goal as blocked on unrelated worktree cleanup after three consecutive goal turns with the same clean-worktree blocker.
 
-## 2026-06-25 10:58 +08:00
+## 2026-06-25 02:58 UTC
 
 Action:
 - User removed the clean-worktree requirement from the active goal.
@@ -355,7 +355,7 @@ Risks:
 Next step:
 - Amend the DFC commit with this final evidence update and mark the revised goal complete.
 
-## 2026-06-25 11:00 +08:00
+## 2026-06-25 03:00 UTC
 
 Action:
 - Re-ran final documentation-scope checks after the clean-worktree requirement was removed.
@@ -377,7 +377,7 @@ Risks:
 Next step:
 - Amend the DFC productization commit with this final evidence update and mark the revised goal complete.
 
-## 2026-06-25 14:58 +08:00
+## 2026-06-25 06:58 UTC
 
 Action:
 - Started the DeepSeek P2 review fix for commit `67e7c779` as a DFC UI-only polish round.
@@ -412,7 +412,7 @@ Risks:
 Next step:
 - Run the remaining related DFC/contract tests, `git diff --check`, privacy gate, and update `progress-ledger.md` plus `important-context.md` with final evidence.
 
-## 2026-06-25 15:07 +08:00
+## 2026-06-25 07:07 UTC
 
 Action:
 - Completed the DeepSeek P2 DFC attachment UI polish validation and evidence update.
@@ -448,7 +448,7 @@ Risks:
 Next step:
 - If this polish is committed, create a DFC-only commit or partial stage that excludes unrelated provider/runtime changes and generated native/build artifacts.
 
-## 2026-06-25 15:46 +08:00
+## 2026-06-25 07:46 UTC
 
 Action:
 - Switched from a single DFC-only closeout commit to a batch commit strategy per Owner instruction.

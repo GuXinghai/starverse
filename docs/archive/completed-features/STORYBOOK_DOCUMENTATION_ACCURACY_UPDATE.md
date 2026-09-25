@@ -326,6 +326,5 @@ interface Props {
 
 ---
 
-**更新完成时间**: 2025-12-06 15:30 UTC+8  
-**验证人员**: GitHub Copilot (Claude Sonnet 4.5)  
+**更新完成时间**: 2025-12-06 07:30 UTC<br>
 **关联文档**: `CHAT_INPUT_CUTOVER_AUDIT.md`, `MODERN_CHAT_INPUT_IMPLEMENTATION.md`

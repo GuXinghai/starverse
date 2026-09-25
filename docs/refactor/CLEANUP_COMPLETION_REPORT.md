@@ -48,7 +48,7 @@
 ```bash
 $ npx vitest run
 
- RUN  v2.1.9 D:/Starverse
+ RUN  v2.1.9 {repo-root}
 
  ✓ src/next/context/buildMessages.test.ts (6 tests)
  ✓ src/next/openrouter/mapChunkToEvents.test.ts (7 tests)

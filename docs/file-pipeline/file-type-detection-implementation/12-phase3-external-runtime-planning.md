@@ -33,23 +33,23 @@ Phase 1 MVP 主闭环（A~K）已实现；Phase 2 stabilization / gap review 已
 
 ### 5.1 文档依据
 
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\00-project-freeze.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\06-agent-implementation-appendix.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\08-acceptance-command-matrix.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\09-risk-and-decision-register.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\10-phase1-mvp-closeout-report.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\11-phase2-stabilization-gap-review.md`
-- `D:\Starverse\docs\file-pipeline\file-type-detection-implementation\starverse_file_type_detection_engineering_final.markdown`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\00-project-freeze.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\06-agent-implementation-appendix.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\08-acceptance-command-matrix.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\09-risk-and-decision-register.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\10-phase1-mvp-closeout-report.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\11-phase2-stabilization-gap-review.md`
+- `{repo-root}\docs\file-pipeline\file-type-detection-implementation\starverse_file_type_detection_engineering_final.markdown`
 
 ### 5.2 代码现状（用于规划，不代表已完成真实执行链路）
 
-- `D:\Starverse\src\next\file-type\magikaAdapter.ts`：当前为 adapter 接口 + 映射逻辑，默认 noop 可降级。
-- `D:\Starverse\src\next\file-type\externalEngineTypes.ts`：定义 EngineId/Manifest/Health/Availability 数据模型。
-- `D:\Starverse\src\next\file-type\externalEngineManifest.ts`：manifest 结构校验（静态解析）。
-- `D:\Starverse\src\next\file-type\externalEngineRegistry.ts`：内建 stub engine 注册、健康状态/诊断记录、可用性聚合。
-- `D:\Starverse\src\next\file-type\externalEngineHealth.ts`：mockable health check runner + timeout 包装。
-- `D:\Starverse\src\next\file-type\externalEngineAvailability.ts`：capability/route availability 计算。
-- `D:\Starverse\src\next\file-type\sendRouteMapping.ts`：消费 engineAvailability，影响 candidate 兼容性与 blockedBy。
+- `{repo-root}\src\next\file-type\magikaAdapter.ts`：当前为 adapter 接口 + 映射逻辑，默认 noop 可降级。
+- `{repo-root}\src\next\file-type\externalEngineTypes.ts`：定义 EngineId/Manifest/Health/Availability 数据模型。
+- `{repo-root}\src\next\file-type\externalEngineManifest.ts`：manifest 结构校验（静态解析）。
+- `{repo-root}\src\next\file-type\externalEngineRegistry.ts`：内建 stub engine 注册、健康状态/诊断记录、可用性聚合。
+- `{repo-root}\src\next\file-type\externalEngineHealth.ts`：mockable health check runner + timeout 包装。
+- `{repo-root}\src\next\file-type\externalEngineAvailability.ts`：capability/route availability 计算。
+- `{repo-root}\src\next\file-type\sendRouteMapping.ts`：消费 engineAvailability，影响 candidate 兼容性与 blockedBy。
 
 ## 6. 任务包拆分
 

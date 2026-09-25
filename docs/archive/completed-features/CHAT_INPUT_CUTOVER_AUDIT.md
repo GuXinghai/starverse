@@ -224,6 +224,5 @@ grep -r "ChatInputArea(Props|Emits|Events)" .
 
 ---
 
-**审查人员**: GitHub Copilot (Claude Sonnet 4.5)  
 **审查日期**: 2025-12-07  
 **审查状态**: ✅ **PASSED** - 清理完成，架构健康

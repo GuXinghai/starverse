@@ -409,7 +409,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dialog:export-image', { imageUrl, ...(options ?? {}) }),
 
   /**
-   * 在新的 BrowserWindow 中打开外部链接（类似微信/QQ 内的外链弹窗）
+   * 在新的 BrowserWindow 中打开外部链接（类似消息应用中的链接预览窗口）
    */
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
 

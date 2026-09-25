@@ -41,7 +41,7 @@ The pure JS route uses `Magika` (browser class) with `@tensorflow/tfjs` CPU back
 | tf backend | `cpu` |
 | tfjs-node present | No (MODULE_NOT_FOUND) |
 | Model version | `standard_v3_3` |
-| Sample file | `D:\Starverse\package.json` (5962 bytes) |
+| Sample file | `{repo-root}\package.json` (5962 bytes) |
 | Prediction label | `json` |
 | Prediction score | `0.998871` |
 | ERR_DLOPEN_FAILED | No |

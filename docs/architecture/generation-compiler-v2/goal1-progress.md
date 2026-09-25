@@ -7,12 +7,12 @@
 - Repository: `[repository-root]`
 - Baseline commit: `067171a4c4d55f147340677c7e7f046e95311bd0`
 - Branch at start: `codex/rewrite-readme`
-- Local `main` at start: `6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b` (`2026-07-05T07:01:51+08:00`, `fix(reasoning): preserve image reasoning display blocks`)
+- Local `main` at start: `6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b` (`2026-07-04T23:01:51Z`, `fix(reasoning): preserve image reasoning display blocks`)
 - Branch divergence from `main`: 54 commits behind, 2 commits ahead; merge base `de955f96c3fc842db3783f36a1bf0e0e2a823a46`
 - Worktree at start: clean (`git status --short` count = 0)
 - Baseline proposal: `[owner-local-baseline]`
 - Baseline proposal length: 1,932 lines
-- Goal started: 2026-07-13 (Asia/Shanghai)
+- Goal started: 2026-07-13
 - Official-contract verification date: 2026-07-13 unless a task package states otherwise
 
 ## Owner-decision continuation — 2026-07-13

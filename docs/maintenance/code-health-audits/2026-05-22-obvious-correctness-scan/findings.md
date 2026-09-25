@@ -144,7 +144,7 @@
    - `.\node_modules\.bin\tsc.cmd -p tsconfig.node.json --noEmit --pretty false --tsBuildInfoFile docs/maintenance/code-health-audits/2026-05-22-obvious-correctness-scan/tsconfig.node.audit.tsbuildinfo` reports:
      - `tsconfig.node.json(2,3): error TS6379` when attempted with `--incremental false`; composite projects cannot disable incremental compilation.
      - Retried with a build-info file inside the audit directory.
-     - `vite.config.ts(5,69): error TS6307: File 'D:/Starverse/src/shared/security/appCsp.ts' is not listed within the file list of project 'D:/Starverse/tsconfig.node.json'.`
+     - `vite.config.ts(5,69): error TS6307: File '{repo-root}/src/shared/security/appCsp.ts' is not listed within the file list of project '{repo-root}/tsconfig.node.json'.`
      - `vite.config.ts(72,9): error TS7030: Not all code paths return a value.`
    - `tsconfig.node.json` includes only `vite.config.ts`.
    - `vite.config.ts:5` imports `./src/shared/security/appCsp`.

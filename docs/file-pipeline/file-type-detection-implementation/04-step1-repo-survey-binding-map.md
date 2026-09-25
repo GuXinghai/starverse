@@ -11,8 +11,8 @@
 
 ## 2. 文档迁移结果
 
-- 源目录：`<redacted-user-home>\Downloads\starverse-file-type-detection-implementation`
-- 目标目录：`D:\Starverse\docs\file-pipeline\file-type-detection-implementation`
+- 源目录：`{user-home}\Downloads\starverse-file-type-detection-implementation`
+- 目标目录：`{repo-root}\docs\file-pipeline\file-type-detection-implementation`
 - 迁移对象（源目录全部文件）：
   - `README.md`
   - `00-project-freeze.md`
@@ -32,15 +32,15 @@
 
 ### 3.1 核心入口与调用链
 
-- 文件入库服务存在：`D:\Starverse\infra\files\fileIngestionService.ts`
+- 文件入库服务存在：`{repo-root}\infra\files\fileIngestionService.ts`
   - 关键函数：`ingestLocalFile`、`ingestUrl`
-- IPC/worker 入口：`D:\Starverse\infra\db\worker\handlers\filePipelineHandlers.ts`
+- IPC/worker 入口：`{repo-root}\infra\db\worker\handlers\filePipelineHandlers.ts`
   - `fileIngestion.ingestLocalFile`
   - `fileIngestion.ingestUrl`
   - `sendPlan.prepareOpenRouter`
 - renderer 调用链：
-  - 选择文件：`electronAPI.selectLocalFiles`（`D:\Starverse\electron\preload.ts`）-> `dialog:select-local-files`（`D:\Starverse\electron\ipc\dialogIpc.ts`）
-  - 拖拽/粘贴：`handleDropFiles`、`handlePasteAttachment` -> `ingestLocalFiles`（`D:\Starverse\src\ui-app\app\appChatApp.logic.ts`）
+  - 选择文件：`electronAPI.selectLocalFiles`（`{repo-root}\electron\preload.ts`）-> `dialog:select-local-files`（`{repo-root}\electron\ipc\dialogIpc.ts`）
+  - 拖拽/粘贴：`handleDropFiles`、`handlePasteAttachment` -> `ingestLocalFiles`（`{repo-root}\src\ui-app\app\appChatApp.logic.ts`）
   - URL 附件：`ingestUrlAttachment`（同文件）
 
 ### 3.2 是否已有统一入口
@@ -50,7 +50,7 @@
 
 ### 3.3 现有资产字段
 
-- `file_assets`（`D:\Starverse\infra\db\schema.sql`）及 `DecodedFileAsset`（`D:\Starverse\src\next\ipc\contracts\dbBridgeContracts.ts`）包含：
+- `file_assets`（`{repo-root}\infra\db\schema.sql`）及 `DecodedFileAsset`（`{repo-root}\src\next\ipc\contracts\dbBridgeContracts.ts`）包含：
   - `id`
   - `filename`（可映射 displayName）
   - `extension`
@@ -63,8 +63,8 @@
 
 ### 3.4 renderer 持有绝对路径与 IPC 引用传递
 
-- `resolveImageRenderUrl` 会按 `assetUrl -> fileUrl -> path` 回退（`D:\Starverse\src\ui-app\app\appChatApp.logic.ts`），存在 renderer 接触路径字符串的路径。
-- `dbBridge` 现有日志会输出 `payload.params`（`D:\Starverse\electron\ipc\dbBridge.ts`），若参数包含本地路径，存在日志泄露面。
+- `resolveImageRenderUrl` 会按 `assetUrl -> fileUrl -> path` 回退（`{repo-root}\src\ui-app\app\appChatApp.logic.ts`），存在 renderer 接触路径字符串的路径。
+- `dbBridge` 现有日志会输出 `payload.params`（`{repo-root}\electron\ipc\dbBridge.ts`），若参数包含本地路径，存在日志泄露面。
 
 ## 4. FileAccessRef 或等价结构现状
 
@@ -72,9 +72,9 @@
 
 - 代码中未发现统一命名 `FileAccessRef`。
 - 等价结构分散存在：
-  - 发送层引用：`SendPlanAttachmentRef`（`D:\Starverse\src\shared\files\sendPlanTypes.ts`）
-  - 存储层引用：`storageBackend + storageUri`（`D:\Starverse\infra\db\types.ts`）
-  - 受控路径解析：`resolveManagedStoragePath`（`D:\Starverse\src\shared\files\localStorageResolver.ts`）
+  - 发送层引用：`SendPlanAttachmentRef`（`{repo-root}\src\shared\files\sendPlanTypes.ts`）
+  - 存储层引用：`storageBackend + storageUri`（`{repo-root}\infra\db\types.ts`）
+  - 受控路径解析：`resolveManagedStoragePath`（`{repo-root}\src\shared\files\localStorageResolver.ts`）
 
 ### 4.2 缺口
 
@@ -92,8 +92,8 @@
 ### 5.2 删除语义
 
 - 删除 draft 附件：删 `draft_attachments` 关系并更新生命周期，不直接删底层 asset。
-  - 证据：`removeDraftAttachment`（`D:\Starverse\infra\files\conversationAttachmentService.ts`）
-  - 测试：`removes draft attachments without deleting the asset`（`D:\Starverse\infra\files\conversationAttachmentService.test.ts`）
+  - 证据：`removeDraftAttachment`（`{repo-root}\infra\files\conversationAttachmentService.ts`）
+  - 测试：`removes draft attachments without deleting the asset`（`{repo-root}\infra\files\conversationAttachmentService.test.ts`）
 
 ### 5.3 历史附件是否只读
 
@@ -118,7 +118,7 @@
 
 ### 6.1 路径与职责
 
-- 路径：`D:\Starverse\infra\files\sendPlanService.ts`
+- 路径：`{repo-root}\infra\files\sendPlanService.ts`
 - 当前职责：
   - 收集输入：`collectCurrentSendInputs`
   - 兼容性评估：`evaluateAttachmentCompatibility`
@@ -135,8 +135,8 @@
 
 ### 6.3 与 OpenRouter request preparation 关系
 
-- worker 先执行 `sendPlan.prepareOpenRouter`（`filePipelineHandlers.ts`），再调用 `serializeSendPlanForOpenRouter`（`D:\Starverse\src\next\openrouter\openRouterSendPlanSerializer.ts`）。
-- renderer 通过 `prepareOpenRouterSendFromDraft`（`D:\Starverse\src\next\openrouter\openRouterSendPreparation.ts`）获取序列化结果，`openRouterLiveStream`（`D:\Starverse\src\next\live\openRouterLiveStream.ts`）再建请求体。
+- worker 先执行 `sendPlan.prepareOpenRouter`（`filePipelineHandlers.ts`），再调用 `serializeSendPlanForOpenRouter`（`{repo-root}\src\next\openrouter\openRouterSendPlanSerializer.ts`）。
+- renderer 通过 `prepareOpenRouterSendFromDraft`（`{repo-root}\src\next\openrouter\openRouterSendPreparation.ts`）获取序列化结果，`openRouterLiveStream`（`{repo-root}\src\next\live\openRouterLiveStream.ts`）再建请求体。
 
 ### 6.4 后续边界建议（Step 2 输入）
 
@@ -152,7 +152,7 @@
 
 ### 7.1 路径与现有能力
 
-- 路径：`D:\Starverse\infra\files\derivativeJobService.ts`
+- 路径：`{repo-root}\infra\files\derivativeJobService.ts`
 - 已覆盖 derivative kind（含部分可运行）：
   - `preview_optimized`
   - `extracted_text`
@@ -181,17 +181,17 @@
 ### 8.1 组件路径
 
 - Draft 区：
-  - `D:\Starverse\src\ui-app\components\DraftAttachmentStrip.vue`
-  - `D:\Starverse\src\ui-app\components\DraftAttachmentCard.vue`
-  - `D:\Starverse\src\ui-app\components\DraftAttachmentDetailsDialog.vue`
+  - `{repo-root}\src\ui-app\components\DraftAttachmentStrip.vue`
+  - `{repo-root}\src\ui-app\components\DraftAttachmentCard.vue`
+  - `{repo-root}\src\ui-app\components\DraftAttachmentDetailsDialog.vue`
 - Message 区：
-  - `D:\Starverse\src\ui-kit\chat\MessageAttachmentList.vue`
-  - `D:\Starverse\src\ui-kit\chat\MessageAttachmentCard.vue`
-  - `D:\Starverse\src\ui-kit\chat\types.ts`
+  - `{repo-root}\src\ui-kit\chat\MessageAttachmentList.vue`
+  - `{repo-root}\src\ui-kit\chat\MessageAttachmentCard.vue`
+  - `{repo-root}\src\ui-kit\chat\types.ts`
 
 ### 8.2 状态与提示来源
 
-- 主要在 app 层统一计算：`D:\Starverse\src\ui-app\app\appChatApp.logic.ts`
+- 主要在 app 层统一计算：`{repo-root}\src\ui-app\app\appChatApp.logic.ts`
   - `normalizeDraftAttachmentDisplayStatus`
   - `resolveHistoryAttachmentDisplayStatus`
   - `getDraftAttachmentWarningReason`
@@ -212,11 +212,11 @@
 
 ### 9.1 路径与组织
 
-- 主 schema：`D:\Starverse\infra\db\schema.sql`
-- repo：`D:\Starverse\infra\db\repo\*.ts`
-- migration：`D:\Starverse\infra\db\migrations\*.ts`
-- worker 启动：`D:\Starverse\infra\db\worker\runtime.ts`
-- SQLite 文件：`app.getPath('userData')/chat.db`（`D:\Starverse\electron\main.ts`）
+- 主 schema：`{repo-root}\infra\db\schema.sql`
+- repo：`{repo-root}\infra\db\repo\*.ts`
+- migration：`{repo-root}\infra\db\migrations\*.ts`
+- worker 启动：`{repo-root}\infra\db\worker\runtime.ts`
+- SQLite 文件：`app.getPath('userData')/chat.db`（`{repo-root}\electron\main.ts`）
 
 ### 9.2 migration 风格
 
@@ -224,7 +224,7 @@
 
 ### 9.3 betterSqliteGate / helper
 
-- 存在测试 helper：`D:\Starverse\infra\testUtils\betterSqliteGate.ts`
+- 存在测试 helper：`{repo-root}\infra\testUtils\betterSqliteGate.ts`
 
 ### 9.4 FileTypeVerdict 未来存储候选
 
@@ -244,22 +244,22 @@
 - 采用混合布局：
   - 根级 `tests/`
   - 模块就近 `*.test.ts`
-- 全局配置：`D:\Starverse\vitest.config.ts`
-- 通用 setup：`D:\Starverse\tests\setup.ts`
+- 全局配置：`{repo-root}\vitest.config.ts`
+- 通用 setup：`{repo-root}\tests\setup.ts`
 
 ### 10.2 文件管线相关测试
 
-- `D:\Starverse\infra\db\worker.filePipeline.test.ts`
-- `D:\Starverse\infra\db\repo\filePipelineRepo.test.ts`
-- `D:\Starverse\infra\files\sendPlanService.test.ts`
-- `D:\Starverse\src\ui-app\AppChatApp.attachments.test.ts`
-- `D:\Starverse\src\next\openrouter\openRouterSendPlanSerializer.test.ts`
+- `{repo-root}\infra\db\worker.filePipeline.test.ts`
+- `{repo-root}\infra\db\repo\filePipelineRepo.test.ts`
+- `{repo-root}\infra\files\sendPlanService.test.ts`
+- `{repo-root}\src\ui-app\AppChatApp.attachments.test.ts`
+- `{repo-root}\src\next\openrouter\openRouterSendPlanSerializer.test.ts`
 
 ### 10.3 fixture 与二进制样本
 
 - 现有 fixture 目录：
-  - `D:\Starverse\tests\fixtures\model-catalog`
-  - `D:\Starverse\src\next\openrouter\sse\fixtures`
+  - `{repo-root}\tests\fixtures\model-catalog`
+  - `{repo-root}\src\next\openrouter\sse\fixtures`
 - 二进制样本多为测试内联（`Uint8Array`/临时文件写入）。
 - 未发现统一“二进制 fixture 管理规范”文档。
 
@@ -274,18 +274,18 @@
 
 ### 11.1 现有脱敏能力
 
-- `D:\Starverse\src\next\transport\openrouterFetch.ts`
+- `{repo-root}\src\next\transport\openrouterFetch.ts`
   - `createRequestSummary`
   - `sanitizeHeadersForLog`
   - `sanitizeBodyForLog`
-- `D:\Starverse\src\next\ipc\sanitizeForIpc.ts`
-- `D:\Starverse\electron\ipc\dialogIpc.ts` 的 `sanitizeDialogErrorMessage`
-- `D:\Starverse\infra\files\derivativeJobService.ts` 的 `sanitizeDerivativeErrorMessage`
+- `{repo-root}\src\next\ipc\sanitizeForIpc.ts`
+- `{repo-root}\electron\ipc\dialogIpc.ts` 的 `sanitizeDialogErrorMessage`
+- `{repo-root}\infra\files\derivativeJobService.ts` 的 `sanitizeDerivativeErrorMessage`
 
 ### 11.2 风险点
 
-- `D:\Starverse\electron\ipc\imageIpc.ts` 存在多处 `console.log` 直接打印本地路径。
-- `D:\Starverse\electron\ipc\dbBridge.ts` 打印 `payload.params`，路径参数可能外泄。
+- `{repo-root}\electron\ipc\imageIpc.ts` 存在多处 `console.log` 直接打印本地路径。
+- `{repo-root}\electron\ipc\dbBridge.ts` 打印 `payload.params`，路径参数可能外泄。
 - 诊断导出链路（`src/next/netExp/*`）需持续检查原始错误与参数输出。
 
 ## 12. Starverse 绑定地图
@@ -303,24 +303,24 @@
 
 以下为后续阶段（Step 2+）可考虑修改范围（本轮未修改）：
 
-- `D:\Starverse\infra\files\sendPlanService.ts`：接入新的路由映射调用点（保留现有 gate）。
-- `D:\Starverse\infra\db\worker\handlers\filePipelineHandlers.ts`：将新判定结果并入 prepare/build payload。
-- `D:\Starverse\src\ui-app\app\appChatApp.logic.ts`：扩展附件 VM 字段与状态映射。
-- `D:\Starverse\src\next\openrouter\openRouterSendPlanSerializer.ts`：消费新 route/verdict 字段（不改协议边界）。
-- `D:\Starverse\infra\db\migrations\ensureFilePipelineSchema.ts`：若落库 verdict，需要增量 migration。
-- `D:\Starverse\infra\db\repo\fileAssetRepo.ts`（及关联 repo）：读写 verdict 持久化字段。
-- `D:\Starverse\infra\files\derivativeJobService.ts`：在需要时接入 parser validation 触发点。
+- `{repo-root}\infra\files\sendPlanService.ts`：接入新的路由映射调用点（保留现有 gate）。
+- `{repo-root}\infra\db\worker\handlers\filePipelineHandlers.ts`：将新判定结果并入 prepare/build payload。
+- `{repo-root}\src\ui-app\app\appChatApp.logic.ts`：扩展附件 VM 字段与状态映射。
+- `{repo-root}\src\next\openrouter\openRouterSendPlanSerializer.ts`：消费新 route/verdict 字段（不改协议边界）。
+- `{repo-root}\infra\db\migrations\ensureFilePipelineSchema.ts`：若落库 verdict，需要增量 migration。
+- `{repo-root}\infra\db\repo\fileAssetRepo.ts`（及关联 repo）：读写 verdict 持久化字段。
+- `{repo-root}\infra\files\derivativeJobService.ts`：在需要时接入 parser validation 触发点。
 
 ## 14. 禁止重写文件清单
 
 以下模块建议明确禁止“整段重写”，仅允许最小增量接入：
 
-- `D:\Starverse\infra\files\sendPlanService.ts`（发送计划核心，回归风险高）
-- `D:\Starverse\infra\db\worker\handlers\filePipelineHandlers.ts`（IPC/worker 主入口）
-- `D:\Starverse\src\ui-app\app\appChatApp.logic.ts`（前端核心状态机）
-- `D:\Starverse\infra\db\schema.sql`（历史兼容面广）
-- `D:\Starverse\infra\db\migrations\ensureFilePipelineSchema.ts`（线上升级路径）
-- `D:\Starverse\electron\preload.ts` 与 `D:\Starverse\electron\ipc\*.ts`（安全边界与 IPC 协议）
+- `{repo-root}\infra\files\sendPlanService.ts`（发送计划核心，回归风险高）
+- `{repo-root}\infra\db\worker\handlers\filePipelineHandlers.ts`（IPC/worker 主入口）
+- `{repo-root}\src\ui-app\app\appChatApp.logic.ts`（前端核心状态机）
+- `{repo-root}\infra\db\schema.sql`（历史兼容面广）
+- `{repo-root}\infra\db\migrations\ensureFilePipelineSchema.ts`（线上升级路径）
+- `{repo-root}\electron\preload.ts` 与 `{repo-root}\electron\ipc\*.ts`（安全边界与 IPC 协议）
 
 ## 15. 潜在冲突点与待决策问题
 

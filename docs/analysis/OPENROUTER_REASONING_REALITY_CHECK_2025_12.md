@@ -1040,7 +1040,6 @@ grep -r 'message\?\.reasoning_details' src/services/providers/openrouter/
 
 ## 文档元信息
 
-- **审计人员**：GitHub Copilot (Claude Sonnet 4.5)
 - **审计方法**：代码全仓检索 + 定点读文件 + 类型追踪
 - **证据级别**：每条结论附文件路径+行号+代码片段
 - **最后更新**：2025年12月13日

@@ -178,4 +178,4 @@ Phase 4 以以下已完成边界作为输入：
 
 ## 11. 给下一轮 Agent 的提示词草案
 
-> 在 `D:/Starverse` 执行 P4-A（插件生命周期与设置页规划）的实现前任务包梳理。只做代码勘察与任务分解，不写生产代码。输出 install/enable/disable/update/rollback/uninstall 状态机、设置页最小信息架构、可观测字段、隐私边界、验收命令与回滚策略。不得改 `sendPlanService` 主逻辑，不得接入 provider，不得执行 destructive cleanup。
+> 在 `{repo-root}` 执行 P4-A（插件生命周期与设置页规划）的实现前任务包梳理。只做代码勘察与任务分解，不写生产代码。输出 install/enable/disable/update/rollback/uninstall 状态机、设置页最小信息架构、可观测字段、隐私边界、验收命令与回滚策略。不得改 `sendPlanService` 主逻辑，不得接入 provider，不得执行 destructive cleanup。

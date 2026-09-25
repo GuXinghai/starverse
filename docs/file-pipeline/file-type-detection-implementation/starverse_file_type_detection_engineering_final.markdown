@@ -243,7 +243,7 @@ StarversePortable/engines/
 开发版：
 
 ```text
-D:/Starverse/.starverse-engines/
+{repo-root}/.starverse-engines/
 ```
 
 主程序目录不作为插件默认安装位置，避免权限、更新覆盖、卸载残留和完整性校验混乱。

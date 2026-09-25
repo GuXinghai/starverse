@@ -1,7 +1,7 @@
 # OpenRouter Web Plugin Boundary Probe
 
 - generatedAt: 2026-02-18T17:58:58.217Z
-- outDir: D:\Starverse\artifacts\openrouter\web-plugin-boundary\20260219_015819
+- outDir: {repo-root}\artifacts\openrouter\web-plugin-boundary\20260219_015819
 - keySource: appdata
 - keyHash: 6a09729b98
 - baseModel: google/gemini-2.5-flash

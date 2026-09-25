@@ -125,7 +125,7 @@ location.reload()
 
 // 方法 2：清理数据（彻底）
 // 在终端执行
-cd d:\Starverse
+cd {repo-root}
 .\clear-all-data.ps1
 npm run dev
 ```

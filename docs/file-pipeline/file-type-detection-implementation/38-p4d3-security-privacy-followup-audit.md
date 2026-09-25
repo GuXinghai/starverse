@@ -259,7 +259,7 @@ Metadata allowlist 设计在 P4-C safety patch (`d505099`) 中实施：
 | `src/next/ipc/contracts/dbBridgeContracts.ts` | 1013 | `messageAsset.listByMessageIds` 返回 raw `MessageAssetRecord[]` |
 | `electron/main.ts` | 461 | `messageAsset.getById` 在 Electron main process 中被调用 |
 
-**影响**: 真实文件系统路径（`C:\Users\...`, `/home/...`）和 file:// URL 穿越 IPC boundary 到达 renderer。这直接与 S-9 claim 冲突 — 当前 S-9 验证仅覆盖新的 `EnginePluginSettingsPanel`，未覆盖 legacy `messageAsset.*` UI consumers。
+**影响**: 真实文件系统路径（`{user-home} `/home/...`）和 file:// URL 穿越 IPC boundary 到达 renderer。这直接与 S-9 claim 冲突 — 当前 S-9 验证仅覆盖新的 `EnginePluginSettingsPanel`，未覆盖 legacy `messageAsset.*` UI consumers。
 
 **严重性**: P0 — release-blocking path/hash/token leak。
 

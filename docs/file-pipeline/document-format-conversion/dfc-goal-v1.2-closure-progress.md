@@ -2,7 +2,7 @@
 
 Append-only progress log for the DFC v1.2 closure baseline.
 
-## 2026-06-25 15:51 +08:00
+## 2026-06-25 07:51 UTC
 
 Action:
 
@@ -33,7 +33,7 @@ Next step:
 
 - Add v1.2 closure addendum to the implementation matrix, progress ledger, and important context, then run targeted validation.
 
-## 2026-06-25 15:58 +08:00
+## 2026-06-25 07:58 UTC
 
 Action:
 
@@ -58,7 +58,7 @@ Next step:
 
 - Wait for implementation-scope code mapping feedback, then run targeted DFC/UI/contract/i18n validation and static gates.
 
-## 2026-06-25 16:03 +08:00
+## 2026-06-25 08:03 UTC
 
 Action:
 

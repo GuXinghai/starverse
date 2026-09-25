@@ -376,7 +376,6 @@ console.warn('[useMessageSending] ⚠️ 收到未处理的 chunk 类型:', {
 
 - **发现时间**: 2025-12-10
 - **修复时间**: 2025-12-10
-- **修复作者**: GitHub Copilot (Claude Sonnet 4.5)
 - **审核状态**: ✅ 单元测试通过（22/22）
 - **Git Commit**: (待提交)
 
@@ -432,7 +431,7 @@ if (Array.isArray(messageContent)) {
 }
 ```
 
-**提交**: `d:\Starverse\src\services\providers\openrouter\sseParser.ts` 第 552-573 行
+**提交**: `{repo-root}\src\services\providers\openrouter\sseParser.ts` 第 552-573 行
 
 #### Bug 2: Null 输入未校验
 
@@ -448,7 +447,7 @@ if (!rawChunk || typeof rawChunk !== 'object') {
 }
 ```
 
-**提交**: `d:\Starverse\src\services\providers\openrouter\sseParser.ts` 第 351-354 行
+**提交**: `{repo-root}\src\services\providers\openrouter\sseParser.ts` 第 351-354 行
 
 #### Bug 3: Usage 处理顺序错误
 
@@ -477,7 +476,7 @@ if (!primaryChoice) {
 }
 ```
 
-**提交**: `d:\Starverse\src\services\providers\openrouter\sseParser.ts` 第 361-390 行
+**提交**: `{repo-root}\src\services\providers\openrouter\sseParser.ts` 第 361-390 行
 
 ### 6.3 单元测试验证
 

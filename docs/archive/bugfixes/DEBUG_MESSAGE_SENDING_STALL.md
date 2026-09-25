@@ -299,7 +299,7 @@ curl -x http://127.0.0.1:7890 https://www.google.com
 ### 方案 2：清空应用缓存
 ```powershell
 # Windows
-cd d:\Starverse
+cd {repo-root}
 .\clear-all-data.ps1
 
 # 重启应用
