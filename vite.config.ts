@@ -5,6 +5,9 @@ import vue from '@vitejs/plugin-vue'
 import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './config/appCsp'
 
 const generatedRuntimeWatchIgnores = [
+  '**/.artifacts/**',
+  '**/artifacts/disk_audit_*/**',
+  '**/artifacts/openrouter/web-plugin-boundary/**',
   '**/.external-runtime-work/**',
   '**/.starverse-engines/**',
   '**/managed-runtimes/**',
@@ -101,8 +104,6 @@ export default defineConfig({
     watch: {
       ignored: [
         ...generatedRuntimeWatchIgnores,
-        '**/.artifacts/netlog/**',
-        '**/.artifacts/plugin-packages/**',
       ],
     },
   },

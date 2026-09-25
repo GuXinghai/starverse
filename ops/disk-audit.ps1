@@ -1,12 +1,35 @@
 param(
-    [string[]]$Drives = @('C', 'D', 'E'),
-    [string]$OutputRoot = (Join-Path (Get-Location) 'artifacts'),
+    [string[]]$Drives = @(),
+    [string]$OutputRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) '.artifacts\disk-audit'),
     [Int64]$LargeFileThresholdBytes = 1GB,
     [int]$TopDirectoryCount = 30
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if ($Drives.Count -eq 0) {
+    $Drives = @(
+        Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 3' |
+            ForEach-Object { $_.DeviceID.TrimEnd(':') }
+    )
+}
+if ($Drives.Count -eq 0) {
+    throw 'No fixed logical drives were found.'
+}
+
+$OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
+$repoRootPrefix = $repoRoot.TrimEnd('\') + '\'
+$privateOutputRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '.artifacts\disk-audit'))
+$privateOutputPrefix = $privateOutputRoot.TrimEnd('\') + '\'
+$outputIsInsideRepo = $OutputRoot.Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    $OutputRoot.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)
+$outputIsPrivate = $OutputRoot.Equals($privateOutputRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    $OutputRoot.StartsWith($privateOutputPrefix, [StringComparison]::OrdinalIgnoreCase)
+if ($outputIsInsideRepo -and -not $outputIsPrivate) {
+    throw 'Raw disk-audit reports must be written outside the repository or under .artifacts/disk-audit.'
+}
 
 function Write-Log {
     param(
@@ -107,9 +130,17 @@ function Get-RiskLevel {
 
     $normalized = $Path.ToLowerInvariant()
 
-    if ($normalized -eq 'c:\windows' -or $normalized.StartsWith('c:\windows\')) { return '高风险' }
-    if ($normalized -eq 'c:\program files' -or $normalized.StartsWith('c:\program files\')) { return '高风险' }
-    if ($normalized -eq 'c:\program files (x86)' -or $normalized.StartsWith('c:\program files (x86)\')) { return '高风险' }
+    $protectedRoots = @(
+        $env:SystemRoot,
+        $env:ProgramFiles,
+        [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    ) | Where-Object { $_ }
+    foreach ($root in $protectedRoots) {
+        $normalizedRoot = [IO.Path]::GetFullPath($root).TrimEnd('\').ToLowerInvariant()
+        if ($normalized -eq $normalizedRoot -or $normalized.StartsWith("$normalizedRoot\")) {
+            return '高风险'
+        }
+    }
     if ($normalized -match '\\users\\[^\\]+\\appdata\\' -and $Category -ne '浏览器缓存、软件缓存、日志' -and $Category -ne '临时文件、回收站') { return '高风险' }
     if ($normalized -match '\\users\\[^\\]+\\(desktop|documents|source|repos|projects?)\\') { return '高风险' }
     if ($normalized -match 'onedrive|dropbox|百度网盘|baidunetdisk|googledrive|google drive|icloud|坚果云|synologydrive') { return '高风险' }
@@ -145,8 +176,8 @@ function Get-SuggestedAction {
     if ($IsDuplicate) { return '移入回收站' }
     if ($RiskLevel -eq '低风险' -and $Category -eq '临时文件、回收站') { return '直接删除' }
     if ($RiskLevel -eq '低风险' -and $Category -eq '浏览器缓存、软件缓存、日志') { return '直接删除' }
-    if ($Category -eq '云盘同步目录中的本地副本') { return '上云后删除本地' }
-    if ($Category -eq '旧项目归档、课程资料、无用备份') { return '上云后删除本地' }
+    if ($Category -eq '云盘同步目录中的本地副本') { return '需要用户确认' }
+    if ($Category -eq '旧项目归档、课程资料、无用备份') { return '需要用户确认' }
     if ($Category -eq 'AI 模型权重、数据集、缓存' -and $normalized -match '\\cache\\') { return '直接删除' }
     if ($RiskLevel -eq '中风险' -and $ageDays -ge 180) { return '需要用户确认' }
     if ($RiskLevel -eq '高风险') { return '保留不动' }
@@ -413,7 +444,6 @@ function Get-DuplicateLargeFiles {
                     RemovePath = $item.Path
                     SizeBytes = [Int64]$item.SizeBytes
                     SizeHuman = $item.SizeHuman
-                    Hash = $hash
                     SuggestedAction = $item.SuggestedAction
                 })
             }
@@ -431,11 +461,14 @@ function Get-KnownSourceFindings {
 
     $findings = New-Object System.Collections.Generic.List[object]
 
-    $knownFiles = @(
-        'C:\hiberfil.sys',
-        'C:\pagefile.sys',
-        'C:\swapfile.sys'
-    )
+    $systemDrive = if ($env:SystemDrive) {
+        $env:SystemDrive.TrimEnd('\')
+    }
+    else {
+        (Split-Path $env:SystemRoot -Qualifier).TrimEnd('\')
+    }
+    $knownFiles = @('hiberfil.sys', 'pagefile.sys', 'swapfile.sys') |
+        ForEach-Object { Join-Path ($systemDrive + '\') $_ }
 
     foreach ($filePath in $knownFiles) {
         if (Test-Path -LiteralPath $filePath) {
@@ -474,7 +507,7 @@ function Get-KnownSourceFindings {
     }
 
     $knownDirectories = @(
-        @{ Path = 'C:\Windows\WinSxS'; Category = 'WinSxS'; Risk = '高风险'; Action = '保留不动'; Reason = '组件存储目录，不建议手工删除。' },
+        @{ Path = (Join-Path $env:SystemRoot 'WinSxS'); Category = 'WinSxS'; Risk = '高风险'; Action = '保留不动'; Reason = '组件存储目录，不建议手工删除。' },
         @{ Path = (Join-Path $UserProfile '.wslconfig'); Category = 'WSL 配置'; Risk = '高风险'; Action = '保留不动'; Reason = 'WSL 配置文件体积小，但 WSL 虚拟盘需单独检查。' },
         @{ Path = (Join-Path $UserProfile 'AppData\Local\Docker'); Category = 'Docker Desktop'; Risk = '高风险'; Action = '需要用户确认'; Reason = 'Docker 镜像和卷清理可能影响容器。' },
         @{ Path = (Join-Path $UserProfile 'AppData\Local\Packages'); Category = 'UWP/WSL 包'; Risk = '高风险'; Action = '需要用户确认'; Reason = '其中可能包含 WSL、Android 子系统或应用虚拟磁盘。' },

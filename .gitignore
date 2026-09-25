@@ -103,6 +103,9 @@ payload.json
 temptest.ps1
 .git_missed.txt
 .artifacts/netlog/*.json
+.artifacts/disk-audit/
+/artifacts/disk_audit_*/
+/artifacts/openrouter/web-plugin-boundary/
 .artifacts/white-screen/
 .artifacts/plugin-packages/
 .artifacts/epoch2-normal-profile-initialization/
