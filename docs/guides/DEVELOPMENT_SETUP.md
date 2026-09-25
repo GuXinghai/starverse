@@ -26,7 +26,7 @@ cd starverse
 npm install
 ```
 
-`npm install` 的 `postinstall` 会把 `better-sqlite3` 重建为 Node ABI。本文命令以当前 Windows/PowerShell 环境为基线；macOS/Linux 可复用同一组 npm scripts，但 `dev:clean` 等脚本包含平台专用命令。
+`npm install` 的 `postinstall` 会把 `better-sqlite3` 重建为 Node ABI。Windows、macOS 与 Linux 在依赖和原生构建工具可用时使用相同的 npm scripts。若原生依赖需要从源码编译，请安装当前平台所需的 C/C++ 工具链。文档中的 PowerShell 命令仅用于 Windows 示例；`dev:clean` 等辅助脚本包含平台专用命令。
 
 ## 启动
 

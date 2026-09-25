@@ -1,232 +1,210 @@
 # Starverse
 
-Starverse 是一个本地优先的 AI 对话桌面客户端。它使用 Electron、Vue 3 和 TypeScript 构建，将对话、分支、项目、模型目录与偏好、路由和搜索索引持久化到当前 epoch-2 SQLite 数据库，同时通过受控的 Electron 主进程边界连接云端模型服务、本地推理运行时和自定义 OpenAI Chat Completions-compatible 服务。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-> Starverse 正在持续开发。当前仓库适合开发、测试和架构验证；正式发行前仍需完成平台图标、代码签名、公证以及各平台安装包的安装、升级和卸载验证。
+Starverse is a local-first AI chat desktop application built with Electron, Vue 3, and TypeScript. Conversations, branches, projects, model catalogs and preferences, routing data, and search indexes are stored in an epoch-2 SQLite database. A controlled Electron main-process boundary connects the app to cloud model providers, local inference runtimes, and user-configured OpenAI Chat Completions-compatible services.
 
-## 能力概览
+> Starverse is under active development. Before a production release, the project still needs platform icons, code signing and notarization where applicable, and installation, upgrade, and uninstall validation on each supported platform.
 
-- 多 Provider 流式文本对话，并保存每次回答使用的 Provider、模型和路由 provenance；部分 Provider 还支持图像生成。
-- OpenRouter、OpenAI Responses、Google AI Studio、Anthropic Messages 和 DeepSeek 官方接口。
-- LM Studio、Ollama 和自定义 loopback endpoint 等本地运行时。
-- 可配置的 OpenAI Chat Completions-compatible Provider 实例、模型目录、endpoint、请求配置和响应解析。
-- 对话分支、重试、重新生成、编辑后重发，以及新对话模板。
-- Epoch-2 SQLite 持久化与 FTS5 全文搜索。
-- 图片和文件附件、发送前兼容性检查、衍生文件与可选文档转换运行时。
-- Markdown、语法高亮、KaTeX 数学公式和安全清理后的富文本展示。
-- 中英文界面、模型目录与偏好、项目管理、网络代理和诊断工具。
+## Features
 
-## Provider 与运行时
+- Streaming conversations across multiple providers, with provider, model, and routing provenance saved for each response.
+- OpenRouter, OpenAI Responses, Google AI Studio, Anthropic Messages, and DeepSeek provider integrations.
+- Local runtimes such as LM Studio, Ollama, and explicitly configured loopback endpoints.
+- Configurable OpenAI Chat Completions-compatible providers, models, endpoints, request settings, and response parsing.
+- Conversation branches, retries, regeneration, edit-and-resend, and new-conversation templates.
+- Epoch-2 SQLite persistence and FTS5 full-text search.
+- Image and file attachments, send-compatibility checks, derived files, and optional document-conversion runtimes.
+- Markdown, syntax highlighting, KaTeX, and sanitized rich-text rendering.
+- English and Simplified Chinese interfaces, model catalog and preferences, project management, network proxy settings, and diagnostic tools.
 
-| 类型 | 接入方式 | 说明 |
+## Providers and runtimes
+
+| Type | Integration | Notes |
 | --- | --- | --- |
-| OpenRouter | OpenRouter API | 远程模型目录、凭据管理和流式聊天 |
-| OpenAI | Responses API | 官方 Responses 协议与推理参数 |
-| Google | Google AI Studio / Gemini API | 官方 Gemini 文本与多模态请求路径 |
-| Anthropic | Messages API | 官方 Anthropic Messages 协议（不再维护，逐步移除，见下文声明） |
-| DeepSeek | DeepSeek API | 官方 DeepSeek 文本聊天路径 |
-| OpenAI-compatible | Chat Completions-compatible | 用户定义 Provider、endpoint、认证、模型与解析配置 |
-| LM Studio | 本地服务 | loopback 探测、模型管理和聊天 |
-| Ollama | 本地服务 | loopback 探测、模型加载/卸载和聊天 |
-| Local endpoint | 本地兼容服务 | 面向显式配置的 loopback endpoint |
+| OpenRouter | OpenRouter API | Remote model catalog, credential management, and streaming chat |
+| OpenAI | Responses API | Official Responses protocol and reasoning parameters |
+| Google | Google AI Studio / Gemini API | Official Gemini text and multimodal request path |
+| Anthropic | Messages API | Native integration is frozen; see the maintenance status below |
+| DeepSeek | DeepSeek API | Official DeepSeek text chat path |
+| OpenAI-compatible | Chat Completions-compatible | User-defined provider, endpoint, authentication, model, and parsing settings |
+| LM Studio | Local service | Loopback detection, model management, and chat |
+| Ollama | Local service | Loopback detection, model loading/unloading, and chat |
+| Local endpoint | Local compatible service | Explicitly configured loopback endpoint |
 
-可用模型取决于用户凭据、本地运行时和远端目录，仓库不承诺固定的模型数量。
+Available models depend on user credentials, local runtimes, and remote catalogs; the repository does not promise a fixed model count. In the table, Google refers to the Google AI Studio provider, while Gemini refers to its API and model family.
 
-表中的 Google 指 Google AI Studio Provider；Gemini 是其 API/模型家族称呼，不是另一个独立 Provider。
+### Anthropic native integration status
 
-## Claude/Anthropic 原生支持停止声明
+As of 2026-08-23, native Anthropic Messages support is frozen. The project is not adding features or fixes to this integration and plans to remove the native integration and related references over time. This maintenance decision reflects the project's support priorities and general provider availability, policy, and reliability considerations; it does not make a claim about service access in any particular region.
 
-**决定（2026-08-23）**：作为秉持开源、开放、共享、共有理念的项目，本项目不支持任何封闭的、歧视性的供应商及其协议。因此本项目不再维护 Claude（Anthropic）的原生供应，并将在后续提交中逐步移除任何与 Claude 生态相关的代码、配置和文档引用。
+Users who need Claude models can configure a compatible gateway or another provider that offers access. Starverse does not guarantee the availability or behavior of third-party routes.
 
-**原因**：Anthropic 对正常用户进行无差别封禁，中国大陆用户即使合规使用也会被无理由限制、拒绝访问或封禁账号；其对中国用户充满了歧视与不公正待遇。这样的供应商及其封闭协议与项目理念背道而驰，本项目不会继续维护其原生接入。
+## Quick start
 
-**后续安排**：
+### Requirements
 
-- 现有 Anthropic Messages Provider 代码冻结，不再新增功能或修复问题。
-- 逐步清理 Anthropic/Claude 相关代码、测试、配置、i18n 文案与文档。
-- 需要 Claude 模型的用户可通过 OpenAI Chat Completions-compatible 网关或 OpenRouter 等代理渠道自行接入；本项目不对此类第三方渠道做任何可用性保证。
-
-## 快速开始
-
-### 环境要求
-
-- Node.js `>=22.12 <23`
-- npm `>=10 <11`
+- Node.js >=22.12 and <23
+- npm >=10 and <11
 - Git
 
-```bash
-git clone https://github.com/GuXinghai/starverse.git
-cd starverse
-npm install
-npm run electron:dev
-```
+    git clone https://github.com/GuXinghai/starverse.git
+    cd starverse
+    npm install
+    npm run electron:dev
 
-`npm install` 会通过 `postinstall` 将 `better-sqlite3` 重建为 Node ABI；`npm run electron:dev` 会自动切换到 Electron ABI，并启动 Vite、Electron epoch-2 主进程和数据库运行时。
+npm install runs postinstall, which rebuilds better-sqlite3 for the Node ABI. npm run electron:dev switches to the Electron ABI and starts Vite, the epoch-2 Electron main process, and the database runtime.
 
-本文命令以当前 Windows/PowerShell 开发环境为基线；macOS/Linux 可复用同一组 npm scripts，但 `dev:clean` 等脚本包含平台专用命令。
+The package scripts are the common entry point across Windows, macOS, and Linux. Some helper scripts are platform-specific. PowerShell examples in the documentation are for Windows; use the native shell on macOS and Linux. If a native dependency must compile from source, install the C/C++ build tools required by your platform.
 
-如果只需要启动 Renderer/Vite 开发服务器：
+To start only the Renderer/Vite development server:
 
-```bash
-npm run dev
-```
+    npm run dev
 
-## 常用命令
+## Common commands
 
-| 命令 | 用途 |
+| Command | Purpose |
 | --- | --- |
-| `npm run electron:dev` | 重建 Electron ABI，并启动完整桌面开发环境 |
-| `npm run dev` | 启动 Renderer/Vite 开发服务器 |
-| `npm run build` | 类型检查、构建 Renderer/native epoch 产物并调用 electron-builder |
-| `npm run test:prepare` | 手动重建 Node native ABI（数据库/native 测试前按需执行） |
-| `npm test` | 仅运行 unit partition（不会自动重建 ABI） |
-| `npm run test:unit` | 显式运行 unit partition（与 `npm test` 相同范围） |
-| `npm run test:watch` | 监听模式运行 unit partition |
-| `npm run test:ui` | 运行 jsdom UI partition |
-| `npm run test:integration` | 运行 integration partition |
-| `npm run test:model-catalog:smoke` | 运行模型目录查询与详情的 focused smoke |
-| `npm run test:model-picker:smoke` | 按 unit/UI/integration 三阶段运行 model-picker mixed smoke |
-| `npm run test:ui:slow -- path/to/one.slow.test.ts` | 一次运行一个 slow UI 文件 |
-| `npm run test:integration:slow -- path/to/one.slow.test.ts` | 一次运行一个 slow integration 文件 |
-| `npm run test:coverage` | 生成 unit partition 覆盖率 |
-| `npm run test:runner-ui` | 启动 Vitest dashboard（不是 UI partition） |
-| `node scripts/check-test-partitions.mjs` | 校验测试发现、owner、override 和 slow 规则 |
-| `npm run lint` | 运行 ESLint |
-| `npm run test:electron-smoke` | 自动重建 Electron ABI、构建并运行 Electron shell smoke |
-| `npm run test:packaged-identity-smoke` | 验证打包身份和临时 user-data 隔离 |
-| `npm run test:epoch-database:electron` | 在 Electron ABI 下验证 fresh epoch-2 数据库启动 |
-| `npm run test:model-provider-identity:fresh-profile` | 运行模型/Provider identity fresh-profile smoke |
-| `npm run verify:ssot` | 运行 unit partition 及 SSOT、UI、网络出口和 Git 治理门禁 |
-| `npm run gate:network-egress` | 检查生产网络出口是否经过已分类边界 |
-| `npm run gate:generation-v2-zero-residual` | 检查已删除的旧 Generation V2 路径和残留引用 |
-| `npm run gate:model-identity-purge` | 检查模型/Provider identity hard-cut 边界 |
-| `npm run gate:docs` | 检查文档入口链接和新增文档最小元数据 |
-| `npm run storybook` | 启动 Storybook |
+| npm run electron:dev | Rebuild the Electron ABI and start the full desktop development environment |
+| npm run dev | Start the Renderer/Vite development server |
+| npm run build | Type-check, build the Renderer/native epoch outputs, and run electron-builder |
+| npm run test:prepare | Rebuild the Node native ABI before database/native tests when needed |
+| npm test | Run only the unit partition; does not rebuild the ABI |
+| npm run test:unit | Explicitly run the unit partition |
+| npm run test:ui | Run the jsdom UI partition |
+| npm run test:integration | Run the integration partition |
+| npm run test:model-catalog:smoke | Run focused model catalog query/detail smoke tests |
+| npm run test:model-picker:smoke | Run the model-picker unit/UI/integration smoke stages |
+| npm run test:ui:slow -- path/to/one.slow.test.ts | Run one slow UI test file |
+| npm run test:integration:slow -- path/to/one.slow.test.ts | Run one slow integration test file |
+| npm run test:coverage | Generate unit-partition coverage |
+| npm run test:runner-ui | Start the Vitest dashboard |
+| node scripts/check-test-partitions.mjs | Check test discovery, ownership, overrides, and slow-test rules |
+| npm run lint | Run ESLint |
+| npm run test:electron-smoke | Rebuild the Electron ABI, build, and run the Electron shell smoke |
+| npm run test:packaged-identity-smoke | Check packaged identity and temporary user-data isolation |
+| npm run test:epoch-database:electron | Verify fresh epoch-2 database startup under the Electron ABI |
+| npm run test:model-provider-identity:fresh-profile | Run the model/provider identity fresh-profile smoke |
+| npm run verify:ssot | Run unit tests and SSOT, UI, network-egress, privacy, and Git governance gates |
+| npm run gate:network-egress | Check that production network egress follows classified boundaries |
+| npm run gate:privacy | Check source, documentation, operations tooling, and artifact privacy boundaries |
+| npm run gate:generation-v2-zero-residual | Check removal of legacy Generation V2 paths and references |
+| npm run gate:model-identity-purge | Check model/provider identity hard-cut boundaries |
+| npm run gate:docs | Check documentation entry links and required metadata |
+| npm run storybook | Start Storybook |
 
-### `better-sqlite3` ABI
+### better-sqlite3 ABI
 
-Node/Vitest 与 Electron 使用不同的 native ABI，同一时间只有一个目标有效：
+Node/Vitest and Electron use different native ABI targets. Only one target is active at a time:
 
-```bash
-# Node 脚本、数据库测试和 Vitest 前
-npm run rebuild:node
+    # Before Node scripts, database tests, or Vitest
+    npm run rebuild:node
 
-# Electron 手工运行或 smoke 前
-npm run rebuild:electron
-```
+    # Before manually launching Electron or running an Electron smoke
+    npm run rebuild:electron
 
-如果看到 `NODE_MODULE_VERSION` 或 `better-sqlite3` native binding 错误，请为即将运行的环境重建，然后重试原命令。不要提交 `node_modules`、native binary 或仅由重建产生的锁文件变化。
+If you see a NODE_MODULE_VERSION or native-binding error, rebuild for the environment you are about to run and retry the original command. Do not commit node_modules, native binaries, or lockfile changes caused only by a rebuild.
 
-测试准备是手动步骤：数据库/native Node 测试前按需执行 `npm run test:prepare`。`npm test` 保持 unit-only 且不会隐式切换 native ABI；`npm run test:electron-smoke` 会在脚本内部重建 Electron ABI，其他 Electron smoke 或手工启动前仍应先执行 `npm run rebuild:electron`。
+Database/native Node test preparation is manual. npm test remains unit-only and does not switch the ABI implicitly. npm run test:electron-smoke rebuilds the Electron ABI internally; rebuild it manually before other Electron smoke commands or manual launches.
 
-测试分层规则、slow 单文件约束、已删除的 `infra/db/worker.filePipeline.test.ts`
-边界，以及 model-picker 的 mixed split 说明见
-[`docs/maintenance/test-strategy.md`](docs/maintenance/test-strategy.md)。
+See the [test strategy](docs/maintenance/test-strategy.md) for test partitions, slow-file rules, removed test boundaries, and the model-picker split.
 
-## 架构概览
+## Architecture
 
-```text
-Vue Renderer
-  src/ui-app · src/ui-kit · src/next
-          │
-          │ narrow preload APIs + validated IPC contracts
-          ▼
-Electron Main
-  epoch-2 bootstrap · credentials · provider transports · catalog sync · file services
-          │
-          ├── remote providers / loopback runtimes
-          │
-          └── better-sqlite3 (main-process ownership)
-                    ▼
-              epoch-2 SQLite repositories
-              schema manifest · FTS5 · recovery checks
-```
+    Vue Renderer
+      src/ui-app · src/ui-kit · src/next
+              │
+              │ narrow preload APIs + validated IPC contracts
+              ▼
+    Electron Main
+      epoch-2 bootstrap · credentials · provider transports · catalog sync · file services
+              │
+              ├── remote providers / loopback runtimes
+              │
+              └── better-sqlite3 (main-process ownership)
+                        ▼
+                  epoch-2 SQLite repositories
+                  schema manifest · FTS5 · recovery checks
 
-- `src/ui-app/`：应用界面和聊天编排。
-- `src/ui-kit/`：可复用聊天组件与富文本渲染。
-- `src/next/`：对话、分支、消息、Provider、模型目录、文件和状态领域逻辑。
-- `src/shared/`：跨进程契约、Provider-neutral 协议和共享安全逻辑。
-- `electron/`：窗口、preload、IPC、凭据、网络传输和系统服务。
-- `infra/db/`：SQLite schema、Generation V2 repositories 和数据契约。
-- `infra/files/`：文件管道、衍生任务、转换与 managed runtime 生命周期。
+- src/ui-app/: application interface and chat orchestration.
+- src/ui-kit/: reusable chat components and rich-text rendering.
+- src/next/: conversation, branch, message, provider, model catalog, file, and state domains.
+- src/shared/: cross-process contracts, provider-neutral protocols, and shared security logic.
+- electron/: windows, preload, IPC, credentials, network transport, and system services.
+- infra/db/: SQLite schema, repositories, and data contracts.
+- infra/files/: file pipeline, derived tasks, conversion, and managed-runtime lifecycle.
 
-Provider 请求、凭据解析和 epoch-2 数据库连接由 Electron 主进程拥有。Renderer 只能使用 preload 暴露的窄接口，不能直接读取主进程凭据或打开 SQLite。
+Provider requests, credential resolution, and epoch-2 database connections are owned by the Electron main process. The Renderer uses only the narrow APIs exposed by preload; it cannot read main-process credentials or open SQLite directly.
 
-## 数据与安全边界
+## Data and security boundaries
 
-Starverse 默认将应用数据放在 Electron `appData` 根下的 `Starverse` 产品目录：
+By default, application data is stored under the Electron appData root in the Starverse product directory:
 
-- `<appData>/Starverse/workspace/epoch-2/starverse.db`：当前对话、消息、分支、项目、模型目录/偏好、路由、Generation V2 数据和搜索索引。
-- `<appData>/Starverse/config.json`：应用配置，以及官方 Provider 的受保护凭据记录。
-- `<appData>/Starverse/workspace/epoch-2/assets`、`plugins`、`runtimes`：受 epoch-2 布局管理的附件、插件和运行时目录。
-- `<appData>/Starverse/workspace/epoch-2/debug/generation-raw.sqlite`：独立的原始请求调试存储（仅在相关调试路径启用时使用）。
+- {appData}/Starverse/workspace/epoch-2/starverse.db: conversations, messages, branches, projects, model catalog/preferences, routing, Generation V2 data, and search indexes.
+- {appData}/Starverse/config.json: application settings and protected credentials for official providers.
+- {appData}/Starverse/workspace/epoch-2/assets, plugins, and runtimes: attachments, plugins, and runtimes managed by the epoch-2 layout.
+- {appData}/Starverse/workspace/epoch-2/debug/generation-raw.sqlite: separate raw-request debug storage used only by relevant debug paths.
 
-OpenAI-compatible Provider 的实例、endpoint、配置 revision 和凭据 revision 由 `starverse.db` 的专用表管理；它们不等同于官方 Provider 的 `config.json` 凭据记录。当前 epoch-2 不打开旧的 `chat.db`；schema digest 不匹配时会显示确认对话框，确认后先备份数据库再重建；无头或自动化启动可显式设置 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1` 跳过对话框。
+OpenAI-compatible provider instances, endpoints, configuration revisions, and credential revisions are stored in dedicated starverse.db tables. They are separate from official-provider credential records in config.json. Epoch-2 does not open the old chat.db. If the schema digest does not match, the app asks for confirmation, then backs up the database before rebuilding it. Headless or automated startup can set SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1 to skip the dialog.
 
-主要边界包括：
+Key boundaries include:
 
-- 主窗口启用 sandbox 和 context isolation，并关闭 Node integration。
-- epoch-2 主数据库使用受控的 journal、schema manifest 和完整性检查；搜索使用 FTS5。调试用原始请求库与主数据库分离。
-- Provider 凭据优先使用 Electron `safeStorage` 加密，并只在主进程解析。
-- OpenAI-compatible 网络请求在主进程执行地址/DNS 审计、重定向限制、代理路由和凭据转发检查。
-- IPC 输入通过显式契约和 schema 验证。
-- 捕获的扩展字段和诊断信息在持久化或展示前执行边界限制与脱敏。
+- The main window enables sandboxing and context isolation and disables Node integration.
+- The epoch-2 main database uses controlled journaling, a schema manifest, and integrity checks; search uses FTS5. Raw-request debug storage is separate from the main database.
+- Provider credentials are encrypted with Electron safeStorage where available and are resolved only in the main process.
+- OpenAI-compatible requests undergo address/DNS checks, redirect limits, proxy routing, and credential-forwarding checks in the main process.
+- IPC inputs are validated against explicit contracts and schemas.
+- Captured extension fields and diagnostics are bounded and sanitized before persistence or display.
 
-“本地优先”表示会话和配置默认保存在本机，并不表示应用完全离线。发送消息、同步远端模型目录、下载插件或处理远程 URL 时，数据会按用户选择发送到相应服务。
+“Local-first” means conversations and settings are stored on the device by default; it does not mean the app is fully offline. When users send messages, sync remote model catalogs, download plugins, or process remote URLs, data is sent to the selected services.
 
-## 文件、转换与插件
+## Files, conversion, and plugins
 
-文件进入聊天前会经过类型识别、资产持久化和 Send Plan 检查。仓库包含图片处理、DOCX/XLSX 文本处理、PDF/HTML/Office 衍生任务，以及 managed engine/plugin 的安装、验证、恢复和隔离机制。
+Files go through type detection, asset persistence, and a send-plan check before entering a conversation. The repository includes image processing, DOCX/XLSX text processing, PDF/HTML/Office derived tasks, and managed engine/plugin installation, validation, recovery, and isolation.
 
-LibreOffice 属于可选 managed runtime。其可用性取决于平台、安装方式和本地环境；相关 smoke 默认不会替用户下载或安装大型运行时。大型 runtime、模型、解压包、诊断 profile 和生成产物不应放在 Vite watch 范围内，详见 [本地运行时工作目录规范](docs/maintenance/local-runtime-workdirs.md)。
+LibreOffice is an optional managed runtime. Availability depends on the platform, installation method, and local environment. Smoke tests do not download or install large runtimes by default. Large runtimes, models, extracted packages, diagnostic profiles, and generated outputs should stay outside Vite's watch scope; see [the local runtime work-directory policy](docs/maintenance/local-runtime-workdirs.md).
 
-## 构建与打包
+## Build and packaging
 
-```bash
-npm run build
-```
+    npm run build
 
-当前 electron-builder 配置包含 Windows NSIS x64、macOS DMG 和 Linux AppImage target。生产身份由 `io.github.guxinghai.starverse` / `Starverse` 固定，开发和 E2E 运行时只使用明确的 `.dev` / `.e2e` 后缀；正式分发前仍需要完成至少以下工作：
+The current electron-builder configuration includes Windows NSIS x64, macOS DMG, and Linux AppImage targets. A configured target does not mean the project has validated a production installer for that platform. Before release, the project still needs to:
 
-- 配置平台图标、代码签名和 macOS notarization。
-- 在目标操作系统上验证安装、升级、卸载和 native dependency。
-- 验证可选 runtime 与文件转换能力的打包行为。
+- Configure platform icons, code signing, and macOS notarization.
+- Validate installation, upgrade, uninstall, and native dependencies on target operating systems.
+- Validate packaging behavior for optional runtimes and file conversion.
 
-因此，配置中存在 target 不代表仓库当前提供经过验证的正式跨平台安装包。
+## Documentation
 
-## 文档导航
+- [Agent and task entry points](docs/AGENT_INDEX.md)
+- [Documentation status index](docs/DOC_STATUS_INDEX.md)
+- [Development guide index](docs/guides/INDEX.md)
+- [Current system architecture](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
+- [Provider architecture](docs/architecture/provider-architecture/README.md)
+- [OpenAI-compatible rebuild decision and acceptance](docs/architecture/provider-architecture/openai-chat-compatible/REBUILD_MASTER_PLAN.md)
+- [File pipeline](docs/file-pipeline/README.md)
+- [Maintainer entry point](docs/maintenance/maintainer-entry.md)
+- [Local runtime work-directory policy](docs/maintenance/local-runtime-workdirs.md)
+- [Changelog](CHANGELOG.md)
 
-- [Agent 与任务入口](docs/AGENT_INDEX.md)
-- [文档状态索引](docs/DOC_STATUS_INDEX.md)
-- [开发指南总入口](docs/guides/INDEX.md)
-- [当前系统架构](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
-- [Provider 架构](docs/architecture/provider-architecture/README.md)
-- [OpenAI-compatible 重建决策与验收](docs/architecture/provider-architecture/openai-chat-compatible/REBUILD_MASTER_PLAN.md)
-- [文件管道](docs/file-pipeline/README.md)
-- [维护者入口](docs/maintenance/maintainer-entry.md)
-- [本地运行时工作目录规范](docs/maintenance/local-runtime-workdirs.md)
-- [变更记录](CHANGELOG.md)
+Documentation includes active policy, historical records, and phase investigations. Check the [documentation status index](docs/DOC_STATUS_INDEX.md) for authority level, and use current source and tests as the final reference.
 
-文档包含现行规范、历史记录和阶段性调查。实施前请结合 [文档状态索引](docs/DOC_STATUS_INDEX.md) 判断其权威级别，并以当前源码和测试为最终依据。
+## Contributing
 
-## 贡献
+1. Create a working branch from the current main.
+2. Keep changes focused and do not include generated files or native rebuild outputs.
+3. Run the tests, type checks, and gates relevant to the change.
+4. Open a pull request with validation commands and known limitations.
 
-1. 从最新 `main` 创建工作分支。
-2. 保持改动范围清晰，不混入生成文件或 native rebuild 产物。
-3. 根据改动运行相应测试、类型检查和门禁。
-4. 提交 Pull Request，并在描述中列出验证命令与已知限制。
+Source, documentation, and configuration files use UTF-8. Before submitting, consider running:
 
-源码、文档和配置文件统一使用 UTF-8。提交前建议至少运行：
+    npx tsc --noEmit --pretty false
+    npx vue-tsc --noEmit
+    npm run lint:changed
+    npm run gate:docs
+    git diff --check
 
-```bash
-npx tsc --noEmit --pretty false
-npx vue-tsc --noEmit
-npm run lint:changed
-npm run gate:docs
-git diff --check
-```
-
-数据库密集型测试前请先切换到 Node ABI；Electron smoke 应作为最终步骤切换到 Electron ABI（`npm run test:electron-smoke` 会在脚本内部完成该切换）。
+Before database-heavy tests, switch to the Node ABI. For final manual Electron validation, switch to the Electron ABI; npm run test:electron-smoke performs that switch internally.
 
 ## License
 
