@@ -34,7 +34,7 @@ Localized keys: `settings.modelsCapabilities.facts.*` (state, stateExplanation, 
 
 | Slice | Status | Commit |
 | --- | --- | --- |
-| S1 Inspector explainability | implemented, awaiting coordinator acceptance | see git log |
+| S1 Inspector explainability | implemented, awaiting coordinator acceptance | `37336f7` |
 | S2 Capability-aware control explanations | pending | |
 | S3 Source Priority operational UX | pending | |
 
