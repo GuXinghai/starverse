@@ -72,6 +72,24 @@ const nativeModelIdAllowlist = [
   'src/ui-app/app/appChatApp.logic.ts',
   'src/ui-app/components/ChatAppComposer.vue',
   'src/ui-app/components/ChatSessionConsole.vue',
+  // Goal 3 Model Facts: nativeModelId is the exact-subject identity field
+  // (providerAuthorityId, endpointProfileId, nativeModelId); exact match only, no fallback.
+  'electron/services/goal3ModelFactsCapabilityV1.ts',
+  'electron/services/goal3SnapshotCutoverV1.ts',
+  'electron/services/modelFactsInspectorV1Service.ts',
+  'infra/db/repo/canonicalModelFactSourceV1Repo.ts',
+  'infra/db/repo/capabilityRuleCoreV1Repo.ts',
+  'infra/db/repo/resolvedModelFactsV1Repo.ts',
+  'infra/db/services/authoritativeModelSubjectSetV1Service.ts',
+  'src/next/generation-v2/capability-rules/capabilityRuleCoreV1.ts',
+  'src/next/generation-v2/capability/canonicalModelFactsV2.ts',
+  'src/next/generation-v2/model-facts/canonicalSourceFactsV1.ts',
+  'src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1.ts',
+  'src/next/generation-v2/model-facts/modelFactsSubjectIdentityV1.ts',
+  'src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts',
+  'src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts',
+  'src/ui-app/components/CapabilityRulesUserPanel.vue',
+  'src/ui-app/components/ModelFactsInspectorPanel.vue',
 ]
 for (const absolute of productionFiles) {
   const name = relative(absolute)
