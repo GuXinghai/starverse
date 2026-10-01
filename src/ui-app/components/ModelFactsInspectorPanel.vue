@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
 import {
   modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
@@ -49,8 +49,10 @@ type View = 'overview' | 'fields' | 'evidence'
 
 const props = withDefaults(defineProps<{
   initialSubject?: ExactSubject | null
+  initialPath?: string | null
 }>(), {
   initialSubject: null,
+  initialPath: null,
 })
 
 const query = ref('')
@@ -226,9 +228,23 @@ async function readRawPayload() {
   finally { evidenceLoading.value = false }
 }
 
+/** Opens the "why" panel for an exact resolved path only; an absent path leaves the overview as is. */
+function openInitialPath() {
+  if (props.initialPath && resolvedFieldFor(props.initialPath)) detailPath.value = props.initialPath
+}
+
 onMounted(async () => {
   await search()
-  if (props.initialSubject) await inspect(props.initialSubject)
+  if (props.initialSubject) {
+    await inspect(props.initialSubject)
+    openInitialPath()
+  }
+})
+
+watch(() => [props.initialSubject, props.initialPath] as const, async ([subject], previous) => {
+  if (!subject) return
+  if (!previous[0] || subjectKey(previous[0]) !== subjectKey(subject)) await inspect(subject)
+  openInitialPath()
 })
 </script>
 

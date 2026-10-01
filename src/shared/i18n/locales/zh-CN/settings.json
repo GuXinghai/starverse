@@ -260,6 +260,17 @@
           "noFieldsMatch": "没有符合筛选条件的字段。",
           "diagnosticCode": "错误码",
           "tiedCandidate": "并列候选"
+        },
+        "control": {
+          "checking": "正在检查模型能力…",
+          "refreshFailed": "该模型的能力检查失败（{code}），因此无法确认是否可用。",
+          "noModelFactsField": "没有 Model Facts 字段描述此控件，因此其可用性和允许取值均未经验证。",
+          "notInDomain": "已解析的 Model Facts 取值中没有为该模型列出此选项。",
+          "notVerified": "未验证",
+          "notVerifiedExplanation": "允许取值未经 Model Facts 验证，模型可能拒绝你输入的值。",
+          "inspect": "在 Model Facts 中查看",
+          "unavailableSummary": "有 {count} 个参数对该模型不可用。展开高级选项查看原因。",
+          "reasonLine": "{state}：{explanation}"
         }
       }
     },

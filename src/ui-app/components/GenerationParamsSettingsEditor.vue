@@ -22,6 +22,14 @@ import type {
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 import type { ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
 import { t, tf } from '@/shared/i18n'
+import { modelFactControlKey } from '@/shared/model-facts/modelFactPresentation'
+import {
+  modelFactControlReasonTextV1,
+  modelFactControlReasonV1,
+  type ModelFactControlExplanationsV1,
+  type ModelFactControlReasonV1,
+} from '../app/modelFactControlExplanations'
+import ModelFactControlReason from './ModelFactControlReason.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: GenerationParamsLayer | null
@@ -33,6 +41,7 @@ const props = withDefaults(defineProps<{
   collapsible?: boolean
   defaultCollapsed?: boolean
   capabilityProjection?: GenerationControlsProjectionV2 | null
+  controlExplanations?: ModelFactControlExplanationsV1 | null
 }>(), {
   resolved: null,
   profile: null,
@@ -42,10 +51,12 @@ const props = withDefaults(defineProps<{
   collapsible: true,
   defaultCollapsed: false,
   capabilityProjection: null,
+  controlExplanations: null,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: GenerationParamsLayer | null]
+  inspectModelFactsPath: [path: string]
 }>()
 
 const capabilityPathByParam: Partial<Record<GenerationParamKey, RuntimeCapabilitySemanticPathV2>> = {
@@ -138,6 +149,46 @@ const visibleSpecs = computed(() => GENERATION_PARAM_SPECS.filter((spec) => {
   return capability?.supported === true && (showAdvanced.value || capability.ui?.visibleByDefault !== false)
 }))
 
+/** Params hidden because of Model Facts; listed with their reason instead of vanishing. */
+const unavailableSpecs = computed(() => {
+  if (!props.capabilityProjection || !props.controlExplanations) return []
+  return GENERATION_PARAM_SPECS.filter((spec) => {
+    const setting = normalizedLayer.value[spec.key]
+    if (setting && setting.mode !== 'inherit') return false
+    return capabilities.value[spec.key]?.supported !== true
+  })
+})
+const canInspectModelFacts = computed(() => props.controlExplanations?.subject != null)
+
+function unavailableReason(spec: GenerationParamSpec): ModelFactControlReasonV1 | null {
+  const path = capabilityPathByParam[spec.key]
+  return modelFactControlReasonV1(props.controlExplanations, path ? [path] : [])
+}
+
+/** Unknown-state controls stay editable, but their allowed values must not look verified. */
+function isUnverified(spec: GenerationParamSpec): boolean {
+  const path = capabilityPathByParam[spec.key]
+  return path !== undefined && props.capabilityProjection?.controls[path]?.state === 'unknown'
+}
+
+function unverifiedReason(spec: GenerationParamSpec): ModelFactControlReasonV1 | null {
+  const path = capabilityPathByParam[spec.key]
+  return props.controlExplanations?.status === 'ready' && path ? modelFactControlReasonV1(props.controlExplanations, path) : null
+}
+
+function unverifiedTitle(spec: GenerationParamSpec): string {
+  const explanation = t(modelFactControlKey('notVerifiedExplanation'))
+  const reason = modelFactControlReasonTextV1(unverifiedReason(spec))
+  return reason ? `${explanation} ${reason}` : explanation
+}
+
+function inspectUnverified(spec: GenerationParamSpec) {
+  const path = unverifiedReason(spec)?.path
+  if (path && canInspectModelFacts.value) emit('inspectModelFactsPath', path)
+}
+
+const emptyStateReason = computed(() => props.capabilityProjection ? null : modelFactControlReasonV1(props.controlExplanations, []))
+
 const customCount = computed(() => {
   let count = 0
   for (const key of GENERATION_PARAM_SPECS.map((row) => row.key)) {
@@ -147,7 +198,7 @@ const customCount = computed(() => {
   return count
 })
 
-const hasAdvancedSpecs = computed(() => GENERATION_PARAM_SPECS.some((spec) => {
+const hasAdvancedSpecs = computed(() => unavailableSpecs.value.length > 0 || GENERATION_PARAM_SPECS.some((spec) => {
   const setting = normalizedLayer.value[spec.key]
   if (setting && setting.mode !== 'inherit') return false
   const capability = capabilities.value[spec.key]
@@ -408,6 +459,18 @@ watch(
           <div class="truncate text-[11px] font-semibold text-gray-700" :title="paramDescription(GENERATION_PARAM_SPEC_MAP[spec.key])">
             {{ spec.label }}
           </div>
+          <button
+            v-if="isUnverified(spec)"
+            type="button"
+            class="mt-0.5 rounded bg-gray-100 px-1 py-px text-[10px] font-medium text-gray-600 disabled:cursor-default"
+            :disabled="!canInspectModelFacts || !unverifiedReason(spec)?.path"
+            :title="unverifiedTitle(spec)"
+            :aria-label="`${t(modelFactControlKey('notVerified'))}: ${unverifiedTitle(spec)}`"
+            :data-testid="`generation-param-unverified-${spec.key}`"
+            @click="inspectUnverified(spec)"
+          >
+            {{ t(modelFactControlKey('notVerified')) }}
+          </button>
         </div>
 
         <select
@@ -495,8 +558,38 @@ watch(
         </div>
       </div>
 
+      <template v-if="showAdvanced">
+        <div
+          v-for="spec in unavailableSpecs"
+          :key="`unavailable-${spec.key}`"
+          class="min-w-0 space-y-0.5 rounded-md border border-dashed border-gray-200 px-2 py-1.5"
+          :data-testid="`generation-param-unavailable-${spec.key}`"
+        >
+          <div class="truncate text-[11px] font-semibold text-gray-500">{{ spec.label }}</div>
+          <ModelFactControlReason
+            v-if="unavailableReason(spec)"
+            :reason="unavailableReason(spec)!"
+            :can-inspect="canInspectModelFacts"
+            :data-test-id="`generation-param-unavailable-reason-${spec.key}`"
+            @inspect="emit('inspectModelFactsPath', $event)"
+          />
+        </div>
+      </template>
+      <div
+        v-else-if="unavailableSpecs.length > 0"
+        class="text-[11px] text-gray-500"
+        data-testid="generation-params-unavailable-summary"
+      >
+        {{ tf(modelFactControlKey('unavailableSummary'), { count: unavailableSpecs.length }) }}
+      </div>
+
       <div v-if="visibleSpecs.length === 0" class="rounded-md border border-gray-100 bg-gray-50 px-2 py-2 text-[11px] text-gray-500">
-        {{ t('chat.generationParams.empty') }}
+        <ModelFactControlReason
+          v-if="emptyStateReason"
+          :reason="emptyStateReason"
+          data-test-id="generation-params-capability-status"
+        />
+        <template v-else>{{ t('chat.generationParams.empty') }}</template>
       </div>
     </div>
   </div>

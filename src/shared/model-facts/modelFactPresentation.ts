@@ -129,3 +129,62 @@ export function modelFactMatchesFilter(
   if (filter === 'conflict') return state === 'conflict'
   return state === 'unknown' || state === 'data_gap' || state === 'no_source_coverage'
 }
+
+/**
+ * Presentation for one capability-aware control backed by ordered Model Facts source paths.
+ *
+ * The controls projection state stays authoritative for supported, unsupported and conflict; only an
+ * unresolved control is refined into unknown / data_gap / no_source_coverage, by applying
+ * modelFactPresentationState to the control's own resolved source fields. `path` is the exact Model
+ * Facts path that decides the state (resolver output only), or null when no Model Facts field feeds
+ * the control. Nothing here resolves, compares values, or feeds capabilityRevision.
+ */
+export type ModelFactControlPresentation = Readonly<{
+  state: ModelFactPresentationState
+  path: string | null
+  mapped: boolean
+}>
+
+function isUnsupportedSelection(field: PresentableResolvedField): boolean {
+  const value = field.selectedValue as { kind?: string; value?: unknown } | undefined
+  return value?.kind === 'support' && value.value === 'unsupported'
+}
+
+export function modelFactControlPresentation(input: Readonly<{
+  controlState: string | null | undefined
+  sourcePaths: readonly string[]
+  resolvedFieldFor?: (path: string) => PresentableResolvedField | null | undefined
+  coverageFor?: (path: string) => ModelFactSourceCoverage | undefined
+}>): ModelFactControlPresentation {
+  const mapped = input.sourcePaths.length > 0
+  const fields = input.sourcePaths
+    .map((path) => input.resolvedFieldFor?.(path) ?? null)
+    .filter((field): field is PresentableResolvedField => field !== null)
+  const primary = mapped ? input.sourcePaths[0]! : null
+  const firstPath = (predicate: (field: PresentableResolvedField) => boolean): string | null =>
+    fields.find(predicate)?.path ?? primary
+  if (input.controlState === 'unsupported') {
+    return Object.freeze({ state: 'unsupported', path: firstPath(isUnsupportedSelection), mapped })
+  }
+  if (input.controlState === 'conflict') {
+    return Object.freeze({ state: 'conflict', path: firstPath((field) => field.state === 'conflict'), mapped })
+  }
+  if (input.controlState === 'supported') {
+    return Object.freeze({ state: 'supported', path: firstPath((field) => field.selectedValue !== undefined), mapped })
+  }
+  // A projected `missing` is a missing-data diagnostic, not a runtime state of its own.
+  if (input.controlState === 'missing') return Object.freeze({ state: 'data_gap', path: primary, mapped })
+  const states = fields.map((field) => modelFactPresentationState(field, input.coverageFor?.(field.path)))
+  if (states.includes('data_gap')) {
+    return Object.freeze({ state: 'data_gap', path: firstPath((field) => field.diagnostics.length > 0), mapped })
+  }
+  if (states.length > 0 && states.length === input.sourcePaths.length && states.every((state) => state === 'no_source_coverage')) {
+    return Object.freeze({ state: 'no_source_coverage', path: primary, mapped })
+  }
+  return Object.freeze({ state: 'unknown', path: primary, mapped })
+}
+
+export function modelFactControlKey(name: 'checking' | 'refreshFailed' | 'noModelFactsField' | 'notInDomain'
+  | 'notVerified' | 'notVerifiedExplanation' | 'inspect' | 'unavailableSummary' | 'reasonLine'): string {
+  return `${I18N_PREFIX}.control.${name}`
+}

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/shared/i18n'
+import { modelFactControlKey } from '@/shared/model-facts/modelFactPresentation'
 import type { ImageGenerationImageSize, ImageGenerationOutputMode, ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 
 const props = defineProps<{
@@ -27,6 +29,12 @@ const outputModeOptions = computed(() => props.outputModeOptions && props.output
   ? props.outputModeOptions
   : ['auto', 'image_only', 'image_and_text'] as const)
 const showImageSizeControl = computed(() => props.showImageSizeControl !== false)
+// The fallback lists are not Model Facts domains, so they must not look verified.
+const imageSizeUnverified = computed(() => !(props.imageSizeOptions && props.imageSizeOptions.length > 0))
+const aspectRatioUnverified = computed(() => !(props.aspectRatioOptions && props.aspectRatioOptions.length > 0))
+const outputModeUnverified = computed(() => !(props.outputModeOptions && props.outputModeOptions.length > 0))
+const notVerifiedLabel = computed(() => t(modelFactControlKey('notVerified')))
+const notVerifiedTitle = computed(() => t(modelFactControlKey('notVerifiedExplanation')))
 
 function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
   emit('update:modelValue', {
@@ -41,6 +49,7 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
     <div class="grid grid-cols-2 gap-3">
       <label v-if="showImageSizeControl" class="space-y-1 text-xs text-gray-600">
         <span class="font-medium text-gray-700">Resolution</span>
+        <span v-if="imageSizeUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-size">{{ notVerifiedLabel }}</span>
         <select
           class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
           :disabled="props.disabled || props.lockImageSizeControl"
@@ -53,6 +62,7 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
 
       <label class="space-y-1 text-xs text-gray-600">
         <span class="font-medium text-gray-700">Aspect</span>
+        <span v-if="aspectRatioUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-aspect">{{ notVerifiedLabel }}</span>
         <select
           class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
           :disabled="props.disabled"
@@ -66,6 +76,7 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
 
     <label class="space-y-1 text-xs text-gray-600">
       <span class="font-medium text-gray-700">Output mode</span>
+      <span v-if="outputModeUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-output-mode">{{ notVerifiedLabel }}</span>
       <select
         class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
         :disabled="props.disabled"

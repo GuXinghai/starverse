@@ -13,6 +13,7 @@ const props = defineProps<{
   optionLabels?: Readonly<Record<string, string>>
   selectedOption?: string | null
   dataTestId?: string
+  unavailableReason?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -54,10 +55,10 @@ const fullLabel = computed(() => {
 })
 
 const titleText = computed(() => {
-  if (props.enabled && props.activeLabel) {
-    return `${fullLabel.value} ${props.activeLabel} ${t('composer.capabilities.enabledSuffix')}`
-  }
-  return fullLabel.value
+  const base = props.enabled && props.activeLabel
+    ? `${fullLabel.value} ${props.activeLabel} ${t('composer.capabilities.enabledSuffix')}`
+    : fullLabel.value
+  return props.unavailableReason ? `${base} (${props.unavailableReason})` : base
 })
 const hasCustomMenu = computed(() => Boolean(slots.menu))
 const hasMenu = computed(() => hasCustomMenu.value || (props.options?.length ?? 0) > 0)

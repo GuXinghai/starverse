@@ -260,6 +260,17 @@
           "noFieldsMatch": "No fields match this filter.",
           "diagnosticCode": "Error code",
           "tiedCandidate": "Tied candidate"
+        },
+        "control": {
+          "checking": "Checking model capabilities…",
+          "refreshFailed": "The capability check for this model failed ({code}), so availability could not be confirmed.",
+          "noModelFactsField": "No Model Facts field describes this control, so its availability and allowed values are not verified.",
+          "notInDomain": "The resolved Model Facts value does not list this option for this model.",
+          "notVerified": "Not verified",
+          "notVerifiedExplanation": "Allowed values are not verified by Model Facts, so the model may reject a value you enter.",
+          "inspect": "Inspect in Model Facts",
+          "unavailableSummary": "{count} parameter(s) unavailable for this model. Show advanced to see why.",
+          "reasonLine": "{state}: {explanation}"
         }
       }
     },

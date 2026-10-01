@@ -40,6 +40,11 @@ import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCat
 import { createCompatibleProviderRegistryClient, createCompatibleRouteIntent, type CompatibleRoutePickerSource } from '@/next/provider/openai-chat-compatible/ui'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import {
+  modelFactControlReasonTextV1,
+  modelFactControlReasonV1,
+  type ModelFactControlExplanationsV1,
+} from '../app/modelFactControlExplanations'
 
 const props = defineProps<{
   draft: string
@@ -72,6 +77,7 @@ const props = defineProps<{
   generationParamsResolved?: ResolvedGenerationParams | null
   googleAIStudioModelAvailability?: Readonly<{ result: GeminiModelAvailabilityResult | null }> | null
   capabilityProjection?: GenerationControlsProjectionV2 | null
+  controlExplanations?: ModelFactControlExplanationsV1 | null
 }>()
 const appIdentity = getCurrentInstance()?.appContext.app ?? null
 type ProviderModelRef = Readonly<{ providerId: RuntimeProviderId; modelId: string }>
@@ -377,6 +383,12 @@ const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationP
 const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModel.value))
+const reasoningEffortUnavailableReason = computed(() =>
+  modelFactControlReasonTextV1(modelFactControlReasonV1(props.controlExplanations, 'reasoning.effort')))
+const googleThinkingUnavailableReason = computed(() => modelFactControlReasonTextV1(
+  modelFactControlReasonV1(props.controlExplanations, ['reasoning.mode', 'providerExtension.thinkingLevel'])))
+const imageGenerationUnavailableReason = computed(() =>
+  modelFactControlReasonTextV1(modelFactControlReasonV1(props.controlExplanations, ['image.mode', 'image.aspectRatio'])))
 function customGoogleGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
   const setting = resolvedSessionConfig.value.generationParams.detail?.[key]
   if (setting?.mode === 'custom') return setting.value
@@ -1200,6 +1212,7 @@ onBeforeUnmount(() => {
             :active-label="openAIResponsesReasoningActiveLabel"
             kind="reasoning"
             :disabled="disabled || !openAIResponsesReasoningSupported"
+            :unavailable-reason="openAIResponsesReasoningSupported ? null : reasoningEffortUnavailableReason"
             data-test-id="reasoning-chip"
             @toggle="onOpenAIResponsesReasoningToggle"
           >
@@ -1255,6 +1268,7 @@ onBeforeUnmount(() => {
             :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
             kind="reasoning"
             :disabled="disabled || genericReasoningEffortOptions.length === 0"
+            :unavailable-reason="genericReasoningEffortOptions.length === 0 ? reasoningEffortUnavailableReason : null"
             :options="genericReasoningEffortOptions"
             :selected-option="resolvedSessionConfig.reasoning.effort"
             data-test-id="reasoning-chip"
@@ -1277,6 +1291,7 @@ onBeforeUnmount(() => {
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
             :disabled="disabled || (isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0) || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :unavailable-reason="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported' ? googleThinkingUnavailableReason : null"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >
@@ -1405,6 +1420,7 @@ onBeforeUnmount(() => {
             :disabled="disabled"
             :options="imageChipOptions"
             :selected-option="null"
+            :unavailable-reason="imageGenerationAspectRatioOptions.length === 0 ? imageGenerationUnavailableReason : null"
             data-test-id="image-chip"
             @toggle="isGoogleImageGenerationModel ? emit('updateImageGenerationEnabled', true) : emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
             @select-option="onImageChipOption"

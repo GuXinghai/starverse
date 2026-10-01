@@ -168,6 +168,7 @@ const {
   modelPrefsScopeForUi,
   activeSessionGenerationParamsResolved,
   activeSessionCapabilityProjection,
+  activeSessionCapabilityExplanations,
   activeSessionWebSearchResolved,
   openRouterImageEndpointSelection,
   openRouterImageEndpointSelectionLoading,
@@ -271,12 +272,22 @@ const {
 } = useAppChatAppLogic()
 const effectiveIsRunning = computed(() => isRunning.value)
 const modelFactsInspectorSubject = ref<CanonicalModelSubjectV1 | null>(null)
-function openModelFactsInspector(subject: CanonicalModelSubjectV1) {
+const modelFactsInspectorPath = ref<string | null>(null)
+function openModelFactsInspector(subject: CanonicalModelSubjectV1, path: string | null = null) {
   modelFactsInspectorSubject.value = subject
+  modelFactsInspectorPath.value = path
   openSettings()
 }
+/** Opens the Inspector at the exact Model Facts path behind a capability-aware control. */
+function openModelFactsInspectorPath(path: string) {
+  const subject = activeSessionCapabilityExplanations.value?.subject
+  if (subject) openModelFactsInspector(subject, path)
+}
 watch(settingsOpen, (open) => {
-  if (!open) modelFactsInspectorSubject.value = null
+  if (!open) {
+    modelFactsInspectorSubject.value = null
+    modelFactsInspectorPath.value = null
+  }
 })
 const templateResetOpen = ref(false)
 const resetTemplateModelConfig = ref(true)
@@ -952,6 +963,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
             :capabilityProjection="activeSessionCapabilityProjection"
+            :controlExplanations="activeSessionCapabilityExplanations"
             :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
@@ -1014,6 +1026,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :webSearchResolved="activeSessionWebSearchResolved"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
             :capabilityProjection="activeSessionCapabilityProjection"
+            :controlExplanations="activeSessionCapabilityExplanations"
             :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
             :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
             :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
@@ -1022,6 +1035,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
+            @inspectModelFactsPath="openModelFactsInspectorPath"
             @updateWebSearchLayer="onComposerUpdateWebSearchLayer"
             @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
@@ -1163,6 +1177,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         :isRunning="effectiveIsRunning"
         :initialCategory="modelFactsInspectorSubject ? 'models-capabilities' : undefined"
         :inspectorSubject="modelFactsInspectorSubject"
+        :inspectorPath="modelFactsInspectorPath"
       />
     </SettingsModal>
 

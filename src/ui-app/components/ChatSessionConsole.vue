@@ -50,6 +50,8 @@ import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capabi
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
+import ModelFactControlReason from './ModelFactControlReason.vue'
+import { modelFactControlReasonV1, type ModelFactControlExplanationsV1 } from '../app/modelFactControlExplanations'
 import type { OpenRouterImageEndpointSelectionClientStateV2 } from '@/next/generation-v2/renderer/openRouterImageEndpointClientV2'
 import { t, tf } from '@/shared/i18n'
 import {
@@ -181,6 +183,7 @@ const props = defineProps<{
   webSearchResolved: ResolvedSearchSettings | null
   generationParamsResolved: ResolvedGenerationParams | null
   capabilityProjection?: GenerationControlsProjectionV2 | null
+  controlExplanations?: ModelFactControlExplanationsV1 | null
   openRouterImageEndpointSelection?: OpenRouterImageEndpointSelectionClientStateV2 | null
   openRouterImageEndpointSelectionLoading?: boolean
   openRouterImageEndpointSelectionError?: string | null
@@ -246,6 +249,7 @@ const emit = defineEmits<{
   (e: 'updateReasoningPanelDefaultExpanded', expanded: boolean): void
   (e: 'updateReasoningPanelAutoCollapseAfterReasoning', enabled: boolean): void
   (e: 'openSettings'): void
+  (e: 'inspectModelFactsPath', path: string): void
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
@@ -296,6 +300,15 @@ const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationP
 const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModelIdentity.value))
+const canInspectModelFacts = computed(() => props.controlExplanations?.subject != null)
+const reasoningEffortReason = computed(() => modelFactControlReasonV1(props.controlExplanations, 'reasoning.effort'))
+const googleThinkingReason = computed(() =>
+  modelFactControlReasonV1(props.controlExplanations, ['reasoning.mode', 'providerExtension.thinkingLevel']))
+const imageGenerationOptionsReason = computed(() =>
+  modelFactControlReasonV1(props.controlExplanations, ['image.mode', 'image.aspectRatio']))
+const reasoningSectionUnavailable = computed(() =>
+  isGoogleImageGenerationModel.value && !googleImageGenerationPolicy.value.supportsThoughtSummaries &&
+    googleImageGenerationPolicy.value.thinkingLevels.length === 0)
 function customGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
   const setting = props.sessionConfig.generationParams.detail?.[key]
   if (setting?.mode === 'custom') return setting.value
@@ -2218,7 +2231,22 @@ function chipClass(active: boolean): string {
       </section>
 
       <section
-        v-if="!(isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0)"
+        v-if="reasoningSectionUnavailable"
+        class="space-y-1 rounded-lg border border-gray-200 bg-gray-50/70 p-3"
+        data-testid="session-reasoning-unavailable"
+      >
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.reasoning') }}</div>
+        <div class="text-xs text-gray-500">{{ t('chat.console.reasoning.geminiUnsupported') }}</div>
+        <ModelFactControlReason
+          v-if="googleThinkingReason"
+          :reason="googleThinkingReason"
+          :can-inspect="canInspectModelFacts"
+          data-test-id="session-reasoning-unavailable-reason"
+          @inspect="emit('inspectModelFactsPath', $event)"
+        />
+      </section>
+      <section
+        v-else
         class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3"
       >
         <div class="flex items-center justify-between gap-2">
@@ -2273,20 +2301,37 @@ function chipClass(active: boolean): string {
             data-testid="session-openai-responses-reasoning-unsupported"
           >
             {{ t('chat.console.reasoning.openAIResponsesUnsupported') }}
+            <ModelFactControlReason
+              v-if="reasoningEffortReason"
+              class="mt-1"
+              :reason="reasoningEffortReason"
+              :can-inspect="canInspectModelFacts"
+              data-test-id="session-reasoning-effort-reason"
+              @inspect="emit('inspectModelFactsPath', $event)"
+            />
           </div>
         </div>
-        <div v-else-if="!isGoogleAIStudioSelected" class="grid grid-cols-3 gap-2">
-          <button
-            v-for="effort in genericReasoningEffortOptions"
-            :key="effort"
-            type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.sessionConfig.reasoning.effort === effort)"
-            :disabled="disabled || !props.sessionConfig.reasoning.enabled"
-            @click="emit('updateReasoningEffort', effort)"
-          >
-            {{ formatReasoningEffort(effort) }}
-          </button>
+        <div v-else-if="!isGoogleAIStudioSelected" class="space-y-2">
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="effort in genericReasoningEffortOptions"
+              :key="effort"
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-sm"
+              :class="chipClass(props.sessionConfig.reasoning.effort === effort)"
+              :disabled="disabled || !props.sessionConfig.reasoning.enabled"
+              @click="emit('updateReasoningEffort', effort)"
+            >
+              {{ formatReasoningEffort(effort) }}
+            </button>
+          </div>
+          <ModelFactControlReason
+            v-if="genericReasoningEffortOptions.length === 0 && reasoningEffortReason"
+            :reason="reasoningEffortReason"
+            :can-inspect="canInspectModelFacts"
+            data-test-id="session-reasoning-effort-reason"
+            @inspect="emit('inspectModelFactsPath', $event)"
+          />
         </div>
         <div v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
           <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
@@ -2376,6 +2421,14 @@ function chipClass(active: boolean): string {
         </div>
         <div v-else-if="isGoogleImageGenerationModel" class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
           {{ t('chat.console.reasoning.geminiUnsupported') }}
+          <ModelFactControlReason
+            v-if="googleThinkingReason"
+            class="mt-1"
+            :reason="googleThinkingReason"
+            :can-inspect="canInspectModelFacts"
+            data-test-id="session-google-thinking-reason"
+            @inspect="emit('inspectModelFactsPath', $event)"
+          />
         </div>
         <div v-else-if="googleThinkingCapability.kind === 'level'" class="space-y-2" data-testid="session-google-thinking-level-controls">
           <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
@@ -2404,6 +2457,14 @@ function chipClass(active: boolean): string {
         </div>
         <div v-else class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
           {{ t('chat.console.reasoning.geminiUnsupported') }}
+          <ModelFactControlReason
+            v-if="googleThinkingReason"
+            class="mt-1"
+            :reason="googleThinkingReason"
+            :can-inspect="canInspectModelFacts"
+            data-test-id="session-google-thinking-reason"
+            @inspect="emit('inspectModelFactsPath', $event)"
+          />
         </div>
       </section>
 
@@ -2457,9 +2518,11 @@ function chipClass(active: boolean): string {
           :profile="generationParamsProfile"
           :model-id="generationParamsModelId"
           :capability-projection="props.capabilityProjection"
+          :control-explanations="props.controlExplanations"
           :collapsible="false"
           compact
           @update:model-value="emit('updateGenerationParamsLayer', $event)"
+          @inspect-model-facts-path="emit('inspectModelFactsPath', $event)"
         />
       </section>
 
@@ -2503,6 +2566,13 @@ function chipClass(active: boolean): string {
             {{ ratio }}
           </button>
         </div>
+        <ModelFactControlReason
+          v-if="imageGenerationAspectRatioOptions.length === 0 && imageGenerationOptionsReason"
+          :reason="imageGenerationOptionsReason"
+          :can-inspect="canInspectModelFacts"
+          data-test-id="session-image-generation-reason"
+          @inspect="emit('inspectModelFactsPath', $event)"
+        />
         <ImageGenerationSettingsEditor
           :model-value="imageValue"
           :disabled="disabled || !effectiveImageGenerationEnabled"

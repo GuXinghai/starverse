@@ -74,6 +74,7 @@ const props = defineProps<{
   isRunning: boolean
   initialCategory?: SettingsCategoryId
   inspectorSubject?: CanonicalModelSubjectV1 | null
+  inspectorPath?: string | null
 }>()
 const isDev = import.meta.env?.DEV === true
 const appIdentity = getCurrentInstance()?.appContext.app
@@ -2811,6 +2812,7 @@ onMounted(() => {
           <ModelsAndCapabilitiesSettingsPanel
             :initialTab="props.inspectorSubject ? 'inspector' : undefined"
             :inspectorSubject="props.inspectorSubject"
+            :inspectorPath="props.inspectorPath ?? null"
           />
         </section>
 

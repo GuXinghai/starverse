@@ -10,9 +10,11 @@ type TabId = 'cloud' | 'user' | 'inspector'
 const props = withDefaults(defineProps<{
   initialTab?: TabId
   inspectorSubject?: CanonicalModelSubjectV1 | null
+  inspectorPath?: string | null
 }>(), {
   initialTab: 'cloud',
   inspectorSubject: null,
+  inspectorPath: null,
 })
 const tabs: readonly Readonly<{ id: TabId; label: string }>[] = [
   { id: 'cloud', label: 'settings.modelsCapabilities.cloudTab' },
@@ -52,6 +54,6 @@ function keydown(event: KeyboardEvent, current: TabId) {
     </nav>
     <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')" class="space-y-3"><CapabilityRulesOverviewPanel ownership="cloud" /><ModelFactsSourcePrioritySettingsPanel /></div>
     <div :id="panelId('user')" v-show="active === 'user'" role="tabpanel" :aria-labelledby="tabId('user')"><CapabilityRulesOverviewPanel ownership="user" /></div>
-    <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel :initialSubject="props.inspectorSubject" /></div>
+    <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel :initialSubject="props.inspectorSubject" :initialPath="props.inspectorPath" /></div>
   </section>
 </template>

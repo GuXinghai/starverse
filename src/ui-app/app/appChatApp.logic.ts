@@ -67,6 +67,16 @@ import { resolveGenerationV2Capabilities } from '@/next/generation-v2/renderer/g
 import { selectGeminiGenerationV2RouteV2 } from './generationV2RouteSelection'
 import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/next/generation-v2/capability/capabilityResolutionV2'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import { modelFactsSubjectForCatalogModelV1, modelFactsSubjectForCompatibleModelV1 } from '@/next/generation-v2/model-facts/modelFactsSubjectIdentityV1'
+import {
+  buildModelFactControlExplanationsV1,
+  failedModelFactControlExplanationsV1,
+  loadingModelFactControlExplanationsV1,
+  modelFactControlReasonTextV1,
+  modelFactControlReasonV1,
+  type ModelFactControlExplanationsV1,
+  type ModelFactsInspectorSnapshotForControlsV1,
+} from './modelFactControlExplanations'
 import {
   projectImageGenerationCapabilityClassV2,
   projectImageAttachmentInputSupportV2,
@@ -3232,6 +3242,8 @@ export function useAppChatAppLogic() {
 
   const activeSessionConfig = computed(() => getActiveSessionConfigSnapshot())
   const activeSessionCapabilityProjection = shallowRef<GenerationControlsProjectionV2 | null>(null)
+  // Presentation only: why capability-aware controls are unavailable. Never read by send-time gating.
+  const activeSessionCapabilityExplanations = shallowRef<ModelFactControlExplanationsV1 | null>(null)
   function activeReasoningEffortFromCapability(value: unknown): value is ChatSessionConfig['reasoning']['effort'] {
     const field = activeSessionCapabilityProjection.value?.controls['reasoning.effort']
     return field?.state === 'supported' && field.domain?.kind === 'enum' &&
@@ -5683,24 +5695,24 @@ export function useAppChatAppLogic() {
   const imageGenerationSupported = computed(() => projectedImageGenerationClass.value !== null)
 
   const imageGenerationSupportHint = computed(() => {
-    if (activeSessionCapabilityProjection.value === null) return 'checking model image capability...'
-    if (projectedImageGenerationClass.value === 'text_and_image') {
+    if (activeSessionCapabilityProjection.value !== null && projectedImageGenerationClass.value === 'text_and_image') {
       return 'selected model supports text+image output.'
     }
-    if (projectedImageGenerationClass.value === 'image_only') {
+    if (activeSessionCapabilityProjection.value !== null && projectedImageGenerationClass.value === 'image_only') {
       return 'selected model supports image-only output.'
     }
-    return 'selected model is not image-capable.'
+    return modelFactControlReasonTextV1(modelFactControlReasonV1(activeSessionCapabilityExplanations.value, 'image.mode'))
   })
 
   function refreshSelectedModelImageCapability() {
     composerImageInputSupported.value = projectImageAttachmentInputSupportV2(activeSessionCapabilityProjection.value)
     composerImageInputSupportReason.value = composerImageInputSupported.value === false
-      ? 'Current model does not support image inputs.'
+      ? modelFactControlReasonTextV1(modelFactControlReasonV1(activeSessionCapabilityExplanations.value,
+        ['attachments[].include', 'attachments[].sendAs']))
       : null
   }
 
-  watch(activeSessionCapabilityProjection, refreshSelectedModelImageCapability, { immediate: true })
+  watch([activeSessionCapabilityProjection, activeSessionCapabilityExplanations], refreshSelectedModelImageCapability, { immediate: true })
 
   const activeRouteIdentity = computed(() => {
     const route = activeSessionConfig.value.routeSelection
@@ -6733,21 +6745,62 @@ export function useAppChatAppLogic() {
   }
 
   let capabilityRefreshSerial = 0
+  /** Exact Model Facts subject for the selection; null when the provider has no Model Facts authority. */
+  function activeModelFactsSubject(selection: NonNullable<ReturnType<typeof canonicalSendSelection>>) {
+    try {
+      return selection.compatibleIntent
+        ? modelFactsSubjectForCompatibleModelV1(selection.compatibleIntent.providerInstanceId, selection.modelId)
+        : modelFactsSubjectForCatalogModelV1(selection.providerId, selection.modelId)
+    } catch {
+      return null
+    }
+  }
+  async function readModelFactsForControls(
+    subject: NonNullable<ReturnType<typeof activeModelFactsSubject>>,
+  ): Promise<ModelFactsInspectorSnapshotForControlsV1 | null> {
+    const inspector = window.generationV2?.modelFactsInspector
+    if (!inspector || typeof inspector.readInspector !== 'function') return null
+    try {
+      return await inspector.readInspector({ subject }) as ModelFactsInspectorSnapshotForControlsV1
+    } catch {
+      return null
+    }
+  }
   async function refreshActiveSessionCapabilityProjection(): Promise<void> {
     const serial = ++capabilityRefreshSerial
     const selection = canonicalSendSelection()
-    if (!selection) { activeSessionCapabilityProjection.value = null; return }
+    if (!selection) { activeSessionCapabilityProjection.value = null; activeSessionCapabilityExplanations.value = null; return }
+    const subject = activeModelFactsSubject(selection)
+    if (activeSessionCapabilityProjection.value === null) {
+      activeSessionCapabilityExplanations.value = loadingModelFactControlExplanationsV1(subject)
+    }
     const route = selection.compatibleIntent ? { kind: 'openai_chat_compatible' } as const
       : selection.providerId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
         ? { kind: 'openrouter_images' } as const : generationV2RouteForProvider(selection.providerId, selection.modelId)
+    let projection: GenerationControlsProjectionV2
     try {
       const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
         ? await resolveGenerationV2LocalProfileForSend(route, selection.modelId) : null
       const result = await resolveGenerationV2CapabilityForSend(route, selection.modelId, endpointProfileId, selection.compatibleIntent)
-      if (serial === capabilityRefreshSerial) activeSessionCapabilityProjection.value = result.controlsProjection
-    } catch {
-      if (serial === capabilityRefreshSerial) activeSessionCapabilityProjection.value = null
+      if (serial !== capabilityRefreshSerial) return
+      projection = result.controlsProjection
+      activeSessionCapabilityProjection.value = projection
+      activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject })
+    } catch (cause) {
+      if (serial === capabilityRefreshSerial) {
+        activeSessionCapabilityProjection.value = null
+        // A failed refresh is a data gap, not an endless "checking" state.
+        const code = cause && typeof cause === 'object' && typeof (cause as { code?: unknown }).code === 'string'
+          ? (cause as { code: string }).code
+          : cause instanceof Error && cause.message ? cause.message : 'GENERATION_V2_CAPABILITY_REFRESH_FAILED'
+        activeSessionCapabilityExplanations.value = failedModelFactControlExplanationsV1(code, subject)
+      }
+      return
     }
+    if (!subject) return
+    const inspector = await readModelFactsForControls(subject)
+    if (serial !== capabilityRefreshSerial || !inspector) return
+    activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject, inspector })
   }
   watch(() => {
     const route = activeSessionConfig.value.routeSelection
@@ -7809,6 +7862,7 @@ export function useAppChatAppLogic() {
     activeSessionGenerationParamsLayer,
     activeSessionGenerationParamsResolved,
     activeSessionCapabilityProjection,
+    activeSessionCapabilityExplanations,
     sessionGenerationParamsQuickSaving,
     sessionWebSearchSettingsSaving,
     activeSessionWebSearchLayer,
