@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Starverse is a local-first AI chat desktop application built with Electron, Vue 3, and TypeScript. Conversations, branches, projects, model catalogs and preferences, routing data, and search indexes are stored in an epoch-2 SQLite database. A controlled Electron main-process boundary connects the app to cloud model providers, local inference runtimes, and user-configured OpenAI Chat Completions-compatible services.
+Starverse is a local-first AI chat desktop application built with Electron, Vue 3, and TypeScript. It stores conversations and settings on your device and connects to cloud model providers, local inference runtimes, and user-configured OpenAI Chat Completions-compatible services.
 
 > Starverse is under active development. Before a production release, the project still needs platform icons, code signing and notarization where applicable, and installation, upgrade, and uninstall validation on each supported platform.
 
@@ -36,11 +36,13 @@ Available models depend on user credentials, local runtimes, and remote catalogs
 
 ### Anthropic native integration status
 
-As of 2026-08-23, native Anthropic Messages support is frozen. The project is not adding features or fixes to this integration and plans to remove the native integration and related references over time. This maintenance decision reflects the project's support priorities and general provider availability, policy, and reliability considerations; it does not make a claim about service access in any particular region.
+As of 2026-08-23, native Anthropic Messages support is frozen. The project is not adding features or fixes to this integration and plans to remove the native integration and related references over time.
 
 Users who need Claude models can configure a compatible gateway or another provider that offers access. Starverse does not guarantee the availability or behavior of third-party routes.
 
 ## Quick start
+
+This is a source-development setup, not a production installer.
 
 ### Requirements
 
@@ -48,16 +50,20 @@ Users who need Claude models can configure a compatible gateway or another provi
 - npm >=10 and <11
 - Git
 
-    git clone https://github.com/GuXinghai/starverse.git
-    cd starverse
-    npm install
-    npm run electron:dev
+```sh
+git clone https://github.com/GuXinghai/starverse.git
+cd starverse
+npm install
+npm run electron:dev
+```
 
 npm install runs postinstall, which rebuilds better-sqlite3 for the Node ABI. npm run electron:dev switches to the Electron ABI and starts Vite, the epoch-2 Electron main process, and the database runtime.
 
-The package scripts are the common entry point across Windows, macOS, and Linux. Some helper scripts are platform-specific. PowerShell examples in the documentation are for Windows; use the native shell on macOS and Linux. If a native dependency must compile from source, install the C/C++ build tools required by your platform.
+The startup commands above currently contain Windows shell syntax (`chcp` and command chaining). macOS and Linux packaging targets are configured, but these startup scripts should not be treated as a validated cross-platform workflow. If a native dependency must compile from source, install the C/C++ build tools required by your platform.
 
-To start only the Renderer/Vite development server:
+After launch, configure credentials for a cloud provider or connect a running local service, then choose a model to start a conversation. Model availability depends on that service.
+
+To start Vite and Electron without rebuilding the native ABI (requires the Electron ABI to be prepared already):
 
     npm run dev
 
@@ -66,31 +72,14 @@ To start only the Renderer/Vite development server:
 | Command | Purpose |
 | --- | --- |
 | npm run electron:dev | Rebuild the Electron ABI and start the full desktop development environment |
-| npm run dev | Start the Renderer/Vite development server |
+| npm run dev | Start Vite and Electron without rebuilding the native ABI |
 | npm run build | Type-check, build the Renderer/native epoch outputs, and run electron-builder |
 | npm run test:prepare | Rebuild the Node native ABI before database/native tests when needed |
 | npm test | Run only the unit partition; does not rebuild the ABI |
-| npm run test:unit | Explicitly run the unit partition |
 | npm run test:ui | Run the jsdom UI partition |
 | npm run test:integration | Run the integration partition |
-| npm run test:model-catalog:smoke | Run focused model catalog query/detail smoke tests |
-| npm run test:model-picker:smoke | Run the model-picker unit/UI/integration smoke stages |
-| npm run test:ui:slow -- path/to/one.slow.test.ts | Run one slow UI test file |
-| npm run test:integration:slow -- path/to/one.slow.test.ts | Run one slow integration test file |
-| npm run test:coverage | Generate unit-partition coverage |
-| npm run test:runner-ui | Start the Vitest dashboard |
-| node scripts/check-test-partitions.mjs | Check test discovery, ownership, overrides, and slow-test rules |
 | npm run lint | Run ESLint |
 | npm run test:electron-smoke | Rebuild the Electron ABI, build, and run the Electron shell smoke |
-| npm run test:packaged-identity-smoke | Check packaged identity and temporary user-data isolation |
-| npm run test:epoch-database:electron | Verify fresh epoch-2 database startup under the Electron ABI |
-| npm run test:model-provider-identity:fresh-profile | Run the model/provider identity fresh-profile smoke |
-| npm run verify:ssot | Run unit tests and SSOT, UI, network-egress, privacy, and Git governance gates |
-| npm run gate:network-egress | Check that production network egress follows classified boundaries |
-| npm run gate:privacy | Check source, documentation, operations tooling, and artifact privacy boundaries |
-| npm run gate:generation-v2-zero-residual | Check removal of legacy Generation V2 paths and references |
-| npm run gate:model-identity-purge | Check model/provider identity hard-cut boundaries |
-| npm run gate:docs | Check documentation entry links and required metadata |
 | npm run storybook | Start Storybook |
 
 ### better-sqlite3 ABI
@@ -105,9 +94,9 @@ Node/Vitest and Electron use different native ABI targets. Only one target is ac
 
 If you see a NODE_MODULE_VERSION or native-binding error, rebuild for the environment you are about to run and retry the original command. Do not commit node_modules, native binaries, or lockfile changes caused only by a rebuild.
 
-Database/native Node test preparation is manual. npm test remains unit-only and does not switch the ABI implicitly. npm run test:electron-smoke rebuilds the Electron ABI internally; rebuild it manually before other Electron smoke commands or manual launches.
+Database/native Node test preparation is manual. npm test remains unit-only and does not switch the ABI implicitly. npm run electron:dev, npm run test:electron-smoke, and npm run test:epoch-database:electron rebuild the Electron ABI internally. For other Electron commands, check the package script and rebuild manually if it does not prepare the ABI.
 
-See the [test strategy](docs/maintenance/test-strategy.md) for test partitions, slow-file rules, removed test boundaries, and the model-picker split.
+See the [test strategy](docs/maintenance/test-strategy.md) and package.json for test partitions, focused smoke tests, slow-file rules, and additional validation commands.
 
 ## Architecture
 
@@ -145,7 +134,7 @@ By default, application data is stored under the Electron appData root in the St
 - {appData}/Starverse/workspace/epoch-2/assets, plugins, and runtimes: attachments, plugins, and runtimes managed by the epoch-2 layout.
 - {appData}/Starverse/workspace/epoch-2/debug/generation-raw.sqlite: separate raw-request debug storage used only by relevant debug paths.
 
-OpenAI-compatible provider instances, endpoints, configuration revisions, and credential revisions are stored in dedicated starverse.db tables. They are separate from official-provider credential records in config.json. Epoch-2 does not open the old chat.db. If the schema digest does not match, the app asks for confirmation, then backs up the database before rebuilding it. Headless or automated startup can set SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1 to skip the dialog.
+OpenAI-compatible provider configuration and credential records use dedicated starverse.db tables, separate from official-provider records in config.json. Epoch-2 does not open the old chat.db. During interactive startup, a schema mismatch prompts for confirmation before the app backs up and rebuilds the database; rebuilding does not preserve the existing database contents in the active database.
 
 Key boundaries include:
 
@@ -162,7 +151,7 @@ Key boundaries include:
 
 Files go through type detection, asset persistence, and a send-plan check before entering a conversation. The repository includes image processing, DOCX/XLSX text processing, PDF/HTML/Office derived tasks, and managed engine/plugin installation, validation, recovery, and isolation.
 
-LibreOffice is an optional managed runtime. Availability depends on the platform, installation method, and local environment. Smoke tests do not download or install large runtimes by default. Large runtimes, models, extracted packages, diagnostic profiles, and generated outputs should stay outside Vite's watch scope; see [the local runtime work-directory policy](docs/maintenance/local-runtime-workdirs.md).
+LibreOffice is an optional managed runtime. Conversion availability depends on the format, platform, installed runtime, and local environment; the listed tasks do not imply that every conversion is available on every platform.
 
 ## Build and packaging
 
@@ -176,7 +165,6 @@ The current electron-builder configuration includes Windows NSIS x64, macOS DMG,
 
 ## Documentation
 
-- [Agent and task entry points](docs/AGENT_INDEX.md)
 - [Documentation status index](docs/DOC_STATUS_INDEX.md)
 - [Development guide index](docs/guides/INDEX.md)
 - [Current system architecture](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
@@ -186,6 +174,7 @@ The current electron-builder configuration includes Windows NSIS x64, macOS DMG,
 - [Maintainer entry point](docs/maintenance/maintainer-entry.md)
 - [Local runtime work-directory policy](docs/maintenance/local-runtime-workdirs.md)
 - [Changelog](CHANGELOG.md)
+- [Agent and task entry points](docs/AGENT_INDEX.md)
 
 Documentation includes active policy, historical records, and phase investigations. Check the [documentation status index](docs/DOC_STATUS_INDEX.md) for authority level, and use current source and tests as the final reference.
 
