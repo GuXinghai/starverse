@@ -162,6 +162,30 @@
       "capabilityRulesPriority": "Capability Rules",
       "savePriority": "Save priority",
       "prioritySaved": "Source priority saved.",
+      "sourcePriority": {
+        "rank": "Rank {rank}",
+        "rankTied": "Rank {rank}, tied with {sources}",
+        "order": "Resolution order (higher number wins)",
+        "noTies": "No two sources share a priority, so a higher-priority claim always decides.",
+        "tie": "{sources} share priority {priority}.",
+        "tieExplanation": "When tied sources disagree about the same fact, no value is selected and the field is shown as a conflict. Use the Conflict filter in the Facts Inspector to find affected fields.",
+        "openInspector": "Open Facts Inspector",
+        "edit": "Edit source priority",
+        "latestSaved": "Latest saved values",
+        "latestLoaded": "Loaded the latest saved version. Your edits are kept; review them and save again.",
+        "loadLatestKeepDraft": "Load latest version and keep my edits",
+        "validation": {
+          "empty": "Enter a whole number.",
+          "notInteger": "Use a whole number such as 3 or -1; decimals and text are not allowed.",
+          "outOfRange": "This number is too large. Use a smaller whole number."
+        },
+        "error": {
+          "staleRevision": "Source priority was changed elsewhere after you loaded it, so your save was not applied. Your edits are kept.",
+          "invalid": "The priorities were rejected as invalid. Each source needs a whole number.",
+          "unavailable": "Source priority settings are not available in this window.",
+          "unknown": "Source priority could not be loaded or saved."
+        }
+      },
       "subjectSearch": "Search authoritative exact subjects",
       "authoritativeSubjects": "Authoritative exact subjects",
       "noAuthoritativeSubjects": "No authoritative exact subjects match this search.",

@@ -54,6 +54,7 @@ const props = withDefaults(defineProps<{
   initialSubject: null,
   initialPath: null,
 })
+const emit = defineEmits<{ (event: 'open-source-priority'): void }>()
 
 const query = ref('')
 const loading = ref(false)
@@ -294,7 +295,8 @@ watch(() => [props.initialSubject, props.initialPath] as const, async ([subject]
                 <div class="mt-1 break-all text-[10px]">{{ t('settings.modelsCapabilities.capabilityRevision') }}: {{ snapshot.resolved.resolvedFacts.capabilityRevision }}</div>
                 <div class="break-all text-[10px]">{{ t('settings.modelsCapabilities.resolvedSnapshotRevision') }}: {{ snapshot.resolved.resolvedSnapshotRevision }}</div>
                 <div class="mt-1 text-[11px]">{{ snapshot.resolved.resolvedFacts.fields.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
-                <div v-if="snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision" class="break-all text-[10px]">{{ t('settings.modelsCapabilities.facts.detail.sourcePriorityConfig') }}: {{ snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision }}</div>
+                <div v-if="snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision" class="break-all text-[10px]">{{ t('settings.modelsCapabilities.facts.detail.sourcePriorityConfig') }}: {{ snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision }}
+                  <button type="button" class="ml-1 rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-800" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
                 <div class="mt-2 flex flex-wrap gap-1" role="group" :aria-label="t('settings.modelsCapabilities.facts.filter.label')">
                   <button v-for="option in FILTERS" :key="option" type="button" class="rounded border px-2 py-0.5 text-[10px]"
                     :class="filter === option ? 'border-blue-400 bg-white text-blue-900' : 'border-blue-100 text-blue-800'"
@@ -321,7 +323,8 @@ watch(() => [props.initialSubject, props.initialPath] as const, async ([subject]
                   <p class="text-gray-600">{{ t(modelFactStateExplanationKey(stateOf(detailField()!))) }}</p>
                   <dl class="space-y-0.5">
                     <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectedValue') }}: </dt><dd class="inline break-all">{{ valueOrNone(detailField()!.selectedValue) }}</dd></div>
-                    <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectionReason') }}: </dt><dd class="inline">{{ t(modelFactSelectionReasonKey(detailField()!.selectionReason)) }}</dd></div>
+                    <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectionReason') }}: </dt><dd class="inline">{{ t(modelFactSelectionReasonKey(detailField()!.selectionReason)) }}</dd>
+                      <button v-if="detailField()!.selectionReason === 'equal_priority_conflict'" type="button" class="ml-1 rounded border border-gray-300 px-1.5 py-0.5 text-[10px]" data-testid="detail-edit-source-priority" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
                     <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.completeness') }}: </dt><dd class="inline">{{ t(modelFactCompletenessKey(detailField()!.completenessDisposition)) }}</dd></div>
                   </dl>
                   <template v-for="group in ([

@@ -162,6 +162,30 @@
       "capabilityRulesPriority": "Capability Rules",
       "savePriority": "保存优先级",
       "prioritySaved": "来源优先级已保存。",
+      "sourcePriority": {
+        "rank": "第 {rank} 位",
+        "rankTied": "第 {rank} 位，与 {sources} 并列",
+        "order": "解析顺序（数字越大越优先）",
+        "noTies": "没有来源共享同一优先级，因此总由更高优先级的结论决定。",
+        "tie": "{sources} 的优先级同为 {priority}。",
+        "tieExplanation": "并列来源对同一事实给出不同结论时，不会选出任何值，该字段显示为冲突。可在事实检查器中使用“冲突”筛选查找受影响的字段。",
+        "openInspector": "打开事实检查器",
+        "edit": "编辑来源优先级",
+        "latestSaved": "最新已保存的值",
+        "latestLoaded": "已加载最新保存的版本。你的修改已保留，请检查后再次保存。",
+        "loadLatestKeepDraft": "加载最新版本并保留我的修改",
+        "validation": {
+          "empty": "请输入整数。",
+          "notInteger": "请使用整数（如 3 或 -1），不允许小数或文本。",
+          "outOfRange": "数字过大，请使用更小的整数。"
+        },
+        "error": {
+          "staleRevision": "加载后来源优先级已在其他地方被修改，因此本次保存未生效。你的修改已保留。",
+          "invalid": "优先级无效，已被拒绝。每个来源都需要一个整数。",
+          "unavailable": "此窗口中无法使用来源优先级设置。",
+          "unknown": "无法加载或保存来源优先级。"
+        }
+      },
       "subjectSearch": "搜索权威精确模型主体",
       "authoritativeSubjects": "权威精确模型主体",
       "noAuthoritativeSubjects": "没有与搜索匹配的权威精确模型主体。",

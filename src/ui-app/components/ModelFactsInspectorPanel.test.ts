@@ -86,7 +86,7 @@ describe('ModelFactsInspectorPanel', () => {
       readEvidenceSlice: vi.fn(), readSanitizedRawPayload: vi.fn(),
     } }
     const user = userEvent.setup()
-    render(ModelFactsInspectorPanel)
+    const view = render(ModelFactsInspectorPanel)
     await user.click(await screen.findByRole('button', { name: /m-test/ }))
 
     const states = (path: string) => screen.getByTestId(`resolved-field-${path}`).querySelector('[data-state]')!.getAttribute('data-state')
@@ -104,11 +104,14 @@ describe('ModelFactsInspectorPanel', () => {
     expect(conflictDetail.getByTestId('detail-candidates')).toHaveTextContent(/并列候选 2.*models\.dev.*3/)
     expect(conflictDetail.getByTestId('detail-opposing')).toHaveTextContent('Provider Native')
     expect(conflictDetail.getByTestId('detail-opposing')).toHaveTextContent('models.dev')
+    await user.click(conflictDetail.getByTestId('detail-edit-source-priority'))
+    expect(view.emitted('open-source-priority')).toHaveLength(1)
 
     await user.click(screen.getByRole('button', { name: /查看原因 search\.web\.support/ }))
     const winnerDetail = within(await screen.findByTestId('resolved-field-detail'))
     expect(winnerDetail.getByTestId('detail-supporting')).toHaveTextContent(/Provider Native.*5.*显式/)
     expect(winnerDetail.getByTestId('detail-overridden')).toHaveTextContent(/models\.dev.*1.*推导/)
+    expect(winnerDetail.queryByTestId('detail-edit-source-priority')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /查看原因 search\.image\.support/ }))
     const gapDetail = within(await screen.findByTestId('resolved-field-detail'))

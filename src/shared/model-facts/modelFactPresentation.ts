@@ -188,3 +188,78 @@ export function modelFactControlKey(name: 'checking' | 'refreshFailed' | 'noMode
   | 'notVerified' | 'notVerifiedExplanation' | 'inspect' | 'unavailableSummary' | 'reasonLine'): string {
   return `${I18N_PREFIX}.control.${name}`
 }
+
+/*
+ * Source Priority editing (Goal 4 S3). Presentation only: rank and tie are read from the integers the
+ * user sees, error codes are mapped to localized text, and nothing here changes how the resolver or
+ * sourcePriorityConfigRevision treat priorities. A higher integer wins; equal integers can conflict.
+ */
+
+export type SourcePriorityKey = 'provider_native' | 'models_dev' | 'capability_rule'
+
+export const SOURCE_PRIORITY_KEYS: readonly SourcePriorityKey[] = Object.freeze(['provider_native', 'models_dev', 'capability_rule'])
+
+export type SourcePriorityDraftResult =
+  | Readonly<{ ok: true; value: number }>
+  | Readonly<{ ok: false; reason: 'empty' | 'notInteger' | 'outOfRange' }>
+
+/** Parses one draft input; invalid text is reported, never coerced to 0. */
+export function parseSourcePriorityDraft(text: string): SourcePriorityDraftResult {
+  const trimmed = text.trim()
+  if (trimmed === '') return Object.freeze({ ok: false, reason: 'empty' })
+  if (!/^[-+]?\d+$/u.test(trimmed)) return Object.freeze({ ok: false, reason: 'notInteger' })
+  const value = Number(trimmed)
+  if (!Number.isSafeInteger(value)) return Object.freeze({ ok: false, reason: 'outOfRange' })
+  return Object.freeze({ ok: true, value: Object.is(value, -0) ? 0 : value })
+}
+
+export type SourcePriorityRank = Readonly<{
+  key: SourcePriorityKey
+  priority: number
+  /** Dense rank, 1 = highest priority. */
+  rank: number
+  tiedWith: readonly SourcePriorityKey[]
+}>
+
+export function sourcePriorityRanks(priorities: Readonly<Record<SourcePriorityKey, number>>): readonly SourcePriorityRank[] {
+  const distinct = [...new Set(SOURCE_PRIORITY_KEYS.map((key) => priorities[key]))].sort((left, right) => right - left)
+  return Object.freeze(SOURCE_PRIORITY_KEYS.map((key) => Object.freeze({
+    key,
+    priority: priorities[key],
+    rank: distinct.indexOf(priorities[key]) + 1,
+    tiedWith: Object.freeze(SOURCE_PRIORITY_KEYS.filter((other) => other !== key && priorities[other] === priorities[key])),
+  })))
+}
+
+/** Groups of two or more sources sharing one priority, highest priority first. */
+export function sourcePriorityTies(priorities: Readonly<Record<SourcePriorityKey, number>>): readonly (readonly SourcePriorityKey[])[] {
+  const groups = new Map<number, SourcePriorityKey[]>()
+  for (const key of SOURCE_PRIORITY_KEYS) groups.set(priorities[key], [...(groups.get(priorities[key]) ?? []), key])
+  return Object.freeze([...groups.entries()].filter(([, keys]) => keys.length > 1)
+    .sort(([left], [right]) => right - left).map(([, keys]) => Object.freeze(keys)))
+}
+
+export type SourcePriorityErrorKind = 'staleRevision' | 'invalid' | 'unavailable' | 'unknown'
+
+/** Maps a bridge / IPC failure (possibly wrapped by Electron) to a localized error kind. */
+export function sourcePriorityErrorKind(cause: unknown): SourcePriorityErrorKind {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  if (message.includes('GENERATION_V2_SOURCE_PRIORITY_CONFIG_STALE_REVISION')) return 'staleRevision'
+  if (message.includes('GENERATION_V2_SOURCE_PRIORITY_CONFIG_UNAVAILABLE')) return 'unavailable'
+  if (/GENERATION_V2_SOURCE_PRIORITY_CONFIG_(?:INVALID|INPUT_INVALID|IPC_INVALID)/u.test(message)) return 'invalid'
+  return 'unknown'
+}
+
+const SOURCE_PRIORITY_I18N_PREFIX = 'settings.modelsCapabilities.sourcePriority'
+
+export function sourcePriorityErrorKey(kind: SourcePriorityErrorKind): string {
+  return `${SOURCE_PRIORITY_I18N_PREFIX}.error.${kind}`
+}
+
+export function sourcePriorityValidationKey(reason: 'empty' | 'notInteger' | 'outOfRange'): string {
+  return `${SOURCE_PRIORITY_I18N_PREFIX}.validation.${reason}`
+}
+
+export function sourcePriorityKey(name: string): string {
+  return `${SOURCE_PRIORITY_I18N_PREFIX}.${name}`
+}
