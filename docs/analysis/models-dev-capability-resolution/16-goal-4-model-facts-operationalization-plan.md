@@ -1,6 +1,6 @@
 # Goal 4 Model Facts Operationalization Plan
 
-- **Lifecycle Status**: Goal 4 in progress; S1 accepted, S2 implemented, S3 pending
+- **Lifecycle Status**: Goal 4 in progress; S1 and S2 accepted, S3 implemented and awaiting acceptance; final closeout pending
 - **Document Role**: durable plan and recovery ledger for presentation-only operationalization of Goal 3 Resolved Model Facts
 - **Last updated**: 2026-10-01
 - **Baseline**: `models-dev-capability-resolution` at `c40fc6e1`
@@ -17,7 +17,7 @@ No change to: the three-source resolver, source authority, source priority seman
 
 ## Shared presentation vocabulary
 
-Single mapping: `src/shared/model-facts/modelFactPresentation.ts` (pure, renderer-safe, imports no resolver code). S2 and S3 must reuse it and add no second interpretation layer. S2 added `modelFactControlPresentation` to the same file for controls (see S2).
+Single mapping: `src/shared/model-facts/modelFactPresentation.ts` (pure, renderer-safe, imports no resolver code). S2 and S3 must reuse it and add no second interpretation layer. S2 added `modelFactControlPresentation` to the same file for controls (see S2); S3 added the Source Priority rank / tie / error helpers there (see S3).
 
 | Presentation state | Derived from (existing facts only) |
 | --- | --- |
@@ -35,8 +35,8 @@ Localized keys: `settings.modelsCapabilities.facts.*` (state, stateExplanation, 
 | Slice | Status | Commit |
 | --- | --- | --- |
 | S1 Inspector explainability | accepted | `37336f7` |
-| S2 Capability-aware control explanations | implemented, awaiting acceptance | `6870fd5`, `72af221` |
-| S3 Source Priority operational UX | pending | |
+| S2 Capability-aware control explanations | accepted | `6870fd5`, `72af221` |
+| S3 Source Priority operational UX | implemented, awaiting acceptance | `a6857f2` |
 
 ### S1 — Inspector explainability
 
@@ -88,6 +88,32 @@ Acceptance evidence:
 - `src/ui-app/components/ModelFactControlExplanations.test.ts` (unsupported and conflict rows with exact Inspector paths, unknown / data gap / no source coverage markers, unknown enum unverified, refresh failure, unchanged editor without explanations, console reasons, image fallback marker, composer chip reason, exact Inspector path and no near-match).
 - Golden `modelFactPresentationInvariance.test.ts` and the existing editor, console, composer and Inspector suites pass unchanged.
 
+### S3 — Source Priority operational UX
+
+Baseline `7a1b1d4`. Survey: project thread "Source Priority UX survey".
+
+Delivered:
+
+- `ModelFactsSourcePrioritySettingsPanel.vue` edits text drafts. `parseSourcePriorityDraft` accepts whole numbers only and reports empty, not a whole number, or out of safe-integer range inline (`aria-invalid`); nothing is coerced to 0 and save is blocked while a field is invalid.
+- `sourcePriorityErrorKind` maps bridge / repo / IPC codes (including Electron-wrapped messages) to localized stale-revision, invalid, unavailable and unknown messages; no raw code is the primary text (an unknown failure shows its detail as a secondary line).
+- Stale CAS: the draft is kept; "Load latest version and keep my edits" re-reads the config, shows the latest stored values beside the draft and adopts the latest revision for the next save. The existing Reload still discards the draft.
+- `sourcePriorityRanks` / `sourcePriorityTies` derive dense rank and tie groups from the integers (higher wins). Each source shows its rank or "tied with"; the resolution order is shown with `>` and `=`; a tie notice explains that disagreeing tied sources give a conflict with no selected value.
+- Links: tie notice -> Facts Inspector tab; Inspector source priority revision line and `equal_priority_conflict` field detail -> Source Priority editor (via `ModelsAndCapabilitiesSettingsPanel`).
+- New strings only under `settings.modelsCapabilities.sourcePriority.*` (zh-CN, en-US).
+- Unchanged: resolver, priority semantics, config schema, `sourcePriorityConfigV1Repo` CAS, IPC, `sourcePriorityConfigRevision`. No presets, per-field priorities, policy DSL or dry-run preview.
+
+Decision:
+
+- The Inspector link from a tie opens the Inspector tab; it does not pre-select a subject or filter, because a filter needs a chosen subject. The tie notice tells the user to use the Conflict filter there.
+
+Acceptance evidence:
+
+- `src/shared/model-facts/sourcePriorityPresentation.test.ts` (parse without coercion, rank / ties, revision depends on priorities only, error mapping incl. Electron-wrapped stale, i18n completeness).
+- `src/ui-app/components/ModelFactsSourcePrioritySettingsPanel.test.ts` (original CAS happy path unchanged; invalid input never becomes 0 and blocks save; stale rejection localized with no raw code, draft survives and is saved against the latest revision; invalid code localized; rank, order and tie explanation with Inspector link).
+- `src/ui-app/components/ModelsAndCapabilitiesSettingsPanel.test.ts` (tie -> Inspector tab, Inspector -> Source Priority tab).
+- `ModelFactsInspectorPanel.test.ts`: edit-source-priority action only on the `equal_priority_conflict` detail.
+- `sourcePriorityConfigV1Repo.test.ts` and `generationV2SourcePriorityConfigIpc.test.ts` pass unchanged (CAS and revision behaviour).
+
 ## Deferred findings (not Goal 4)
 
 - Evidence tab still prints raw JSON; copy buttons / revision collapsing / panel virtualization (polish, class C).
@@ -97,6 +123,7 @@ Acceptance evidence:
 - S2 inventory: Goal 3 never gives `image.mode` or `web.types` an enum domain (support-valued sources), so image generation class and googleSearch / imageSearch stay unavailable for Goal 3-backed models; S2 explains this as "not listed" but changing it is runtime/data semantics (owner decision).
 - S2 inventory: no Goal 3 source paths for thinking level / budget, reasoning summary, image output mode or attachments (part of the Gemini thinking vertical slice).
 - `validationHint` and the image editor labels are hardcoded English (i18n polish).
+- Source Priority: presets, a "which facts would change" dry-run preview, and shortening the raw revision hash (polish / out of S3 scope).
 - Known pre-existing failures at the `315fd49d` checkpoint (7 stale expectations, 20 Windows/CRLF-only tests, 2 suites needing the Electron binary) are out of scope.
 
 ## Validation actually run
@@ -116,3 +143,12 @@ S2 (cloud, Node ABI target, `npm ci` then `npm run rebuild:node`):
 - `tsc --noEmit`, `vue-tsc --noEmit`: clean.
 - `i18n:check`, `i18n:scan-hardcoded` (46 findings, same as baseline, none in S2 files), `gate:generation-v2-goal3-authority`, `gate:model-identity-purge`, `gate:generation-v2-zero-residual`, `gate:docs`, `git diff --check`: pass.
 - Not run in S2: Vite build, Electron smoke (cloud has no display), full suite.
+
+S3 (cloud, Node ABI target, `npm ci` then `npm run rebuild:node`):
+
+- `vitest.ui.config.ts`: Source Priority panel, ModelsAndCapabilitiesSettingsPanel (new), ModelFactsInspectorPanel, S2 control suites, SettingsPanel, GenerationParamsSettingsEditor, ChatSessionConsole, ChatAppComposer and ComposerCapabilityChip pass (20 files, 158 tests).
+- `vitest.unit.config.ts`: `src/shared/model-facts` (S1 + S2 + S3), `src/next/generation-v2/model-facts` (invariance golden included), `src/shared/i18n`, `src/next/generation-v2/capability` pass (33 files, 250 tests).
+- `vitest.integration.config.ts`: `sourcePriorityConfigV1Repo.test.ts`, `generationV2SourcePriorityConfigIpc.test.ts` pass, unchanged.
+- `tsc --noEmit`, `vue-tsc --noEmit`: clean.
+- `i18n:check`, `i18n:scan-hardcoded` (46 findings, same as baseline, none in S3 files), `gate:generation-v2-goal3-authority`, `gate:model-identity-purge`, `gate:generation-v2-zero-residual`, `gate:docs`, `git diff --check`: pass.
+- Not run in S3: Vite build, Electron smoke (cloud has no display), full suite.
