@@ -146,7 +146,7 @@
       "pinAfterRollback": "Pin this version",
       "noPacks": "No rule packs are available.",
       "inspectorTitle": "Facts Inspector",
-      "inspectorDescription": "Inspect separately published source facts for authoritative exact model subjects. This view does not choose a winner or resolve a final capability.",
+      "inspectorDescription": "Inspect separately published source facts for authoritative exact model subjects, and the basis for each resolved Model Fact. This view only shows the resolver's existing conclusions and never re-selects a winner.",
       "resolvedTitle": "Resolved Model Facts",
       "resolvedSnapshotRevision": "Resolved snapshot revision",
       "capabilityRevision": "Capability revision",
@@ -170,7 +170,6 @@
       "sourceAbsent": "No source fact for this subject",
       "loadMore": "Load more",
       "fields": "fields",
-      "valuesDiffer": "Values differ",
       "noFields": "No canonical fields were published for this subject.",
       "selectField": "Select a field to inspect its evidence.",
       "viewRawPayload": "View full sanitized payload",
@@ -179,6 +178,89 @@
         "overview": "Overview",
         "fields": "Fields",
         "evidence": "Evidence"
+      },
+      "facts": {
+        "state": {
+          "supported": "Supported",
+          "unsupported": "Unsupported",
+          "unknown": "Unknown",
+          "conflict": "Conflict",
+          "data_gap": "Data gap",
+          "no_source_coverage": "No source coverage"
+        },
+        "stateExplanation": {
+          "supported": "A definite value was resolved.",
+          "unsupported": "A source explicitly states this capability is not supported.",
+          "unknown": "No source made an effective claim, so this cannot be confirmed.",
+          "conflict": "Sources with equal priority disagree, and the resolver did not pick a winner.",
+          "data_gap": "Source data is missing or invalid, so no conclusion was reached. This does not mean the capability is unsupported.",
+          "no_source_coverage": "No source covers this field. This does not mean the capability is unsupported."
+        },
+        "selectionReason": {
+          "no_effective_claim": "No source made an effective claim.",
+          "single_claim": "Only one source made a claim.",
+          "higher_priority_claim": "The higher-priority source won.",
+          "lower_priority_fill": "A lower-priority source filled in what higher-priority sources did not provide.",
+          "explicit_over_derived": "At equal priority, an explicit assertion took precedence over a derived one.",
+          "partial_supplementation": "Several sources each supplied part of the value and were merged.",
+          "equal_priority_conflict": "Sources with equal priority disagree, which results in a conflict.",
+          "unrecognized": "Unrecognized selection reason."
+        },
+        "completeness": {
+          "complete": "Complete",
+          "partial": "Partial",
+          "partial_bounds": "Partial bounds",
+          "not_applicable": "Not applicable",
+          "unknown": "Unknown",
+          "unrecognized": "Unrecognized"
+        },
+        "sourceKind": {
+          "provider_native": "Provider Native",
+          "models_dev": "models.dev",
+          "capability_rule": "Capability Rules",
+          "unrecognized": "Unrecognized source"
+        },
+        "diagnosticKind": {
+          "missing": "Missing",
+          "invalid": "Invalid",
+          "unrecognized": "Unrecognized"
+        },
+        "assertionKind": {
+          "explicit": "Explicit",
+          "derived": "Derived",
+          "unrecognized": "Unrecognized"
+        },
+        "filter": {
+          "label": "Filter",
+          "all": "All",
+          "conflict": "Conflict",
+          "unknown": "Unknown / data gap",
+          "diagnostics": "Has diagnostics"
+        },
+        "detail": {
+          "title": "Field details",
+          "close": "Close",
+          "inspect": "Why?",
+          "selectedValue": "Selected value",
+          "noSelectedValue": "No selected value",
+          "selectionReason": "Selection reason",
+          "completeness": "Completeness",
+          "priority": "Priority",
+          "supporting": "Supporting claims",
+          "opposing": "Opposing claims",
+          "overridden": "Overridden claims",
+          "candidates": "Conflict candidates",
+          "diagnostics": "Diagnostics",
+          "noClaims": "None",
+          "claimValue": "Value",
+          "noRecord": "No source fact record",
+          "sourceStale": "Source is stale",
+          "sourcePriorityConfig": "Source priority configuration",
+          "openEvidence": "View source evidence",
+          "noFieldsMatch": "No fields match this filter.",
+          "diagnosticCode": "Error code",
+          "tiedCandidate": "Tied candidate"
+        }
       }
     },
     "language": {

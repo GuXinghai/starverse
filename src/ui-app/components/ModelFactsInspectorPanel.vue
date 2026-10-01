@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { t } from '@/shared/i18n'
+import {
+  modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
+  modelFactPresentationState, modelFactPresentationTone, modelFactSelectionReasonKey, modelFactSourceKindKey,
+  modelFactStateExplanationKey, modelFactStateKey, modelFactValueText,
+  type ModelFactFilter, type ModelFactPresentationTone, type PresentableResolvedField,
+} from '@/shared/model-facts/modelFactPresentation'
 
 type ExactSubject = Readonly<{
   providerAuthorityId: string
@@ -24,20 +30,12 @@ type InspectorSourceRow = Readonly<{
 }>
 type ResolvedSnapshot = Readonly<{
   resolvedSnapshotRevision: string
+  sourcePriorityConfigRevision?: string
   sourceScopeSelection: Readonly<{ providerNative: string; modelsDev: string; capabilityRules: string }>
   resolvedFacts: Readonly<{
     capabilityRevision: string
-    fields: readonly Readonly<{
-      path: string
-      state: string
-      completenessDisposition: string
-      selectionReason: string
-      selectedValue?: unknown
-      supportingProvenance: readonly unknown[]
-      opposingProvenance: readonly unknown[]
-      overriddenProvenance: readonly unknown[]
-      diagnostics: readonly unknown[]
-    }>[]
+    input?: Readonly<{ sourcePriorityConfigRevision?: string }>
+    fields: readonly PresentableResolvedField[]
   }>
 }>
 type InspectorSnapshot = Readonly<{
@@ -67,6 +65,16 @@ const snapshot = ref<InspectorSnapshot | null>(null)
 const view = ref<View>('overview')
 const selectedField = ref<SelectedField | null>(null)
 const rawPayload = ref<unknown>(null)
+const filter = ref<ModelFactFilter>('all')
+const detailPath = ref<string | null>(null)
+const FILTERS: readonly ModelFactFilter[] = ['all', 'conflict', 'unknown', 'diagnostics']
+const TONE_CLASS: Readonly<Record<ModelFactPresentationTone, string>> = {
+  positive: 'bg-green-100 text-green-800',
+  negative: 'bg-gray-200 text-gray-800',
+  neutral: 'bg-gray-100 text-gray-600',
+  warning: 'bg-amber-100 text-amber-800',
+  attention: 'bg-orange-100 text-orange-800',
+}
 
 function bridge() {
   const value = window.generationV2?.modelFactsInspector
@@ -111,6 +119,8 @@ async function inspect(subject: ExactSubject) {
   selected.value = subject
   selectedField.value = null
   rawPayload.value = null
+  detailPath.value = null
+  filter.value = 'all'
   try {
     snapshot.value = await bridge().readInspector({ subject, expectedSubjectSetRevision: subjectSetRevision.value }) as InspectorSnapshot
     view.value = 'overview'
@@ -136,9 +146,28 @@ function resolvedFields() {
   return snapshot.value?.resolved?.resolvedFacts.fields ?? []
 }
 
-function resolvedValueText(value: unknown): string {
-  if (value === undefined) return t('settings.modelsCapabilities.sourceAbsent')
-  try { return JSON.stringify(value) } catch { return String(value) }
+function coverageFor(path: string) {
+  return { coveredBySource: (snapshot.value?.sources ?? []).some((source) => sourceOutcome(source, path) !== null) }
+}
+
+function stateOf(field: PresentableResolvedField) {
+  return modelFactPresentationState(field, coverageFor(field.path))
+}
+
+function filteredResolvedFields() {
+  return resolvedFields().filter((field) => modelFactMatchesFilter(filter.value, field, coverageFor(field.path)))
+}
+
+function detailField(): PresentableResolvedField | null {
+  return resolvedFields().find((field) => field.path === detailPath.value) ?? null
+}
+
+function resolvedFieldFor(path: string): PresentableResolvedField | null {
+  return resolvedFields().find((field) => field.path === path) ?? null
+}
+
+function valueOrNone(value: unknown): string {
+  return modelFactValueText(value) ?? t('settings.modelsCapabilities.facts.detail.noSelectedValue')
 }
 
 function valueFor(outcome: FieldOutcome): unknown {
@@ -153,13 +182,10 @@ function valueText(outcome: FieldOutcome | null): string {
   try { return JSON.stringify(value) } catch { return String(value) }
 }
 
-function differs(path: string): boolean {
-  const values = (snapshot.value?.sources ?? []).map((source) => sourceOutcome(source, path))
-    .filter((outcome): outcome is FieldOutcome => outcome !== null)
-    .map(valueFor).filter((value) => value !== undefined)
-  return new Set(values.map((value) => {
-    try { return JSON.stringify(value) } catch { return String(value) }
-  })).size > 1
+function openEvidenceFor(path: string) {
+  const source = (snapshot.value?.sources ?? []).find((row) => sourceOutcome(row, path) !== null)
+  const outcome = source ? sourceOutcome(source, path) : null
+  if (source && outcome) void inspectField(source, outcome)
 }
 
 function evidenceRefs(outcome: FieldOutcome): readonly Readonly<{ rawPayloadRef?: unknown; sourceFieldPath?: string }>[] {
@@ -252,19 +278,77 @@ onMounted(async () => {
                 <div class="mt-1 break-all text-[10px]">{{ t('settings.modelsCapabilities.capabilityRevision') }}: {{ snapshot.resolved.resolvedFacts.capabilityRevision }}</div>
                 <div class="break-all text-[10px]">{{ t('settings.modelsCapabilities.resolvedSnapshotRevision') }}: {{ snapshot.resolved.resolvedSnapshotRevision }}</div>
                 <div class="mt-1 text-[11px]">{{ snapshot.resolved.resolvedFacts.fields.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
+                <div v-if="snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision" class="break-all text-[10px]">{{ t('settings.modelsCapabilities.facts.detail.sourcePriorityConfig') }}: {{ snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision }}</div>
+                <div class="mt-2 flex flex-wrap gap-1" role="group" :aria-label="t('settings.modelsCapabilities.facts.filter.label')">
+                  <button v-for="option in FILTERS" :key="option" type="button" class="rounded border px-2 py-0.5 text-[10px]"
+                    :class="filter === option ? 'border-blue-400 bg-white text-blue-900' : 'border-blue-100 text-blue-800'"
+                    :aria-pressed="filter === option" @click="filter = option">{{ t(`settings.modelsCapabilities.facts.filter.${option}`) }}</button>
+                </div>
                 <div class="mt-2 max-h-64 space-y-1 overflow-auto">
-                  <div v-for="field in resolvedFields()" :key="field.path" class="rounded border border-blue-100 bg-white p-2 text-[10px]">
-                    <div class="font-medium text-gray-800">{{ field.path }} · {{ field.state }}</div>
-                    <div class="text-gray-500">{{ resolvedValueText(field.selectedValue) }} · {{ field.completenessDisposition }} · {{ field.selectionReason }}</div>
+                  <div v-for="field in filteredResolvedFields()" :key="field.path" class="rounded border border-blue-100 bg-white p-2 text-[10px]" :data-testid="`resolved-field-${field.path}`">
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-800">{{ field.path }}</span>
+                      <span class="rounded px-1" :class="TONE_CLASS[modelFactPresentationTone(stateOf(field))]" :data-state="stateOf(field)">{{ t(modelFactStateKey(stateOf(field))) }}</span>
+                      <button type="button" class="ml-auto rounded border border-gray-300 px-1.5 py-0.5 text-gray-700" :aria-label="`${t('settings.modelsCapabilities.facts.detail.inspect')} ${field.path}`" @click="detailPath = field.path">{{ t('settings.modelsCapabilities.facts.detail.inspect') }}</button>
+                    </div>
+                    <div class="text-gray-500">{{ valueOrNone(field.selectedValue) }} · {{ t(modelFactSelectionReasonKey(field.selectionReason)) }}</div>
                     <div class="text-gray-400">{{ field.supportingProvenance.length }} {{ t('settings.modelsCapabilities.supportingClaims') }} · {{ field.opposingProvenance.length }} {{ t('settings.modelsCapabilities.opposingClaims') }} · {{ field.overriddenProvenance.length }} {{ t('settings.modelsCapabilities.overriddenClaims') }} · {{ field.diagnostics.length }} {{ t('settings.modelsCapabilities.diagnostics') }}</div>
                   </div>
+                  <p v-if="filteredResolvedFields().length === 0" class="text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.noFieldsMatch') }}</p>
                 </div>
+                <section v-if="detailField()" class="mt-2 space-y-2 rounded border border-blue-200 bg-white p-2 text-[11px] text-gray-800" data-testid="resolved-field-detail" role="region" :aria-label="`${t('settings.modelsCapabilities.facts.detail.title')} ${detailField()!.path}`">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium">{{ detailField()!.path }}</span>
+                    <span class="rounded px-1" :class="TONE_CLASS[modelFactPresentationTone(stateOf(detailField()!))]">{{ t(modelFactStateKey(stateOf(detailField()!))) }}</span>
+                    <button type="button" class="ml-auto rounded border border-gray-300 px-1.5 py-0.5" @click="detailPath = null">{{ t('settings.modelsCapabilities.facts.detail.close') }}</button>
+                  </div>
+                  <p class="text-gray-600">{{ t(modelFactStateExplanationKey(stateOf(detailField()!))) }}</p>
+                  <dl class="space-y-0.5">
+                    <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectedValue') }}: </dt><dd class="inline break-all">{{ valueOrNone(detailField()!.selectedValue) }}</dd></div>
+                    <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectionReason') }}: </dt><dd class="inline">{{ t(modelFactSelectionReasonKey(detailField()!.selectionReason)) }}</dd></div>
+                    <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.completeness') }}: </dt><dd class="inline">{{ t(modelFactCompletenessKey(detailField()!.completenessDisposition)) }}</dd></div>
+                  </dl>
+                  <template v-for="group in ([
+                    { id: 'supporting', claims: detailField()!.supportingProvenance },
+                    { id: 'opposing', claims: detailField()!.opposingProvenance },
+                    { id: 'overridden', claims: detailField()!.overriddenProvenance },
+                  ] as const)" :key="group.id">
+                    <div :data-testid="`detail-${group.id}`">
+                      <div class="font-medium">{{ t(`settings.modelsCapabilities.facts.detail.${group.id}`) }}</div>
+                      <p v-if="group.claims.length === 0" class="text-gray-400">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
+                      <ul v-else class="space-y-0.5">
+                        <li v-for="(claim, index) in group.claims" :key="index" class="break-all">
+                          {{ t(modelFactSourceKindKey(claim.sourceKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }} · {{ t(modelFactAssertionKindKey(claim.sourceAssertion?.provenance?.assertionKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.claimValue') }} {{ valueOrNone(claim.sourceAssertion?.value) }}
+                        </li>
+                      </ul>
+                    </div>
+                  </template>
+                  <div v-if="detailField()!.candidates?.length" data-testid="detail-candidates">
+                    <div class="font-medium">{{ t('settings.modelsCapabilities.facts.detail.candidates') }}</div>
+                    <ul class="space-y-0.5">
+                      <li v-for="(candidate, index) in detailField()!.candidates" :key="index" class="break-all">
+                        {{ t('settings.modelsCapabilities.facts.detail.tiedCandidate') }} {{ index + 1 }}: {{ valueOrNone(candidate.value) }}
+                        <span v-for="(claim, claimIndex) in candidate.provenance ?? []" :key="claimIndex"> · {{ t(modelFactSourceKindKey(claim.sourceKind)) }} ({{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }})</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div data-testid="detail-diagnostics">
+                    <div class="font-medium">{{ t('settings.modelsCapabilities.facts.detail.diagnostics') }}</div>
+                    <p v-if="detailField()!.diagnostics.length === 0" class="text-gray-400">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
+                    <ul v-else class="space-y-0.5">
+                      <li v-for="(diagnostic, index) in detailField()!.diagnostics" :key="index" class="break-all">
+                        {{ t(modelFactSourceKindKey(diagnostic.sourceKind)) }} · {{ t(modelFactDiagnosticKindKey(diagnostic.kind)) }}<span v-if="diagnostic.errorCode"> · {{ t('settings.modelsCapabilities.facts.detail.diagnosticCode') }} {{ diagnostic.errorCode }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <button v-if="(snapshot.sources ?? []).some((row) => sourceOutcome(row, detailField()!.path) !== null)" type="button" class="rounded border border-gray-300 px-2 py-1" @click="openEvidenceFor(detailField()!.path)">{{ t('settings.modelsCapabilities.facts.detail.openEvidence') }}</button>
+                </section>
               </template>
               <div v-else class="mt-1 text-[11px] text-blue-800">{{ t('settings.modelsCapabilities.resolvedAbsent') }}</div>
             </div>
             <div v-for="source in snapshot.sources" :key="`${source.state.sourceKind}:${source.state.sourceScopeId}`" class="rounded border border-gray-100 p-2 text-xs text-gray-700">
-              <div class="font-medium">{{ source.state.sourceKind }} · {{ source.state.sourceScopeId }}</div>
-              <div class="mt-1 text-[11px] text-gray-500">{{ source.subjectFact ? t('settings.modelsCapabilities.subjectFactPresent') : t('settings.modelsCapabilities.sourceAbsent') }}<span v-if="source.state.staleReason"> · {{ source.state.staleReason }}</span></div>
+              <div class="font-medium">{{ t(modelFactSourceKindKey(source.state.sourceKind)) }} · {{ source.state.sourceScopeId }}</div>
+              <div class="mt-1 text-[11px] text-gray-500">{{ source.subjectFact ? t('settings.modelsCapabilities.subjectFactPresent') : t('settings.modelsCapabilities.sourceAbsent') }}<span v-if="source.state.staleReason"> · {{ t('settings.modelsCapabilities.facts.detail.sourceStale') }}: {{ source.state.staleReason }}</span></div>
               <div v-if="source.subjectFact" class="mt-1 text-[10px] text-gray-400">{{ source.subjectFact.payload.recordOutcome }} · {{ source.subjectFact.payload.outcomes.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
             </div>
           </div>
@@ -273,7 +357,7 @@ onMounted(async () => {
             <div v-for="row in fields()" :key="`${row.source.state.sourceKind}:${row.source.state.sourceScopeId}:${row.outcome.path}`" class="rounded border border-gray-100 p-2 text-[11px]">
               <button type="button" class="w-full text-left" @click="inspectField(row.source, row.outcome)">
                 <span class="font-medium text-gray-800">{{ row.outcome.path }}</span>
-                <span v-if="differs(row.outcome.path)" class="ml-2 rounded bg-amber-100 px-1 text-amber-800">{{ t('settings.modelsCapabilities.valuesDiffer') }}</span>
+                <span v-if="resolvedFieldFor(row.outcome.path) && stateOf(resolvedFieldFor(row.outcome.path)!) === 'conflict'" class="ml-2 rounded bg-amber-100 px-1 text-amber-800">{{ t('settings.modelsCapabilities.facts.state.conflict') }}</span>
                 <span class="block text-gray-500">{{ row.source.state.sourceKind }} · {{ valueText(row.outcome) }} · {{ row.outcome.disposition }}</span>
               </button>
             </div>

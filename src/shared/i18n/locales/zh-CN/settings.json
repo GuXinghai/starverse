@@ -146,7 +146,7 @@
       "pinAfterRollback": "固定此版本",
       "noPacks": "没有可用的规则包。",
       "inspectorTitle": "事实检查器",
-      "inspectorDescription": "分别查看权威精确模型主体已发布的来源事实。本视图不会选择胜者或解析最终能力。",
+      "inspectorDescription": "分别查看权威精确模型主体已发布的来源事实，以及已解析模型事实的取值依据。本视图只展示解析器已有结论，不会重新选择胜者。",
       "resolvedTitle": "已解析模型事实",
       "resolvedSnapshotRevision": "已解析快照 revision",
       "capabilityRevision": "能力 revision",
@@ -170,7 +170,6 @@
       "sourceAbsent": "该主体没有来源事实",
       "loadMore": "加载更多",
       "fields": "字段",
-      "valuesDiffer": "值不同",
       "noFields": "该主体没有已发布的 canonical 字段。",
       "selectField": "选择字段以查看其证据。",
       "viewRawPayload": "查看完整脱敏 payload",
@@ -179,6 +178,89 @@
         "overview": "概览",
         "fields": "字段",
         "evidence": "证据"
+      },
+      "facts": {
+        "state": {
+          "supported": "支持",
+          "unsupported": "不支持",
+          "unknown": "未知",
+          "conflict": "冲突",
+          "data_gap": "数据缺口",
+          "no_source_coverage": "无来源覆盖"
+        },
+        "stateExplanation": {
+          "supported": "已解析出确定取值。",
+          "unsupported": "来源明确声明该能力不受支持。",
+          "unknown": "没有来源给出有效结论，因此无法确认。",
+          "conflict": "多个来源以相同优先级给出不一致的结论，解析器没有选出胜者。",
+          "data_gap": "来源数据缺失或无效，因此无法得出结论。这不代表该能力不受支持。",
+          "no_source_coverage": "没有任何来源覆盖该字段。这不代表该能力不受支持。"
+        },
+        "selectionReason": {
+          "no_effective_claim": "没有任何来源给出有效结论。",
+          "single_claim": "只有一个来源给出结论。",
+          "higher_priority_claim": "优先级更高的来源胜出。",
+          "lower_priority_fill": "优先级较低的来源补充了更高优先级来源未提供的部分。",
+          "explicit_over_derived": "相同优先级下，显式断言优先于推导断言。",
+          "partial_supplementation": "多个来源各自提供了部分取值并被合并。",
+          "equal_priority_conflict": "优先级相同的来源给出不一致的结论，因此产生冲突。",
+          "unrecognized": "未识别的选择原因。"
+        },
+        "completeness": {
+          "complete": "完整",
+          "partial": "部分",
+          "partial_bounds": "部分边界",
+          "not_applicable": "不适用",
+          "unknown": "未知",
+          "unrecognized": "未识别"
+        },
+        "sourceKind": {
+          "provider_native": "Provider Native",
+          "models_dev": "models.dev",
+          "capability_rule": "Capability Rules",
+          "unrecognized": "未识别来源"
+        },
+        "diagnosticKind": {
+          "missing": "缺失",
+          "invalid": "无效",
+          "unrecognized": "未识别"
+        },
+        "assertionKind": {
+          "explicit": "显式",
+          "derived": "推导",
+          "unrecognized": "未识别"
+        },
+        "filter": {
+          "label": "筛选",
+          "all": "全部",
+          "conflict": "冲突",
+          "unknown": "未知 / 数据缺口",
+          "diagnostics": "有诊断"
+        },
+        "detail": {
+          "title": "字段详情",
+          "close": "关闭",
+          "inspect": "查看原因",
+          "selectedValue": "已选取值",
+          "noSelectedValue": "无已选取值",
+          "selectionReason": "选择原因",
+          "completeness": "完整性",
+          "priority": "优先级",
+          "supporting": "支持的声明",
+          "opposing": "反对的声明",
+          "overridden": "被覆盖的声明",
+          "candidates": "冲突候选",
+          "diagnostics": "诊断",
+          "noClaims": "无",
+          "claimValue": "取值",
+          "noRecord": "没有来源事实记录",
+          "sourceStale": "来源已过期",
+          "sourcePriorityConfig": "来源优先级配置",
+          "openEvidence": "查看来源证据",
+          "noFieldsMatch": "没有符合筛选条件的字段。",
+          "diagnosticCode": "错误码",
+          "tiedCandidate": "并列候选"
+        }
       }
     },
     "language": {
