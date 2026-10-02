@@ -523,7 +523,7 @@
   {
     "ruleId": "anthropic-v1-sonnet55-modes",
     "label": "reasoning.modes.nativeValues",
-    "description": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap.",
+    "description": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
     "priority": 0,
     "configured": "default",
     "providerAuthorityId": "anthropic",
@@ -539,16 +539,15 @@
       "value": {
         "kind": "native_string_set",
         "values": [
-          "adaptive",
-          "between_tools"
+          "adaptive"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       }
     },
     "evidence": {
       "evidenceSourceRef": "anthropic-E017",
       "evidenceKind": "explicit_provider_series",
-      "evidenceNote": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; coordinator approval PENDING. NativeobservationsUNVERIFIED;no models.devkey.",
+      "evidenceNote": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints. As-of 2026-10-02; recheck 2026-10-16. Exact-ID join INFERRED_HIGH independently reviewed in final/manual-review.json. Native observations unverified; no models.dev binding.",
       "identityEvidenceKind": "official_exact_model_doc",
       "identityEvidenceSourceRef": "anthropic-E002",
       "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
@@ -1378,7 +1377,7 @@
   {
     "ruleId": "anthropic-v1-active-output",
     "label": "modalities.output",
-    "description": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
+    "description": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
     "priority": 0,
     "configured": "default",
     "providerAuthorityId": "anthropic",
@@ -1409,13 +1408,13 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       }
     },
     "evidence": {
       "evidenceSourceRef": "anthropic-E028",
       "evidenceKind": "explicit_provider_series",
-      "evidenceNote": "Official intro exhaustively describes current model output as text; no unsupported image generation inference. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; coordinator approval PENDING. NativeobservationsUNVERIFIED;no models.devkey.",
+      "evidenceNote": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee. As-of 2026-10-02; recheck 2026-10-16. Exact-ID join INFERRED_HIGH independently reviewed in final/manual-review.json. Native observations unverified; no models.dev binding.",
       "identityEvidenceKind": "official_exact_model_doc",
       "identityEvidenceSourceRef": "anthropic-E002",
       "provenanceUrl": "https://platform.claude.com/docs/en/intro",

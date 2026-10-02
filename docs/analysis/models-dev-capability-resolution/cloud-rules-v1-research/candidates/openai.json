@@ -2036,6 +2036,42 @@
           "verifiedAt": "2026-10-02T05:13:00.000Z",
           "derivation": null
         }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.modalities.input",
+        "label": "gpt-5.6-cyber modalities.input",
+        "description": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified.",
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "modalities.input",
+          "value": {
+            "kind": "media_kind_set",
+            "values": [
+              "text",
+              "image"
+            ],
+            "completeness": "partial"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified. As-of 2026-10-02; recheck 2026-11-02.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
       }
     ]
   }

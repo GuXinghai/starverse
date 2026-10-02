@@ -1,0 +1,369 @@
+{
+  "units": {
+    "providerEvidenceRecords": 264,
+    "uniqueEvidenceIds": 264,
+    "intermediateFacts": 1350,
+    "expectedDispositionRows": 6333,
+    "actualDispositionRows": 6333,
+    "selectedExactClaims": 1017,
+    "rules": 290,
+    "packs": 5
+  },
+  "dispositions": {
+    "RULE_CANDIDATE": 893,
+    "ALREADY_MODELS_DEV": 1145,
+    "TEMPORALLY_UNSAFE": 367,
+    "ONTOLOGY_GAP": 129,
+    "AMBIGUOUS_DEFER": 1938,
+    "REDUNDANT_BUT_USEFUL": 139,
+    "ALREADY_PROVIDER_NATIVE": 1722
+  },
+  "selectedDispositions": {
+    "RULE_CANDIDATE": 893,
+    "REDUNDANT_BUT_USEFUL": 124
+  },
+  "selectedCoverageBasis": {
+    "EXPLICIT_MODEL": 773,
+    "INFERRED_HIGH": 244
+  },
+  "providerTotals": {
+    "gemini": {
+      "evidenceRecords": 63,
+      "facts": 416,
+      "dispositionRows": 416,
+      "providerProposals": 216,
+      "rules": 135,
+      "selectedClaims": 135
+    },
+    "deepseek": {
+      "evidenceRecords": 18,
+      "facts": 51,
+      "dispositionRows": 95,
+      "providerProposals": 7,
+      "rules": 7,
+      "selectedClaims": 13
+    },
+    "openai": {
+      "evidenceRecords": 72,
+      "facts": 328,
+      "dispositionRows": 328,
+      "providerProposals": 62,
+      "rules": 58,
+      "selectedClaims": 58
+    },
+    "anthropic": {
+      "evidenceRecords": 50,
+      "facts": 79,
+      "dispositionRows": 451,
+      "providerProposals": 49,
+      "rules": 36,
+      "selectedClaims": 253
+    },
+    "openrouter": {
+      "evidenceRecords": 61,
+      "facts": 476,
+      "dispositionRows": 5043,
+      "providerProposals": 64,
+      "rules": 54,
+      "selectedClaims": 558
+    }
+  },
+  "transitionOriginalToFinal": [
+    {
+      "from": "RULE_CANDIDATE",
+      "to": "RULE_CANDIDATE",
+      "rows": 893
+    },
+    {
+      "from": "ALREADY_MODELS_DEV",
+      "to": "ALREADY_MODELS_DEV",
+      "rows": 1145
+    },
+    {
+      "from": "RULE_CANDIDATE",
+      "to": "TEMPORALLY_UNSAFE",
+      "rows": 111
+    },
+    {
+      "from": "ONTOLOGY_GAP",
+      "to": "ONTOLOGY_GAP",
+      "rows": 126
+    },
+    {
+      "from": "AMBIGUOUS_DEFER",
+      "to": "AMBIGUOUS_DEFER",
+      "rows": 1901
+    },
+    {
+      "from": "RULE_CANDIDATE",
+      "to": "ONTOLOGY_GAP",
+      "rows": 3
+    },
+    {
+      "from": "TEMPORALLY_UNSAFE",
+      "to": "TEMPORALLY_UNSAFE",
+      "rows": 208
+    },
+    {
+      "from": "REDUNDANT_BUT_USEFUL",
+      "to": "REDUNDANT_BUT_USEFUL",
+      "rows": 128
+    },
+    {
+      "from": "RULE_CANDIDATE",
+      "to": "REDUNDANT_BUT_USEFUL",
+      "rows": 11
+    },
+    {
+      "from": "REDUNDANT_BUT_USEFUL",
+      "to": "TEMPORALLY_UNSAFE",
+      "rows": 48
+    },
+    {
+      "from": "REDUNDANT_BUT_USEFUL",
+      "to": "AMBIGUOUS_DEFER",
+      "rows": 1
+    },
+    {
+      "from": "RULE_CANDIDATE",
+      "to": "AMBIGUOUS_DEFER",
+      "rows": 36
+    },
+    {
+      "from": "ALREADY_PROVIDER_NATIVE",
+      "to": "ALREADY_PROVIDER_NATIVE",
+      "rows": 1722
+    }
+  ],
+  "factLevelExclusivePartition": {
+    "represented_in_rules": 290,
+    "higher_authority_only": 427,
+    "TEMPORALLY_UNSAFE": 217,
+    "ONTOLOGY_GAP": 66,
+    "AMBIGUOUS_DEFER": 344,
+    "repeated_evidence_covered_by_selected": 3,
+    "superseded_without_selected_replacement": 3
+  },
+  "factDispositionSignatures": {
+    "RULE_CANDIDATE": 265,
+    "ALREADY_MODELS_DEV": 302,
+    "TEMPORALLY_UNSAFE": 217,
+    "ONTOLOGY_GAP": 66,
+    "AMBIGUOUS_DEFER": 344,
+    "REDUNDANT_BUT_USEFUL": 17,
+    "RULE_CANDIDATE+TEMPORALLY_UNSAFE": 9,
+    "REDUNDANT_BUT_USEFUL+TEMPORALLY_UNSAFE": 5,
+    "ALREADY_PROVIDER_NATIVE": 125
+  },
+  "factsWithAnySelectedRows": 290,
+  "factsWithAggregatedSelectors": 76,
+  "evidenceUsedByFacts": 161,
+  "evidenceUnusedByFacts": [
+    "anthropic-E003",
+    "anthropic-E004",
+    "anthropic-E006",
+    "anthropic-E007",
+    "anthropic-E010",
+    "anthropic-E011",
+    "anthropic-E014",
+    "anthropic-E032",
+    "anthropic-E039",
+    "anthropic-E040",
+    "anthropic-E041",
+    "anthropic-E042",
+    "anthropic-E043",
+    "anthropic-E044",
+    "anthropic-E045",
+    "anthropic-E046",
+    "anthropic-E047",
+    "anthropic-E049",
+    "anthropic-E050",
+    "deepseek:models-dev-canonical-20261002",
+    "deepseek:models-dev-snapshot-20261002",
+    "deepseek:responses-live-20261002",
+    "gemini.deprecations.20261002",
+    "gemini.function.guide",
+    "gemini.guide.caching",
+    "gemini.guide.changelog",
+    "gemini.guide.codeexecution",
+    "gemini.guide.documents",
+    "gemini.guide.files",
+    "gemini.guide.filesearch",
+    "gemini.guide.modelsschema",
+    "gemini.guide.search",
+    "gemini.structured.guide",
+    "openai-deepresearch-web",
+    "openai-deprecations-003",
+    "openai-full-catalog-002",
+    "openai-guide-image-generation",
+    "openai-guide-pdf-files",
+    "openai-guide-reasoning",
+    "openai-guide-tools-code-interpreter",
+    "openai-guide-tools-web-search",
+    "openai-guide2-audio",
+    "openai-guide2-changelog",
+    "openai-guide2-pricing",
+    "openai-guide2-tools-file-search",
+    "openai-guide3-create.md",
+    "openai-guide3-deep-research",
+    "openai-guide3-structured-outputs",
+    "openai-model-gpt-audio-1.5",
+    "openai-model-gpt-image-2",
+    "openai-model-gpt-image-2.5-flare",
+    "openai-model-gpt-image-2.5-sunburst",
+    "openai-model-gpt-live-1",
+    "openai-model-gpt-oss-120b",
+    "openai-model-gpt-realtime-2.1",
+    "openai-model-gpt-realtime-2.1-mini",
+    "openai-model-gpt-transcribe",
+    "openai-model-o1",
+    "openai-model-o3-deep-research",
+    "openai-model-o3-mini",
+    "openai-model-o4-mini",
+    "openai-model-o4-mini-deep-research",
+    "openai-model-omni-moderation-latest",
+    "openai-model-text-embedding-3-large",
+    "openai-responses-ref-error",
+    "openai-structured-web",
+    "openrouter.blog-archive",
+    "openrouter.changelog",
+    "openrouter.claude47-migration",
+    "openrouter.context-schema",
+    "openrouter.docs-index",
+    "openrouter.endpoints.anthropic.claude-sonnet-5",
+    "openrouter.endpoints.google.gemini-3.8-flash",
+    "openrouter.endpoints.openai.gpt-6.1-sol",
+    "openrouter.endpoints.openai.o3-mini",
+    "openrouter.gpt6-migration",
+    "openrouter.image-discovery.1",
+    "openrouter.image-discovery.10",
+    "openrouter.image-discovery.11",
+    "openrouter.image-discovery.12",
+    "openrouter.image-discovery.13",
+    "openrouter.image-discovery.14",
+    "openrouter.image-discovery.15",
+    "openrouter.image-discovery.16",
+    "openrouter.image-discovery.17",
+    "openrouter.image-discovery.18",
+    "openrouter.image-discovery.19",
+    "openrouter.image-discovery.2",
+    "openrouter.image-discovery.20",
+    "openrouter.image-discovery.21",
+    "openrouter.image-discovery.22",
+    "openrouter.image-discovery.23",
+    "openrouter.image-discovery.3",
+    "openrouter.image-discovery.4",
+    "openrouter.image-discovery.5",
+    "openrouter.image-discovery.6",
+    "openrouter.image-discovery.7",
+    "openrouter.image-discovery.8",
+    "openrouter.image-discovery.9",
+    "openrouter.modelsdev-comparison",
+    "openrouter.plugins",
+    "openrouter.reasoning-announcement",
+    "public-models-dev-20261002"
+  ],
+  "nullModelRows": 80,
+  "nullCanonicalPathRows": 77,
+  "nullValueRows": 198,
+  "duplicateFactModelRows": 0,
+  "rejectedProposals": 108,
+  "higherAuthorityChecks": {
+    "exact_equal": 2864,
+    "positive_subset_higher_complete": 3
+  },
+  "inferenceGroups": 31,
+  "multiMemberRules": 76,
+  "mixedExplicitInferredRules": 0,
+  "selectedToRuleCompression": 727,
+  "structuralIssues": [],
+  "countingCaveat": "Fact partition is exclusive using selected-first precedence. A fact can expand into mixed destinations; full vectors live in fact-transitions.jsonl. Row totals are not independent facts or source-document counts. Positive-subset higher coverage preserves known positive assertions but does not verify higher-source exhaustiveness or future fallback.",
+  "duplicateDispositionKeysAcrossFacts": 53,
+  "duplicateExactSubjectPathKeys": 29,
+  "ambiguousCategories": {
+    "evidence_conflict": 8,
+    "incomplete_domain": 52,
+    "conditional_semantics": 500,
+    "identity_uncertainty": 242,
+    "surface_mismatch": 1076,
+    "weak_inference": 57,
+    "other": 3
+  },
+  "temporalCategories": {
+    "preview": 101,
+    "beta": 42,
+    "dated_snapshot": 0,
+    "temporary_alias": 25,
+    "deprecated": 61,
+    "retirement_scheduled": 138,
+    "other": 0
+  },
+  "ontologyCategories": {
+    "semantic_mapping_or_missing_support_leaf": 22,
+    "semantic_mapping": 3,
+    "condition_scope_or_missing_concept": 97,
+    "insufficient_evidence_existing_path": 7
+  },
+  "sameEvidenceMergeGroups": 3,
+  "potentialRuleReductionSameEvidence": 4,
+  "groupClassificationMethod": "Deterministic primary reason tags over retained fact rationales; no new fact assertions. All rows and detailed rationale remain in excluded-groups.json. Primary categories are routing labels, not new provider truth.",
+  "unselectedRedundantRows": 15,
+  "redundantRowsWithSelectedReplacement": 9,
+  "supersededWithoutSelectedReplacementRows": 6,
+  "structurallyLostOrUnaccountedFacts": 0,
+  "semanticAudit": {
+    "readiness": "TARGETED_RESEARCH_DISPOSITION_REPAIR_BEFORE_READY_AS_IS_ENDORSEMENT",
+    "materiallyOverCompressedByRuleAggregation": false,
+    "provedSelectedAssertionLoss": 0,
+    "supersededRowsWithoutSelectedReplacement": 6,
+    "overDeferredPartialInputRows": 28,
+    "positiveTextOutputRowsForBoundedReReview": 14,
+    "partialAdaptiveModeRowsForReReview": 1,
+    "highInferenceJoinsCloserToMediumPendingScopeRecheck": 4,
+    "ownerDecisionPackages": 7,
+    "ownerDecisions": [
+      {
+        "id": "O1",
+        "type": "Repair recoverable positives and failed supersession",
+        "decision": "Re-review partial output for14 active Anthropic members; relink6 redundant rows only after selected replacement exists; triage28 OpenAI partial inputs (26 already covered, one cyber gap, one latest lifecycle); consider Sonnet5.5 partial adaptive mode."
+      },
+      {
+        "id": "O2",
+        "type": "Fallback durability policy",
+        "decision": "Decide whether saved equal higher-authority coverage is sufficient to omit first-party fallback across providers;124 selected Anthropic redundancy approvals illustrate an intentional policy choice."
+      },
+      {
+        "id": "O3",
+        "type": "Lifecycle/recheck and withdrawal policy",
+        "decision": "Distinguish101preview/42beta/25temporary-alias/61deprecated/138scheduled rows; no date-only rejection. Separately acknowledge13 selected DeepSeek claims on two moving primary API names. Decide bounded recheck/withdrawal or future expiry semantics."
+      },
+      {
+        "id": "O4",
+        "type": "Ontology versus evidence/surface gaps",
+        "decision": "Separate7 existing-path evidence gaps from real conditional, sentinel, media/tool and absent-concept constraints. Decide whether common subsets may be retained as partial facts; keep unsafe conditions held."
+      },
+      {
+        "id": "O5",
+        "type": "Constrained regex promotion policy",
+        "decision": "Six stable Flash boolean paths require family-level evidence recheck; grammar and sibling exceptions alone are insufficient. No automatic promotion recommended."
+      },
+      {
+        "id": "O6",
+        "type": "Grouped inference confidence and review metadata",
+        "decision": "Narrow recheck of four Fable/Mythos web-search HIGH joins; correct explicitSiblings self-reference terminology and11 stale Rule notes. Keep independently justified remaining HIGH groups."
+      },
+      {
+        "id": "O7",
+        "type": "Higher-authority conflict handling intent",
+        "decision": "Four selected Gemini/DeepSeek disagreements remain lower-priority fallbacks. Decide documented diagnostic/fallback intent before any authoritative correction; do not raise priority implicitly."
+      }
+    ],
+    "suspiciousRecords": 32,
+    "severities": {
+      "HIGH": 4,
+      "MEDIUM": 15,
+      "LOW": 13
+    },
+    "externalResearchPerformed": false
+  }
+}

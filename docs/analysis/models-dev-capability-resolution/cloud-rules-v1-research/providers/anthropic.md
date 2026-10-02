@@ -1,5 +1,7 @@
 # Anthropic provider research — candidate handoff
 
+> Historical provider handoff: targeted disposition changes and current counts are recorded in [the 2026-10-02 repair](../repairs/disposition-20261002/report.md). Current facts, proposals and final dispositions include that repair; original source captures remain historical.
+
 As of **2026-10-02 Asia/Tokyo**. This is a provider research handoff, with no publication or final policy approval.
 
 **50 evidence records across 46 official URLs, 79 intermediate facts, 49 exact-selector candidate Rules, 332 model/path claims.** All 36 canonical paths were reviewed. The structured coverage matrix contains 576 rows for 14 active and 2 deprecated subjects. Current lifecycle inventory also retains 19 retired IDs and 3 convenience aliases.

@@ -1,0 +1,987 @@
+[
+  {
+    "claimKey": [
+      "google-ai-studio",
+      "gemini-developer-api-v1beta",
+      null,
+      "limits.output.maxTokens"
+    ],
+    "rowOrdinals": [
+      368,
+      372,
+      376
+    ],
+    "factIds": [
+      "gemini.deep-research-preview-04-2026.limits.output.maxTokens",
+      "gemini.deep-research-max-preview-04-2026.limits.output.maxTokens",
+      "gemini.antigravity-preview-09-2026.limits.output.maxTokens"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "google-ai-studio",
+      "gemini-developer-api-v1beta",
+      null,
+      "limits.contextWindow.maxTokens"
+    ],
+    "rowOrdinals": [
+      369,
+      373,
+      377
+    ],
+    "factIds": [
+      "gemini.deep-research-preview-04-2026.limits.contextWindow.maxTokens",
+      "gemini.deep-research-max-preview-04-2026.limits.contextWindow.maxTokens",
+      "gemini.antigravity-preview-09-2026.limits.contextWindow.maxTokens"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "google-ai-studio",
+      "gemini-developer-api-v1beta",
+      null,
+      "modalities.input"
+    ],
+    "rowOrdinals": [
+      370,
+      374,
+      378
+    ],
+    "factIds": [
+      "gemini.deep-research-preview-04-2026.modalities.input",
+      "gemini.deep-research-max-preview-04-2026.modalities.input",
+      "gemini.antigravity-preview-09-2026.modalities.input"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "google-ai-studio",
+      "gemini-developer-api-v1beta",
+      null,
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      371,
+      375,
+      379
+    ],
+    "factIds": [
+      "gemini.deep-research-preview-04-2026.modalities.output",
+      "gemini.deep-research-max-preview-04-2026.modalities.output",
+      "gemini.antigravity-preview-09-2026.modalities.output"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "deepseek",
+      "deepseek-stable-api-v1",
+      "deepseek-flash",
+      null
+    ],
+    "rowOrdinals": [
+      438,
+      446,
+      453,
+      455,
+      456,
+      458
+    ],
+    "factIds": [
+      "deepseek:fact:sampling-mode-conditional",
+      "deepseek:fact:output-default-mode",
+      "deepseek:fact:auto-prefix-cache",
+      "deepseek:fact:image-files-quotas",
+      "deepseek:fact:strict-beta-schema",
+      "deepseek:fact:thinking-default-enabled"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "deepseek",
+      "deepseek-stable-api-v1",
+      "deepseek-v4-pro",
+      null
+    ],
+    "rowOrdinals": [
+      439,
+      447,
+      454,
+      457,
+      459
+    ],
+    "factIds": [
+      "deepseek:fact:sampling-mode-conditional",
+      "deepseek:fact:output-default-mode",
+      "deepseek:fact:auto-prefix-cache",
+      "deepseek:fact:strict-beta-schema",
+      "deepseek:fact:thinking-default-enabled"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5-1",
+      "modalities.input"
+    ],
+    "rowOrdinals": [
+      840,
+      1098
+    ],
+    "factIds": [
+      "anthropic-F-current-input",
+      "anthropic-F-pdf-input-active"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      "modalities.input"
+    ],
+    "rowOrdinals": [
+      841,
+      1102
+    ],
+    "factIds": [
+      "anthropic-F-current-input",
+      "anthropic-F-pdf-input-active"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5-5",
+      "modalities.input"
+    ],
+    "rowOrdinals": [
+      842,
+      1108
+    ],
+    "factIds": [
+      "anthropic-F-current-input",
+      "anthropic-F-pdf-input-active"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-haiku-4-5-20251001",
+      "modalities.input"
+    ],
+    "rowOrdinals": [
+      843,
+      1111
+    ],
+    "factIds": [
+      "anthropic-F-current-input",
+      "anthropic-F-pdf-input-active"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5-1",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      844,
+      1157
+    ],
+    "factIds": [
+      "anthropic-F-current-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      845,
+      1161
+    ],
+    "factIds": [
+      "anthropic-F-current-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5-5",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      846,
+      1167
+    ],
+    "factIds": [
+      "anthropic-F-current-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-haiku-4-5-20251001",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      847,
+      1170
+    ],
+    "factIds": [
+      "anthropic-F-current-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5-1",
+      "tools.calling.support"
+    ],
+    "rowOrdinals": [
+      848,
+      1143
+    ],
+    "factIds": [
+      "anthropic-F-current-tool-calling",
+      "anthropic-F-active-toolcalling"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      "tools.calling.support"
+    ],
+    "rowOrdinals": [
+      849,
+      1147
+    ],
+    "factIds": [
+      "anthropic-F-current-tool-calling",
+      "anthropic-F-active-toolcalling"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5-5",
+      "tools.calling.support"
+    ],
+    "rowOrdinals": [
+      850,
+      1153
+    ],
+    "factIds": [
+      "anthropic-F-current-tool-calling",
+      "anthropic-F-active-toolcalling"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-haiku-4-5-20251001",
+      "tools.calling.support"
+    ],
+    "rowOrdinals": [
+      851,
+      1156
+    ],
+    "factIds": [
+      "anthropic-F-current-tool-calling",
+      "anthropic-F-active-toolcalling"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5-5",
+      null
+    ],
+    "rowOrdinals": [
+      890,
+      1002,
+      1047,
+      1076,
+      1136
+    ],
+    "factIds": [
+      "anthropic-F-between-tools-constraints",
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-mythos-5-1",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      892,
+      1158
+    ],
+    "factIds": [
+      "anthropic-F-mythos51-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-5-20251101",
+      "modalities.output"
+    ],
+    "rowOrdinals": [
+      893,
+      1166
+    ],
+    "factIds": [
+      "anthropic-F-opus45-output",
+      "anthropic-F-active-output"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5-1",
+      null
+    ],
+    "rowOrdinals": [
+      992,
+      1037,
+      1066,
+      1126
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-mythos-5-1",
+      null
+    ],
+    "rowOrdinals": [
+      993,
+      1038,
+      1067,
+      1127
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5",
+      null
+    ],
+    "rowOrdinals": [
+      994,
+      1039,
+      1068,
+      1128
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-mythos-5",
+      null
+    ],
+    "rowOrdinals": [
+      995,
+      1040,
+      1069,
+      1129
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      null
+    ],
+    "rowOrdinals": [
+      996,
+      1041,
+      1070,
+      1130,
+      1141
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints",
+      "anthropic-F-webfilter-scope"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5",
+      null
+    ],
+    "rowOrdinals": [
+      997,
+      1042,
+      1071,
+      1131
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-8",
+      null
+    ],
+    "rowOrdinals": [
+      998,
+      1043,
+      1072,
+      1132
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-7",
+      null
+    ],
+    "rowOrdinals": [
+      999,
+      1044,
+      1073,
+      1133
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-6",
+      null
+    ],
+    "rowOrdinals": [
+      1000,
+      1045,
+      1074,
+      1134
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-5-20251101",
+      null
+    ],
+    "rowOrdinals": [
+      1001,
+      1046,
+      1075,
+      1135
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5",
+      null
+    ],
+    "rowOrdinals": [
+      1003,
+      1048,
+      1077,
+      1137
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-4-6",
+      null
+    ],
+    "rowOrdinals": [
+      1004,
+      1049,
+      1078,
+      1138
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-haiku-4-5-20251001",
+      null
+    ],
+    "rowOrdinals": [
+      1005,
+      1050,
+      1079,
+      1139,
+      1142
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions",
+      "anthropic-F-citations-structured-conflict",
+      "anthropic-F-document-format-constraints",
+      "anthropic-F-webfilter-scope"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-4-5-20250929",
+      null
+    ],
+    "rowOrdinals": [
+      1006,
+      1051
+    ],
+    "factIds": [
+      "anthropic-F-thinking-display-and-binding",
+      "anthropic-F-hosted-tool-versions"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      "search.web.support"
+    ],
+    "rowOrdinals": [
+      1140,
+      1253
+    ],
+    "factIds": [
+      "anthropic-F-opus55-websearch",
+      "anthropic-F-modern-websearch"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      null,
+      null
+    ],
+    "rowOrdinals": [
+      1171,
+      1261
+    ],
+    "factIds": [
+      "anthropic-F-sdk-sampling-removal",
+      "anthropic-F-tool-web-reference-cycle"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5-1",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1186,
+      1264
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-mythos-5-1",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1187,
+      1265
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-fable-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1188,
+      1266
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-mythos-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1189,
+      1267
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1190,
+      1268
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1191,
+      1269
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-8",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1192,
+      1270
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-7",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1193,
+      1271
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-opus-4-6",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1194,
+      1272
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1195,
+      1273
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-5",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1196,
+      1274
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "anthropic",
+      "anthropic-developer-api-2023-06-01",
+      "claude-sonnet-4-6",
+      "contextManagement.actions.nativeValues"
+    ],
+    "rowOrdinals": [
+      1197,
+      1275
+    ],
+    "factIds": [
+      "anthropic-F-compaction-action",
+      "anthropic-F-modern-context-actions"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "openrouter",
+      "openrouter-first-party-v1",
+      "anthropic/claude-opus-5.5",
+      "reasoning.effort.providerDefault"
+    ],
+    "rowOrdinals": [
+      3939,
+      6332
+    ],
+    "factIds": [
+      "openrouter.fact.fd89bc324c9ea9eb",
+      "openrouter.fact.manual.24"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "openrouter",
+      "openrouter-first-party-v1",
+      "anthropic/claude-opus-5",
+      "reasoning.budgetTokens.support"
+    ],
+    "rowOrdinals": [
+      6305,
+      6333
+    ],
+    "factIds": [
+      "openrouter.fact.671087f4fe28d6c5",
+      "openrouter.fact.manual.25"
+    ],
+    "sameValue": false
+  },
+  {
+    "claimKey": [
+      "openrouter",
+      "openrouter-first-party-v1",
+      null,
+      "operations.supported"
+    ],
+    "rowOrdinals": [
+      6310,
+      6330
+    ],
+    "factIds": [
+      "openrouter.fact.manual.02",
+      "openrouter.fact.manual.22"
+    ],
+    "sameValue": true
+  },
+  {
+    "claimKey": [
+      "openrouter",
+      "openrouter-first-party-v1",
+      null,
+      null
+    ],
+    "rowOrdinals": [
+      6328,
+      6329
+    ],
+    "factIds": [
+      "openrouter.fact.manual.20",
+      "openrouter.fact.manual.21"
+    ],
+    "sameValue": true
+  }
+]

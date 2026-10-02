@@ -22,9 +22,9 @@ const flatRules = x => Array.isArray(x) ? x.flatMap(v => v.rules ?? [v]) : x.rul
 const manifests = { gemini: 'gemini-models-v1beta', deepseek: 'deepseek-stable-models-v1', openai: 'openai-models-v1', anthropic: 'anthropic-models-2023-06-01', openrouter: 'openrouter-chat-models-v1' }
 const semanticHolds = {
   'anthropic-v1-current-input': 'More informative documented PDF partial input claim covers this subset; avoid overlapping collections.',
-  'anthropic-v1-current-output': 'Duplicate of documented all-active complete text output claim.',
-  'anthropic-v1-mythos51-output': 'Duplicate of all-active complete text output claim.',
-  'anthropic-v1-opus45-output': 'Duplicate of all-active complete text output claim.',
+  'anthropic-v1-current-output': 'Positive partial text output requires an actually selected equivalent replacement.',
+  'anthropic-v1-mythos51-output': 'Positive partial text output requires an actually selected equivalent replacement.',
+  'anthropic-v1-opus45-output': 'Positive partial text output requires an actually selected equivalent replacement.',
   'anthropic-v1-current-tool-calling': 'Duplicate of all-active tool-calling support claim.',
 }
 const previews = /(?:preview|experimental|(?:^|[-/:])exp(?:$|[-/:])|auto-beta)/u
@@ -54,7 +54,7 @@ for (const p of providers) {
     const sourceRecords = f.evidenceRefs.map(ref => refs.get(ref)).filter(Boolean)
     for (const model of covered.length ? covered : [null]) {
       let classification = f.classification
-      let reason = 'Provider research classification retained after coordinator review; see first-party evidence references.'
+      let reason = f.dispositionRationale ?? 'Provider research classification retained after coordinator review; see first-party evidence references.'
       const matching = model ? proposalRules.filter(r => r.selector.kind === 'exact' && r.selector.nativeModelIds.includes(model)) : []
       let rule = matching[0] ?? null
       const inv = (Array.isArray(inventory) ? inventory : inventory.currentPrimary ?? []).find(v => id(v) === model)
@@ -78,7 +78,7 @@ for (const p of providers) {
         else if (p === 'gemini' && (f.canonicalPath?.startsWith('reasoning.effort.') || f.canonicalPath === 'reasoning.budgetTokens.domain')) { classification = 'ONTOLOGY_GAP'; reason = 'ThinkingLevel and sentinel-bearing budget wire semantics need the deferred semantic/source vertical slice; decoder acceptance alone does not approve projection.'; rule = null }
         else if (p === 'anthropic' && ['contextManagement.support', 'contextManagement.actions.nativeValues'].includes(f.canonicalPath)) { classification = 'TEMPORALLY_UNSAFE'; reason = 'Beta header, strategy and model-version conditions require lifecycle/execution review before first corpus inclusion.'; rule = null }
         else if (p === 'openai' && /-latest$/u.test(model ?? '')) { classification = 'TEMPORALLY_UNSAFE'; reason = 'Floating latest identity needs Owner lifecycle review and target recheck before first release.'; rule = null }
-        else if (coverageBasis === 'INFERRED_MEDIUM' || coverageBasis === 'INFERRED_LOW') { classification = 'AMBIGUOUS_DEFER'; reason = 'Confidence below official corpus threshold.'; rule = null }
+        else if (coverageBasis === 'INFERRED_MEDIUM' || coverageBasis === 'INFERRED_LOW') { classification = 'AMBIGUOUS_DEFER'; reason = f.deferredJoinRationale ?? 'Confidence below official corpus threshold.'; rule = null }
         else if (coverageBasis === 'INFERRED_HIGH' && !manual.inferences.some(v => v.factId === f.factId && v.nativeModelId === model && v.verdict.startsWith('APPROVE_INFERRED_HIGH'))) { classification = 'AMBIGUOUS_DEFER'; reason = 'No independent coordinator high-inference approval.'; rule = null }
         else {
           reason = classification === 'REDUNDANT_BUT_USEFUL' ? 'COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.' : 'Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.'
@@ -100,7 +100,7 @@ for (const p of providers) {
         if (existing) existing.selector.nativeModelIds.push(model)
         else { const copy = structuredClone(rule); copy.selector = { kind: 'exact', nativeModelIds: [model] }; copy.assertion.value = f.canonicalValue; if (coverageBasis === 'INFERRED_HIGH') copy.evidence.evidenceNote = copy.evidence.evidenceNote.replace(/coordinator approval pending/iu, 'independently reviewed and approved in final/manual-review.json'); accepted.push(copy) }
       }
-      const conflict = model && mdObservation.state === 'present_valid' && f.canonicalValue && c.canonicalSourceFactDigestV1(mdObservation.value) !== c.canonicalSourceFactDigestV1(f.canonicalValue)
+      const conflict = model && mdObservation.state === 'present_valid' && f.canonicalValue && !f.reviewedPositiveContainment && c.canonicalSourceFactDigestV1(mdObservation.value) !== c.canonicalSourceFactDigestV1(f.canonicalValue)
       const row = { provider: p, factId: f.factId, providerAuthorityId: f.providerAuthorityId, endpointProfileId: f.endpointProfileId, nativeModelId: model, canonicalPath: f.canonicalPath, canonicalValue: f.canonicalValue,
         originalClassification: f.classification, classification, reason, candidateRuleId: rule?.ruleId ?? null, coverageBasis,
         providerNative: nativeObservation, modelsDev: mdObservation, temporalAssessment: temporal,
@@ -114,6 +114,29 @@ for (const p of providers) {
   if (accepted.length) packs.push({ schemaVersion: 1, packId: `research.${p}.documented-gaps.v1`, displayName: `${p} documented gaps — research candidate`, description: 'Coordinator-reviewed research candidate; not an official release. Exact documented coverage only; publication requires fresh subject/source and lifecycle review.', priority: 0, mode: 'no_control', target: 'enabled', rules: accepted })
   decisions.push({ provider: p, evidenceRecords: ledger.length, factRecords: facts.length, proposedRuleCount: proposals.length, approvedRuleCount: accepted.length, classifications: rows.filter(r => r.provider === p).reduce((a, r) => (a[r.classification] = (a[r.classification] ?? 0) + 1, a), {}) })
 }
+// Replacement is a selected-scope relation, never a provider proposal or a held fact.
+const covers = (selected, original) => c.canonicalSourceFactDigestV1(selected) === c.canonicalSourceFactDigestV1(original)
+  || (original?.completeness === 'partial' && selected?.kind === original.kind && original.values.every(v => selected.values?.includes(v)))
+for (const row of rows.filter(r => !r.candidateRuleId && r.classification === 'REDUNDANT_BUT_USEFUL')) {
+  const fact = research.find(f => f.provider === row.provider && f.factId === row.factId)
+  if (!fact?.supersededCandidateRuleIds?.length) continue
+  const selected = claims.get(JSON.stringify([row.providerAuthorityId, row.endpointProfileId, row.nativeModelId, row.canonicalPath]))
+  if (selected && covers(selected.value, row.canonicalValue)) {
+    row.selectedReplacementRuleIds = [selected.ruleId]
+    row.reason = `Verified selected replacement ${selected.ruleId} carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.`
+  } else {
+    row.classification = 'AMBIGUOUS_DEFER'
+    row.selectedReplacementRuleIds = []
+    row.reason = 'No actually selected Rule preserves this assertion; proposed supersession is unresolved.'
+  }
+}
+for (const pack of packs) for (const rule of pack.rules) {
+  if (rule.providerAuthorityId !== 'anthropic' || rule.selector.nativeModelIds.includes('claude-sonnet-4-5-20250929')) continue
+  rule.evidence.evidenceNote = rule.evidence.evidenceNote.replace(/ Sonnet4\.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW\./u, '')
+    .replace('Explicit thinking-mode matrix; Sonnet4.5 retirement requires lifecycle review.', 'Explicit thinking-mode matrix for selected active members; deprecated Sonnet 4.5 remains deferred.')
+  rule.description = rule.description?.replace('Explicit thinking-mode matrix; Sonnet4.5 retirement requires lifecycle review.', 'Explicit thinking-mode matrix for selected active members; deprecated Sonnet 4.5 remains deferred.') ?? null
+}
+for (const decision of decisions) decision.classifications = rows.filter(r => r.provider === decision.provider).reduce((a, r) => (a[r.classification] = (a[r.classification] ?? 0) + 1, a), {})
 await write('final/candidate-corpus.json', packs)
 await write('final/model-inventories.json', inventories)
 await write('final/fact-decisions.json', { purpose: 'Definitive coordinator classifications at exact-model/path granularity; provider files retain original proposals', policy: 'Conservative first corpus; no preview/deprecated/beta or unapproved inference; never alter production semantics', rows })

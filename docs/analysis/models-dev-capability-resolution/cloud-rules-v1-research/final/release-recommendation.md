@@ -1,6 +1,6 @@
 # First official Cloud Rules corpus — research recommendation
 
-Research and candidate construction are complete as of 2026-10-02. Recommend the **5 reviewed Packs / 290 exact Rules** in [candidate-corpus.json](candidate-corpus.json) as the bounded first-corpus proposal for Owner review. They describe 1017 exact model/path claims across 334 provider-scoped model IDs. **No release is approved or published by this research.** Account membership, source freshness and execution/lifecycle review remain publication prerequisites.
+Research and candidate construction are complete as of 2026-10-02. Recommend the **5 reviewed Packs / 293 exact Rules** in [candidate-corpus.json](candidate-corpus.json) as the bounded first-corpus proposal for Owner review. They describe 1029 exact model/path claims across 334 provider-scoped model IDs. **No release is approved or published by this research.** Account membership, source freshness and execution/lifecycle review remain publication prerequisites.
 
 ## A. Research completeness and scope
 
@@ -31,8 +31,8 @@ One provider-scoped Pack is recommended per provider after evidence review. Pack
 | --- | --- | --- | --- | --- | --- | --- |
 | gemini | research.gemini.documented-gaps.v1 | 416 | 63 | 216 | 135 | 135 |
 | deepseek | research.deepseek.documented-gaps.v1 | 51 | 18 | 7 | 7 | 13 |
-| openai | research.openai.documented-gaps.v1 | 328 | 72 | 62 | 58 | 58 |
-| anthropic | research.anthropic.documented-gaps.v1 | 79 | 50 | 49 | 36 | 253 |
+| openai | research.openai.documented-gaps.v1 | 328 | 72 | 63 | 59 | 59 |
+| anthropic | research.anthropic.documented-gaps.v1 | 79 | 50 | 49 | 38 | 264 |
 | openrouter | research.openrouter.documented-gaps.v1 | 476 | 61 | 64 | 54 | 558 |
 
 
@@ -41,14 +41,14 @@ One provider-scoped Pack is recommended per provider after evidence review. Pack
 | limits.contextWindow.maxTokens | 1 | 1 | 1 | 2 | 0 |
 | limits.input.maxTokens | 19 | 0 | 0 | 0 | 0 |
 | limits.output.maxTokens | 4 | 0 | 1 | 3 | 0 |
-| modalities.input | 8 | 0 | 0 | 1 | 0 |
-| modalities.output | 7 | 0 | 1 | 0 | 0 |
+| modalities.input | 8 | 0 | 1 | 1 | 0 |
+| modalities.output | 7 | 0 | 1 | 1 | 0 |
 | input.attachments.support | 0 | 0 | 0 | 1 | 0 |
 | operations.supported | 4 | 1 | 0 | 1 | 0 |
 | reasoning.support | 6 | 0 | 1 | 2 | 0 |
 | reasoning.required | 7 | 1 | 0 | 4 | 0 |
 | reasoning.toggle.support | 3 | 0 | 0 | 2 | 2 |
-| reasoning.modes.nativeValues | 0 | 1 | 7 | 3 | 0 |
+| reasoning.modes.nativeValues | 0 | 1 | 7 | 4 | 0 |
 | reasoning.effort.nativeValues | 0 | 0 | 0 | 0 | 27 |
 | reasoning.effort.providerDefault | 0 | 1 | 12 | 0 | 1 |
 | reasoning.budgetTokens.support | 0 | 0 | 0 | 2 | 2 |
@@ -78,7 +78,7 @@ One provider-scoped Pack is recommended per provider after evidence review. Pack
 
 ## D–E. Model inference and regex
 
-Selected claims: EXPLICIT_MODEL **773**, independently approved INFERRED_HIGH **244**, SERIES_MATERIALIZED_MEMBER **0**. Anthropic has 332 detailed identity-to-document HIGH joins:243 evidence approvals,16 lifecycle deferrals and73 conditional/incomplete/beta deferrals. Evidence approval alone does not guarantee inclusion; duplicates, source coverage and lifecycle checks also apply. Every selected HIGH claim has a matching exact-model coordinator approval in [manual-review.json](manual-review.json).
+Selected claims: EXPLICIT_MODEL **774**, independently approved INFERRED_HIGH **255**, SERIES_MATERIALIZED_MEMBER **0**. Anthropic preserves 332 researched identity-to-document audits: 254 HIGH approvals, 16 lifecycle deferrals, 58 conditional/incomplete/beta deferrals and 4 downgraded MEDIUM deferrals. Evidence approval alone does not guarantee inclusion; duplicates, source coverage and lifecycle checks also apply. Every selected HIGH claim has a matching exact-model coordinator approval in [manual-review.json](manual-review.json). Targeted repair decisions and historical interpretations are recorded in [disposition repair](../repairs/disposition-20261002/report.md).
 
 All final selectors are **KNOWN_MEMBERS_ONLY** exact lists. Four constrained Gemini naming patterns passed the actual decoder and positive/negative examples in [regex-decoder-audit.json](regex-decoder-audit.json). Naming syntax does not establish future assertion inheritance. Gemini dated snapshots have retirement and limit changes; OpenAI snapshots may differ; modern Anthropic dateless IDs are pinned; DeepSeek aliases change serving targets; gateway slugs/routes do not establish upstream equivalence. No researched capability regex was approved FUTURE_SERIES_SAFE. Full provider and coordinator records are in [inference-audit.md](inference-audit.md).
 
@@ -88,7 +88,7 @@ All final selectors are **KNOWN_MEMBERS_ONLY** exact lists. Four constrained Gem
 
 Current real adapters transformed a saved public models.dev snapshot into485 registered subjects with zero invalid refs, and the public OpenRouter text catalog into464 Native subjects with zero invalid refs. Other Native payloads are unobserved: a static mapping means mapped-if-supplied, not a present value. Anthropic has no models.dev registry binding. Equal observed values are generally excluded; Anthropic explicit redundancy approvals retain potential documented fallback for missing/null Native metadata, without claiming such local absence was verified.
 
-Final disposition rows: RULE_CANDIDATE: 893; ALREADY_MODELS_DEV: 1145; TEMPORALLY_UNSAFE: 367; ONTOLOGY_GAP: 129; AMBIGUOUS_DEFER: 1938; REDUNDANT_BUT_USEFUL: 139; ALREADY_PROVIDER_NATIVE: 1722. These are exact model/path/concept rows, not Rule counts or independent source counts.
+Final disposition rows: RULE_CANDIDATE: 904; ALREADY_MODELS_DEV: 1171; TEMPORALLY_UNSAFE: 368; ONTOLOGY_GAP: 129; AMBIGUOUS_DEFER: 1899; REDUNDANT_BUT_USEFUL: 140; ALREADY_PROVIDER_NATIVE: 1722. These are exact model/path/concept rows, not Rule counts or independent source counts.
 
 ## G. Duplicate and conflict audit
 
@@ -102,11 +102,11 @@ Real decoder and coordinator validation report zero duplicate Rule/Pack identiti
 
 [ontology-gaps.md](ontology-gaps.md) retains provider/model, official concept/source, representation limits and possible future design questions. Current ontology/projection gaps include Gemini thinkingLevel/sentinel budgets and operation-specific media behavior; DeepSeek context strategy and conditional thinking/tool parameters; OpenAI independent mode/effort and endpoint-specific operation details; Anthropic cross-parameter thinking/sampling, tool versions/beta actions and invite access; OpenRouter route, upstream and metadata conditions. No ontology change was implemented.
 
-[deferred.md](deferred.md) includes ambiguous evidence, medium/low confidence where researched, incomplete enums, source conflicts, temporary identities and missing first-party support. Specific holds include Flash Lite Image512-versus1K and Pro Image table headings; OpenAI floating latest/input exhaustiveness; Anthropic Opus5 effort-conditioned toggles, Sonnet5.5 between_tools domain, legacy sampling, text-output exhaustive-set assumption and beta context actions; OpenRouter null reasoning domains and route-dependent guarantees. There are **1938 AMBIGUOUS_DEFER** and **367 TEMPORALLY_UNSAFE** rows. They are not in candidate-corpus.json.
+[deferred.md](deferred.md) includes ambiguous evidence, medium/low confidence where researched, incomplete enums, source conflicts, temporary identities and missing first-party support. Specific holds include Flash Lite Image512-versus1K and Pro Image table headings; OpenAI floating latest lifecycle; Anthropic Opus5 effort-conditioned toggles, Sonnet5.5 between_tools conditions, legacy sampling, four Fable/Mythos web-search joins and beta context actions; OpenRouter null reasoning domains and route-dependent guarantees. Positive partial text output and Sonnet5.5 adaptive are now selected; 26 OpenAI partial input rows retain higher-authority coverage, cyber fills a bounded gap and chat-latest remains held. Exhaustive output and conditional between_tools meanings have not been admitted. There are **1899 AMBIGUOUS_DEFER** and **368 TEMPORALLY_UNSAFE** rows. They are not in candidate-corpus.json.
 
 ## K. Current-schema validation
 
-[validation-result.json](validation-result.json): **PASS**,5Packs,290Rules,1017exact claims,0regex Rules. Uses current Rule/Pack/Cloud ownership decoders plus actual canonical normalization, global ID/scoped selector checks, registry pairs, direct non-null first-party evidence and resolved refs, fact/model/path/value links, coordinator HIGH/redundancy approvals, baselines and duplicate/overlap exclusion. The saved SHA256 is artifact integrity only; no release contentRevision was computed.
+[validation-result.json](validation-result.json): **PASS**,5Packs,293Rules,1029exact claims,0regex Rules. Uses current Rule/Pack/Cloud ownership decoders plus actual canonical normalization, global ID/scoped selector checks, registry pairs, direct non-null first-party evidence and resolved refs, fact/model/path/value links, coordinator HIGH/redundancy approvals, baselines and duplicate/overlap exclusion. The saved SHA256 is artifact integrity only; no release contentRevision was computed.
 
 Research-only helpers can be rerun from the repository root:
 
@@ -115,11 +115,11 @@ node docs/analysis/models-dev-capability-resolution/cloud-rules-v1-research/vali
 node docs/analysis/models-dev-capability-resolution/cloud-rules-v1-research/validate-research.mjs
 ```
 
-The targeted pure contract suite passed18tests across capabilityRuleCoreV1.test.ts, canonicalSourceFactsV1.test.ts and materializedCapabilityRuleSourceV1.test.ts using vitest.unit.config.ts. These checks do not access better-sqlite3; no native ABI rebuild or Electron smoke was needed. Production implementation and native/build outputs were unchanged.
+The original corpus construction passed 18 pure contract tests across capabilityRuleCoreV1.test.ts, canonicalSourceFactsV1.test.ts and materializedCapabilityRuleSourceV1.test.ts using vitest.unit.config.ts. The targeted disposition repair reruns current corpus/research validation and the actual pure materialization adapter, with results in [repair materialization validation](../repairs/disposition-20261002/materialization-validation.json) and [targeted reconciliation](../repairs/disposition-20261002/reconciliation.json). These checks do not access better-sqlite3; no native ABI rebuild or Electron smoke was needed. Production implementation and native/build outputs were unchanged.
 
 ## L. First official corpus recommendation
 
-**Ready as a reviewed research proposal:** the290selected exact Rules only, with their evidence and all1017per-model dispositions. Preserve useful documented gaps and explicitly justified fallback rather than duplicating complete model definitions. Claims remain dormant unless an already-authoritative exact subject matches.
+**Ready for bounded Owner semantic review:** the 293 selected exact Rules only, with their evidence and 1029 selected per-model claims, traced within all 6333 dispositions. Preserve useful documented gaps and explicitly justified fallback rather than duplicating complete model definitions. Claims remain dormant unless an already-authoritative exact subject matches.
 
 **Owner review before publication:** fresh provider/version/source checks; authenticated exact subject membership and restricted access; serving-alias lifecycle/recheck policy; whether lower-source disagreement offers useful fallback; Pack naming and controls; and any conditional semantics affecting the app's current projection. Source priorities and owner decisions were not delegated.
 
@@ -127,4 +127,4 @@ The targeted pure contract suite passed18tests across capabilityRuleCoreV1.test.
 
 ## M. Git and scope
 
-All created/changed task artifacts are confined to this research directory on models-dev-capability-resolution. One coherent research commit follows coordinator audit and exact-directory staging. See [git-audit.json](git-audit.json) for the checked scope and excluded work; the final chat reports its resulting commit ID and post-commit status. The unrelated untracked pelican-bicycle.html is preserved and excluded. No main edits, production/schema/adapter/resolver/identity changes, database writes, Release Document, final version/contentRevision, Apply, GitHub Release or release upload occurred.
+All created/changed task artifacts are confined to this research directory on models-dev-capability-resolution. One coherent research commit follows validation and an exact file allowlist. The original [git-audit.json](git-audit.json) remains historical; [repair Git scope](../repairs/disposition-20261002/git-scope.json) records this repair's scope. The final chat reports its resulting commit ID and post-commit status. The unrelated untracked pelican-bicycle.html is preserved and excluded. No main edits, production/schema/adapter/resolver/identity changes, database writes, Release Document, final version/contentRevision, Apply, GitHub Release or release upload occurred.

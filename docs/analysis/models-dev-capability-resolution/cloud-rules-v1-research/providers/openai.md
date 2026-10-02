@@ -1,5 +1,7 @@
 # OpenAI Responses research
 
+> Historical provider handoff: targeted disposition changes and current counts are recorded in [the 2026-10-02 repair](../repairs/disposition-20261002/report.md). Current facts, proposals and final dispositions include that repair; original source captures remain historical.
+
 Status: research proposal; not production authority. Date: 2026-10-02.
 
 Scope: openai / openai-api-v1; execution openai_responses; native openai-models-v1. All eight current contract files read. Candidate shape: array of actual CapabilityRuleCorePackV1 Packs.

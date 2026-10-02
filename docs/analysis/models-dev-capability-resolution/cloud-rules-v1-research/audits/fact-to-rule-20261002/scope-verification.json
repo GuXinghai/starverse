@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "existingResearchFilesHashVerified": 75,
+  "head": "ca2d9bd95023f7076e988863f53bdf86c0b4894e",
+  "branch": "models-dev-capability-resolution",
+  "trackedChanges": [],
+  "stagedChanges": [],
+  "preservedBaselineUntracked": [
+    "pelican-bicycle.html"
+  ],
+  "newUntrackedAuditFiles": 26,
+  "unexpectedUntracked": [],
+  "countAndTraceChecks": "PASS",
+  "actualPureMaterializationCheck": "PASS",
+  "failedChecks": [],
+  "externalProviderResearchPerformed": false,
+  "databaseAccessPerformed": false,
+  "publicationOrApplyPerformed": false,
+  "commitOrPushPerformed": false,
+  "boundary": "Only new audit-directory outputs. No schema, production, adapter, resolver, existing evidence/candidate, DB, release or source-pointer changes."
+}

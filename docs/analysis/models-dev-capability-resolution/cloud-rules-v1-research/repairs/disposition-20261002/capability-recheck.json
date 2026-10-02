@@ -1,0 +1,37 @@
+{
+  "reviewedAt": "2026-10-02T10:27:01Z",
+  "scope": "Only the four audited Fable/Mythos web-search model-to-capability joins; no full provider refresh",
+  "method": "Built-in web open/read of the current official guide, its linked tool reference and four exact model overview pages; capability-specific text review. Searches of the successfully opened model pages found no Web search assertion.",
+  "sources": [
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+      "summary": "Dynamic filtering is described for Claude 4.6 and later and Mythos Preview. The page retains organization, tool-version and programmatic-tool conditions, and points to tool reference for compatibility. It does not directly name the four audited Fable/Mythos identities as supported."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-reference",
+      "summary": "Server web-search tools are listed; model compatibility is tool/version-specific and delegated back to individual tool pages. No additional Fable/Mythos-specific compatibility bridge is supplied."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/fable-5-1/overview",
+      "nativeModelId": "claude-fable-5-1",
+      "summary": "Exact model identity and agentic/research descriptions do not establish web-search tool compatibility."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/mythos-5-1/overview",
+      "nativeModelId": "claude-mythos-5-1",
+      "summary": "Exact invitation-only identity and shared Fable 5.1 specifications/pricing do not directly specify web-search compatibility."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/fable-5/overview",
+      "nativeModelId": "claude-fable-5",
+      "summary": "Exact model identity and general capability description do not directly bind this identity to web-search tool support."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/mythos-5/overview",
+      "nativeModelId": "claude-mythos-5",
+      "summary": "Exact invitation-only identity and shared Fable 5 specifications/pricing do not directly establish web-search support."
+    }
+  ],
+  "decision": "Four joins downgraded from INFERRED_HIGH to INFERRED_MEDIUM and deferred. Missing bridge is uncertainty, not proof of unsupported capability. Eight existing Opus/Sonnet members were outside this recheck and remain unchanged.",
+  "publicationBoundary": "Research confidence correction only; no authenticated entitlement, execution probe, source-priority change, lifecycle redesign or Apply."
+}

@@ -117,7 +117,7 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "explicitModels": [
         "claude-fable-5-1",
@@ -131,7 +131,7 @@
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
       "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
-      "modelCoverageRationale": "Exact model IDs linked to explicitly named model releases on first-party pages. Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation.",
+      "modelCoverageRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
       "evidenceRefs": [
         "anthropic-E001"
       ],
@@ -144,8 +144,8 @@
         "supersededBy": null,
         "flags": []
       },
-      "classification": "RULE_CANDIDATE",
-      "ambiguityNotes": "Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation.",
+      "classification": "REDUNDANT_BUT_USEFUL",
+      "ambiguityNotes": "Positive text output only; other output kinds are not excluded.",
       "coverage": {
         "providerNative": {
           "mappingAvailable": false,
@@ -165,8 +165,8 @@
       "supersededCandidateRuleIds": [
         "anthropic-v1-current-output"
       ],
-      "ruleOmittedReason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
-      "reviewStatus": "NO_RULE",
+      "ruleOmittedReason": "Reviewed positive partial text assertion; replacement must be verified against actually selected Rules during assembly.",
+      "reviewStatus": "REPLACEMENT_SELECTION_REQUIRES_VERIFICATION",
       "inferenceAudits": [],
       "perModelTemporal": [
         {
@@ -209,6 +209,10 @@
           "supersededBy": null,
           "flags": []
         }
+      ],
+      "repairId": "disposition-20261002",
+      "replacementRuleIds": [
+        "anthropic-v1-active-output"
       ]
     },
     {
@@ -2313,7 +2317,7 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "explicitModels": [
         "claude-mythos-5-1"
@@ -2324,7 +2328,7 @@
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
       "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
-      "modelCoverageRationale": "Exact model IDs linked to explicitly named model releases on first-party pages. ",
+      "modelCoverageRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
       "evidenceRefs": [
         "anthropic-E016"
       ],
@@ -2337,8 +2341,8 @@
         "supersededBy": null,
         "flags": []
       },
-      "classification": "RULE_CANDIDATE",
-      "ambiguityNotes": null,
+      "classification": "REDUNDANT_BUT_USEFUL",
+      "ambiguityNotes": "Positive text output only; other output kinds are not excluded.",
       "coverage": {
         "providerNative": {
           "mappingAvailable": false,
@@ -2358,8 +2362,8 @@
       "supersededCandidateRuleIds": [
         "anthropic-v1-mythos51-output"
       ],
-      "ruleOmittedReason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
-      "reviewStatus": "NO_RULE",
+      "ruleOmittedReason": "Reviewed positive partial text assertion; replacement must be verified against actually selected Rules during assembly.",
+      "reviewStatus": "REPLACEMENT_SELECTION_REQUIRES_VERIFICATION",
       "inferenceAudits": [],
       "perModelTemporal": [
         {
@@ -2372,6 +2376,10 @@
           "supersededBy": null,
           "flags": []
         }
+      ],
+      "repairId": "disposition-20261002",
+      "replacementRuleIds": [
+        "anthropic-v1-active-output"
       ]
     },
     {
@@ -2385,7 +2393,7 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "explicitModels": [
         "claude-opus-4-5-20251101"
@@ -2396,7 +2404,7 @@
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
       "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
-      "modelCoverageRationale": "Exact model IDs linked to explicitly named model releases on first-party pages. ",
+      "modelCoverageRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
       "evidenceRefs": [
         "anthropic-E015"
       ],
@@ -2409,8 +2417,8 @@
         "supersededBy": null,
         "flags": []
       },
-      "classification": "RULE_CANDIDATE",
-      "ambiguityNotes": null,
+      "classification": "REDUNDANT_BUT_USEFUL",
+      "ambiguityNotes": "Positive text output only; other output kinds are not excluded.",
       "coverage": {
         "providerNative": {
           "mappingAvailable": false,
@@ -2430,8 +2438,8 @@
       "supersededCandidateRuleIds": [
         "anthropic-v1-opus45-output"
       ],
-      "ruleOmittedReason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
-      "reviewStatus": "NO_RULE",
+      "ruleOmittedReason": "Reviewed positive partial text assertion; replacement must be verified against actually selected Rules during assembly.",
+      "reviewStatus": "REPLACEMENT_SELECTION_REQUIRES_VERIFICATION",
       "inferenceAudits": [],
       "perModelTemporal": [
         {
@@ -2444,6 +2452,10 @@
           "supersededBy": null,
           "flags": []
         }
+      ],
+      "repairId": "disposition-20261002",
+      "replacementRuleIds": [
+        "anthropic-v1-active-output"
       ]
     },
     {
@@ -3339,10 +3351,9 @@
       "canonicalValue": {
         "kind": "native_string_set",
         "values": [
-          "adaptive",
-          "between_tools"
+          "adaptive"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "explicitModels": [],
       "inferredHighModels": [
@@ -3353,7 +3364,7 @@
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
       "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
-      "modelCoverageRationale": "Exact model IDs linked to explicitly named model releases on first-party pages. Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap.",
+      "modelCoverageRationale": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
       "evidenceRefs": [
         "anthropic-E017"
       ],
@@ -3367,7 +3378,7 @@
         "flags": []
       },
       "classification": "REDUNDANT_BUT_USEFUL",
-      "ambiguityNotes": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap.",
+      "ambiguityNotes": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
       "coverage": {
         "providerNative": {
           "mappingAvailable": true,
@@ -3384,7 +3395,7 @@
           "candidate": true
         }
       },
-      "reviewStatus": "PENDING_INDEPENDENT_COORDINATOR_INFERENCE_APPROVAL",
+      "reviewStatus": "APPROVED_BOUNDED_PARTIAL_ASSERTION",
       "inferenceAudits": [
         {
           "nativeModelId": "claude-sonnet-5-5",
@@ -3410,8 +3421,9 @@
           "releaseDate": "2026-09-28",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         }
       ],
       "perModelTemporal": [
@@ -3425,7 +3437,8 @@
           "supersededBy": null,
           "flags": []
         }
-      ]
+      ],
+      "repairId": "disposition-20261002"
     },
     {
       "factId": "anthropic-F-46-modes",
@@ -12607,7 +12620,7 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "explicitModels": [],
       "inferredHighModels": [
@@ -12631,7 +12644,7 @@
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
       "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
-      "modelCoverageRationale": "Exact model IDs linked to explicitly named model releases on first-party pages. Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
+      "modelCoverageRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
       "evidenceRefs": [
         "anthropic-E028",
         "anthropic-E002"
@@ -12646,7 +12659,7 @@
         "flags": []
       },
       "classification": "RULE_CANDIDATE",
-      "ambiguityNotes": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
+      "ambiguityNotes": "Positive text output only; other output kinds are not excluded.",
       "coverage": {
         "providerNative": {
           "mappingAvailable": false,
@@ -12663,7 +12676,7 @@
           "candidate": true
         }
       },
-      "reviewStatus": "PENDING_INDEPENDENT_COORDINATOR_INFERENCE_APPROVAL",
+      "reviewStatus": "APPROVED_BOUNDED_PARTIAL_ASSERTION",
       "inferenceAudits": [
         {
           "nativeModelId": "claude-fable-5-1",
@@ -12689,8 +12702,9 @@
           "releaseDate": "2026-09-01",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-mythos-5-1",
@@ -12716,8 +12730,9 @@
           "releaseDate": "2026-09-01",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-fable-5",
@@ -12743,8 +12758,9 @@
           "releaseDate": "2026-06-09",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-mythos-5",
@@ -12770,8 +12786,9 @@
           "releaseDate": "2026-06-09",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-5-5",
@@ -12797,8 +12814,9 @@
           "releaseDate": "2026-09-22",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-5",
@@ -12824,8 +12842,9 @@
           "releaseDate": "2026-07-24",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-4-8",
@@ -12851,8 +12870,9 @@
           "releaseDate": "2026-05-28",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-4-7",
@@ -12878,8 +12898,9 @@
           "releaseDate": "2026-04-16",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-4-6",
@@ -12905,8 +12926,9 @@
           "releaseDate": "2026-02-05",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-opus-4-5-20251101",
@@ -12932,8 +12954,9 @@
           "releaseDate": "2025-11-24",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-sonnet-5-5",
@@ -12959,8 +12982,9 @@
           "releaseDate": "2026-09-28",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-sonnet-5",
@@ -12986,8 +13010,9 @@
           "releaseDate": "2026-06-30",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-sonnet-4-6",
@@ -13013,8 +13038,9 @@
           "releaseDate": "2026-02-17",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         },
         {
           "nativeModelId": "claude-haiku-4-5-20251001",
@@ -13040,8 +13066,9 @@
           "releaseDate": "2025-10-15",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+          "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+          "repairId": "disposition-20261002"
         }
       ],
       "perModelTemporal": [
@@ -13185,7 +13212,8 @@
           "supersededBy": null,
           "flags": []
         }
-      ]
+      ],
+      "repairId": "disposition-20261002"
     },
     {
       "factId": "anthropic-F-sdk-sampling-removal",
@@ -16454,10 +16482,6 @@
       },
       "explicitModels": [],
       "inferredHighModels": [
-        "claude-fable-5-1",
-        "claude-mythos-5-1",
-        "claude-fable-5",
-        "claude-mythos-5",
         "claude-opus-5-5",
         "claude-opus-5",
         "claude-opus-4-8",
@@ -16467,7 +16491,12 @@
         "claude-sonnet-5",
         "claude-sonnet-4-6"
       ],
-      "inferredMediumModels": [],
+      "inferredMediumModels": [
+        "claude-fable-5-1",
+        "claude-mythos-5-1",
+        "claude-fable-5",
+        "claude-mythos-5"
+      ],
       "inferredLowModels": [],
       "regexCandidate": null,
       "identityPatternConfidence": "EXACT_OFFICIAL_IDS",
@@ -16512,7 +16541,7 @@
           "nativeModelId": "claude-fable-5-1",
           "providerAuthorityId": "anthropic",
           "endpointProfileId": "anthropic-developer-api-2023-06-01",
-          "classification": "INFERRED_HIGH",
+          "classification": "INFERRED_MEDIUM",
           "explicitlyDocumentedSiblingModels": [],
           "primaryEvidence": "anthropic-E026",
           "corroboratingEvidence": [
@@ -16521,7 +16550,7 @@
             "anthropic-E036",
             "anthropic-E027"
           ],
-          "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+          "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
           "searchedExceptions": [
             "current per-release thinking matrix",
             "effort compatibility",
@@ -16534,14 +16563,16 @@
           "releaseDate": "2026-09-01",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+          "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+          "repairId": "disposition-20261002",
+          "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
         },
         {
           "nativeModelId": "claude-mythos-5-1",
           "providerAuthorityId": "anthropic",
           "endpointProfileId": "anthropic-developer-api-2023-06-01",
-          "classification": "INFERRED_HIGH",
+          "classification": "INFERRED_MEDIUM",
           "explicitlyDocumentedSiblingModels": [],
           "primaryEvidence": "anthropic-E026",
           "corroboratingEvidence": [
@@ -16550,7 +16581,7 @@
             "anthropic-E036",
             "anthropic-E027"
           ],
-          "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+          "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
           "searchedExceptions": [
             "current per-release thinking matrix",
             "effort compatibility",
@@ -16563,14 +16594,16 @@
           "releaseDate": "2026-09-01",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+          "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+          "repairId": "disposition-20261002",
+          "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
         },
         {
           "nativeModelId": "claude-fable-5",
           "providerAuthorityId": "anthropic",
           "endpointProfileId": "anthropic-developer-api-2023-06-01",
-          "classification": "INFERRED_HIGH",
+          "classification": "INFERRED_MEDIUM",
           "explicitlyDocumentedSiblingModels": [],
           "primaryEvidence": "anthropic-E026",
           "corroboratingEvidence": [
@@ -16579,7 +16612,7 @@
             "anthropic-E036",
             "anthropic-E027"
           ],
-          "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+          "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
           "searchedExceptions": [
             "current per-release thinking matrix",
             "effort compatibility",
@@ -16592,14 +16625,16 @@
           "releaseDate": "2026-06-09",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+          "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+          "repairId": "disposition-20261002",
+          "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
         },
         {
           "nativeModelId": "claude-mythos-5",
           "providerAuthorityId": "anthropic",
           "endpointProfileId": "anthropic-developer-api-2023-06-01",
-          "classification": "INFERRED_HIGH",
+          "classification": "INFERRED_MEDIUM",
           "explicitlyDocumentedSiblingModels": [],
           "primaryEvidence": "anthropic-E026",
           "corroboratingEvidence": [
@@ -16608,7 +16643,7 @@
             "anthropic-E036",
             "anthropic-E027"
           ],
-          "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+          "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
           "searchedExceptions": [
             "current per-release thinking matrix",
             "effort compatibility",
@@ -16621,8 +16656,10 @@
           "releaseDate": "2026-06-09",
           "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
           "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-          "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-          "coordinatorVerdict": "PENDING"
+          "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+          "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+          "repairId": "disposition-20261002",
+          "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
         },
         {
           "nativeModelId": "claude-opus-5-5",
@@ -16978,7 +17015,9 @@
           "supersededBy": null,
           "flags": []
         }
-      ]
+      ],
+      "repairId": "disposition-20261002",
+      "deferredJoinRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material."
     },
     {
       "factId": "anthropic-F-tool-web-reference-cycle",

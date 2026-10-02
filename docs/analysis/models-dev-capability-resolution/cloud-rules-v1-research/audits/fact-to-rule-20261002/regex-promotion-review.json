@@ -1,0 +1,3141 @@
+[
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "limits.contextWindow.maxTokens",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "limits.input.maxTokens",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "limits.output.maxTokens",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "modalities.input",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "modalities.output",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "input.attachments.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "operations.supported",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.required",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.toggle.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.modes.nativeValues",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.budgetTokens.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "reasoning.budgetTokens.domain",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "generation.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "generation.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.temperature.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.temperature.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.temperature.modelMaximum",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.topP.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.topK.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "sampling.topK.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "tools.calling.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "tools.trainingForToolUse",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "tools.codeExecution.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "structuredOutput.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "image.generation.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "image.generation.aspectRatios",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "search.web.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "search.image.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "documents.citations.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "contextManagement.support",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-pro-dated",
+    "canonicalPath": "contextManagement.actions.nativeValues",
+    "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-pro-preview-03-25",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.5-pro-preview-06-05"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "limits.contextWindow.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "limits.input.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "limits.output.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "modalities.input",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "modalities.output",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "input.attachments.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "operations.supported",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.required",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.toggle.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.modes.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.budgetTokens.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "reasoning.budgetTokens.domain",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "generation.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "generation.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.temperature.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.temperature.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.temperature.modelMaximum",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.topP.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.topK.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "sampling.topK.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "tools.calling.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "tools.trainingForToolUse",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "tools.codeExecution.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "structuredOutput.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "image.generation.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "image.generation.aspectRatios",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "search.web.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "search.image.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "documents.citations.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "contextManagement.support",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-flash-dated",
+    "canonicalPath": "contextManagement.actions.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-flash-preview-09-25"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "limits.contextWindow.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "limits.input.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "limits.output.maxTokens",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "modalities.input",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "modalities.output",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "input.attachments.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "operations.supported",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.required",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.toggle.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.modes.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.budgetTokens.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "reasoning.budgetTokens.domain",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "generation.effort.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "generation.effort.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.temperature.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.temperature.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.temperature.modelMaximum",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.topP.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.topK.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "sampling.topK.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "tools.calling.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "tools.trainingForToolUse",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "tools.codeExecution.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "structuredOutput.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "image.generation.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "image.generation.aspectRatios",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "search.web.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "search.image.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "documents.citations.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "contextManagement.support",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini25-lite-monthyear",
+    "canonicalPath": "contextManagement.actions.nativeValues",
+    "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+    "knownInventoryMatches": [
+      "gemini-2.5-flash-lite-preview-09-2025"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "ONE_HISTORICAL_MEMBER",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_PROMOTION_MISSING_SCOPED_HISTORICAL_EVIDENCE",
+    "reason": "Retired naming/lifecycle identities have no scoped capability facts. Decoder-valid identity pattern does not supply inheritance evidence.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "limits.contextWindow.maxTokens",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KNOWN_EQUAL_MEMBERS_NO_FUTURE_SPECIFICATION",
+    "reason": "Known exact numeric/modality specifications agree where recorded; no future-family specification commitment is captured. contextWindow itself has no matching assertion.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "limits.input.maxTokens",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KNOWN_EQUAL_MEMBERS_NO_FUTURE_SPECIFICATION",
+    "reason": "Known exact numeric/modality specifications agree where recorded; no future-family specification commitment is captured. contextWindow itself has no matching assertion.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "limits.output.maxTokens",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "integer",
+        "value": 65536,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 65536,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 65536,
+        "unit": "token"
+      },
+      {
+        "kind": "integer",
+        "value": 65536,
+        "unit": "token"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KNOWN_EQUAL_MEMBERS_NO_FUTURE_SPECIFICATION",
+    "reason": "Known exact numeric/modality specifications agree where recorded; no future-family specification commitment is captured. contextWindow itself has no matching assertion.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "modalities.input",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "audio",
+          "image",
+          "pdf",
+          "text",
+          "video"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "audio",
+          "image",
+          "pdf",
+          "text",
+          "video"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "audio",
+          "image",
+          "pdf",
+          "text",
+          "video"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "audio",
+          "image",
+          "pdf",
+          "text",
+          "video"
+        ],
+        "completeness": "complete"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KNOWN_EQUAL_MEMBERS_NO_FUTURE_SPECIFICATION",
+    "reason": "Known exact numeric/modality specifications agree where recorded; no future-family specification commitment is captured. contextWindow itself has no matching assertion.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "modalities.output",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KNOWN_EQUAL_MEMBERS_NO_FUTURE_SPECIFICATION",
+    "reason": "Known exact numeric/modality specifications agree where recorded; no future-family specification commitment is captured. contextWindow itself has no matching assertion.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "input.attachments.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "operations.supported",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.required",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 1,
+    "canonicalValues": [
+      {
+        "kind": "boolean",
+        "value": true
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.toggle.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 1,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "unsupported"
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.modes.nativeValues",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.effort.nativeValues",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "native_string_set",
+        "values": [
+          "high",
+          "low",
+          "medium"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "native_string_set",
+        "values": [
+          "high",
+          "low",
+          "medium"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "native_string_set",
+        "values": [
+          "high",
+          "low",
+          "medium",
+          "minimal"
+        ],
+        "completeness": "complete"
+      },
+      {
+        "kind": "native_string_set",
+        "values": [
+          "high",
+          "low",
+          "medium",
+          "minimal"
+        ],
+        "completeness": "complete"
+      }
+    ],
+    "dispositions": {
+      "ONTOLOGY_GAP": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.effort.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "native_string",
+        "value": "medium"
+      },
+      {
+        "kind": "native_string",
+        "value": "medium"
+      },
+      {
+        "kind": "native_string",
+        "value": "medium"
+      },
+      {
+        "kind": "native_string",
+        "value": "medium"
+      }
+    ],
+    "dispositions": {
+      "ONTOLOGY_GAP": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.budgetTokens.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "reasoning.budgetTokens.domain",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_CONTROL_DIVERGENCE_OR_SEMANTIC_HOLD",
+    "reason": "minimal is present in3.5/3.6 effort domains but absent in3.7/3.8. Required/toggle/budget/modes scope is incomplete or held. Equal medium defaults alone do not approve effort semantics.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "generation.effort.nativeValues",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "generation.effort.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.temperature.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.temperature.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.temperature.modelMaximum",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.topP.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.topK.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "sampling.topK.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "KEEP_EXACT_NO_SHARED_SCOPED_SAMPLING_ASSERTION",
+    "reason": "Later sampling deprecation is recorded; no matching-member common domain/default/support fact. It does not defeat unrelated equal support booleans.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "tools.calling.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "tools.trainingForToolUse",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "tools.codeExecution.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "structuredOutput.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "ALREADY_MODELS_DEV": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "image.generation.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "unsupported"
+      },
+      {
+        "kind": "support",
+        "value": "unsupported"
+      },
+      {
+        "kind": "support",
+        "value": "unsupported"
+      },
+      {
+        "kind": "support",
+        "value": "unsupported"
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "image.generation.aspectRatios",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "search.web.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "TARGETED_FAMILY_COMMITMENT_RECHECK",
+    "reason": "Four matching GA values agree; specialized Live/TTS/image exceptions are outside this regex. Need affirmative family scope for future authoritative matches, not a theoretical-change rejection.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "search.image.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "documents.citations.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 4,
+    "canonicalValues": [
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      },
+      {
+        "kind": "support",
+        "value": "supported"
+      }
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 4
+    },
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "RECHECK_OPERATION_SCOPE",
+    "reason": "Four matched Flash positives are deferred for File Search/Interactions scope; Pro-specific AI Studio qualification is outside the regex. Resolve operation before future inheritance.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": true,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "contextManagement.support",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  },
+  {
+    "familyId": "gemini3-stable-flash",
+    "canonicalPath": "contextManagement.actions.nativeValues",
+    "pattern": "^gemini-3[.][0-9]-flash$",
+    "knownInventoryMatches": [
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash"
+    ],
+    "matchedRows": 0,
+    "canonicalValues": [],
+    "dispositions": {},
+    "identityPatternConfidence": "HIGH_KNOWN_GRAMMAR",
+    "capabilityInheritanceConfidence": "UNESTABLISHED_FOR_FUTURE_MEMBERS",
+    "verdict": "NO_SCOPED_ASSERTION_FOR_PROMOTION",
+    "reason": "No suitable matched-member assertion or operation scope supports future propagation.",
+    "futureAuthoritativeMatchAutomaticallyInherits": false,
+    "externalReResearchRequired": false,
+    "externalReResearchPurpose": "If investigating promotion or missing historical assertions; not needed to reproduce the current saved-evidence no-promotion verdict."
+  }
+]

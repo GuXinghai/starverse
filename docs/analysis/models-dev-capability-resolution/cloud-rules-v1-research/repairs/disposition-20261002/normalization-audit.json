@@ -1,0 +1,3084 @@
+[
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.7-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.6-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.5-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.5-flash-lite.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-pro-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3-flash-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash-lite.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-flash.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.7-flash.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.6-flash.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.5-flash-lite.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.5-flash.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-pro-preview.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3-flash-preview.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite-image.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-image.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-image.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite-image.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite-image.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3-pro-image.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3-pro-image.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash-image.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash-image.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-live.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-live.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-live-extended-thinking.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-live-extended-thinking.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.8-live-extended-thinking.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.5-live-translate-preview.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-live-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-live-preview.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash-native-audio-preview-12-2025.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-2.5-flash-native-audio-preview-12-2025.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-embedding-2.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-robotics-er-2-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-robotics-er-2-streaming-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-robotics-er-1.6-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-omni-1.1-flash.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "video"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.veo-3.1-generate-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.veo-3.1-fast-generate-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.veo-3.1-lite-generate-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.lyria-3.5.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.lyria-3.5.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.lyria-3-clip-preview.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.lyria-3-clip-preview.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "audio"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.deep-research-preview-04-2026.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.deep-research-preview-04-2026.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.deep-research-max-preview-04-2026.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.deep-research-max-preview-04-2026.modalities.output",
+    "path": "modalities.output",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.antigravity-preview-09-2026.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemma-4-31b-it.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemma-4-26b-a4b-it.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-image.image.generation.aspectRatios",
+    "path": "image.generation.aspectRatios",
+    "rawValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        },
+        {
+          "width": 21,
+          "height": 9
+        },
+        {
+          "width": 1,
+          "height": 4
+        },
+        {
+          "width": 1,
+          "height": 8
+        },
+        {
+          "width": 4,
+          "height": 1
+        },
+        {
+          "width": 8,
+          "height": 1
+        }
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 1,
+          "height": 4
+        },
+        {
+          "width": 1,
+          "height": 8
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 1
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 7,
+          "height": 3
+        },
+        {
+          "width": 8,
+          "height": 1
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        }
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-image.image.generation.resolutionPresets.nativeValues",
+    "path": "image.generation.resolutionPresets.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "512",
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "1K",
+        "2K",
+        "4K",
+        "512"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3-pro-image.image.generation.aspectRatios",
+    "path": "image.generation.aspectRatios",
+    "rawValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        },
+        {
+          "width": 21,
+          "height": 9
+        }
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 7,
+          "height": 3
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        }
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-lite-image.image.generation.aspectRatios",
+    "path": "image.generation.aspectRatios",
+    "rawValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        },
+        {
+          "width": 21,
+          "height": 9
+        }
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "aspect_ratio_set",
+      "values": [
+        {
+          "width": 1,
+          "height": 1
+        },
+        {
+          "width": 2,
+          "height": 3
+        },
+        {
+          "width": 3,
+          "height": 2
+        },
+        {
+          "width": 3,
+          "height": 4
+        },
+        {
+          "width": 4,
+          "height": 3
+        },
+        {
+          "width": 4,
+          "height": 5
+        },
+        {
+          "width": 5,
+          "height": 4
+        },
+        {
+          "width": 7,
+          "height": 3
+        },
+        {
+          "width": 9,
+          "height": 16
+        },
+        {
+          "width": 16,
+          "height": 9
+        }
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-flash-image.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "gemini",
+    "factId": "gemini.gemini-3.1-pro-preview-customtools.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-astra.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-astra.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6.1-sol.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6.1-sol.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-sol.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-sol.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-luna.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-luna.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-sol.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-sol.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-terra.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-terra.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-luna.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-luna.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.5.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.5.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.5-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.5-pro.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4-pro.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4-mini.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.4-mini.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.2.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.2.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "none",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.2-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.2-pro.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.reasoning.effort.nativeValues",
+    "path": "reasoning.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium",
+        "minimal"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5-mini.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5-nano.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.o3.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.o3-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-4.1.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-4.1-mini.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-4o.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-4o-mini.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-cyber.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-daybreak-blue-latest.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.chat-latest.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.o1-pro.modalities.input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-astra.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6.1-sol.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-sol.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-6-luna.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-sol.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-terra.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "openai",
+    "factId": "openai.gpt-5.6-luna.reasoning.modes.nativeValues",
+    "path": "reasoning.modes.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "standard",
+        "pro"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "pro",
+        "standard"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-five-efforts",
+    "path": "generation.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-four-efforts",
+    "path": "generation.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-opus45-efforts",
+    "path": "generation.effort.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "completeness": "complete"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "completeness": "complete"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-context-actions",
+    "path": "contextManagement.actions.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "clear_tool_uses_20250919",
+        "clear_thinking_20251015"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "clear_thinking_20251015",
+        "clear_tool_uses_20250919"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-pdf-input-active",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "pdf",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-active-operations",
+    "path": "operations.supported",
+    "rawValue": {
+      "kind": "operation_kind_set",
+      "values": [
+        "content_generate",
+        "token_count",
+        "request_batch"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "operation_kind_set",
+      "values": [
+        "content_generate",
+        "request_batch",
+        "token_count"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-sonnet45-input",
+    "path": "modalities.input",
+    "rawValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "text",
+        "image"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "media_kind_set",
+      "values": [
+        "image",
+        "text"
+      ],
+      "completeness": "partial"
+    }
+  },
+  {
+    "provider": "anthropic",
+    "factId": "anthropic-F-modern-context-actions",
+    "path": "contextManagement.actions.nativeValues",
+    "rawValue": {
+      "kind": "native_string_set",
+      "values": [
+        "clear_tool_uses_20250919",
+        "clear_thinking_20251015",
+        "compact_20260112"
+      ],
+      "completeness": "partial"
+    },
+    "normalizedValue": {
+      "kind": "native_string_set",
+      "values": [
+        "clear_thinking_20251015",
+        "clear_tool_uses_20250919",
+        "compact_20260112"
+      ],
+      "completeness": "partial"
+    }
+  }
+]

@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checkedAt": "2026-10-02T06:13:02.838Z",
+  "checkedAt": "2026-10-02T10:37:25.255Z",
   "requiredArtifacts": 29,
   "providers": [
     {
@@ -19,7 +19,7 @@
       "provider": "openai",
       "evidenceRecords": 72,
       "factRecords": 328,
-      "proposalRules": 62
+      "proposalRules": 63
     },
     {
       "provider": "anthropic",

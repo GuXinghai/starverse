@@ -30703,9 +30703,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -30733,7 +30733,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-6-astra"
       ],
@@ -30747,7 +30747,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -31240,9 +31240,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -31270,7 +31270,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-6.1-sol"
       ],
@@ -31284,7 +31284,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -31777,9 +31777,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -31807,7 +31807,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-6-sol"
       ],
@@ -31821,7 +31821,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -32363,9 +32363,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -32393,7 +32393,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-6-luna"
       ],
@@ -32407,7 +32407,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -32949,9 +32949,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -32979,7 +32979,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.6-sol"
       ],
@@ -32993,7 +32993,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -33535,9 +33535,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -33565,7 +33565,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.6-terra"
       ],
@@ -33579,7 +33579,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -34121,9 +34121,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -34151,7 +34151,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.6-luna"
       ],
@@ -34165,7 +34165,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -34856,9 +34856,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -34886,7 +34886,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.5"
       ],
@@ -34900,7 +34900,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -35440,9 +35440,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -35470,7 +35470,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.5-pro"
       ],
@@ -35484,7 +35484,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -36020,9 +36020,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -36050,7 +36050,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.4"
       ],
@@ -36064,7 +36064,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -36604,9 +36604,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -36633,7 +36633,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.4-pro"
       ],
@@ -36647,7 +36647,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -37160,9 +37160,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -37189,7 +37189,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.4-mini"
       ],
@@ -37203,7 +37203,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -37759,9 +37759,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -37788,7 +37788,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.2",
         "openai-legacy-endpoints-chrome"
@@ -37810,7 +37810,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -38304,9 +38304,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -38333,7 +38333,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5.2-pro"
       ],
@@ -38347,7 +38347,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -38762,9 +38762,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -38791,7 +38791,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5",
         "openai-legacy-endpoints-chrome"
@@ -38813,8 +38813,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -39281,9 +39280,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -39310,7 +39309,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5-mini",
         "openai-legacy-endpoints-chrome"
@@ -39332,8 +39331,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -39727,9 +39725,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -39756,7 +39754,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5-nano",
         "openai-legacy-endpoints-chrome"
@@ -39778,8 +39776,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -40157,9 +40154,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -40186,7 +40183,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-5-pro"
       ],
@@ -40200,8 +40197,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -40720,9 +40716,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -40750,7 +40746,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-o3",
         "openai-legacy-endpoints-chrome"
@@ -40772,8 +40768,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -41151,9 +41146,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -41180,7 +41175,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-o3-pro"
       ],
@@ -41194,8 +41189,7 @@
         }
       ],
       "remainingGap": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -41553,9 +41547,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -41583,7 +41577,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-4.1",
         "openai-legacy-endpoints-chrome"
@@ -41605,7 +41599,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -41987,9 +41981,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -42017,7 +42011,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-4.1-mini",
         "openai-legacy-endpoints-chrome"
@@ -42039,7 +42033,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -42421,9 +42415,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -42451,7 +42445,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-4o",
         "openai-legacy-endpoints-chrome"
@@ -42473,7 +42467,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -42796,9 +42790,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -42826,7 +42820,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-4o-mini",
         "openai-legacy-endpoints-chrome"
@@ -42848,7 +42842,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -43145,10 +43139,10 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
-      "candidateRuleId": null,
+      "originalClassification": "RULE_CANDIDATE",
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "cloud.openai.gpt-5.6-cyber.modalities.input",
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
         "state": "not_mapped",
@@ -43179,9 +43173,7 @@
           "apiSurface": "Responses (specialized API boundaries separately recorded)"
         }
       ],
-      "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "openai",
@@ -43942,9 +43934,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -43972,7 +43964,7 @@
         "deprecatedAfter": null,
         "supersededBy": null
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-gpt-daybreak-blue-latest"
       ],
@@ -43986,7 +43978,7 @@
         }
       ],
       "remainingGap": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -44408,9 +44400,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "TEMPORALLY_UNSAFE",
+      "classification": "TEMPORALLY_UNSAFE",
+      "reason": "Positive partial input assertion is representable, but mutable chat-latest has unknown target/lifecycle and a 2026-10-09 recheck. Owner lifecycle approval remains required; no Rule selected.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -44443,8 +44435,8 @@
         }
       ],
       "remainingGap": [
-        "Regularly updated mutable chat alias; replacement may change documented capabilities.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs.",
+        "Floating chat alias may change target and capabilities; no lifecycle redesign authorized."
       ]
     },
     {
@@ -44820,9 +44812,9 @@
         ],
         "completeness": "partial"
       },
-      "originalClassification": "AMBIGUOUS_DEFER",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Provider research classification retained after coordinator review; see first-party evidence references.",
+      "originalClassification": "ALREADY_MODELS_DEV",
+      "classification": "ALREADY_MODELS_DEV",
+      "reason": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -44849,7 +44841,7 @@
         "deprecatedAfter": "2026-10-22",
         "supersededBy": "gpt-5.6-sol"
       },
-      "conflictStatus": "SOURCE_VALUE_DISAGREEMENT_OR_COMPLETENESS_DIFFERENCE",
+      "conflictStatus": "none_observed",
       "evidenceRefs": [
         "openai-model-o1-pro"
       ],
@@ -44863,8 +44855,7 @@
         }
       ],
       "remainingGap": [
-        "Scheduled/elapsed shutdown requires coordinator lifecycle decision; current schema cannot expire this rule.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ]
     },
     {
@@ -49698,7 +49689,7 @@
       },
       "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-pdf-input-active carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49732,7 +49723,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "PDF reviewed separately; this set deliberately partial."
+      "remainingGap": "PDF reviewed separately; this set deliberately partial.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-pdf-input-active"
+      ]
     },
     {
       "provider": "anthropic",
@@ -49751,7 +49745,7 @@
       },
       "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-pdf-input-active carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49785,7 +49779,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "PDF reviewed separately; this set deliberately partial."
+      "remainingGap": "PDF reviewed separately; this set deliberately partial.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-pdf-input-active"
+      ]
     },
     {
       "provider": "anthropic",
@@ -49804,7 +49801,7 @@
       },
       "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-pdf-input-active carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49838,7 +49835,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "PDF reviewed separately; this set deliberately partial."
+      "remainingGap": "PDF reviewed separately; this set deliberately partial.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-pdf-input-active"
+      ]
     },
     {
       "provider": "anthropic",
@@ -49857,7 +49857,7 @@
       },
       "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-pdf-input-active carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49891,7 +49891,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "PDF reviewed separately; this set deliberately partial."
+      "remainingGap": "PDF reviewed separately; this set deliberately partial.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-pdf-input-active"
+      ]
     },
     {
       "provider": "anthropic",
@@ -49905,11 +49908,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49943,7 +49946,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation."
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -49957,11 +49963,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -49995,7 +50001,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation."
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50009,11 +50018,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50047,7 +50056,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation."
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50061,11 +50073,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50099,7 +50111,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Catalog explicitly describes text output; tool-result files are API-hosted outputs, not model image/audio generation."
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50114,7 +50129,7 @@
       },
       "originalClassification": "RULE_CANDIDATE",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-toolcalling carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50148,7 +50163,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes."
+      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-toolcalling"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50163,7 +50181,7 @@
       },
       "originalClassification": "RULE_CANDIDATE",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-toolcalling carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50197,7 +50215,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes."
+      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-toolcalling"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50212,7 +50233,7 @@
       },
       "originalClassification": "RULE_CANDIDATE",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-toolcalling carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50246,7 +50267,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes."
+      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-toolcalling"
+      ]
     },
     {
       "provider": "anthropic",
@@ -50261,7 +50285,7 @@
       },
       "originalClassification": "RULE_CANDIDATE",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-toolcalling carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -50295,7 +50319,10 @@
           "apiSurface": "Anthropic direct Claude Messages API; anthropic-version 2023-06-01"
         }
       ],
-      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes."
+      "remainingGap": "Model tool use support does not guarantee forced tool_choice modes.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-toolcalling"
+      ]
     },
     {
       "provider": "anthropic",
@@ -52474,11 +52501,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -52512,7 +52539,10 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Exact model IDs linked to explicitly named model releases on first-party pages. "
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -52526,11 +52556,11 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
-      "originalClassification": "RULE_CANDIDATE",
+      "originalClassification": "REDUNDANT_BUT_USEFUL",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-active-output carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -52564,7 +52594,10 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Exact model IDs linked to explicitly named model releases on first-party pages. "
+      "remainingGap": "Positive text output only; other output kinds are not excluded.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-active-output"
+      ]
     },
     {
       "provider": "anthropic",
@@ -53673,15 +53706,14 @@
       "canonicalValue": {
         "kind": "native_string_set",
         "values": [
-          "adaptive",
-          "between_tools"
+          "adaptive"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "REDUNDANT_BUT_USEFUL",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "between_tools is restricted to high or lower effort and rejects additional thinking fields. Hold the complete model-level domain until conditional execution semantics are reviewed.",
-      "candidateRuleId": null,
+      "classification": "REDUNDANT_BUT_USEFUL",
+      "reason": "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "candidateRuleId": "anthropic-v1-sonnet55-modes",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "mapped_if_payload_supplies_UNOBSERVED",
@@ -53714,7 +53746,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -65891,7 +65923,7 @@
       },
       "originalClassification": "RULE_CANDIDATE",
       "classification": "REDUNDANT_BUT_USEFUL",
-      "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+      "reason": "Verified selected replacement anthropic-v1-modern-websearch carries the same assertion or entails this positive partial subset; original proposal identifiers are historical, not replacements.",
       "candidateRuleId": null,
       "coverageBasis": "EXPLICIT_MODEL",
       "providerNative": {
@@ -65925,7 +65957,10 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Hosted serverwebsearch tool, directMessages; orgpolicy may restrict but not alter documented model/APIcompatibility."
+      "remainingGap": "Hosted serverwebsearch tool, directMessages; orgpolicy may restrict but not alter documented model/APIcompatibility.",
+      "selectedReplacementRuleIds": [
+        "anthropic-v1-modern-websearch"
+      ]
     },
     {
       "provider": "anthropic",
@@ -66845,12 +66880,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -66891,7 +66926,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -66905,12 +66940,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -66951,7 +66986,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -66965,12 +67000,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67011,7 +67046,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67025,12 +67060,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67071,7 +67106,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67085,12 +67120,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67131,7 +67166,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67145,12 +67180,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67191,7 +67226,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67205,12 +67240,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67251,7 +67286,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67265,12 +67300,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67311,7 +67346,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67325,12 +67360,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67371,7 +67406,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67385,12 +67420,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67431,7 +67466,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67445,12 +67480,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67491,7 +67526,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67505,12 +67540,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67551,7 +67586,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67565,12 +67600,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67611,7 +67646,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -67625,12 +67660,12 @@
         "values": [
           "text"
         ],
-        "completeness": "complete"
+        "completeness": "partial"
       },
       "originalClassification": "RULE_CANDIDATE",
-      "classification": "AMBIGUOUS_DEFER",
-      "reason": "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal.",
-      "candidateRuleId": null,
+      "classification": "RULE_CANDIDATE",
+      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "candidateRuleId": "anthropic-v1-active-output",
       "coverageBasis": "INFERRED_HIGH",
       "providerNative": {
         "state": "not_mapped",
@@ -67671,7 +67706,7 @@
           "apiSurface": "Anthropic direct Claude Messages API"
         }
       ],
-      "remainingGap": "Official intro exhaustively describes current model output as text; no unsupported image generation inference."
+      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
     },
     {
       "provider": "anthropic",
@@ -72601,298 +72636,6 @@
       "factId": "anthropic-F-modern-websearch",
       "providerAuthorityId": "anthropic",
       "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "nativeModelId": "claude-fable-5-1",
-      "canonicalPath": "search.web.support",
-      "canonicalValue": {
-        "kind": "support",
-        "value": "supported"
-      },
-      "originalClassification": "RULE_CANDIDATE",
-      "classification": "RULE_CANDIDATE",
-      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
-      "candidateRuleId": "anthropic-v1-modern-websearch",
-      "coverageBasis": "INFERRED_HIGH",
-      "providerNative": {
-        "state": "not_mapped",
-        "value": null
-      },
-      "modelsDev": {
-        "state": "exact_subject_or_path_missing",
-        "value": null
-      },
-      "temporalAssessment": {
-        "temporalClass": "version_bound",
-        "validFrom": null,
-        "validThrough": null,
-        "recheckAfter": "2026-10-16",
-        "deprecatedAfter": null,
-        "supersededBy": null,
-        "flags": [],
-        "nativeModelId": "claude-fable-5-1"
-      },
-      "conflictStatus": "none_observed",
-      "evidenceRefs": [
-        "anthropic-E026",
-        "anthropic-E036",
-        "anthropic-E027",
-        "anthropic-E002"
-      ],
-      "officialSources": [
-        {
-          "evidenceId": "anthropic-E026",
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
-          "retrievedAt": "2026-10-02T05:26:12.522Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E036",
-          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
-          "retrievedAt": "2026-10-02T05:34:46.782Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E027",
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "retrievedAt": "2026-10-02T05:30:33.602Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E002",
-          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
-          "retrievedAt": "2026-10-02T05:15:05.567Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        }
-      ],
-      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
-    },
-    {
-      "provider": "anthropic",
-      "factId": "anthropic-F-modern-websearch",
-      "providerAuthorityId": "anthropic",
-      "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "nativeModelId": "claude-mythos-5-1",
-      "canonicalPath": "search.web.support",
-      "canonicalValue": {
-        "kind": "support",
-        "value": "supported"
-      },
-      "originalClassification": "RULE_CANDIDATE",
-      "classification": "RULE_CANDIDATE",
-      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
-      "candidateRuleId": "anthropic-v1-modern-websearch",
-      "coverageBasis": "INFERRED_HIGH",
-      "providerNative": {
-        "state": "not_mapped",
-        "value": null
-      },
-      "modelsDev": {
-        "state": "exact_subject_or_path_missing",
-        "value": null
-      },
-      "temporalAssessment": {
-        "temporalClass": "version_bound",
-        "validFrom": null,
-        "validThrough": null,
-        "recheckAfter": "2026-10-16",
-        "deprecatedAfter": null,
-        "supersededBy": null,
-        "flags": [],
-        "nativeModelId": "claude-mythos-5-1"
-      },
-      "conflictStatus": "none_observed",
-      "evidenceRefs": [
-        "anthropic-E026",
-        "anthropic-E036",
-        "anthropic-E027",
-        "anthropic-E002"
-      ],
-      "officialSources": [
-        {
-          "evidenceId": "anthropic-E026",
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
-          "retrievedAt": "2026-10-02T05:26:12.522Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E036",
-          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
-          "retrievedAt": "2026-10-02T05:34:46.782Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E027",
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "retrievedAt": "2026-10-02T05:30:33.602Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E002",
-          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
-          "retrievedAt": "2026-10-02T05:15:05.567Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        }
-      ],
-      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
-    },
-    {
-      "provider": "anthropic",
-      "factId": "anthropic-F-modern-websearch",
-      "providerAuthorityId": "anthropic",
-      "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "nativeModelId": "claude-fable-5",
-      "canonicalPath": "search.web.support",
-      "canonicalValue": {
-        "kind": "support",
-        "value": "supported"
-      },
-      "originalClassification": "RULE_CANDIDATE",
-      "classification": "RULE_CANDIDATE",
-      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
-      "candidateRuleId": "anthropic-v1-modern-websearch",
-      "coverageBasis": "INFERRED_HIGH",
-      "providerNative": {
-        "state": "not_mapped",
-        "value": null
-      },
-      "modelsDev": {
-        "state": "exact_subject_or_path_missing",
-        "value": null
-      },
-      "temporalAssessment": {
-        "temporalClass": "version_bound",
-        "validFrom": null,
-        "validThrough": null,
-        "recheckAfter": "2026-10-16",
-        "deprecatedAfter": null,
-        "supersededBy": null,
-        "flags": [],
-        "nativeModelId": "claude-fable-5"
-      },
-      "conflictStatus": "none_observed",
-      "evidenceRefs": [
-        "anthropic-E026",
-        "anthropic-E036",
-        "anthropic-E027",
-        "anthropic-E002"
-      ],
-      "officialSources": [
-        {
-          "evidenceId": "anthropic-E026",
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
-          "retrievedAt": "2026-10-02T05:26:12.522Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E036",
-          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
-          "retrievedAt": "2026-10-02T05:34:46.782Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E027",
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "retrievedAt": "2026-10-02T05:30:33.602Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E002",
-          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
-          "retrievedAt": "2026-10-02T05:15:05.567Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        }
-      ],
-      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
-    },
-    {
-      "provider": "anthropic",
-      "factId": "anthropic-F-modern-websearch",
-      "providerAuthorityId": "anthropic",
-      "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "nativeModelId": "claude-mythos-5",
-      "canonicalPath": "search.web.support",
-      "canonicalValue": {
-        "kind": "support",
-        "value": "supported"
-      },
-      "originalClassification": "RULE_CANDIDATE",
-      "classification": "RULE_CANDIDATE",
-      "reason": "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
-      "candidateRuleId": "anthropic-v1-modern-websearch",
-      "coverageBasis": "INFERRED_HIGH",
-      "providerNative": {
-        "state": "not_mapped",
-        "value": null
-      },
-      "modelsDev": {
-        "state": "exact_subject_or_path_missing",
-        "value": null
-      },
-      "temporalAssessment": {
-        "temporalClass": "version_bound",
-        "validFrom": null,
-        "validThrough": null,
-        "recheckAfter": "2026-10-16",
-        "deprecatedAfter": null,
-        "supersededBy": null,
-        "flags": [],
-        "nativeModelId": "claude-mythos-5"
-      },
-      "conflictStatus": "none_observed",
-      "evidenceRefs": [
-        "anthropic-E026",
-        "anthropic-E036",
-        "anthropic-E027",
-        "anthropic-E002"
-      ],
-      "officialSources": [
-        {
-          "evidenceId": "anthropic-E026",
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
-          "retrievedAt": "2026-10-02T05:26:12.522Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E036",
-          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
-          "retrievedAt": "2026-10-02T05:34:46.782Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E027",
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "retrievedAt": "2026-10-02T05:30:33.602Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        },
-        {
-          "evidenceId": "anthropic-E002",
-          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
-          "retrievedAt": "2026-10-02T05:15:05.567Z",
-          "updatedAt": null,
-          "apiSurface": "Anthropic direct Claude Messages API"
-        }
-      ],
-      "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
-    },
-    {
-      "provider": "anthropic",
-      "factId": "anthropic-F-modern-websearch",
-      "providerAuthorityId": "anthropic",
-      "endpointProfileId": "anthropic-developer-api-2023-06-01",
       "nativeModelId": "claude-opus-5-5",
       "canonicalPath": "search.web.support",
       "canonicalValue": {
@@ -73471,6 +73214,298 @@
         }
       ],
       "remainingGap": "Native/current local state unverified; no automatic override or execution guarantee."
+    },
+    {
+      "provider": "anthropic",
+      "factId": "anthropic-F-modern-websearch",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "nativeModelId": "claude-fable-5-1",
+      "canonicalPath": "search.web.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "originalClassification": "RULE_CANDIDATE",
+      "classification": "AMBIGUOUS_DEFER",
+      "reason": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "candidateRuleId": null,
+      "coverageBasis": "INFERRED_MEDIUM",
+      "providerNative": {
+        "state": "not_mapped",
+        "value": null
+      },
+      "modelsDev": {
+        "state": "exact_subject_or_path_missing",
+        "value": null
+      },
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": "2026-10-16",
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "flags": [],
+        "nativeModelId": "claude-fable-5-1"
+      },
+      "conflictStatus": "none_observed",
+      "evidenceRefs": [
+        "anthropic-E026",
+        "anthropic-E036",
+        "anthropic-E027",
+        "anthropic-E002"
+      ],
+      "officialSources": [
+        {
+          "evidenceId": "anthropic-E026",
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+          "retrievedAt": "2026-10-02T05:26:12.522Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E036",
+          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+          "retrievedAt": "2026-10-02T05:34:46.782Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E027",
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "retrievedAt": "2026-10-02T05:30:33.602Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E002",
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "retrievedAt": "2026-10-02T05:15:05.567Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        }
+      ],
+      "remainingGap": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded."
+    },
+    {
+      "provider": "anthropic",
+      "factId": "anthropic-F-modern-websearch",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "nativeModelId": "claude-mythos-5-1",
+      "canonicalPath": "search.web.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "originalClassification": "RULE_CANDIDATE",
+      "classification": "AMBIGUOUS_DEFER",
+      "reason": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "candidateRuleId": null,
+      "coverageBasis": "INFERRED_MEDIUM",
+      "providerNative": {
+        "state": "not_mapped",
+        "value": null
+      },
+      "modelsDev": {
+        "state": "exact_subject_or_path_missing",
+        "value": null
+      },
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": "2026-10-16",
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "flags": [],
+        "nativeModelId": "claude-mythos-5-1"
+      },
+      "conflictStatus": "none_observed",
+      "evidenceRefs": [
+        "anthropic-E026",
+        "anthropic-E036",
+        "anthropic-E027",
+        "anthropic-E002"
+      ],
+      "officialSources": [
+        {
+          "evidenceId": "anthropic-E026",
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+          "retrievedAt": "2026-10-02T05:26:12.522Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E036",
+          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+          "retrievedAt": "2026-10-02T05:34:46.782Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E027",
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "retrievedAt": "2026-10-02T05:30:33.602Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E002",
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "retrievedAt": "2026-10-02T05:15:05.567Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        }
+      ],
+      "remainingGap": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded."
+    },
+    {
+      "provider": "anthropic",
+      "factId": "anthropic-F-modern-websearch",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "nativeModelId": "claude-fable-5",
+      "canonicalPath": "search.web.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "originalClassification": "RULE_CANDIDATE",
+      "classification": "AMBIGUOUS_DEFER",
+      "reason": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "candidateRuleId": null,
+      "coverageBasis": "INFERRED_MEDIUM",
+      "providerNative": {
+        "state": "not_mapped",
+        "value": null
+      },
+      "modelsDev": {
+        "state": "exact_subject_or_path_missing",
+        "value": null
+      },
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": "2026-10-16",
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "flags": [],
+        "nativeModelId": "claude-fable-5"
+      },
+      "conflictStatus": "none_observed",
+      "evidenceRefs": [
+        "anthropic-E026",
+        "anthropic-E036",
+        "anthropic-E027",
+        "anthropic-E002"
+      ],
+      "officialSources": [
+        {
+          "evidenceId": "anthropic-E026",
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+          "retrievedAt": "2026-10-02T05:26:12.522Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E036",
+          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+          "retrievedAt": "2026-10-02T05:34:46.782Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E027",
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "retrievedAt": "2026-10-02T05:30:33.602Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E002",
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "retrievedAt": "2026-10-02T05:15:05.567Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        }
+      ],
+      "remainingGap": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded."
+    },
+    {
+      "provider": "anthropic",
+      "factId": "anthropic-F-modern-websearch",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "nativeModelId": "claude-mythos-5",
+      "canonicalPath": "search.web.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "originalClassification": "RULE_CANDIDATE",
+      "classification": "AMBIGUOUS_DEFER",
+      "reason": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "candidateRuleId": null,
+      "coverageBasis": "INFERRED_MEDIUM",
+      "providerNative": {
+        "state": "not_mapped",
+        "value": null
+      },
+      "modelsDev": {
+        "state": "exact_subject_or_path_missing",
+        "value": null
+      },
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": "2026-10-16",
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "flags": [],
+        "nativeModelId": "claude-mythos-5"
+      },
+      "conflictStatus": "none_observed",
+      "evidenceRefs": [
+        "anthropic-E026",
+        "anthropic-E036",
+        "anthropic-E027",
+        "anthropic-E002"
+      ],
+      "officialSources": [
+        {
+          "evidenceId": "anthropic-E026",
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+          "retrievedAt": "2026-10-02T05:26:12.522Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E036",
+          "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+          "retrievedAt": "2026-10-02T05:34:46.782Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E027",
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "retrievedAt": "2026-10-02T05:30:33.602Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        },
+        {
+          "evidenceId": "anthropic-E002",
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "retrievedAt": "2026-10-02T05:15:05.567Z",
+          "updatedAt": null,
+          "apiSurface": "Anthropic direct Claude Messages API"
+        }
+      ],
+      "remainingGap": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded."
     },
     {
       "provider": "anthropic",

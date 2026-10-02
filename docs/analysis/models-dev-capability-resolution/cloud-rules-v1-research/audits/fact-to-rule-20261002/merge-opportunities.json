@@ -1,0 +1,48 @@
+[
+  {
+    "ruleIds": [
+      "google-ai-studio.gemini-3-pro-image.image.generation.resolutionPreset.providerDefault",
+      "google-ai-studio.gemini-3.1-flash-image.image.generation.resolutionPreset.providerDefault",
+      "google-ai-studio.gemini-3.1-flash-lite-image.image.generation.resolutionPreset.providerDefault"
+    ],
+    "providerAuthorityId": "google-ai-studio",
+    "endpointProfileId": "gemini-developer-api-v1beta",
+    "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+    "assertion": {
+      "kind": "native_string",
+      "value": "1K"
+    },
+    "reason": "Identical scope/path/value/evidence/default controls; disjoint selectors can union without per-member evidence loss."
+  },
+  {
+    "ruleIds": [
+      "google-ai-studio.gemma-4-26b-a4b-it.operations.supported",
+      "google-ai-studio.gemma-4-31b-it.operations.supported"
+    ],
+    "providerAuthorityId": "google-ai-studio",
+    "endpointProfileId": "gemini-developer-api-v1beta",
+    "canonicalPath": "operations.supported",
+    "assertion": {
+      "completeness": "partial",
+      "kind": "operation_kind_set",
+      "values": [
+        "content_generate"
+      ]
+    },
+    "reason": "Identical scope/path/value/evidence/default controls; disjoint selectors can union without per-member evidence loss."
+  },
+  {
+    "ruleIds": [
+      "google-ai-studio.gemma-4-26b-a4b-it.reasoning.required",
+      "google-ai-studio.gemma-4-31b-it.reasoning.required"
+    ],
+    "providerAuthorityId": "google-ai-studio",
+    "endpointProfileId": "gemini-developer-api-v1beta",
+    "canonicalPath": "reasoning.required",
+    "assertion": {
+      "kind": "boolean",
+      "value": false
+    },
+    "reason": "Identical scope/path/value/evidence/default controls; disjoint selectors can union without per-member evidence loss."
+  }
+]

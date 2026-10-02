@@ -32,13 +32,13 @@
       "provider": "openai",
       "evidenceRecords": 72,
       "factRecords": 328,
-      "proposedRuleCount": 62,
-      "approvedRuleCount": 58,
+      "proposedRuleCount": 63,
+      "approvedRuleCount": 59,
       "classifications": {
-        "ALREADY_MODELS_DEV": 152,
-        "AMBIGUOUS_DEFER": 51,
-        "RULE_CANDIDATE": 58,
-        "TEMPORALLY_UNSAFE": 57,
+        "ALREADY_MODELS_DEV": 178,
+        "RULE_CANDIDATE": 59,
+        "TEMPORALLY_UNSAFE": 58,
+        "AMBIGUOUS_DEFER": 23,
         "ONTOLOGY_GAP": 10
       }
     },
@@ -47,13 +47,13 @@
       "evidenceRecords": 50,
       "factRecords": 79,
       "proposedRuleCount": 49,
-      "approvedRuleCount": 36,
+      "approvedRuleCount": 38,
       "classifications": {
-        "REDUNDANT_BUT_USEFUL": 139,
-        "RULE_CANDIDATE": 129,
+        "REDUNDANT_BUT_USEFUL": 140,
+        "RULE_CANDIDATE": 139,
         "TEMPORALLY_UNSAFE": 55,
         "ONTOLOGY_GAP": 67,
-        "AMBIGUOUS_DEFER": 61
+        "AMBIGUOUS_DEFER": 50
       }
     },
     {
@@ -115,13 +115,14 @@
     {
       "packId": "research.openai.documented-gaps.v1",
       "provider": "openai",
-      "rules": 58,
+      "rules": 59,
       "paths": {
         "reasoning.effort.providerDefault": 12,
         "search.web.support": 12,
         "tools.codeExecution.support": 13,
         "limits.contextWindow.maxTokens": 1,
         "limits.output.maxTokens": 1,
+        "modalities.input": 1,
         "modalities.output": 1,
         "reasoning.support": 1,
         "structuredOutput.support": 1,
@@ -134,10 +135,11 @@
     {
       "packId": "research.anthropic.documented-gaps.v1",
       "provider": "anthropic",
-      "rules": 36,
+      "rules": 38,
       "paths": {
-        "reasoning.modes.nativeValues": 3,
+        "reasoning.modes.nativeValues": 4,
         "operations.supported": 1,
+        "modalities.output": 1,
         "tools.calling.support": 1,
         "reasoning.support": 2,
         "reasoning.required": 4,
@@ -4141,8 +4143,9 @@
       "releaseDate": "2026-09-28",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Exhaustive matrix rejects enabled/disabled; between_tools accepted only high effort or below; conditional restriction in ontology gap.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9655,8 +9658,9 @@
       "releaseDate": "2026-09-01",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9685,8 +9689,9 @@
       "releaseDate": "2026-09-01",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9715,8 +9720,9 @@
       "releaseDate": "2026-06-09",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9745,8 +9751,9 @@
       "releaseDate": "2026-06-09",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9775,8 +9782,9 @@
       "releaseDate": "2026-09-22",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9805,8 +9813,9 @@
       "releaseDate": "2026-07-24",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9835,8 +9844,9 @@
       "releaseDate": "2026-05-28",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9865,8 +9875,9 @@
       "releaseDate": "2026-04-16",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9895,8 +9906,9 @@
       "releaseDate": "2026-02-05",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9925,8 +9937,9 @@
       "releaseDate": "2025-11-24",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9955,8 +9968,9 @@
       "releaseDate": "2026-09-28",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -9985,8 +9999,9 @@
       "releaseDate": "2026-06-30",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -10015,8 +10030,9 @@
       "releaseDate": "2026-02-17",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -10045,8 +10061,9 @@
       "releaseDate": "2025-10-15",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Official intro exhaustively describes current model output as text; no unsupported image generation inference.",
-      "coordinatorVerdict": "DEFER_CONDITIONAL_OR_INCOMPLETE_CLAIM"
+      "finalInferenceRationale": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "coordinatorVerdict": "APPROVE_INFERRED_HIGH",
+      "repairId": "disposition-20261002"
     },
     {
       "provider": "anthropic",
@@ -11949,7 +11966,7 @@
       "nativeModelId": "claude-fable-5-1",
       "providerAuthorityId": "anthropic",
       "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "classification": "INFERRED_HIGH",
+      "classification": "INFERRED_MEDIUM",
       "explicitlyDocumentedSiblingModels": [],
       "primaryEvidence": "anthropic-E026",
       "corroboratingEvidence": [
@@ -11958,7 +11975,7 @@
         "anthropic-E036",
         "anthropic-E027"
       ],
-      "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+      "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
       "searchedExceptions": [
         "current per-release thinking matrix",
         "effort compatibility",
@@ -11971,8 +11988,10 @@
       "releaseDate": "2026-09-01",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-      "coordinatorVerdict": "APPROVE_INFERRED_HIGH"
+      "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+      "repairId": "disposition-20261002",
+      "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
     },
     {
       "provider": "anthropic",
@@ -11981,7 +12000,7 @@
       "nativeModelId": "claude-mythos-5-1",
       "providerAuthorityId": "anthropic",
       "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "classification": "INFERRED_HIGH",
+      "classification": "INFERRED_MEDIUM",
       "explicitlyDocumentedSiblingModels": [],
       "primaryEvidence": "anthropic-E026",
       "corroboratingEvidence": [
@@ -11990,7 +12009,7 @@
         "anthropic-E036",
         "anthropic-E027"
       ],
-      "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+      "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
       "searchedExceptions": [
         "current per-release thinking matrix",
         "effort compatibility",
@@ -12003,8 +12022,10 @@
       "releaseDate": "2026-09-01",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-      "coordinatorVerdict": "APPROVE_INFERRED_HIGH"
+      "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+      "repairId": "disposition-20261002",
+      "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
     },
     {
       "provider": "anthropic",
@@ -12013,7 +12034,7 @@
       "nativeModelId": "claude-fable-5",
       "providerAuthorityId": "anthropic",
       "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "classification": "INFERRED_HIGH",
+      "classification": "INFERRED_MEDIUM",
       "explicitlyDocumentedSiblingModels": [],
       "primaryEvidence": "anthropic-E026",
       "corroboratingEvidence": [
@@ -12022,7 +12043,7 @@
         "anthropic-E036",
         "anthropic-E027"
       ],
-      "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+      "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
       "searchedExceptions": [
         "current per-release thinking matrix",
         "effort compatibility",
@@ -12035,8 +12056,10 @@
       "releaseDate": "2026-06-09",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-      "coordinatorVerdict": "APPROVE_INFERRED_HIGH"
+      "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+      "repairId": "disposition-20261002",
+      "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
     },
     {
       "provider": "anthropic",
@@ -12045,7 +12068,7 @@
       "nativeModelId": "claude-mythos-5",
       "providerAuthorityId": "anthropic",
       "endpointProfileId": "anthropic-developer-api-2023-06-01",
-      "classification": "INFERRED_HIGH",
+      "classification": "INFERRED_MEDIUM",
       "explicitlyDocumentedSiblingModels": [],
       "primaryEvidence": "anthropic-E026",
       "corroboratingEvidence": [
@@ -12054,7 +12077,7 @@
         "anthropic-E036",
         "anthropic-E027"
       ],
-      "sameSemanticSeriesRationale": "Exact pinned release identity joined to explicitly named release row or all-active/4.6+ documented scope; no future version or brand inheritance.",
+      "sameSemanticSeriesRationale": "Exact identity is established; capability-specific series membership is not established.",
       "searchedExceptions": [
         "current per-release thinking matrix",
         "effort compatibility",
@@ -12067,8 +12090,10 @@
       "releaseDate": "2026-06-09",
       "documentationStalenessRisk": "Officialsearch caches lag liveChrome; prefer captured current release/matrix. Current request conditions recorded in ambiguityNotes.",
       "temporalAssumptions": "Known release only as-of2026-10-02;APIhosted support may evolve.",
-      "finalInferenceRationale": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
-      "coordinatorVerdict": "APPROVE_INFERRED_HIGH"
+      "finalInferenceRationale": "Capability-specific recheck of the web-search guide, tool reference and four exact model pages does not directly bind these Fable/Mythos identities to web-search support. The guide says 4.6 and later plus Mythos Preview; model pages sharing specifications or discussing agentic research do not establish this tool-specific bridge. Downgrade to INFERRED_MEDIUM and defer; this is unknown support, not unsupported. Organization/tool-version restrictions remain material.",
+      "coordinatorVerdict": "DEFER_INFERRED_MEDIUM",
+      "repairId": "disposition-20261002",
+      "repairEvidenceRef": "repairs/disposition-20261002/capability-recheck.json"
     },
     {
       "provider": "anthropic",

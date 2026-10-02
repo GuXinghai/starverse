@@ -1,0 +1,316 @@
+{
+  "added": [
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-fable-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-fable-5-1",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-haiku-4-5-20251001",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-mythos-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-mythos-5-1",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-4-5-20251101",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-4-6",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-4-7",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-4-8",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-opus-5-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-sonnet-4-6",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-sonnet-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-sonnet-5-5",
+        "modalities.output"
+      ],
+      "ruleId": "anthropic-v1-active-output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-sonnet-5-5",
+        "reasoning.modes.nativeValues"
+      ],
+      "ruleId": "anthropic-v1-sonnet55-modes",
+      "value": {
+        "kind": "native_string_set",
+        "values": [
+          "adaptive"
+        ],
+        "completeness": "partial"
+      }
+    },
+    {
+      "key": [
+        "openai",
+        "openai-api-v1",
+        "gpt-5.6-cyber",
+        "modalities.input"
+      ],
+      "ruleId": "cloud.openai.gpt-5.6-cyber.modalities.input",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "image",
+          "text"
+        ],
+        "completeness": "partial"
+      }
+    }
+  ],
+  "removed": [
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-fable-5",
+        "search.web.support"
+      ],
+      "ruleId": "anthropic-v1-modern-websearch",
+      "value": {
+        "kind": "support",
+        "value": "supported"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-fable-5-1",
+        "search.web.support"
+      ],
+      "ruleId": "anthropic-v1-modern-websearch",
+      "value": {
+        "kind": "support",
+        "value": "supported"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-mythos-5",
+        "search.web.support"
+      ],
+      "ruleId": "anthropic-v1-modern-websearch",
+      "value": {
+        "kind": "support",
+        "value": "supported"
+      }
+    },
+    {
+      "key": [
+        "anthropic",
+        "anthropic-developer-api-2023-06-01",
+        "claude-mythos-5-1",
+        "search.web.support"
+      ],
+      "ruleId": "anthropic-v1-modern-websearch",
+      "value": {
+        "kind": "support",
+        "value": "supported"
+      }
+    }
+  ],
+  "changed": []
+}

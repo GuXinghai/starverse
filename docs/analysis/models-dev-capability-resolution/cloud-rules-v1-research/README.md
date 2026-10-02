@@ -2,7 +2,7 @@
 
 Status: **research and coordinator candidate audit complete; not a published or applied release.** As-of2026-10-02 on models-dev-capability-resolution, baseline f2cd20d97f14aef9504da206ee2de89c8487446b. Current implementation and eight required contracts are authoritative; hashes are saved in [contract-baseline.json](final/contract-baseline.json). Older roadmap memories were checked against current Goal4 documentation.
 
-Start with [release-recommendation.md](final/release-recommendation.md) for the full A–M coordinator report. The reviewed candidate is [candidate-corpus.json](final/candidate-corpus.json):5Packs,290exact Rules,1017model/path claims. Current real decoder result: [validation-result.json](final/validation-result.json). Artifact integrity/ledger checks: [research-validation-result.json](final/research-validation-result.json).
+Start with [disposition repair](repairs/disposition-20261002/report.md) for the targeted changes and [release-recommendation.md](final/release-recommendation.md) for the full A–M coordinator report. The candidate for bounded Owner semantic review is [candidate-corpus.json](final/candidate-corpus.json): 5 Packs, 293 exact Rules, 1029 model/path claims. Current real decoder result: [validation-result.json](final/validation-result.json). Artifact integrity/ledger checks: [research-validation-result.json](final/research-validation-result.json). The [completed fact-to-rule audit](audits/fact-to-rule-20261002/fact-to-rule-audit.md) remains an immutable before-repair baseline.
 
 ## Evidence and ownership
 
@@ -14,8 +14,8 @@ Pipeline: first-party source -> durable ledger -> intermediate fact -> coordinat
 
 - providers/*.md: inventory, families, official surfaces, findings, limitations and provider handoff checkpoints.
 - evidence/{provider}.jsonl: retrieval/source/API/temporal metadata and evidence identities. Additional public OpenRouter captures and review matrices support gateway observations.
-- facts/*.json: original intermediate claims, all36-path provider review, inference/regex/lifecycle records and classifications.
-- candidates/*.json: original provider proposals in actual Rule/Pack schema; these are superseded for inclusion decisions by final output.
+- facts/*.json: reviewed intermediate claims, all36-path provider review, inference/regex/lifecycle records and classifications; targeted before-repair interpretations remain in repairs/disposition-20261002/review-history.json.
+- candidates/*.json: provider research proposals in actual Rule/Pack schema, including the bounded repair; final output determines actual selection.
 - final/fact-decisions.json:6333coordinator disposition rows; each has exactly one primary classification. final/coverage-matrix.md renders the same claims with source values/states.
 - final/manual-review.json and coordinator-evidence.jsonl: independent HIGH approvals/deferrals and critical source cross-checks.
 - final/inference-audit.md, conflict-audit.md, temporal-audit.md, ontology-gaps.md and deferred.md: complete audit/defer registers.

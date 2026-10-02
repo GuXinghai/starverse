@@ -2937,7 +2937,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-6-astra"
       ],
@@ -2946,19 +2946,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -2980,7 +2968,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -3012,8 +3000,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-6-astra.modalities.output",
@@ -3698,7 +3689,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-6.1-sol"
       ],
@@ -3707,19 +3698,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -3741,7 +3720,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -3773,8 +3752,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-6.1-sol.modalities.output",
@@ -4459,7 +4441,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-6-sol"
       ],
@@ -4468,19 +4450,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -4502,7 +4472,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -4534,8 +4504,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-6-sol.modalities.output",
@@ -5292,7 +5265,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-6-luna"
       ],
@@ -5301,19 +5274,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -5335,7 +5296,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -5367,8 +5328,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-6-luna.modalities.output",
@@ -6125,7 +6089,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.6-sol"
       ],
@@ -6134,19 +6098,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -6168,7 +6120,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -6200,8 +6152,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.6-sol.modalities.output",
@@ -6958,7 +6913,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.6-terra"
       ],
@@ -6967,19 +6922,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -7001,7 +6944,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -7033,8 +6976,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.6-terra.modalities.output",
@@ -7791,7 +7737,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.6-luna"
       ],
@@ -7800,19 +7746,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -7834,7 +7768,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Native modality matrix: text/image input; audio/video unsupported. Attachment formats separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -7866,8 +7800,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.6-luna.modalities.output",
@@ -8833,7 +8770,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.5"
       ],
@@ -8842,19 +8779,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -8876,7 +8801,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -8908,8 +8833,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.5.modalities.output",
@@ -9663,7 +9591,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.5-pro"
       ],
@@ -9672,19 +9600,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -9706,7 +9622,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -9738,8 +9654,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.5-pro.modalities.output",
@@ -10487,7 +10406,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.4"
       ],
@@ -10496,19 +10415,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -10530,7 +10437,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -10562,8 +10469,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.4.modalities.output",
@@ -11317,7 +11227,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.4-pro"
       ],
@@ -11347,7 +11257,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -11379,8 +11289,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.4-pro.modalities.output",
@@ -12062,7 +11975,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.4-mini"
       ],
@@ -12092,7 +12005,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -12124,8 +12037,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.4-mini.modalities.output",
@@ -12881,7 +12797,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.2",
         "openai-legacy-endpoints-chrome"
@@ -12912,7 +12828,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -12944,8 +12860,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.2.modalities.output",
@@ -13567,7 +13486,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5.2-pro"
       ],
@@ -13597,7 +13516,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -13629,8 +13548,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.2-pro.modalities.output",
@@ -14177,7 +14099,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5",
         "openai-legacy-endpoints-chrome"
@@ -14208,7 +14130,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -14240,9 +14162,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5.modalities.output",
@@ -14807,7 +14731,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5-mini",
         "openai-legacy-endpoints-chrome"
@@ -14838,7 +14762,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -14870,9 +14794,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5-mini.modalities.output",
@@ -15346,7 +15272,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5-nano",
         "openai-legacy-endpoints-chrome"
@@ -15377,7 +15303,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -15409,9 +15335,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5-nano.modalities.output",
@@ -15883,7 +15811,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-5-pro"
       ],
@@ -15913,7 +15841,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -15945,9 +15873,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-5-pro.modalities.output",
@@ -16636,7 +16566,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-o3",
         "openai-legacy-endpoints-chrome"
@@ -16646,19 +16576,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-10-16",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -16680,7 +16598,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -16712,9 +16630,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.o3.modalities.output",
@@ -17186,7 +17106,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-o3-pro"
       ],
@@ -17216,7 +17136,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -17248,9 +17168,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Deprecated alias; exact alias retirement must be resolved rather than assume snapshot lifecycle.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.o3-pro.modalities.output",
@@ -17716,7 +17638,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-4.1",
         "openai-legacy-endpoints-chrome"
@@ -17726,19 +17648,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -17760,7 +17670,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -17792,8 +17702,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-4.1.modalities.output",
@@ -18255,7 +18168,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-4.1-mini",
         "openai-legacy-endpoints-chrome"
@@ -18265,19 +18178,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -18299,7 +18200,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -18331,8 +18232,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-4.1-mini.modalities.output",
@@ -18794,7 +18698,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-4o",
         "openai-legacy-endpoints-chrome"
@@ -18804,19 +18708,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -18838,7 +18730,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -18870,8 +18762,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-4o.modalities.output",
@@ -19262,7 +19157,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-4o-mini",
         "openai-legacy-endpoints-chrome"
@@ -19272,19 +19167,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -19306,7 +19189,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact native matrix text/image input; file processing separate.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -19338,8 +19221,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-4o-mini.modalities.output",
@@ -19724,11 +19610,13 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "RULE_CANDIDATE",
       "evidenceRefs": [
         "openai-model-gpt-5.6-cyber"
       ],
-      "proposedRuleIds": [],
+      "proposedRuleIds": [
+        "cloud.openai.gpt-5.6-cyber.modalities.input"
+      ],
       "temporalClass": "version_bound",
       "validFrom": null,
       "validThrough": null,
@@ -19747,7 +19635,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified.",
       "note": "Exact modalities table; audio/video explicitly not supported.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -19779,8 +19667,10 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "dispositionRationale": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified."
     },
     {
       "factId": "openai.gpt-5.6-cyber.modalities.output",
@@ -20861,7 +20751,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-gpt-daybreak-blue-latest"
       ],
@@ -20870,19 +20760,7 @@
       "validFrom": null,
       "validThrough": null,
       "recheckAfter": "2026-11-02",
-      "sourceConflict": {
-        "source": "models.dev-public-snapshot",
-        "value": {
-          "kind": "media_kind_set",
-          "values": [
-            "image",
-            "pdf",
-            "text"
-          ],
-          "completeness": "complete"
-        },
-        "disposition": "Higher-priority valid models.dev would prevail over priority0 Cloud fallback; coordinator conflict audit required."
-      },
+      "sourceConflict": null,
       "providerNative": {
         "state": "not_mapped",
         "value": null,
@@ -20904,7 +20782,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact modalities table; audio/video explicitly not supported.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -20936,8 +20814,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
+      ],
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.gpt-daybreak-blue-latest.modalities.output",
@@ -21527,7 +21408,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "TEMPORALLY_UNSAFE",
       "evidenceRefs": [
         "openai-model-chat-latest"
       ],
@@ -21550,7 +21431,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Positive partial input assertion is representable, but mutable chat-latest has unknown target/lifecycle and a 2026-10-09 recheck. Owner lifecycle approval remains required; no Rule selected.",
       "note": "Exact modalities table; audio/video explicitly not supported.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -21582,9 +21463,11 @@
         "supersededBy": null
       },
       "ambiguityNotes": [
-        "Regularly updated mutable chat alias; replacement may change documented capabilities.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
-      ]
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs.",
+        "Floating chat alias may change target and capabilities; no lifecycle redesign authorized."
+      ],
+      "repairId": "disposition-20261002",
+      "dispositionRationale": "Positive partial input assertion is representable, but mutable chat-latest has unknown target/lifecycle and a 2026-10-09 recheck. Owner lifecycle approval remains required; no Rule selected."
     },
     {
       "factId": "openai.chat-latest.modalities.output",
@@ -22110,7 +21993,7 @@
           "coverageBasis": "EXPLICIT_MODEL"
         }
       ],
-      "classification": "AMBIGUOUS_DEFER",
+      "classification": "ALREADY_MODELS_DEV",
       "evidenceRefs": [
         "openai-model-o1-pro"
       ],
@@ -22140,7 +22023,7 @@
         "snapshotRef": "public-models-dev-20261002-0be6fdc12df0",
         "codeRef": "src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts#addModelsDevFacts"
       },
-      "coverageComparison": "Native identity only; models.dev current input set recorded independently, model-card-only partial set deferred.",
+      "coverageComparison": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory.",
       "note": "Exact modalities table; audio/video explicitly not supported.",
       "providerAuthorityId": "openai",
       "endpointProfileId": "openai-api-v1",
@@ -22172,11 +22055,13 @@
         "supersededBy": "gpt-5.6-sol"
       },
       "ambiguityNotes": [
-        "Scheduled/elapsed shutdown requires coordinator lifecycle decision; current schema cannot expire this rule.",
-        "Native model-card modalities table omits canonical pdf/generic_file inputs processed by Responses input_file; complete canonical input set is unsafe. Hold for coordinator ontology audit."
+        "Positive partial input kinds do not exclude PDF, generic files or other canonical inputs."
       ],
       "deprecatedAfter": "2026-10-22",
-      "supersededBy": "gpt-5.6-sol"
+      "supersededBy": "gpt-5.6-sol",
+      "repairId": "disposition-20261002",
+      "reviewedPositiveContainment": true,
+      "dispositionRationale": "Saved real models.dev adapter already supplies every documented positive partial input kind; preserve higher-authority coverage without a duplicate Rule. Completeness differences are not contradictory."
     },
     {
       "factId": "openai.o1-pro.modalities.output",

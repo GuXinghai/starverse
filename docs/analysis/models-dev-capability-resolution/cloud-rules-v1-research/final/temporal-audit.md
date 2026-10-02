@@ -846,7 +846,7 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | openai | openai.gpt-4o-mini.structuredOutput.support | gpt-4o-mini | unknown | 2026-11-02 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.gpt-5.6-cyber.limits.contextWindow.maxTokens | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.gpt-5.6-cyber.limits.output.maxTokens | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| openai | openai.gpt-5.6-cyber.modalities.input | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| openai | openai.gpt-5.6-cyber.modalities.input | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.gpt-5.6-cyber.modalities.output | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.gpt-5.6-cyber.reasoning.support | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.gpt-5.6-cyber.tools.calling.support | gpt-5.6-cyber | unknown | 2026-11-02 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
@@ -948,7 +948,7 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | anthropic | anthropic-F-adaptive-modes | claude-opus-4-8 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-adaptive-modes | claude-opus-4-7 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-adaptive-modes | claude-sonnet-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-sonnet55-modes | claude-sonnet-5-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-sonnet55-modes | claude-sonnet-5-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-46-modes | claude-opus-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-46-modes | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-45-modes | claude-opus-4-5-20251101 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
@@ -1180,20 +1180,20 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | anthropic | anthropic-F-active-toolcalling | claude-sonnet-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-active-toolcalling | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-active-toolcalling | claude-haiku-4-5-20251001 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-fable-5-1 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-fable-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-mythos-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-5-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-4-8 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-4-7 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-4-6 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-opus-4-5-20251101 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-sonnet-5-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-sonnet-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-active-output | claude-haiku-4-5-20251001 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-fable-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-fable-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-mythos-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-5-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-4-8 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-4-7 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-opus-4-5-20251101 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-sonnet-5-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-sonnet-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-active-output | claude-haiku-4-5-20251001 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-sdk-sampling-removal | null | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-active-operations | claude-fable-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-active-operations | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
@@ -1267,10 +1267,6 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | anthropic | anthropic-F-image-generation-scope | claude-sonnet-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-image-generation-scope | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-image-generation-scope | claude-haiku-4-5-20251001 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-modern-websearch | claude-fable-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-modern-websearch | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-modern-websearch | claude-fable-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
-| anthropic | anthropic-F-modern-websearch | claude-mythos-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-websearch | claude-opus-5-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-websearch | claude-opus-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-websearch | claude-opus-4-8 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
@@ -1279,6 +1275,10 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | anthropic | anthropic-F-modern-websearch | claude-sonnet-5-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-websearch | claude-sonnet-5 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-websearch | claude-sonnet-4-6 | unknown | 2026-10-16 | unknown | fresh source/subject check required | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-modern-websearch | claude-fable-5-1 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-modern-websearch | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-modern-websearch | claude-fable-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| anthropic | anthropic-F-modern-websearch | claude-mythos-5 | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-tool-web-reference-cycle | null | unknown | 2026-10-16 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-context-actions | claude-fable-5-1 | unknown | 2026-10-16 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | anthropic | anthropic-F-modern-context-actions | claude-mythos-5-1 | unknown | 2026-10-16 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
@@ -6042,7 +6042,7 @@ As-of 2026-10-02; Rules have no invented expiry field. Dates/flags remain resear
 | deepseek | deepseek:fact:flash-training-tool-use:compatibility-aliases | deepseek-v4-flash-vision-exp | unknown | before publication | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.chat-latest.limits.contextWindow.maxTokens | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.chat-latest.limits.output.maxTokens | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
-| openai | openai.chat-latest.modalities.input | chat-latest | unknown | 2026-10-09 | unknown | not selected | REQUIRES_EXPIRY_REVIEW |
+| openai | openai.chat-latest.modalities.input | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.chat-latest.modalities.output | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.chat-latest.tools.calling.support | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |
 | openai | openai.chat-latest.structuredOutput.support | chat-latest | unknown | 2026-10-09 | unknown | yes — Owner lifecycle review | REQUIRES_EXPIRY_REVIEW |

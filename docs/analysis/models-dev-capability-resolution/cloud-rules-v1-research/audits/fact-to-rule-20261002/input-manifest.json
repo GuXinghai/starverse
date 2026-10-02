@@ -1,0 +1,385 @@
+{
+  "createdAt": "2026-10-02T09:37:23.114552+00:00",
+  "branch": "models-dev-capability-resolution",
+  "head": "ca2d9bd95023f7076e988863f53bdf86c0b4894e",
+  "gitStatusBefore": [
+    "?? pelican-bicycle.html"
+  ],
+  "files": [
+    {
+      "path": "anthropic-validate.cjs",
+      "bytes": 3828,
+      "sha256": "4cfde6329c265ff3a39bdcadeb22e191aa15072f7b31c773dbb1327d3ce45d50"
+    },
+    {
+      "path": "assemble-research.mjs",
+      "bytes": 22176,
+      "sha256": "7da00349aaaa250a1172079bbe69513517a493a0f12d3eb676a93f38847242fb"
+    },
+    {
+      "path": "candidates/anthropic.json",
+      "bytes": 74813,
+      "sha256": "f8bd0287766e9d2f6ea0752e49cf027b514d852c194a1732114cd3faba036707"
+    },
+    {
+      "path": "candidates/deepseek.json",
+      "bytes": 8137,
+      "sha256": "296568b838cf72ad054f0b4c60fad1a513a10a1f99a4465ae11968a1f9534fc3"
+    },
+    {
+      "path": "candidates/gemini.json",
+      "bytes": 265051,
+      "sha256": "7693cdd952110d29fa2d7f399fdd3ce5dc85867f660e55ab5e81281a92c5c584"
+    },
+    {
+      "path": "candidates/openai.json",
+      "bytes": 74503,
+      "sha256": "7322510f6b31058665545cca464c330af88f36ecd8a24f17c7f377d6334dfa66"
+    },
+    {
+      "path": "candidates/openrouter.json",
+      "bytes": 119308,
+      "sha256": "9f19151c239969cdee5994afa4de6800a2850dfad647b0b9bb61d5c6420f5c1a"
+    },
+    {
+      "path": "evidence/anthropic.jsonl",
+      "bytes": 78031,
+      "sha256": "a059a1e08c8b7bf64745fb602e8ab6968d75e417e06d848d04d1eef36ba4f48c"
+    },
+    {
+      "path": "evidence/deepseek.jsonl",
+      "bytes": 19298,
+      "sha256": "41a94b5294583d7c8c2c0cd68088175cf1af7952c69bcf276b004fbbf1eb60d3"
+    },
+    {
+      "path": "evidence/gemini.jsonl",
+      "bytes": 59496,
+      "sha256": "390fdc4ed86ab4f6a1104a1e850217eb9fed54082ff31fe42e8eeb755b3aea61"
+    },
+    {
+      "path": "evidence/openai.jsonl",
+      "bytes": 109020,
+      "sha256": "71d85a227f1a53f9b1f7469624268c59b175b5f3e73f0b2f307f9d11b49cbd11"
+    },
+    {
+      "path": "evidence/openrouter-conflict-audit.json",
+      "bytes": 14504,
+      "sha256": "889c98ecc0e368d88761774e81f67158a4bb94ba59b7a14a19b99607ebedd6ce"
+    },
+    {
+      "path": "evidence/openrouter-coverage-audit.json",
+      "bytes": 23307,
+      "sha256": "82934c62493548b41bb46a0d10c99926122588187b003ed9f214ccddd53c8560"
+    },
+    {
+      "path": "evidence/openrouter-coverage-by-model.jsonl",
+      "bytes": 13523435,
+      "sha256": "b349399be3cd6b0652505453053dfc2aa172fb320e5e61175314d3191691cf88"
+    },
+    {
+      "path": "evidence/openrouter-endpoint-retrieval-audit.json",
+      "bytes": 27609,
+      "sha256": "5147da41474da170ade77ff6166e69a0b9488050f0928716ff69e16738e55e36"
+    },
+    {
+      "path": "evidence/openrouter-endpoints-anthropic--claude-sonnet-5.json",
+      "bytes": 11547,
+      "sha256": "cbe9c3cddf4ca6e0a7ff0a0af0fe72a7f01746cec964207d56c408a222db506d"
+    },
+    {
+      "path": "evidence/openrouter-endpoints-google--gemini-3.8-flash.json",
+      "bytes": 7717,
+      "sha256": "4017757bb5903582c4ff7d80cb68faa7748bb2cc54ca9a072409575f3313c6fd"
+    },
+    {
+      "path": "evidence/openrouter-endpoints-openai--gpt-6.1-sol.json",
+      "bytes": 7788,
+      "sha256": "6d7eab523652f648aab48dfe138109d3083afdbc6483743dab6abb7bdfe961d8"
+    },
+    {
+      "path": "evidence/openrouter-endpoints-openai--o3-mini.json",
+      "bytes": 1388,
+      "sha256": "6f274e5335a0889297d7cca835d695dfd8f0bed1fa0642be7ebc2a4c09b39b68"
+    },
+    {
+      "path": "evidence/openrouter-inventory-audit.json",
+      "bytes": 739937,
+      "sha256": "cae12a67e40064ee51b9117fc6afd20143cc71e182d8bb8135d2f2b9eb650e53"
+    },
+    {
+      "path": "evidence/openrouter-models-all-public-metadata.json",
+      "bytes": 480,
+      "sha256": "e505dc597b1d7c2b9a25e404b32608d5c81ce61db284b54f452fb5f16dfc4146"
+    },
+    {
+      "path": "evidence/openrouter-models-all-public-snapshot.json",
+      "bytes": 960960,
+      "sha256": "5b25e4400e906048ef29ea43e139990ee5855ef7a07a53221b85d9edc7b63bcb"
+    },
+    {
+      "path": "evidence/openrouter-models-dev-comparison.json",
+      "bytes": 245008,
+      "sha256": "e2a67934c99dc5b312c97465a35e01a022994947e773937dbcd017f7e7218f99"
+    },
+    {
+      "path": "evidence/openrouter-models-public-metadata.json",
+      "bytes": 603,
+      "sha256": "16608792a1c1bf7a49e004d4a657fbaf6e54645cc4d89da637e316903fb41fe1"
+    },
+    {
+      "path": "evidence/openrouter-models-public-snapshot.json",
+      "bytes": 762789,
+      "sha256": "c2c2fab0c7d704a247bc4dd83fdc81bd9da532fd8a619ee95aa32e0db569790c"
+    },
+    {
+      "path": "evidence/openrouter-naming-audit.json",
+      "bytes": 6661,
+      "sha256": "80add4a09d26a030340d617a4af6ef9cbd5a49b4804c39f2f2e6e0bb980573c3"
+    },
+    {
+      "path": "evidence/openrouter-summary.json",
+      "bytes": 3807,
+      "sha256": "770b544005984f3bc49c8757c9e8862717108458e9c08f00c4c4e7095a905b5e"
+    },
+    {
+      "path": "evidence/openrouter-temporal-audit.json",
+      "bytes": 9871,
+      "sha256": "86d75829b3a97a19f20c80fc7b215fc042eda790aecbb71e6291ba53feaf67cc"
+    },
+    {
+      "path": "evidence/openrouter-validation.json",
+      "bytes": 1891,
+      "sha256": "dd034fcca51a6181df54aeae0fc913f4cb46519729a84a3ba9fffce022d477a8"
+    },
+    {
+      "path": "evidence/openrouter.jsonl",
+      "bytes": 101376,
+      "sha256": "4f00aa89151a1476d3625fd2e9763d2ce080ba9dd8e7af3de406092a5f3f7e5a"
+    },
+    {
+      "path": "facts/anthropic.json",
+      "bytes": 1605691,
+      "sha256": "9f4789351b2f883154132cc271c1dfb845491f1a4e34b6b4e60ba88aebf0dce5"
+    },
+    {
+      "path": "facts/deepseek.json",
+      "bytes": 164894,
+      "sha256": "3d1d2290a64031a71963d2cc9c98302b3e39a17ca4503ac0c43eedc1081bbfdd"
+    },
+    {
+      "path": "facts/gemini.json",
+      "bytes": 3182632,
+      "sha256": "88052e3f566284318ccdfd597583f58d1e70498d4a995459fe71b19b67b68737"
+    },
+    {
+      "path": "facts/openai.json",
+      "bytes": 2205723,
+      "sha256": "324582282cfdf0b9d49dc50ef637391539f16c8b08070a7661530faf55464eca"
+    },
+    {
+      "path": "facts/openrouter.json",
+      "bytes": 2232315,
+      "sha256": "47bcc4bea2f4d4f3eedfebe79466ab8aa025347653e0217a090bbe9c234b1bff"
+    },
+    {
+      "path": "final/audit-summary.json",
+      "bytes": 1099258,
+      "sha256": "9ecaa4205827a7e97eb86d3cd379320070f053ca9eb1fa26ec4686a80fab4f51"
+    },
+    {
+      "path": "final/candidate-corpus.json",
+      "bytes": 433522,
+      "sha256": "fa3aca153186d06cd341b71eb894e53b86f807626de3d837217d3408f9c4ce8c"
+    },
+    {
+      "path": "final/conflict-audit.md",
+      "bytes": 101211,
+      "sha256": "a4b16f7193366eb218bdef30e616996d5b963f0ba3c3c0a52f9d7d172fb25c6b"
+    },
+    {
+      "path": "final/contract-baseline.json",
+      "bytes": 1732,
+      "sha256": "da49fc10e9445b59070c4236fb2d34f8bd5f784859fb25e6c08e5b9abe180e0f"
+    },
+    {
+      "path": "final/coordinator-evidence.jsonl",
+      "bytes": 26365,
+      "sha256": "0fc9a227e531bfdddca6479454bff0f28771c06ea984a5d0c111ab062bacbb7e"
+    },
+    {
+      "path": "final/coverage-matrix.md",
+      "bytes": 2373360,
+      "sha256": "e84fcb60e778da3c501a051047737d96e25d1570e699466b102ed0fe86e1b3d8"
+    },
+    {
+      "path": "final/deferred.md",
+      "bytes": 1045137,
+      "sha256": "d0b4b435af8fc5c7497dcb080c2670a30ba53c0bf602921af61fa02da3d398e3"
+    },
+    {
+      "path": "final/fact-decisions.json",
+      "bytes": 16402080,
+      "sha256": "e32f1f84ca7c3f3e71539b24cbc7872820f7ab6b2210fa81ae9bc53a9d5ce34a"
+    },
+    {
+      "path": "final/git-audit.json",
+      "bytes": 9017,
+      "sha256": "6b44062adb7ea772064c4970a58388e5262e3f6c17337783cddc977c0b769655"
+    },
+    {
+      "path": "final/inference-audit.md",
+      "bytes": 2174289,
+      "sha256": "f9468c113fe23083a8a4b1bc5dcf1a5ac409ac8a3dcdc3c854e40e5f6c3124ad"
+    },
+    {
+      "path": "final/manual-review.json",
+      "bytes": 1331671,
+      "sha256": "c3b83caab44b386e6f705292ce4cef3cb2c55008c9a03f9ca370f62714482da4"
+    },
+    {
+      "path": "final/model-inventories.json",
+      "bytes": 230991,
+      "sha256": "f822c613278b2f44de2be08fa9f6dd2b6c8179b8fd9b31702ae7c36b6ce1cf82"
+    },
+    {
+      "path": "final/models-dev-observations.json",
+      "bytes": 775045,
+      "sha256": "f5f055dc1b248c09e0bed2cda28fdca45329e69dfddbde7bb900c570de129f3e"
+    },
+    {
+      "path": "final/ontology-gaps.md",
+      "bytes": 74422,
+      "sha256": "7ab846560bb7bab92be84ea1a0d9872d8716b79cd299a65df310515138159f50"
+    },
+    {
+      "path": "final/openrouter-native-observations.json",
+      "bytes": 391309,
+      "sha256": "8bd8bdc81833c064770f928bb68778d27d48ddf374c87f85106b48bb39ad19af"
+    },
+    {
+      "path": "final/regex-decoder-audit.json",
+      "bytes": 3661,
+      "sha256": "7841f8b1740d1de9341a0ec5889e0b4d6d22abc2960c56842a8a589eee13e6f0"
+    },
+    {
+      "path": "final/release-recommendation.md",
+      "bytes": 16129,
+      "sha256": "84d8400e831ca6cad99d08aeff156992108bee9be8ffc9192315241e94631d7e"
+    },
+    {
+      "path": "final/research-agent-execution.json",
+      "bytes": 1694,
+      "sha256": "0c94c036df16224bfd63b10f948c1ecd7252c76058c9e2f2df036f8f9ceffc71"
+    },
+    {
+      "path": "final/research-validation-result.json",
+      "bytes": 1030,
+      "sha256": "5489876c485425b9cc4918b6f2b10abd1bf8388fd78bf79c4b51a49af1f15717"
+    },
+    {
+      "path": "final/temporal-audit.md",
+      "bytes": 981618,
+      "sha256": "b4d94922ea6fafc6518ef89b479dd443caad681c8971c2d20db92a94991ac0af"
+    },
+    {
+      "path": "final/validation-result.json",
+      "bytes": 821,
+      "sha256": "7e5522a83d299d896b5b3c66d9141de87f9b5f3dc309cd4af97c0d5895f87715"
+    },
+    {
+      "path": "observe-models-dev.mjs",
+      "bytes": 2481,
+      "sha256": "e743698957e4845dda10c79997b8db225a8097d1fd2c06d17787708ff53860ca"
+    },
+    {
+      "path": "observe-provider-native.mjs",
+      "bytes": 2064,
+      "sha256": "3e16ac1b552b6dbddb1c7923a51e595b481d6cf63a81853611af3245938825ae"
+    },
+    {
+      "path": "openrouter-audit-research.py",
+      "bytes": 25552,
+      "sha256": "7e68a07b9d3d0691c8360abe5f43a50bd2a500e5869a6bf473a700a400cbb826"
+    },
+    {
+      "path": "openrouter-build-research.py",
+      "bytes": 19594,
+      "sha256": "e31187c5629c719197bbf980f4adc88282d88d549a7dc9e2f8414d6416a61990"
+    },
+    {
+      "path": "openrouter-fetch-endpoint-support.py",
+      "bytes": 1948,
+      "sha256": "5de34df358fa87ce67d52bb1c2bcfa735cc356e836ecbf21bfeb09e795ec1b71"
+    },
+    {
+      "path": "openrouter-manual-facts.json",
+      "bytes": 32828,
+      "sha256": "221af116be7916762085b9c292bae628894b3295c408ca23d4d6f8e51956403d"
+    },
+    {
+      "path": "openrouter-validate.mjs",
+      "bytes": 5083,
+      "sha256": "37731f969ec08fe3cb24fde0b8384f6c85c6a9dbde7eb4c295e59bbd65d4bef6"
+    },
+    {
+      "path": "providers/anthropic.md",
+      "bytes": 37807,
+      "sha256": "194db3637296386bf0c6fd6cff5db94d83de00c1e9d23714e344a88c96d323ab"
+    },
+    {
+      "path": "providers/deepseek.md",
+      "bytes": 20254,
+      "sha256": "829d3457a328bd94061aa4990ad8764bddd67ed1b33a8f5725451b85a97a7446"
+    },
+    {
+      "path": "providers/gemini.md",
+      "bytes": 26659,
+      "sha256": "ecf3dfa6c4e9010a8656150c52793211d77bf291ee36fa748d5234cf0bccbd87"
+    },
+    {
+      "path": "providers/openai.md",
+      "bytes": 187567,
+      "sha256": "ff8878e0f89d6495e4415811b035586d1ba3f22a466072b7695a82a35eddf243"
+    },
+    {
+      "path": "providers/openrouter.md",
+      "bytes": 17894,
+      "sha256": "6a4ea1ab10af37a30a2aade3fd2aa4af53bd24fd13592c23c886df4219d4139f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4850,
+      "sha256": "a3a6b99a916c4857cc37d01b3f88fa551506b20e25c7ccf58f5f7caefd438ada"
+    },
+    {
+      "path": "research-code.mjs",
+      "bytes": 1398,
+      "sha256": "e6c6882fa9c1e963b1a7e936e44d99a0aa7272fb2fd26d9abebab26d4f15e21d"
+    },
+    {
+      "path": "review-anthropic.mjs",
+      "bytes": 10152,
+      "sha256": "7b757f9d0d02f3d4f765b28308dbedbeabe12478d50cb0341a2e4a8ed6b0ebc7"
+    },
+    {
+      "path": "validate-corpus.mjs",
+      "bytes": 8223,
+      "sha256": "28ce3043554e5a39c5e9e100ac856daf8829176139a07ff252a1177218b1543c"
+    },
+    {
+      "path": "validate-regex-audit.mjs",
+      "bytes": 1544,
+      "sha256": "fc3931d0171097989310dd93562c6a5abf53ccf75fcef89f41974f88baf1a899"
+    },
+    {
+      "path": "validate-research.mjs",
+      "bytes": 5161,
+      "sha256": "235f400f61fc355b8f6fad68b67122d8ba5574c47e2fc913c4ba8ac4cd3515be"
+    },
+    {
+      "path": "write-recommendation.mjs",
+      "bytes": 21371,
+      "sha256": "73b5c16589bc304f6447d4e56db7fe37e51f238974f16f9b2497b4da240c0a5b"
+    }
+  ]
+}

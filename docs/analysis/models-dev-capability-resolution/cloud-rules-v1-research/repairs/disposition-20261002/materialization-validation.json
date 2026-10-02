@@ -1,0 +1,57 @@
+{
+  "status": "PASS",
+  "packCount": 5,
+  "ruleCount": 293,
+  "syntheticExactSubjects": 334,
+  "selectedRows": 1029,
+  "materializedClaims": 1029,
+  "uniqueMaterializedClaims": 1029,
+  "problems": [],
+  "schemaProbes": [
+    {
+      "path": "modalities.output",
+      "value": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "partial"
+      },
+      "accepted": true
+    },
+    {
+      "path": "reasoning.modes.nativeValues",
+      "value": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled"
+        ],
+        "completeness": "partial"
+      },
+      "accepted": true
+    },
+    {
+      "path": "reasoning.effort.nativeValues",
+      "value": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled"
+        ],
+        "completeness": "partial"
+      },
+      "accepted": true
+    },
+    {
+      "path": "generation.effort.nativeValues",
+      "value": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled"
+        ],
+        "completeness": "partial"
+      },
+      "accepted": true
+    }
+  ],
+  "boundary": "Pure current decoder and actual materialization adapter in memory, with synthetic supplied subjects. No DB writes, account membership proof, stored source pointer, release construction, publication or Apply. Per-member research inference is not derivation metadata; assertionKind explicit means direct Rule assertion."
+}

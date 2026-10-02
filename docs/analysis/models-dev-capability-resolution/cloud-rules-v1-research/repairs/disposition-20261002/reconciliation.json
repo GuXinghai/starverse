@@ -1,0 +1,164 @@
+{
+  "status": "PASS",
+  "old": {
+    "rules": 290,
+    "claims": 1017
+  },
+  "new": {
+    "packs": 5,
+    "rules": 293,
+    "claims": 1029,
+    "facts": 1350,
+    "dispositionRows": 6333,
+    "evidenceRecords": 264
+  },
+  "classifications": {
+    "RULE_CANDIDATE": 904,
+    "ALREADY_MODELS_DEV": 1171,
+    "TEMPORALLY_UNSAFE": 368,
+    "ONTOLOGY_GAP": 129,
+    "AMBIGUOUS_DEFER": 1899,
+    "REDUNDANT_BUT_USEFUL": 140,
+    "ALREADY_PROVIDER_NATIVE": 1722
+  },
+  "selectedBasis": {
+    "EXPLICIT_MODEL": 774,
+    "INFERRED_HIGH": 255
+  },
+  "changedSemanticRows": 53,
+  "claimsAdded": 16,
+  "claimsRemoved": 4,
+  "retainedClaimValuesChanged": 0,
+  "rulesAdded": 3,
+  "rulesRemoved": 0,
+  "rulesSplit": 0,
+  "rulesMerged": 0,
+  "existingRulesChanged": 11,
+  "supersessionChecks": [
+    {
+      "factId": "anthropic-F-current-input",
+      "model": "claude-fable-5-1",
+      "selectedReplacementRuleId": "anthropic-v1-pdf-input-active",
+      "equivalentAssertion": false,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-input",
+      "model": "claude-opus-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-pdf-input-active",
+      "equivalentAssertion": false,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-input",
+      "model": "claude-sonnet-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-pdf-input-active",
+      "equivalentAssertion": false,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-input",
+      "model": "claude-haiku-4-5-20251001",
+      "selectedReplacementRuleId": "anthropic-v1-pdf-input-active",
+      "equivalentAssertion": false,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-output",
+      "model": "claude-fable-5-1",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-output",
+      "model": "claude-opus-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-output",
+      "model": "claude-sonnet-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-output",
+      "model": "claude-haiku-4-5-20251001",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-current-tool-calling",
+      "model": "claude-fable-5-1",
+      "selectedReplacementRuleId": "anthropic-v1-active-toolcalling",
+      "equivalentAssertion": true,
+      "positiveContainment": false
+    },
+    {
+      "factId": "anthropic-F-current-tool-calling",
+      "model": "claude-opus-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-active-toolcalling",
+      "equivalentAssertion": true,
+      "positiveContainment": false
+    },
+    {
+      "factId": "anthropic-F-current-tool-calling",
+      "model": "claude-sonnet-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-active-toolcalling",
+      "equivalentAssertion": true,
+      "positiveContainment": false
+    },
+    {
+      "factId": "anthropic-F-current-tool-calling",
+      "model": "claude-haiku-4-5-20251001",
+      "selectedReplacementRuleId": "anthropic-v1-active-toolcalling",
+      "equivalentAssertion": true,
+      "positiveContainment": false
+    },
+    {
+      "factId": "anthropic-F-mythos51-output",
+      "model": "claude-mythos-5-1",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-opus45-output",
+      "model": "claude-opus-4-5-20251101",
+      "selectedReplacementRuleId": "anthropic-v1-active-output",
+      "equivalentAssertion": true,
+      "positiveContainment": true
+    },
+    {
+      "factId": "anthropic-F-opus55-websearch",
+      "model": "claude-opus-5-5",
+      "selectedReplacementRuleId": "anthropic-v1-modern-websearch",
+      "equivalentAssertion": true,
+      "positiveContainment": false
+    }
+  ],
+  "sixFailedSupersessionsFixed": true,
+  "openaiInputDispositions": {
+    "ALREADY_MODELS_DEV": 26,
+    "RULE_CANDIDATE": 1,
+    "TEMPORALLY_UNSAFE": 1
+  },
+  "conditionalBetweenToolsFactPreserved": true,
+  "fourWebSearchJoinsDeferred": [
+    "claude-fable-5",
+    "claude-fable-5-1",
+    "claude-mythos-5",
+    "claude-mythos-5-1"
+  ],
+  "duplicateSelectedKeys": 0,
+  "selectedOverlaps": 0,
+  "regexRules": 0,
+  "originalAuditFilesUnchanged": 26,
+  "productionContractHashesUnchanged": true,
+  "pelicanUnchanged": true,
+  "boundary": "Full current fact/row/selected-claim closure plus targeted before/after semantics. No production, schema, source priority, DB, release-state or Apply change."
+}

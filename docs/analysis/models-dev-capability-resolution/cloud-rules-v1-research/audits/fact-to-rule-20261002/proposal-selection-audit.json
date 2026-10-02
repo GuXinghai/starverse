@@ -1,0 +1,6806 @@
+[
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      7
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      9
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      10
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.7-flash.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      11
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.7-flash.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      17
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.7-flash.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      19
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.7-flash.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      20
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.6-flash.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      21
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.6-flash.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      27
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.6-flash.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      29
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.6-flash.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      30
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      31
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      37
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      39
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      40
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash-lite.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      41
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash-lite.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      47
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash-lite.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      49
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash-lite.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      50
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      51
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      57
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      59
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      60
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      61
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      67
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      69
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      70
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      71
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      77
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      79
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      80
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      81
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      87
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      89
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      90
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      91
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      97
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      99
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      100
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      101
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      107
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      109
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      110
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      121
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-flash.reasoning.toggle.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      122
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.reasoning.required",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      125
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview.reasoning.toggle.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      126
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      129
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite.reasoning.toggle.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      130
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.reasoning.required",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      133
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-flash-preview.reasoning.toggle.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      134
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.reasoning.budgetTokens.domain",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      140
+    ],
+    "dispositions": {
+      "ONTOLOGY_GAP": 1
+    },
+    "reasons": [
+      "ThinkingLevel and sentinel-bearing budget wire semantics need the deferred semantic/source vertical slice; decoder acceptance alone does not approve projection."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      141
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro.reasoning.toggle.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      142
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.reasoning.budgetTokens.domain",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      144
+    ],
+    "dispositions": {
+      "ONTOLOGY_GAP": 1
+    },
+    "reasons": [
+      "ThinkingLevel and sentinel-bearing budget wire semantics need the deferred semantic/source vertical slice; decoder acceptance alone does not approve projection."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      145
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.reasoning.budgetTokens.domain",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      148
+    ],
+    "dispositions": {
+      "ONTOLOGY_GAP": 1
+    },
+    "reasons": [
+      "ThinkingLevel and sentinel-bearing budget wire semantics need the deferred semantic/source vertical slice; decoder acceptance alone does not approve projection."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-lite.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      149
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      151
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      157
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      158
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      159
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      160
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.search.image.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      161
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      162
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      164
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      167
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      168
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      170
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      171
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      172
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      178
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      179
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      180
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      181
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      192
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.limits.output.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      193
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      194
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      195
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      196
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      197
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      198
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      199
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      200
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      201
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      203
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.limits.output.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      204
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      205
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      206
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      207
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      208
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      209
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      210
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      211
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-live-extended-thinking.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      212
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      214
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.limits.output.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      215
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      216
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      217
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      218
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      219
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      220
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      221
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      222
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-tts.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      223
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      224
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.limits.output.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      225
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      226
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      227
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      228
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      229
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      230
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      231
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      232
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.8-flash-lite-tts.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      233
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      234
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      235
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      236
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      237
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      238
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-transcribe.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      239
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      240
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.limits.output.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      241
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      246
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      247
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      248
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.5-live-translate-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      249
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-live-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      250
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-live-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      256
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-live-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      258
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-live-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      259
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      260
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.reasoning.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      264
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      266
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      267
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      268
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-tts-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      269
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      270
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.limits.output.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      271
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.modalities.input",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      272
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.modalities.output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      273
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.reasoning.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      274
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.tools.calling.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      275
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      276
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      277
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      278
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-native-audio-preview-12-2025.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      279
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-preview-tts.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      280
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-preview-tts.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      286
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-preview-tts.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      287
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-preview-tts.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      288
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-flash-preview-tts.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      289
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro-preview-tts.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      290
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro-preview-tts.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      296
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro-preview-tts.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      297
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro-preview-tts.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      298
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-2.5-pro-preview-tts.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      299
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-embedding-2.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      300
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-embedding-2.operations.supported",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      302
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-embedding-001.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      303
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-embedding-001.operations.supported",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      305
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      306
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.limits.output.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      307
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.modalities.input",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      308
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.modalities.output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      309
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.reasoning.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      310
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.tools.calling.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      311
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      312
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      313
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      314
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      315
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      316
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.limits.output.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      317
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.modalities.input",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      318
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.modalities.output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      319
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.reasoning.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      320
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.tools.calling.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      321
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      322
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.structuredOutput.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      323
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      324
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-robotics-er-2-streaming-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      325
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-omni-1.1-flash.limits.contextWindow.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      336
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-omni-1.1-flash.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      337
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-omni-1.1-flash.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      338
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.veo-3.1-generate-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      339
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.veo-3.1-fast-generate-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      342
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.veo-3.1-lite-generate-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      345
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.limits.input.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      348
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.modalities.input",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      349
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      350
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      351
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      352
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      353
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      354
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.image.generation.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      355
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3.5.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      356
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3-clip-preview.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      357
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3-clip-preview.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      362
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3-clip-preview.image.generation.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      364
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-3-clip-preview.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      365
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-realtime-exp.modalities.input",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      366
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.lyria-realtime-exp.modalities.output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      367
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemma-4-31b-it.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      381
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemma-4-31b-it.operations.supported",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      384
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemma-4-26b-a4b-it.reasoning.required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      386
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemma-4-26b-a4b-it.operations.supported",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      389
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemma-4-26b-a4b-it.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      391
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.image.generation.aspectRatios",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      392
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.image.generation.resolutionPresets.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      393
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-image.image.generation.resolutionPreset.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      394
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.image.generation.resolutionPresets.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      396
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3-pro-image.image.generation.resolutionPreset.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      397
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.image.generation.aspectRatios",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      398
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-flash-lite-image.image.generation.resolutionPreset.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      400
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "gemini",
+    "proposalRuleId": "google-ai-studio.gemini-3.1-pro-preview-customtools.limits.input.maxTokens",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      404
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.content-generate.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      448,
+      449
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.context-max.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      417,
+      418
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.effort-default.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      427,
+      428
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.flash-training-tool-use.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      451
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.reasoning-modes.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      435,
+      436
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.reasoning-required.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      431,
+      432
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "deepseek",
+    "proposalRuleId": "deepseek.top-p-default.v1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      444,
+      445
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-astra.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      520
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-astra.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      521
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      530
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      531
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      540
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      541
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      542
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      551
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      552
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      553
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-sol.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      562
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-sol.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      563
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-sol.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      564
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-terra.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      573
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-terra.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      574
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-terra.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      575
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-luna.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      584
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-luna.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      585
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-luna.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      586
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      589
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      597
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      598
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      600
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5-pro.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      608
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5-pro.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      609
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.5-pro.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      611
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      619
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      620
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      622
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4-pro.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      630
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4-pro.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      632
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4-mini.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      640
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4-mini.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      641
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.4-mini.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      643
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.2.reasoning.effort.providerDefault",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      652
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.limits.contextWindow.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      733
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.limits.output.maxTokens",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      734
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.modalities.output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      736
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.reasoning.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      737
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.tools.calling.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      738
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.structuredOutput.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      739
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.search.web.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      740
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-cyber.tools.codeExecution.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      741
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-daybreak-red-latest.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      747
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Floating latest identity needs Owner lifecycle review and target recheck before first release."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-daybreak-red-latest.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      748
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Floating latest identity needs Owner lifecycle review and target recheck before first release."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-daybreak-blue-latest.search.web.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      756
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Floating latest identity needs Owner lifecycle review and target recheck before first release."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-daybreak-blue-latest.tools.codeExecution.support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      757
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Floating latest identity needs Owner lifecycle review and target recheck before first release."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-astra.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      773
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      774
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      775
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      776
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-sol.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      777
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-terra.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      778
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-5.6-luna.reasoning.modes.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      779
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-astra.contextManagement.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      780
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-astra.contextManagement.actions.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      781
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.contextManagement.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      782
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6.1-sol.contextManagement.actions.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      783
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.contextManagement.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      784
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-sol.contextManagement.actions.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      785
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.contextManagement.support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      786
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openai",
+    "proposalRuleId": "cloud.openai.gpt-6-luna.contextManagement.actions.nativeValues",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      787
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-current-thinking",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      852,
+      853,
+      854,
+      855
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 4
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-always-on-current",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      856,
+      857
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-fable-default-effort",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      858
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-opus55-default-effort",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      859
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sonnet55-default-effort",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      860
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-five-efforts",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      861,
+      862,
+      863,
+      864,
+      865,
+      866,
+      867,
+      868,
+      869,
+      870
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 10
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-four-efforts",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      871,
+      872
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 2
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-opus45-efforts",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      873
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-effort-default-others",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      874,
+      875,
+      876,
+      877,
+      878,
+      879,
+      880,
+      881,
+      882,
+      883
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sonnet55-output-limit",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      884
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-manual-budget-min",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      885,
+      886,
+      887,
+      888,
+      889
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-mythos51-required",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      891
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-all-thinking",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      894,
+      895,
+      896,
+      897,
+      898,
+      899,
+      900,
+      901,
+      902,
+      903,
+      904
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 10,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-adaptive-modes",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      905,
+      906,
+      907,
+      908,
+      909,
+      910,
+      911,
+      912,
+      913
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 9
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sonnet55-modes",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      914
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 1
+    },
+    "reasons": [
+      "between_tools is restricted to high or lower effort and rejects additional thinking fields. Hold the complete model-level domain until conditional execution semantics are reviewed."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-46-modes",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      915,
+      916
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 2
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-45-modes",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      917,
+      918,
+      919
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 2,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-always-on-older",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      920,
+      921
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-always-on-toggle",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      922,
+      923,
+      924,
+      925,
+      926
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 5
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-optional-thinking",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      927,
+      928,
+      929,
+      930,
+      931,
+      932,
+      933,
+      934
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 7,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-optional-toggle",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      935,
+      936,
+      937,
+      938,
+      939,
+      940,
+      941,
+      942
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 7,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-manual-budget-support",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      943,
+      944,
+      945,
+      946,
+      947
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-manual-budget-unsupported",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      948,
+      949,
+      950,
+      951,
+      952,
+      953,
+      954,
+      955,
+      956,
+      957
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-large-output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      958,
+      959,
+      960,
+      961,
+      962,
+      963,
+      964,
+      965,
+      966,
+      967,
+      968
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 11
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-small-output",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      969,
+      970,
+      971
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 2,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sampling-removed",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      972,
+      973,
+      974,
+      975,
+      976,
+      977,
+      978,
+      979,
+      980,
+      981
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-topk-removed",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      982,
+      983,
+      984,
+      985,
+      986,
+      987,
+      988,
+      989,
+      990,
+      991
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-structured-all",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019,
+      1020,
+      1021
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 14,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-code-execution-all",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1022,
+      1023,
+      1024,
+      1025,
+      1026,
+      1027,
+      1028,
+      1029,
+      1030,
+      1031,
+      1032,
+      1033,
+      1034,
+      1035,
+      1036
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 14,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-citations-active",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1052,
+      1053,
+      1054,
+      1055,
+      1056,
+      1057,
+      1058,
+      1059,
+      1060,
+      1061,
+      1062,
+      1063,
+      1064,
+      1065
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 14
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-context-editing",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1080,
+      1081,
+      1082,
+      1083,
+      1084,
+      1085,
+      1086,
+      1087,
+      1088,
+      1089,
+      1090,
+      1091,
+      1092,
+      1093,
+      1094
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 15
+    },
+    "reasons": [
+      "Context editing requires beta execution headers and action/model conditions; hold for Owner lifecycle review."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-context-actions",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1095,
+      1096,
+      1097
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 3
+    },
+    "reasons": [
+      "Context-management actions require beta headers; first-corpus publication held."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-pdf-input-active",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1098,
+      1099,
+      1100,
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110,
+      1111
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 14
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-attachments-active",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1112,
+      1113,
+      1114,
+      1115,
+      1116,
+      1117,
+      1118,
+      1119,
+      1120,
+      1121,
+      1122,
+      1123,
+      1124,
+      1125
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 14
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-active-toolcalling",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1143,
+      1144,
+      1145,
+      1146,
+      1147,
+      1148,
+      1149,
+      1150,
+      1151,
+      1152,
+      1153,
+      1154,
+      1155,
+      1156
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 14
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-active-output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1157,
+      1158,
+      1159,
+      1160,
+      1161,
+      1162,
+      1163,
+      1164,
+      1165,
+      1166,
+      1167,
+      1168,
+      1169,
+      1170
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 14
+    },
+    "reasons": [
+      "Intro documents text output support, but does not explicitly declare an exhaustive canonical output set. Preserve positive text evidence; hold the complete-set proposal."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-active-operations",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1172,
+      1173,
+      1174,
+      1175,
+      1176,
+      1177,
+      1178,
+      1179,
+      1180,
+      1181,
+      1182,
+      1183,
+      1184,
+      1185
+    ],
+    "dispositions": {
+      "REDUNDANT_BUT_USEFUL": 14
+    },
+    "reasons": [
+      "COORDINATOR REDUNDANCY APPROVAL: Anthropic has no models.dev registry binding; documented exact fallback supplies missing/null Native metadata and preserves direct API provenance. This is potential fallback, not verified local absence."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-legacy-temperature-support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1198,
+      1199,
+      1200,
+      1201,
+      1202
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 5
+    },
+    "reasons": [
+      "Legacy sampling is accepted with thinking off and rejected with thinking on. Preserve the documented conditional fact without emitting an unconditional control assertion."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-legacy-temperature-default",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1203,
+      1204,
+      1205,
+      1206,
+      1207
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 5
+    },
+    "reasons": [
+      "Default applies to legacy Messages sampling when applicable. Thinking-mode dependency needs review before it becomes an unconditional model default."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-legacy-temperature-max",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1208,
+      1209,
+      1210,
+      1211,
+      1212
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 5
+    },
+    "reasons": [
+      "Accepted maximum applies with thinking disabled. Hold conditional model maximum until execution/projection review."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-legacy-topk-support",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1213,
+      1214,
+      1215,
+      1216,
+      1217
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 5
+    },
+    "reasons": [
+      "Legacy top_k acceptance depends on thinking disabled. Hold the unconditional support scalar."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-context-1m",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1219,
+      1220,
+      1221,
+      1222,
+      1223,
+      1224,
+      1225,
+      1226,
+      1227,
+      1228,
+      1229,
+      1230
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 12
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-context-200k",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1231,
+      1232,
+      1233
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-modern-websearch",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      1249,
+      1250,
+      1251,
+      1252,
+      1253,
+      1254,
+      1255,
+      1256,
+      1257,
+      1258,
+      1259,
+      1260
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 12
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sonnet45-input",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1262
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-sonnet45-output",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1263
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-modern-context-actions",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1264,
+      1265,
+      1266,
+      1267,
+      1268,
+      1269,
+      1270,
+      1271,
+      1272,
+      1273,
+      1274,
+      1275
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 12
+    },
+    "reasons": [
+      "Editing and compaction action union requires their respective beta headers; first-corpus publication held."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-opus5-optional",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1276
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 1
+    },
+    "reasons": [
+      "Opus 5 disabled thinking depends on selected effort. An unconditional required=false claim loses that dependency; defer the scalar until conditional projection review."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "anthropic",
+    "proposalRuleId": "anthropic-v1-opus5-toggle",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      1277
+    ],
+    "dispositions": {
+      "AMBIGUOUS_DEFER": 1
+    },
+    "reasons": [
+      "Opus 5 rejects disabled thinking at xhigh/max. The model-level scalar does not retain this dependency; defer before publication."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.03855e07829f6516.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      2974,
+      2975,
+      2976,
+      2977,
+      2978,
+      2979,
+      2980,
+      2981,
+      2982,
+      2983,
+      2984,
+      2985,
+      2986,
+      2987,
+      2988,
+      2989,
+      2990,
+      2991,
+      2992,
+      2993,
+      2994,
+      2995,
+      2996,
+      2997,
+      2998,
+      2999,
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039,
+      3040,
+      3041,
+      3042,
+      3043,
+      3044,
+      3045,
+      3046,
+      3047,
+      3048,
+      3049,
+      3050,
+      3051,
+      3052,
+      3053,
+      3054,
+      3055,
+      3056,
+      3057,
+      3058,
+      3059,
+      3060,
+      3061,
+      3062,
+      3063,
+      3064,
+      3065,
+      3066,
+      3067,
+      3068,
+      3069,
+      3070,
+      3071,
+      3072,
+      3073,
+      3074,
+      3075,
+      3076,
+      3077,
+      3078,
+      3079,
+      3080,
+      3081,
+      3082,
+      3083,
+      3084,
+      3085,
+      3086,
+      3087,
+      3088,
+      3089,
+      3090,
+      3091,
+      3092,
+      3093,
+      3094,
+      3095,
+      3096,
+      3097,
+      3098,
+      3099,
+      3100,
+      3101,
+      3102,
+      3103,
+      3104,
+      3105,
+      3106,
+      3107,
+      3108,
+      3109,
+      3110,
+      3111,
+      3112,
+      3113,
+      3114,
+      3115,
+      3116,
+      3117,
+      3118,
+      3119,
+      3120,
+      3121,
+      3122,
+      3123,
+      3124,
+      3125,
+      3126,
+      3127,
+      3128,
+      3129,
+      3130,
+      3131,
+      3132,
+      3133,
+      3134,
+      3135,
+      3136,
+      3137,
+      3138,
+      3139,
+      3140,
+      3141,
+      3142,
+      3143,
+      3144,
+      3145,
+      3146,
+      3147,
+      3148,
+      3149,
+      3150,
+      3151,
+      3152,
+      3153
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 178,
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.3ab3b830d559f092.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      3390,
+      3391,
+      3392,
+      3393,
+      3394,
+      3395,
+      3396,
+      3397,
+      3398,
+      3399,
+      3400,
+      3401,
+      3402,
+      3403,
+      3404,
+      3405,
+      3406,
+      3407,
+      3408,
+      3409,
+      3410,
+      3411,
+      3412,
+      3413,
+      3414,
+      3415,
+      3416,
+      3417,
+      3418,
+      3419,
+      3420,
+      3421,
+      3422,
+      3423,
+      3424,
+      3425,
+      3426,
+      3427,
+      3428,
+      3429,
+      3430,
+      3431,
+      3432,
+      3433,
+      3434,
+      3435,
+      3436,
+      3437,
+      3438,
+      3439,
+      3440,
+      3441,
+      3442,
+      3443,
+      3444,
+      3445,
+      3446,
+      3447,
+      3448,
+      3449,
+      3450,
+      3451,
+      3452,
+      3453,
+      3454,
+      3455,
+      3456,
+      3457,
+      3458,
+      3459,
+      3460
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 71
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a36e9db36811b000.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      3461,
+      3462,
+      3463,
+      3464,
+      3465,
+      3466,
+      3467,
+      3468,
+      3469,
+      3470,
+      3471
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 11
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.e483a4a0c5ef3b35.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4198,
+      4199
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.906cb84e93ae5e63.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4200,
+      4201,
+      4202,
+      4203,
+      4204,
+      4205,
+      4206,
+      4207,
+      4208,
+      4209,
+      4210,
+      4211,
+      4212,
+      4213,
+      4214,
+      4215,
+      4216,
+      4217,
+      4218,
+      4219,
+      4220,
+      4221,
+      4222,
+      4223,
+      4224,
+      4225,
+      4226,
+      4227,
+      4228,
+      4229,
+      4230,
+      4231,
+      4232,
+      4233,
+      4234,
+      4235
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 36
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.216376e6a6c2c843.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4325,
+      4326,
+      4327,
+      4328,
+      4329,
+      4330,
+      4331,
+      4332,
+      4333,
+      4334,
+      4335,
+      4336
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 11,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.bd2595b98ce01b3e.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4353,
+      4354,
+      4355,
+      4356,
+      4357,
+      4358,
+      4359,
+      4360,
+      4361,
+      4362,
+      4363,
+      4364,
+      4365,
+      4366,
+      4367,
+      4368,
+      4369,
+      4370,
+      4371,
+      4372,
+      4373,
+      4374,
+      4375,
+      4376,
+      4377,
+      4378,
+      4379,
+      4380,
+      4381,
+      4382,
+      4383,
+      4384,
+      4385,
+      4386,
+      4387,
+      4388,
+      4389,
+      4390,
+      4391,
+      4392,
+      4393
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 41
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a68ddcce1820f9d5.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4394,
+      4395,
+      4396,
+      4397,
+      4398,
+      4399,
+      4400,
+      4401,
+      4402,
+      4403,
+      4404,
+      4405,
+      4406,
+      4407,
+      4408,
+      4409,
+      4410,
+      4411,
+      4412,
+      4413,
+      4414,
+      4415,
+      4416,
+      4417,
+      4418,
+      4419,
+      4420,
+      4421,
+      4422,
+      4423,
+      4424,
+      4425,
+      4426,
+      4427,
+      4428,
+      4429,
+      4430,
+      4431,
+      4432,
+      4433,
+      4434,
+      4435,
+      4436,
+      4437,
+      4438,
+      4439,
+      4440,
+      4441
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 47,
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.871729e1334b5ebb.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4506,
+      4507,
+      4508,
+      4509,
+      4510
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 5
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a23c7cf5a2fc7441.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4564,
+      4565
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.755b0860506f5e87.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4576,
+      4577,
+      4578,
+      4579,
+      4580,
+      4581,
+      4582,
+      4583,
+      4584,
+      4585
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.c32ffc34f3a41899.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4700,
+      4701,
+      4702,
+      4703,
+      4704,
+      4705
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 6
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.e560284fbcfc2a9e.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4706,
+      4707,
+      4708,
+      4709,
+      4710
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 5
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.7a5f2e41c98493e5.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4724
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.877fb124f7b60075.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4725,
+      4726,
+      4727,
+      4728,
+      4729,
+      4730,
+      4731,
+      4732,
+      4733,
+      4734
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 10
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.dfaf2c2368959371.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4895,
+      4896,
+      4897
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.d976dfbef17b7279.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4955,
+      4956,
+      4957,
+      4958
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.d009afd978421548.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4990,
+      4991
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.27599ea19b608088.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      4992,
+      4993
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.5d560de48e7948a2.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5000,
+      5001
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a63f756c8b3dd993.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5008,
+      5009,
+      5010,
+      5011,
+      5012,
+      5013,
+      5014,
+      5015
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 8
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a6e637cc5f3d8313.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5064,
+      5065
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a456c2373e0800b9.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5096,
+      5097
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.56a9ed2ca8bc95d3.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5098,
+      5099
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.cb78a85fb47802ae.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5110
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.a3156fcbe7a2b024.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5150,
+      5151,
+      5152
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.3842b26ea4819b9f.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5200,
+      5201,
+      5202,
+      5203
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.68777a33f1b5dd22.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5211
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.cd66f8302e72beba.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5212
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.4be42485224d28a0.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5213,
+      5214,
+      5215
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.f8c81ecdfb3b1960.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5216,
+      5217,
+      5218,
+      5219,
+      5220
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 5
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.02d11ccc9c6faceb.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5225,
+      5226,
+      5227,
+      5228
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 4
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.0653e39d1a0993aa.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5229,
+      5230,
+      5231,
+      5232,
+      5233,
+      5234,
+      5235,
+      5236,
+      5237
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 9
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.1fad893070e6b4f9.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5296
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.f706e9cfacac2235.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5304,
+      5305,
+      5306,
+      5307,
+      5308,
+      5309,
+      5310
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 7
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.b822cb7ab4ba0ee8.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5311,
+      5312
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.da321143163bb5c5.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5323,
+      5324,
+      5325
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.cde4acb2f910bb2f.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5326,
+      5327
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.722a0bd55e536d15.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5381,
+      5382,
+      5383,
+      5384,
+      5385,
+      5386
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1,
+      "RULE_CANDIDATE": 5
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible.",
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.bd3e107c7e4147e2.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5498,
+      5499,
+      5500
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.e6f774edc49adbda.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5504,
+      5505,
+      5506,
+      5507,
+      5508,
+      5509,
+      5510
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 7
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.073bf8adb7d961f6.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5519
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.8c67df1ddb050375.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5520
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.d1f8b4cba1cc2d25.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5531,
+      5532,
+      5533,
+      5534,
+      5535,
+      5536,
+      5537,
+      5538,
+      5539,
+      5540,
+      5541,
+      5542,
+      5543,
+      5544,
+      5545,
+      5546
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 16
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.21d233d464e2801a.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5547,
+      5548,
+      5549
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.1f275137cf78b4e7.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5581,
+      5582
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.fb8e3b23fc5d4d52.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5583,
+      5584,
+      5585
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.aead014299e1e6f4.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5591,
+      5592
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.1bae8dad90a1c216.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5599,
+      5600
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.115d56aa6f87dabf.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5601
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 1
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.ea018949b4474583.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5607,
+      5608,
+      5609,
+      5610
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 4
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.304c0ca5535b040d.1",
+    "selectedRule": false,
+    "linkedRowOrdinals": [
+      5611,
+      5612
+    ],
+    "dispositions": {
+      "TEMPORALLY_UNSAFE": 2
+    },
+    "reasons": [
+      "First corpus excludes preview, deprecated and time-limited coverage until Owner lifecycle approval; recheck required."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.57712909a978803c.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5635,
+      5636
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 2
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.1e948a45c5e4099a.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5703
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.96059455c09c018f.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5704
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.f24aa5428e8ce459.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5716
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.47f7012702033abb.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5743
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.c153d3575f11b537.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      5792,
+      5793,
+      5794
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 3
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.2bffa58c0c943a0f.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6301
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.0dfe223d3d6457cc.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6302
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.4e2ad4c6d989b738.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6304
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.eb7b2ecde320d461.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6306
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.1fdaaa0e967a35c1.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6307
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  },
+  {
+    "provider": "openrouter",
+    "proposalRuleId": "openrouter.rule.bcb5890eb313b035.1",
+    "selectedRule": true,
+    "linkedRowOrdinals": [
+      6308
+    ],
+    "dispositions": {
+      "RULE_CANDIDATE": 1
+    },
+    "reasons": [
+      "Approved exact first-party documented assertion filling an observed models.dev gap or an unmapped canonical path; source disagreements remain visible."
+    ],
+    "supersededFactIds": []
+  }
+]

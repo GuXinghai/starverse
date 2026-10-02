@@ -1,13 +1,13 @@
 {
   "status": "PASS",
-  "checkedAt": "2026-10-02T06:09:18.412Z",
+  "checkedAt": "2026-10-02T10:37:25.293Z",
   "input": "final/candidate-corpus.json",
-  "corpusArtifactSha256": "fa3aca153186d06cd341b71eb894e53b86f807626de3d837217d3408f9c4ce8c",
+  "corpusArtifactSha256": "749578e2b59ae7c317c3156c04bde1ec4b62cadc0736adb979728429a9fe80a8",
   "packCount": 5,
-  "ruleCount": 290,
-  "exactRuleCount": 290,
+  "ruleCount": 293,
+  "exactRuleCount": 293,
   "regexRuleCount": 0,
-  "exactModelPathClaims": 1017,
+  "exactModelPathClaims": 1029,
   "evidenceRecords": 264,
   "validation": "Current Rule/Pack/ownership decoder; canonical values; global IDs; registered provider/profile pairs; recorded exact identities; non-null first-party direct evidence; unique approved fact/model/path/value links; explicit redundancy and high-inference approvals; baselines; duplicate/overlap exclusion.",
   "boundary": "Artifact hash is integrity only, not release contentRevision. No release envelope; no database; no materialization publication or Apply."

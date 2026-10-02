@@ -1,0 +1,170 @@
+[
+  {
+    "rowOrdinal": 840,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-input",
+    "nativeModelId": "claude-fable-5-1",
+    "canonicalPath": "modalities.input",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-pdf-input-active"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 841,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-input",
+    "nativeModelId": "claude-opus-5-5",
+    "canonicalPath": "modalities.input",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-pdf-input-active"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 842,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-input",
+    "nativeModelId": "claude-sonnet-5-5",
+    "canonicalPath": "modalities.input",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-pdf-input-active"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 843,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-input",
+    "nativeModelId": "claude-haiku-4-5-20251001",
+    "canonicalPath": "modalities.input",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-pdf-input-active"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 844,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-output",
+    "nativeModelId": "claude-fable-5-1",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 845,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-output",
+    "nativeModelId": "claude-opus-5-5",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 846,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-output",
+    "nativeModelId": "claude-sonnet-5-5",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 847,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-output",
+    "nativeModelId": "claude-haiku-4-5-20251001",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 848,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-tool-calling",
+    "nativeModelId": "claude-fable-5-1",
+    "canonicalPath": "tools.calling.support",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-active-toolcalling"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 849,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-tool-calling",
+    "nativeModelId": "claude-opus-5-5",
+    "canonicalPath": "tools.calling.support",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-active-toolcalling"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 850,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-tool-calling",
+    "nativeModelId": "claude-sonnet-5-5",
+    "canonicalPath": "tools.calling.support",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-active-toolcalling"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 851,
+    "provider": "anthropic",
+    "factId": "anthropic-F-current-tool-calling",
+    "nativeModelId": "claude-haiku-4-5-20251001",
+    "canonicalPath": "tools.calling.support",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-active-toolcalling"
+    ],
+    "replacementExists": true
+  },
+  {
+    "rowOrdinal": 892,
+    "provider": "anthropic",
+    "factId": "anthropic-F-mythos51-output",
+    "nativeModelId": "claude-mythos-5-1",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 893,
+    "provider": "anthropic",
+    "factId": "anthropic-F-opus45-output",
+    "nativeModelId": "claude-opus-4-5-20251101",
+    "canonicalPath": "modalities.output",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [],
+    "replacementExists": false
+  },
+  {
+    "rowOrdinal": 1140,
+    "provider": "anthropic",
+    "factId": "anthropic-F-opus55-websearch",
+    "nativeModelId": "claude-opus-5-5",
+    "canonicalPath": "search.web.support",
+    "reason": "Superseded by broader corroborated exact-scope fact; preserve source trace, avoid duplicate same-model/path assertions.",
+    "selectedReplacementRuleIds": [
+      "anthropic-v1-modern-websearch"
+    ],
+    "replacementExists": true
+  }
+]

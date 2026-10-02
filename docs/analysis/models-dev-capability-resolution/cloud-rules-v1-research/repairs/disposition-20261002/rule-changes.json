@@ -1,0 +1,1120 @@
+[
+  {
+    "ruleId": "anthropic-v1-45-modes",
+    "operation": "changed",
+    "changedFields": [
+      "description",
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-45-modes",
+      "label": "reasoning.modes.nativeValues",
+      "description": "Explicit thinking-mode matrix; Sonnet4.5 retirement requires lifecycle review.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.modes.nativeValues",
+        "value": {
+          "kind": "native_string_set",
+          "values": [
+            "enabled"
+          ],
+          "completeness": "partial"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Explicit thinking-mode matrix; Sonnet4.5 retirement requires lifecycle review. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-45-modes",
+      "label": "reasoning.modes.nativeValues",
+      "description": "Explicit thinking-mode matrix for selected active members; deprecated Sonnet 4.5 remains deferred.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.modes.nativeValues",
+        "value": {
+          "kind": "native_string_set",
+          "values": [
+            "enabled"
+          ],
+          "completeness": "partial"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Explicit thinking-mode matrix for selected active members; deprecated Sonnet 4.5 remains deferred. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-active-output",
+    "operation": "added",
+    "changedFields": [
+      "assertion",
+      "configured",
+      "description",
+      "endpointProfileId",
+      "evidence",
+      "label",
+      "priority",
+      "providerAuthorityId",
+      "ruleId",
+      "selector"
+    ],
+    "old": null,
+    "new": {
+      "ruleId": "anthropic-v1-active-output",
+      "label": "modalities.output",
+      "description": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "modalities.output",
+        "value": {
+          "kind": "media_kind_set",
+          "values": [
+            "text"
+          ],
+          "completeness": "partial"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E028",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "First-party intro documents text output for current models. Closed current-model scope is joined to the 14 recorded active exact IDs; assert only partial[text], with no exclusion of other outputs. No future members, convenience aliases, entitlement or execution guarantee. As-of 2026-10-02; recheck 2026-10-16. Exact-ID join INFERRED_HIGH independently reviewed in final/manual-review.json. Native observations unverified; no models.dev binding.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/intro",
+        "verifiedAt": "2026-10-02T05:30:33.602Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": true
+  },
+  {
+    "ruleId": "anthropic-v1-all-thinking",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-all-thinking",
+      "label": "reasoning.support",
+      "description": "Per-release thinking matrix; exact identity joined to lifecycle.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Per-release thinking matrix; exact identity joined to lifecycle. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-all-thinking",
+      "label": "reasoning.support",
+      "description": "Per-release thinking matrix; exact identity joined to lifecycle.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Per-release thinking matrix; exact identity joined to lifecycle. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-code-execution-all",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-code-execution-all",
+      "label": "tools.codeExecution.support",
+      "description": "Hosted server sandbox tool compatible with these models; no automatic Bedrock/Vertex support. Haiku REPL/PTC exception does not negate base code execution.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "tools.codeExecution.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E019",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Hosted server sandbox tool compatible with these models; no automatic Bedrock/Vertex support. Haiku REPL/PTC exception does not negate base code execution. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool",
+        "verifiedAt": "2026-10-02T05:23:31.034Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-code-execution-all",
+      "label": "tools.codeExecution.support",
+      "description": "Hosted server sandbox tool compatible with these models; no automatic Bedrock/Vertex support. Haiku REPL/PTC exception does not negate base code execution.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "tools.codeExecution.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E019",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Hosted server sandbox tool compatible with these models; no automatic Bedrock/Vertex support. Haiku REPL/PTC exception does not negate base code execution. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool",
+        "verifiedAt": "2026-10-02T05:23:31.034Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-context-200k",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-context-200k",
+      "label": "limits.contextWindow.maxTokens",
+      "description": "Technical200k context limit corroborated by exacttokenbudget200000; not input-only ceiling.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "limits.contextWindow.maxTokens",
+        "value": {
+          "kind": "integer",
+          "value": 200000,
+          "unit": "token"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E036",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Technical200k context limit corroborated by exacttokenbudget200000; not input-only ceiling. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "verifiedAt": "2026-10-02T05:34:46.782Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-context-200k",
+      "label": "limits.contextWindow.maxTokens",
+      "description": "Technical200k context limit corroborated by exacttokenbudget200000; not input-only ceiling.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "limits.contextWindow.maxTokens",
+        "value": {
+          "kind": "integer",
+          "value": 200000,
+          "unit": "token"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E036",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Technical200k context limit corroborated by exacttokenbudget200000; not input-only ceiling. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "verifiedAt": "2026-10-02T05:34:46.782Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-manual-budget-min",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-manual-budget-min",
+      "label": "reasoning.budgetTokens.domain",
+      "description": "Min1024 documented. No fixed upper bound: request max_tokens relation and interleaving exceptions not representable here.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.budgetTokens.domain",
+        "value": {
+          "kind": "integer_domain",
+          "unit": "token",
+          "interval": {
+            "min": 1024,
+            "minInclusive": true,
+            "maxInclusive": false
+          },
+          "completeness": "partial_bounds"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E013",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Min1024 documented. No fixed upper bound: request max_tokens relation and interleaving exceptions not representable here. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+        "verifiedAt": "2026-10-02T05:20:25.718Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-manual-budget-min",
+      "label": "reasoning.budgetTokens.domain",
+      "description": "Min1024 documented. No fixed upper bound: request max_tokens relation and interleaving exceptions not representable here.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.budgetTokens.domain",
+        "value": {
+          "kind": "integer_domain",
+          "unit": "token",
+          "interval": {
+            "min": 1024,
+            "minInclusive": true,
+            "maxInclusive": false
+          },
+          "completeness": "partial_bounds"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E013",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Min1024 documented. No fixed upper bound: request max_tokens relation and interleaving exceptions not representable here. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+        "verifiedAt": "2026-10-02T05:20:25.718Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-manual-budget-support",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-manual-budget-support",
+      "label": "reasoning.budgetTokens.support",
+      "description": "Documented Anthropic Messages model fact; research candidate pending coordinator audit.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.budgetTokens.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Documented release scope. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-manual-budget-support",
+      "label": "reasoning.budgetTokens.support",
+      "description": "Documented Anthropic Messages model fact; research candidate pending coordinator audit.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.budgetTokens.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Documented release scope. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-modern-websearch",
+    "operation": "changed",
+    "changedFields": [
+      "selector"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-modern-websearch",
+      "label": "search.web.support",
+      "description": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6"
+        ]
+      },
+      "assertion": {
+        "path": "search.web.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E026",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+        "verifiedAt": "2026-10-02T05:26:12.522Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-modern-websearch",
+      "label": "search.web.support",
+      "description": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6"
+        ]
+      },
+      "assertion": {
+        "path": "search.web.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E026",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Websearch guide explicitly dynamicfiltering available4.6and later;technical contextguide namescurrent4.6+releases. Supportexists ondirectAPI,orgmaydisable. Model-to-release expansion requires coordinator INFERRED_HIGH audit;toolversionnot encoded. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+        "verifiedAt": "2026-10-02T05:26:12.522Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": true
+  },
+  {
+    "ruleId": "anthropic-v1-optional-thinking",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-optional-thinking",
+      "label": "reasoning.required",
+      "description": "Explicit disabled accepted; manual/adaptive opt-in older releases. Opus5/Sonnet5.5 excluded because effort/tool-dependent.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-sonnet-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.required",
+        "value": {
+          "kind": "boolean",
+          "value": false
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Explicit disabled accepted; manual/adaptive opt-in older releases. Opus5/Sonnet5.5 excluded because effort/tool-dependent. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-optional-thinking",
+      "label": "reasoning.required",
+      "description": "Explicit disabled accepted; manual/adaptive opt-in older releases. Opus5/Sonnet5.5 excluded because effort/tool-dependent.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-sonnet-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.required",
+        "value": {
+          "kind": "boolean",
+          "value": false
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Explicit disabled accepted; manual/adaptive opt-in older releases. Opus5/Sonnet5.5 excluded because effort/tool-dependent. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-optional-toggle",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-optional-toggle",
+      "label": "reasoning.toggle.support",
+      "description": "Thinking can be turned fully off; conditional sampling still applies when enabled.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-sonnet-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.toggle.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Thinking can be turned fully off; conditional sampling still applies when enabled. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-optional-toggle",
+      "label": "reasoning.toggle.support",
+      "description": "Thinking can be turned fully off; conditional sampling still applies when enabled.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-sonnet-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.toggle.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Thinking can be turned fully off; conditional sampling still applies when enabled. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-small-output",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-small-output",
+      "label": "limits.output.maxTokens",
+      "description": "Exact per-request max_tokens ceiling; Sonnet4.5 expiry review.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "limits.output.maxTokens",
+        "value": {
+          "kind": "integer",
+          "value": 64000,
+          "unit": "token"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Exact per-request max_tokens ceiling; Sonnet4.5 expiry review. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-small-output",
+      "label": "limits.output.maxTokens",
+      "description": "Exact per-request max_tokens ceiling; Sonnet4.5 expiry review.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-opus-4-5-20251101",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "limits.output.maxTokens",
+        "value": {
+          "kind": "integer",
+          "value": 64000,
+          "unit": "token"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Exact per-request max_tokens ceiling; Sonnet4.5 expiry review. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "anthropic-v1-sonnet55-modes",
+    "operation": "added",
+    "changedFields": [
+      "assertion",
+      "configured",
+      "description",
+      "endpointProfileId",
+      "evidence",
+      "label",
+      "priority",
+      "providerAuthorityId",
+      "ruleId",
+      "selector"
+    ],
+    "old": null,
+    "new": {
+      "ruleId": "anthropic-v1-sonnet55-modes",
+      "label": "reasoning.modes.nativeValues",
+      "description": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      "assertion": {
+        "path": "reasoning.modes.nativeValues",
+        "value": {
+          "kind": "native_string_set",
+          "values": [
+            "adaptive"
+          ],
+          "completeness": "partial"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E017",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "The release-specific thinking matrix positively supports adaptive on Sonnet 5.5. Select only partial[adaptive]. between_tools requires high or lower effort and rejects additional thinking fields; it remains excluded and retained in anthropic-F-between-tools-constraints. As-of 2026-10-02; recheck 2026-10-16. Exact-ID join INFERRED_HIGH independently reviewed in final/manual-review.json. Native observations unverified; no models.dev binding.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/about-claude/models/extended-thinking-models",
+        "verifiedAt": "2026-10-02T05:22:40.724Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": true
+  },
+  {
+    "ruleId": "anthropic-v1-structured-all",
+    "operation": "changed",
+    "changedFields": [
+      "evidence"
+    ],
+    "old": {
+      "ruleId": "anthropic-v1-structured-all",
+      "label": "structuredOutput.support",
+      "description": "Direct Claude Messages compatibility; tool schemas and JSON outputs share support fact but detailed constraints remain separately recorded.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "structuredOutput.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E018",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Direct Claude Messages compatibility; tool schemas and JSON outputs share support fact but detailed constraints remain separately recorded. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. Sonnet4.5 deprecated2026-09-30;retire2026-11-30;REQUIRES_EXPIRY_REVIEW. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+        "verifiedAt": "2026-10-02T05:23:31.034Z",
+        "derivation": null
+      }
+    },
+    "new": {
+      "ruleId": "anthropic-v1-structured-all",
+      "label": "structuredOutput.support",
+      "description": "Direct Claude Messages compatibility; tool schemas and JSON outputs share support fact but detailed constraints remain separately recorded.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "anthropic",
+      "endpointProfileId": "anthropic-developer-api-2023-06-01",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "claude-fable-5-1",
+          "claude-mythos-5-1",
+          "claude-fable-5",
+          "claude-mythos-5",
+          "claude-opus-5-5",
+          "claude-opus-5",
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-sonnet-5-5",
+          "claude-sonnet-5",
+          "claude-sonnet-4-6",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "assertion": {
+        "path": "structuredOutput.support",
+        "value": {
+          "kind": "support",
+          "value": "supported"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "anthropic-E018",
+        "evidenceKind": "explicit_provider_series",
+        "evidenceNote": "Direct Claude Messages compatibility; tool schemas and JSON outputs share support fact but detailed constraints remain separately recorded. As-of2026-10-02;recheck2026-10-16. Exact-ID release join INFERRED_HIGH; independently reviewed and approved in final/manual-review.json. NativeobservationsUNVERIFIED;no models.devkey.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "anthropic-E002",
+        "provenanceUrl": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+        "verifiedAt": "2026-10-02T05:23:31.034Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": false
+  },
+  {
+    "ruleId": "cloud.openai.gpt-5.6-cyber.modalities.input",
+    "operation": "added",
+    "changedFields": [
+      "assertion",
+      "configured",
+      "description",
+      "endpointProfileId",
+      "evidence",
+      "label",
+      "priority",
+      "providerAuthorityId",
+      "ruleId",
+      "selector"
+    ],
+    "old": null,
+    "new": {
+      "ruleId": "cloud.openai.gpt-5.6-cyber.modalities.input",
+      "label": "gpt-5.6-cyber modalities.input",
+      "description": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified.",
+      "priority": 0,
+      "configured": "default",
+      "providerAuthorityId": "openai",
+      "endpointProfileId": "openai-api-v1",
+      "selector": {
+        "kind": "exact",
+        "nativeModelIds": [
+          "gpt-5.6-cyber"
+        ]
+      },
+      "assertion": {
+        "path": "modalities.input",
+        "value": {
+          "kind": "media_kind_set",
+          "values": [
+            "image",
+            "text"
+          ],
+          "completeness": "partial"
+        }
+      },
+      "evidence": {
+        "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+        "evidenceKind": "explicit_provider",
+        "evidenceNote": "Exact version-bound model card positively documents text/image inputs; saved models.dev subject is absent and Native supplies identity only. Select partial[text,image]; account membership and restricted access remain unverified. As-of 2026-10-02; recheck 2026-11-02.",
+        "identityEvidenceKind": "official_exact_model_doc",
+        "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+        "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+        "verifiedAt": "2026-10-02T05:21:16.000Z",
+        "derivation": null
+      }
+    },
+    "semanticChange": true
+  }
+]
