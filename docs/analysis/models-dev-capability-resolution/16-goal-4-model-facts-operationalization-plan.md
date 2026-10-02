@@ -1,9 +1,9 @@
 # Goal 4 Model Facts Operationalization Plan
 
-- **Lifecycle Status**: Goal 4 in progress; S1 and S2 accepted, S3 implemented and awaiting acceptance; final closeout pending
+- **Lifecycle Status**: Goal 4 complete; S1, S2 and S3 accepted; final closeout recorded (2026-10-02)
 - **Document Role**: durable plan and recovery ledger for presentation-only operationalization of Goal 3 Resolved Model Facts
-- **Last updated**: 2026-10-01
-- **Baseline**: `models-dev-capability-resolution` at `c40fc6e1`
+- **Last updated**: 2026-10-02
+- **Baseline**: `models-dev-capability-resolution` at `c40fc6e1`; closeout at `efc4ae5`
 - **Authority**: implementation sequencing only; Model Facts semantics remain controlled by items 06, 10, 12, 13 and 15
 - **Controlling inputs**: Goal 4 owner brief (project thread), item 15 (Goal 3 closeout), current production code
 
@@ -36,7 +36,7 @@ Localized keys: `settings.modelsCapabilities.facts.*` (state, stateExplanation, 
 | --- | --- | --- |
 | S1 Inspector explainability | accepted | `37336f7` |
 | S2 Capability-aware control explanations | accepted | `6870fd5`, `72af221` |
-| S3 Source Priority operational UX | implemented, awaiting acceptance | `a6857f2` |
+| S3 Source Priority operational UX | accepted | `a6857f2` |
 
 ### S1 — Inspector explainability
 
@@ -124,6 +124,8 @@ Acceptance evidence:
 - S2 inventory: no Goal 3 source paths for thinking level / budget, reasoning summary, image output mode or attachments (part of the Gemini thinking vertical slice).
 - `validationHint` and the image editor labels are hardcoded English (i18n polish).
 - Source Priority: presets, a "which facts would change" dry-run preview, and shortening the raw revision hash (polish / out of S3 scope).
+- Closeout review (P3, non-blocking): during a switch between two resolved models the previous explanations, including their Inspector subject, stay visible until the refresh completes (same as the projection); the refresh-failure catch path is covered only by component/unit tests and route computation sits outside its `try`; `refreshFailed` can interpolate a raw (Electron-wrapped) error message; some secondary Inspector text (`staleReason`, `recordOutcome`, Fields-tab `sourceKind` / `disposition`) is a raw enum; an exact-path open does not scroll the detail into view; a claim without a priority shows an empty priority label.
+- Closeout review (P3, non-blocking): the golden invariance test exercises the S1 mapping only, not the S2 control / S3 rank helpers (all pure); the capability refresh now also awaits the Inspector read, so stale-revision retries wait slightly longer (same outcome); "load latest and keep my edits" lets the next save overwrite a concurrent writer's values by explicit user action (server CAS unchanged).
 - Known pre-existing failures at the `315fd49d` checkpoint (7 stale expectations, 20 Windows/CRLF-only tests, 2 suites needing the Electron binary) are out of scope.
 
 ## Validation actually run
@@ -152,3 +154,27 @@ S3 (cloud, Node ABI target, `npm ci` then `npm run rebuild:node`):
 - `tsc --noEmit`, `vue-tsc --noEmit`: clean.
 - `i18n:check`, `i18n:scan-hardcoded` (46 findings, same as baseline, none in S3 files), `gate:generation-v2-goal3-authority`, `gate:model-identity-purge`, `gate:generation-v2-zero-residual`, `gate:docs`, `git diff --check`: pass.
 - Not run in S3: Vite build, Electron smoke (cloud has no display), full suite.
+
+## Goal 4 closeout (2026-10-02)
+
+Verdict: **PASS**. Goal 4 is complete and closed at `efc4ae5`; this record adds documentation only. No closeout blocker was found and no correction was made.
+
+Acceptance (read-only reviews of `c40fc6e..efc4ae5`):
+
+- Product acceptance: Inspector "why" panel, six distinct presentation states, no silent control removal, unverified markers, exact Inspector navigation, refresh failure not stuck on "checking", and every Source Priority item (no coercion to 0, localized stale / invalid / unavailable errors, draft kept after stale CAS, rank / tie / equal-priority conflict explanation, Inspector links both ways) are met. en-US and zh-CN `settings.json` have identical key sets. Findings were P3 only (deferred ledger above).
+- Shared presentation authority: S1, S2 and S3 import `src/shared/model-facts/modelFactPresentation.ts`; no renderer winner / conflict computation, no `valuesDiffer` / "values differ"; `sourcePriorityRanks` / `sourcePriorityTies` only label the editor.
+- Goal 3 semantic invariance: under `src/next/generation-v2` Goal 4 changes only the pure move of the runtime projection table into `runtimeProjectionSourcePathsV1.ts` (entry-for-entry identical; `stateFor` / `domainFor` untouched) and the new golden test. Resolver, source adapters, authority registry, materialization, source priority config / service / CAS / IPC and `capabilityRevision` computation are unchanged; no `electron/` file changed. Send-time gates still read `composerImageInputSupported` and unchanged `:disabled` expressions; explanations are display-only.
+
+Validation at `efc4ae5` (cloud, Ubuntu 24.04, Node 22.22.0, `npm ci`, `npm run rebuild:node`):
+
+- Focused UI (`vitest.ui.config.ts`, Goal 4 + S1/S2/S3 regression suites): 20 files, 158 tests pass.
+- Focused unit (`src/shared/model-facts`, `src/next/generation-v2/model-facts` incl. golden invariance, `src/shared/i18n`, `src/next/generation-v2/capability`): 33 files, 250 tests pass.
+- Focused integration (`sourcePriorityConfigV1Repo`, `generationV2SourcePriorityConfigIpc`): 2 files, 3 tests pass.
+- Full UI partition: 70 files, 500 tests pass.
+- Full unit partition: 2704 pass, 11 fail. Full integration partition: 1100 pass, 28 fail, 2 suites error, 102 skipped. None of the failing files is touched by Goal 4; the same 11 + 28 test failures reproduce at the pre-Goal 4 baseline `c40fc6e`. Classification: stale expectations (DeepSeek `stableCapabilityPolicyV2` 1, Gemini `interactionsImageCommandsV2` 5, `openAIChatCompatibleGenerationV2Coordinator` 1); pre-existing platform-dependent failures on Linux, Windows path / CRLF fixture / Windows plugin-layout assumptions (`externalProcessPolicy` 3, OpenAI Responses contract / registry evidence hash 2, `logSanitizer` 2, `productIdentity` 1, DFC LibreOffice installer / runtime 5, `enginePluginLifecycleService` 19); the 2 suite errors (`generationV2ModelAvailabilityIpc`, `electronSessionProxyController`) are "Electron failed to install correctly" in the full run and both pass in isolation (platform / environment).
+- `tsc --noEmit`, `vue-tsc --noEmit`: clean. `i18n:check`: pass; `i18n:scan-hardcoded`: pass (46 findings, unchanged baseline).
+- `gate:generation-v2-goal3-authority`, `gate:model-identity-purge`, `gate:generation-v2-zero-residual`, `gate:docs`: pass. `npx vite build`: pass. `git diff --check`: clean.
+- Electron smoke: **not run; pending local validation.** Xvfb is available, but `npm run test:electron-smoke` stops in `rebuild:electron` because the cloud network policy denies `www.electronjs.org` (Electron headers for node-gyp). Run `npm run test:electron-smoke` on the local Windows checkout. This is a platform limitation, not a Goal 4 semantic failure.
+- ABI: final target `node`; the failed Electron rebuild was followed by `npm run rebuild:node` and the DB-backed Source Priority integration tests were re-run green. No native artifacts committed.
+
+Not started (out of Goal 4): the Gemini thinking provider-data vertical slice, Goal 5, and every item in the deferred ledger.
