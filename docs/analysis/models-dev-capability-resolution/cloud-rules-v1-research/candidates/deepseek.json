@@ -1,0 +1,240 @@
+[
+  {
+    "ruleId": "deepseek.content-generate.v1",
+    "label": "operations.supported",
+    "description": null,
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "operations.supported",
+      "value": {
+        "kind": "operation_kind_set",
+        "values": [
+          "content_generate"
+        ],
+        "completeness": "partial"
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:chat-live-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "One confirmed operation; neither Beta completions nor other API operations added to stable Chat profile.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "verifiedAt": "2026-10-02T05:08:31.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.context-max.v1",
+    "label": "limits.contextWindow.maxTokens",
+    "description": "Precise official documented context fallback; cannot override higher-priority models.dev context1000000.",
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "limits.contextWindow.maxTokens",
+      "value": {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:models-chrome-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "Official live schema example1048576 vs models.dev1000000; Rule adds official precise fallback/provenance but lower default priority cannot override models.dev.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/api/list-models/",
+      "verifiedAt": "2026-10-02T05:07:14.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.effort-default.v1",
+    "label": "reasoning.effort.providerDefault",
+    "description": null,
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "reasoning.effort.providerDefault",
+      "value": {
+        "kind": "native_string",
+        "value": "high"
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:models-chrome-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/api/list-models/",
+      "verifiedAt": "2026-10-02T05:07:14.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.flash-training-tool-use.v1",
+    "label": "tools.trainingForToolUse",
+    "description": "Hosted V4.1-Flash tool-schema/environment training; exact alias-to-version inference requires coordinator approval.",
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash"
+      ]
+    },
+    "assertion": {
+      "path": "tools.trainingForToolUse",
+      "value": {
+        "kind": "support",
+        "value": "supported"
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:flash-paper-20261002",
+      "evidenceKind": "explicit_provider_series",
+      "evidenceNote": "First-party V4.1-Flash report sections5.1.1/5.1.2 describes training with mocked API/tool schemas and agent environments. Current first-party pricing maps exact deepseek-flash to that version; not sibling-prefix inference. INFERRED_HIGH coordinator approval pending.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://arxiv.org/html/2609.19969",
+      "verifiedAt": "2026-10-02T05:14:03.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.reasoning-modes.v1",
+    "label": "reasoning.modes.nativeValues",
+    "description": null,
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "reasoning.modes.nativeValues",
+      "value": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "completeness": "complete"
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:pricing-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "Wire values thinking.type; effort none is a toggle shortcut, not thinking effort level.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "verifiedAt": "2026-10-02T05:04:22.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.reasoning-required.v1",
+    "label": "reasoning.required",
+    "description": null,
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "reasoning.required",
+      "value": {
+        "kind": "boolean",
+        "value": false
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:pricing-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "Non-thinking mode explicitly supported; reasoning is not required.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "verifiedAt": "2026-10-02T05:04:22.000Z",
+      "derivation": null
+    }
+  },
+  {
+    "ruleId": "deepseek.top-p-default.v1",
+    "label": "sampling.topP.providerDefault",
+    "description": null,
+    "priority": 0,
+    "configured": "default",
+    "providerAuthorityId": "deepseek",
+    "endpointProfileId": "deepseek-stable-api-v1",
+    "selector": {
+      "kind": "exact",
+      "nativeModelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "assertion": {
+      "path": "sampling.topP.providerDefault",
+      "value": {
+        "kind": "decimal",
+        "value": 1
+      }
+    },
+    "evidence": {
+      "evidenceSourceRef": "deepseek:chat-live-20261002",
+      "evidenceKind": "explicit_provider",
+      "evidenceNote": "Stable Chat reference explicitly sets wire default1; thinking effective interval0.95–1 and non-thinking fixed1 both retain the same default. Mode-conditioned interval is separately ONTOLOGY_GAP.",
+      "identityEvidenceKind": "official_exact_model_doc",
+      "identityEvidenceSourceRef": "deepseek:pricing-20261002",
+      "provenanceUrl": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "verifiedAt": "2026-10-02T05:08:31.000Z",
+      "derivation": null
+    }
+  }
+]

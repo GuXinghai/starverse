@@ -1,0 +1,281 @@
+{
+  "verifiedAt": "2026-10-02T05:48:04.482Z",
+  "namespaceCounts": {
+    "bytedance-seed": 11,
+    "black-forest-labs": 8,
+    "liquid": 3,
+    "apodex": 1,
+    "microsoft": 12,
+    "unbiased": 2,
+    "heygen": 2,
+    "togethercomputer": 1,
+    "inception": 3,
+    "voyageai": 9,
+    "openai": 120,
+    "anthropic": 29,
+    "upstage": 4,
+    "respan": 3,
+    "typesafe": 2,
+    "jaredpalmer": 1,
+    "perceptron": 2,
+    "google": 53,
+    "fish-audio": 6,
+    "fireworks": 1,
+    "inclusionai": 6,
+    "z-ai": 18,
+    "qwen": 64,
+    "recraft": 16,
+    "stealth": 1,
+    "aion-labs": 6,
+    "cohere": 9,
+    "assemblyai": 1,
+    "xiaomi": 5,
+    "x-ai": 14,
+    "prism-ml": 1,
+    "~typesafe": 1,
+    "~deepseek": 3,
+    "inference-net": 2,
+    "meta": 8,
+    "~openai": 5,
+    "sakana": 4,
+    "deepseek": 15,
+    "nex-agi": 2,
+    "minimax": 13,
+    "ibm-granite": 2,
+    "tencent": 7,
+    "alibaba": 6,
+    "~z-ai": 2,
+    "dots-studio": 1,
+    "nvidia": 15,
+    "mistralai": 31,
+    "deepgram": 3,
+    "bytedance": 6,
+    "thinkingmachines": 4,
+    "runway": 2,
+    "poolside": 4,
+    "krea": 3,
+    "meituan": 1,
+    "openrouter": 6,
+    "moonshotai": 8,
+    "kwaipilot": 1,
+    "~x-ai": 1,
+    "~anthropic": 4,
+    "sourceful": 4,
+    "stepfun": 2,
+    "kwaivgi": 3,
+    "~google": 2,
+    "~moonshotai": 1,
+    "canopylabs": 1,
+    "sesame": 1,
+    "hexgrad": 1,
+    "arcee-ai": 1,
+    "rekaai": 2,
+    "perplexity": 7,
+    "writer": 1,
+    "relace": 2,
+    "amazon": 5,
+    "thenlper": 2,
+    "intfloat": 3,
+    "sentence-transformers": 5,
+    "baai": 3,
+    "thedrummer": 3,
+    "nousresearch": 3,
+    "cognitivecomputations": 1,
+    "morph": 2,
+    "baidu": 1,
+    "meta-llama": 8,
+    "sao10k": 3,
+    "anthracite-org": 1,
+    "mancer": 1,
+    "undi95": 1,
+    "gryphe": 1
+  },
+  "tokenizerFamilyCounts": {
+    "Media": 12,
+    "Other": 263,
+    "Qwen3": 41,
+    "GPT": 113,
+    "Claude": 29,
+    "Router": 26,
+    "Gemini": 43,
+    "Qwen": 24,
+    "Cohere": 8,
+    "Grok": 14,
+    "DeepSeek": 15,
+    "Mistral": 33,
+    "Gemma": 4,
+    "Nova": 5,
+    "Llama4": 2,
+    "Llama3": 10,
+    "Llama2": 3
+  },
+  "variantSuffixCounts": {
+    "free": 25,
+    "batch": 77
+  },
+  "floatingAliases": [
+    {
+      "id": "~typesafe/jev-latest",
+      "target": {
+        "name": "TypeSafe: Jev 1.13",
+        "slug": "typesafe/jev-1.13"
+      }
+    },
+    {
+      "id": "~deepseek/deepseek-pro-latest",
+      "target": {
+        "name": "DeepSeek: DeepSeek V4 Pro 0813",
+        "slug": "deepseek/deepseek-v4-pro-0813"
+      }
+    },
+    {
+      "id": "~deepseek/deepseek-flash-latest",
+      "target": {
+        "name": "DeepSeek: DeepSeek V4.1 Flash",
+        "slug": "deepseek/deepseek-v4.1-flash"
+      }
+    },
+    {
+      "id": "~openai/gpt-astra-latest",
+      "target": {
+        "name": "OpenAI: GPT-6 Astra",
+        "slug": "openai/gpt-6-astra"
+      }
+    },
+    {
+      "id": "~openai/gpt-sol-latest",
+      "target": {
+        "name": "OpenAI: GPT-6.1 Sol",
+        "slug": "openai/gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "~openai/gpt-terra-latest",
+      "target": {
+        "name": "OpenAI: GPT-5.6 Terra",
+        "slug": "openai/gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "~openai/gpt-luna-latest",
+      "target": {
+        "name": "OpenAI: GPT-6 Luna",
+        "slug": "openai/gpt-6-luna"
+      }
+    },
+    {
+      "id": "~z-ai/glm-flash-latest",
+      "target": {
+        "name": "Z.ai: GLM 5.3 Flash",
+        "slug": "z-ai/glm-5.3-flash"
+      }
+    },
+    {
+      "id": "~z-ai/glm-latest",
+      "target": {
+        "name": "Z.ai: GLM 5.3",
+        "slug": "z-ai/glm-5.3"
+      }
+    },
+    {
+      "id": "~deepseek/deepseek-v4-flash-latest",
+      "target": {
+        "name": "DeepSeek: DeepSeek V4 Flash 0731",
+        "slug": "deepseek/deepseek-v4-flash-0731"
+      }
+    },
+    {
+      "id": "~x-ai/grok-latest",
+      "target": {
+        "name": "SpaceXAI: Grok 4.7",
+        "slug": "x-ai/grok-4.7"
+      }
+    },
+    {
+      "id": "~anthropic/claude-fable-latest",
+      "target": {
+        "name": "Anthropic: Claude Fable 5.1",
+        "slug": "anthropic/claude-fable-5.1"
+      }
+    },
+    {
+      "id": "~anthropic/claude-haiku-latest",
+      "target": {
+        "name": "Anthropic: Claude Haiku 4.5",
+        "slug": "anthropic/claude-haiku-4.5"
+      }
+    },
+    {
+      "id": "~openai/gpt-mini-latest",
+      "target": {
+        "name": "OpenAI: GPT-5.4 Mini",
+        "slug": "openai/gpt-5.4-mini"
+      }
+    },
+    {
+      "id": "~google/gemini-pro-latest",
+      "target": {
+        "name": "Google: Gemini 3.1 Pro Preview",
+        "slug": "google/gemini-3.1-pro-preview"
+      }
+    },
+    {
+      "id": "~moonshotai/kimi-latest",
+      "target": {
+        "name": "MoonshotAI: Kimi K3",
+        "slug": "moonshotai/kimi-k3"
+      }
+    },
+    {
+      "id": "~google/gemini-flash-latest",
+      "target": {
+        "name": "Google: Gemini 3.8 Flash",
+        "slug": "google/gemini-3.8-flash"
+      }
+    },
+    {
+      "id": "~anthropic/claude-sonnet-latest",
+      "target": {
+        "name": "Anthropic: Claude Sonnet 5.5",
+        "slug": "anthropic/claude-sonnet-5.5"
+      }
+    },
+    {
+      "id": "~anthropic/claude-opus-latest",
+      "target": {
+        "name": "Anthropic: Claude Opus 5.5",
+        "slug": "anthropic/claude-opus-5.5"
+      }
+    }
+  ],
+  "routers": [
+    "typesafe/jev-router",
+    "~typesafe/jev-latest",
+    "~deepseek/deepseek-pro-latest",
+    "~deepseek/deepseek-flash-latest",
+    "~openai/gpt-astra-latest",
+    "~openai/gpt-sol-latest",
+    "~openai/gpt-terra-latest",
+    "~openai/gpt-luna-latest",
+    "~z-ai/glm-flash-latest",
+    "~z-ai/glm-latest",
+    "~deepseek/deepseek-v4-flash-latest",
+    "openrouter/auto-beta",
+    "~x-ai/grok-latest",
+    "openrouter/fusion",
+    "~anthropic/claude-fable-latest",
+    "~anthropic/claude-haiku-latest",
+    "~openai/gpt-mini-latest",
+    "~google/gemini-pro-latest",
+    "~moonshotai/kimi-latest",
+    "~google/gemini-flash-latest",
+    "~anthropic/claude-sonnet-latest",
+    "~anthropic/claude-opus-latest",
+    "openrouter/pareto-code",
+    "openrouter/free",
+    "openrouter/bodybuilder",
+    "openrouter/auto"
+  ],
+  "regexCount": 0,
+  "regexDisposition": "KNOWN_MEMBERS_ONLY; no FUTURE_SERIES_SAFE assertion proposed. OpenRouter can independently alter upstream variants, aliases, routing, effort normalization and backend support."
+}

@@ -1,0 +1,292 @@
+{
+  "verifiedAt": "2026-10-02T05:48:04.482Z",
+  "conflicts": [
+    {
+      "conflictId": "openrouter.conflict.opus55-default",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.opus55-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/opus-5-5",
+        "retrievedAt": "2026-10-02T05:32:59.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "anthropic/claude-opus-5.5 default effort",
+      "apiVersion": "v1",
+      "likelyExplanation": "Catalog high versus guide omitted-effort medium; gateway UI advertised default and forwarded omission may differ. Neither page has a known update time.",
+      "proposedDisposition": "AMBIGUOUS_DEFER; no default Rule; existing native mapping may still ingest high.",
+      "unresolvedQuestion": "Which value describes OpenRouter effective omitted-effort behavior on each backend?"
+    },
+    {
+      "conflictId": "openrouter.conflict.opus5-budget",
+      "sourceA": {
+        "evidenceId": "openrouter.opus5-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/opus-5",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.opus55-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/opus-5-5",
+        "retrievedAt": "2026-10-02T05:32:59.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "anthropic/claude-opus-5 reasoning.max_tokens",
+      "apiVersion": "v1",
+      "likelyExplanation": "Opus5 guide says budget ignored; Opus5.5 guide says predecessor accepts fixed budgets. Possible migration prose stale/scope-specific; no supersession date established.",
+      "proposedDisposition": "AMBIGUOUS_DEFER; no Opus5 budget Rule.",
+      "unresolvedQuestion": "Did Opus5 budget forwarding change, or is predecessor comparison inaccurate?"
+    },
+    {
+      "conflictId": "openrouter.conflict.sonnet5-none",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.sonnet5-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/sonnet-5",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "anthropic/claude-sonnet-5 effort domain",
+      "apiVersion": "v1",
+      "likelyExplanation": "Catalog allowlist excludes none, guide describes disabling with none. enabled=false can be independently documented; effort vocabulary and toggle channel may differ.",
+      "proposedDisposition": "AMBIGUOUS_DEFER for complete effort-domain Rule; enabled=false positive agrees with models.dev and is not duplicated.",
+      "unresolvedQuestion": "Is none rejected, coerced, or accepted on exact Sonnet5 by each backend?"
+    },
+    {
+      "conflictId": "openrouter.conflict.unified-shorthand",
+      "sourceA": {
+        "evidenceId": "openrouter.reasoning-guide",
+        "url": "https://openrouter.ai/docs/guides/best-practices/reasoning-tokens",
+        "retrievedAt": "2026-10-02T05:19:57.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.parameter-guide",
+        "url": "https://openrouter.ai/docs/api_reference/parameters",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "reasoning.effort vs reasoning_effort",
+      "apiVersion": "v1",
+      "likelyExplanation": "Unified parameter documents max while shorthand enum lacks max; different API schema/normalization surfaces.",
+      "proposedDisposition": "Use exact supported_efforts for unified reasoning.effort; do not assert shorthand equivalence.",
+      "unresolvedQuestion": "Is shorthand max accepted or restricted on v1 chat?"
+    },
+    {
+      "conflictId": "openrouter.conflict.generic-default",
+      "sourceA": {
+        "evidenceId": "openrouter.reasoning-guide",
+        "url": "https://openrouter.ai/docs/guides/best-practices/reasoning-tokens",
+        "retrievedAt": "2026-10-02T05:19:57.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "Generic enabled=true shorthand vs per-model default_effort",
+      "apiVersion": "v1",
+      "likelyExplanation": "Generic medium example may be enabling convention, not omitted per-model default.",
+      "proposedDisposition": "No universal medium default; use exact fields when reliable.",
+      "unresolvedQuestion": "Which parameters determine enabling default when effort omitted?"
+    },
+    {
+      "conflictId": "openrouter.conflict.sonnet5-endpoints",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.endpoints.anthropic.claude-sonnet-5",
+        "url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5-20260630/endpoints",
+        "retrievedAt": "2026-10-02T05:25:55.549Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "structured_outputs availability",
+      "apiVersion": "v1",
+      "likelyExplanation": "Model-level metadata aggregates capabilities, while Bedrock endpoint supported_parameters omits structured_outputs.",
+      "proposedDisposition": "Availability is advertised/route-dependent; require_parameters execution prerequisite outside Rules.",
+      "unresolvedQuestion": "Should model-level support mean any compatible route, or must coordinator defer such flags?"
+    },
+    {
+      "conflictId": "openrouter.conflict.gemini38-endpoints",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.endpoints.google.gemini-3.8-flash",
+        "url": "https://openrouter.ai/api/v1/models/google/gemini-3.8-flash-20260902/endpoints",
+        "retrievedAt": "2026-10-02T05:25:55.076Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "sampling parameters availability",
+      "apiVersion": "v1",
+      "likelyExplanation": "AI Studio endpoints include temperature/top_p; Vertex sample omits them.",
+      "proposedDisposition": "No every-route support guarantee and no unsupported assertion from omissions.",
+      "unresolvedQuestion": "How should gateway availability be presented with pinned backend constraints?"
+    },
+    {
+      "conflictId": "openrouter.conflict.claude47-identity",
+      "sourceA": {
+        "evidenceId": "openrouter.claude47-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/claude-4-7",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": "2026-06-22"
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "Migration exact ID anthropic/claude-4.7-opus absent; catalog anthropic/claude-opus-4.7",
+      "apiVersion": "v1",
+      "likelyExplanation": "Likely stale/example spelling; no exact-ID identity proof or redirect was retrieved.",
+      "proposedDisposition": "No Rule attached to absent ID; no rewriting or cross-sibling inference.",
+      "unresolvedQuestion": "Does official redirect/archive explicitly link these identities?"
+    },
+    {
+      "conflictId": "openrouter.conflict.claude-default-history",
+      "sourceA": {
+        "evidenceId": "openrouter.claude47-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/claude-4-7",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": "2026-06-22"
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.sonnet5-migration",
+        "url": "https://openrouter.ai/docs/cookbook/evaluate-and-optimize/model-migrations/sonnet-5",
+        "retrievedAt": "2026-10-02T05:24:40.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "Historical Anthropic opt-in reasoning versus new Sonnet5 on-by-default",
+      "apiVersion": "v1",
+      "likelyExplanation": "June22 legacy family wording predates Sonnet5 release; exact later guide is narrower.",
+      "proposedDisposition": "No global Anthropic default; default_enabled has ontology gap.",
+      "unresolvedQuestion": "Need a future canonical default-enabled path rather than toggle reuse?"
+    },
+    {
+      "conflictId": "openrouter.conflict.image-profile",
+      "sourceA": {
+        "evidenceId": "openrouter.image-api",
+        "url": "https://openrouter.ai/docs/guides/overview/multimodal/image-generation",
+        "retrievedAt": "2026-10-02T05:21:48.000Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.image-api-announcement",
+        "url": "https://openrouter.ai/blog/announcements/image-api/",
+        "retrievedAt": "2026-10-02T05:35:48.000Z",
+        "publishedAt": "2026-06-23",
+        "updatedAt": null
+      },
+      "modelOrApiScope": "Dedicated Images versus existing Chat image models",
+      "apiVersion": "v1",
+      "likelyExplanation": "Dedicated API docs emphasize image discovery, but June23 continuation and September18 comparison preserve chat for exact text-image overlap.",
+      "proposedDisposition": "9 exact positive chat-image candidates; dedicated model domains remain deferred.",
+      "unresolvedQuestion": "Can coordinator accept advertised image generation flag without implying dedicated API controls?"
+    },
+    {
+      "conflictId": "openrouter.conflict.modelsdev-input",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.modelsdev-comparison",
+        "url": "https://models.dev/api.json",
+        "retrievedAt": "2026-10-02T05:17:10.365Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "119 exact input-modality raw differences",
+      "apiVersion": "v1",
+      "likelyExplanation": "Many models.dev entries advertise pdf while OpenRouter metadata says file; generic_file versus pdf are different canonical meanings. Other extra modality differences remain in per-model comparison.",
+      "proposedDisposition": "No broad input replacement Rule; native mapped metadata takes precedence; preserve raw discrepancies.",
+      "unresolvedQuestion": "Should native file imply PDF specifically, or only generic_file? No inference proposed."
+    },
+    {
+      "conflictId": "openrouter.conflict.modelsdev-reasoning",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.modelsdev-comparison",
+        "url": "https://models.dev/api.json",
+        "retrievedAt": "2026-10-02T05:17:10.365Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "rekaai/reka-edge, qwen/qwen3-max, qwen/qwen-plus-2025-07-28",
+      "apiVersion": "v1",
+      "likelyExplanation": "OpenRouter reasoning object present but models.dev reasoning=false. Current first-party metadata stronger; Qwen entries have imminent expiry.",
+      "proposedDisposition": "Native mapped support already resolves first-party facts when ingested; no redundant or expiring correction Rule.",
+      "unresolvedQuestion": "Is reasoning object indicative of semantic reasoning rather than gateway-only metadata for Reka Edge?"
+    },
+    {
+      "conflictId": "openrouter.conflict.modelsdev-output",
+      "sourceA": {
+        "evidenceId": "openrouter.inventory.20261002",
+        "url": "https://openrouter.ai/api/v1/models",
+        "retrievedAt": "2026-10-02T05:14:00.920Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "sourceB": {
+        "evidenceId": "openrouter.modelsdev-comparison",
+        "url": "https://models.dev/api.json",
+        "retrievedAt": "2026-10-02T05:17:10.365Z",
+        "publishedAt": null,
+        "updatedAt": null
+      },
+      "modelOrApiScope": "minimax/minimax-01 output max",
+      "apiVersion": "v1",
+      "likelyExplanation": "models.dev output=40000 differs from top_provider.max_completion_tokens; primary-provider and model-wide ceilings may have different scope.",
+      "proposedDisposition": "AMBIGUOUS_DEFER; do not promote top-provider ceiling into model maximum.",
+      "unresolvedQuestion": "What is the exact model-level output maximum across routes?"
+    }
+  ],
+  "upstreamDocumentationNotAuthority": true
+}

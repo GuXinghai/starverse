@@ -1,0 +1,4459 @@
+{
+  "provider": "deepseek",
+  "providerAuthorityId": "deepseek",
+  "endpointProfileId": "deepseek-stable-api-v1",
+  "asOf": "2026-10-02",
+  "facts": [
+    {
+      "factId": "deepseek:fact:context-max",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "limits.contextWindow.maxTokens",
+      "canonicalValue": {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Official live schema example1048576 vs models.dev1000000; Rule adds official precise fallback/provenance but lower default priority cannot override models.dev.",
+      "proposedRuleIds": [
+        "deepseek.context-max.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 1000000,
+              "unit": "token"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 1000000,
+              "unit": "token"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ],
+      "sourceConflictAudit": {
+        "sourceA": "deepseek:models-chrome-20261002",
+        "sourceAValue": 1048576,
+        "sourceAVersion": "DeepSeek-V4.1-Flash / DeepSeek-V4-Pro-0813",
+        "sourceADate": "2026-10-02T05:07:14.000Z",
+        "sourceASurface": "Official documented GET /models example; not authenticated response",
+        "sourceB": "deepseek:models-dev-canonical-20261002",
+        "sourceBValue": 1000000,
+        "sourceBDate": "2026-10-02T05:12:03.622Z",
+        "sourceBSurface": "Public models.dev rows transformed with current real adapter",
+        "likelyExplanation": "Official exact binary-token metadata vs rounded 1M pricing/aggregator value; explanation is an inference, not confirmed origin.",
+        "explicitSupersession": false,
+        "disposition": "Keep conflicting exact provider default candidate for fallback/provenance pending coordinator; priority0 Cloud default cannot override higher-priority existing source, so this does not correct current resolved models.dev data."
+      }
+    },
+    {
+      "factId": "deepseek:fact:output-max",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "limits.output.maxTokens",
+      "canonicalValue": {
+        "kind": "integer",
+        "value": 393216,
+        "unit": "token"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 393216,
+              "unit": "token"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 393216,
+              "unit": "token"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:flash-input",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "modalities.input",
+      "canonicalValue": {
+        "kind": "media_kind_set",
+        "values": [
+          "image",
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [
+        "deepseek-flash"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "media_kind_set",
+              "values": [
+                "image",
+                "text"
+              ],
+              "completeness": "complete"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:pro-input",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "modalities.input",
+      "canonicalValue": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "media_kind_set",
+              "values": [
+                "text"
+              ],
+              "completeness": "complete"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:output-modalities",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "modalities.output",
+      "canonicalValue": {
+        "kind": "media_kind_set",
+        "values": [
+          "text"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "media_kind_set",
+              "values": [
+                "text"
+              ],
+              "completeness": "complete"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "media_kind_set",
+              "values": [
+                "text"
+              ],
+              "completeness": "complete"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:effort-levels",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.effort.nativeValues",
+      "canonicalValue": {
+        "kind": "native_string_set",
+        "values": [
+          "high",
+          "low",
+          "max"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "native_string_set",
+              "values": [
+                "high",
+                "low",
+                "max"
+              ],
+              "completeness": "complete"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "native_string_set",
+              "values": [
+                "high",
+                "low",
+                "max"
+              ],
+              "completeness": "complete"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:effort-default",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.effort.providerDefault",
+      "canonicalValue": {
+        "kind": "native_string",
+        "value": "high"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Provider Native adapter identity-only. Public snapshot transformed with current adapter; local observation not read.",
+      "proposedRuleIds": [
+        "deepseek.effort-default.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:thinking-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-required",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.required",
+      "canonicalValue": {
+        "kind": "boolean",
+        "value": false
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Non-thinking mode explicitly supported; reasoning is not required.",
+      "proposedRuleIds": [
+        "deepseek.reasoning-required.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-toggle",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.toggle.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:thinking-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-modes",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.modes.nativeValues",
+      "canonicalValue": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:thinking-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Wire values thinking.type; effort none is a toggle shortcut, not thinking effort level.",
+      "proposedRuleIds": [
+        "deepseek.reasoning-modes.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:flash-attachments",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "input.attachments.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:vision-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Support is image attachments only; do not imply generic_file/PDF support. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:sampling-mode-conditional",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Current official catalog/pricing explicitly documents both exact model subjects; no backend-family extrapolation.",
+      "evidenceRefs": [
+        "deepseek:thinking-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Temperature ignored in thinking; top_p applies only in thinking and clamped >=0.95. Current fact ontology has no mode-conditioned support/bounds.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:tools-calling",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "tools.calling.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:tools-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:structured-output",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "structuredOutput.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:json-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "JSON output support only. Strict tool schema constrained to Beta surface. Public models.dev value agrees and current adapter maps it; additional exact Rule adds little.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:top-p-default",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.topP.providerDefault",
+      "canonicalValue": {
+        "kind": "decimal",
+        "value": 1
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Stable Chat reference explicitly sets wire default1; thinking effective interval0.95–1 and non-thinking fixed1 both retain the same default. Mode-conditioned interval is separately ONTOLOGY_GAP.",
+      "proposedRuleIds": [
+        "deepseek.top-p-default.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:output-default-mode",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "max_tokens defaults 8K non-thinking /64K thinking /128K max effort; ontology lacks output default and mode conditional default, not budgetTokens.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:content-generate",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "operations.supported",
+      "canonicalValue": {
+        "kind": "operation_kind_set",
+        "values": [
+          "content_generate"
+        ],
+        "completeness": "partial"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "One confirmed operation; neither Beta completions nor other API operations added to stable Chat profile.",
+      "proposedRuleIds": [
+        "deepseek.content-generate.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:image-generation",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "image.generation.support",
+      "canonicalValue": null,
+      "explicitModels": [],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "UNRESOLVED",
+      "modelCoverageRationale": "Exact output modalities are documented; canonical image-generation semantics not explicitly covered.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:image-generation-restriction-search-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Closed output_modalities=[text] is separately ALREADY_MODELS_DEV. Metadata-to-image.generation unsupported would require an inference policy; three built-in official-domain searches plus Exa found no explicit image-generation prohibition. No negative Rule from silence.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:flash-training-tool-use",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "tools.trainingForToolUse",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-flash"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Exact API alias explicitly serves named V4.1-Flash training model, corroborated current release and pricing.",
+      "evidenceRefs": [
+        "deepseek:flash-paper-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "RULE_CANDIDATE",
+      "ambiguityNotes": "Coverage maps named V4.1-Flash training model to exact hosted deepseek-flash via current pricing/announcement; independent review required.",
+      "proposedRuleIds": [
+        "deepseek.flash-training-tool-use.v1"
+      ],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "inferenceAudit": {
+        "nativeModelId": "deepseek-flash",
+        "providerAuthorityId": "deepseek",
+        "endpointProfileId": "deepseek-stable-api-v1",
+        "explicitlyDocumentedSiblingModels": [],
+        "primaryEvidence": "deepseek:flash-paper-20261002",
+        "corroboratingEvidence": [
+          "deepseek:pricing-20261002",
+          "deepseek:flash-release-20260910"
+        ],
+        "sameSemanticSeriesRationale": "No sibling extrapolation: identity bridge from exact hosted API name to first-party trained model version.",
+        "newerThanPrimaryDocumentation": false,
+        "variantDifferencesConsidered": [
+          "Flash current version is V4.1 not earlier V4 Flash; Pro excluded; base/instruct distinction checked"
+        ],
+        "contradictionSearchesPerformed": [
+          "Official changelog and pricing current serving version",
+          "Model card current/API numeric effort boundary",
+          "Retired Vision Exp and V4 Flash routing"
+        ],
+        "knownExceptionsSearched": [
+          "Pro GA distinct current version",
+          "Temporary alias retirement",
+          "Base checkpoint not hosted instruct"
+        ],
+        "finalInferenceRationale": "Hosted Flash serves the instructed V4.1-Flash model whose tool-schema environment RL training is explicitly described.",
+        "coordinatorVerdict": "pending"
+      },
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "INFERRED_HIGH"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:pro-tool-training",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "tools.trainingForToolUse",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:weights-cards-20261002",
+        "deepseek:pro-ga-20260813"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Current API maps Pro0813; preview weights generic agent post-training not exact current checkpoint training evidence.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:auto-prefix-cache",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:cache-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Automatic provider prefix caching is not contextManagement/native action or context_cache_create operation; no canonical prompt-cache fact.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:image-files-quotas",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:vision-20261002",
+        "deepseek:files-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Image file format/size/count/upload/storage/expiry not representable by broad attachment support.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:strict-beta-schema",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:tools-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Strict function schema capability applies /beta; current stable profile and structuredOutput.support cannot encode strict-vs-JSON or supported schema keywords.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:thinking-default-enabled",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": null,
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Official exact per-model example corroborated by current pricing; selectors do not create subjects.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Ontology lacks reasoning enabled provider default; required=false and toggle supported cannot assert default enabled.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-limits-input-maxTokens",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "limits.input.maxTokens",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No separately documented input-token max. Context includes input+output; do not invent input bound via arithmetic.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "missing",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "missing",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-reasoning-budgetTokens-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.budgetTokens.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Chat profile does not document independently controlled hard thinking budget. Anthropic budget_tokens ignored is different protocol; no cross-profile unsupported assertion.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "missing",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "missing",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-reasoning-budgetTokens-domain",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.budgetTokens.domain",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Output max/default and scalar effort do not define reasoning-token budget domain; no bounds invented.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "missing",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "missing",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-generation-effort-nativeValues",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "generation.effort.nativeValues",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "API reasoning_effort controls thinking, not generation effort. Do not duplicate/overload reasoning domain.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-generation-effort-providerDefault",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "generation.effort.providerDefault",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No independent generation effort default established.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-sampling-temperature-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.temperature.support",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ALREADY_MODELS_DEV",
+      "ambiguityNotes": "Temperature supported in non-thinking per explicit current API; models.dev mapped generic support agrees. Mode-conditioned details recorded in ontology gap.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "present_valid",
+            "value": {
+              "kind": "support",
+              "value": "supported"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXPLICIT_MODEL"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXPLICIT_MODEL"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-sampling-temperature-providerDefault",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.temperature.providerDefault",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Wire default1 is explicit but only active non-thinking. Deferred standalone default to avoid presenting ignored thinking parameter as effective default.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-sampling-temperature-modelMaximum",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.temperature.modelMaximum",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "ONTOLOGY_GAP",
+      "ambiguityNotes": "Wire accepted maximum2 explicit but conditional effective temperature semantics lack mode qualifier.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-sampling-topK-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.topK.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No stable Chat top_k support/rejection established. Anthropic ignored top_k cannot cross profile.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-sampling-topK-providerDefault",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.topK.providerDefault",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No documented stable Chat top_k default.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-tools-codeExecution-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "tools.codeExecution.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Only function tools on stable Chat; function execution belongs to user. Native sandbox/code interpreter restriction explicit only in Responses; no cross-profile negative assertion.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-image-generation-aspectRatios",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "image.generation.aspectRatios",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Text-only output documented; no image-generation ratio domain to assert.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-image-generation-resolutionPresets-nativeValues",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Text-only output documented; no image-generation resolution preset domain.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-image-generation-resolutionPreset-providerDefault",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Text-only output documented; no image-generation preset default.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-search-web-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "search.web.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Current Responses explicitly ignores built-in web search, older indexed guide supported it. Stable Chat only function tools does not by itself establish exact canonical native search assertion.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-search-image-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "search.image.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No first-party native image search support/restriction for stable Chat profile found; no negative from silence.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-documents-citations-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "documents.citations.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No stable Chat native citation feature evidence; Anthropic ignored citations different profile.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-contextManagement-support",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "contextManagement.support",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "Automatic prefix cache != native compaction/context management; Responses context_management unsupported different profile.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:coverage-contextManagement-actions-nativeValues",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "contextManagement.actions.nativeValues",
+      "canonicalValue": null,
+      "explicitModels": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "inferredHighModels": [],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "KNOWN_MEMBERS_ONLY",
+      "modelCoverageRationale": "Coverage audit record only; no assertion inferred from silence.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:models-chrome-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "version_bound",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null
+      },
+      "classification": "AMBIGUOUS_DEFER",
+      "ambiguityNotes": "No stable Chat native management action set documented. Cache construction is automatic not a native action vocabulary.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-pro",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-flash",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        },
+        {
+          "nativeModelId": "deepseek-v4-pro",
+          "basis": "EXACT_ID_UNRESOLVED_CAPABILITY"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:context-max:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "limits.contextWindow.maxTokens",
+      "canonicalValue": {
+        "kind": "integer",
+        "value": 1048576,
+        "unit": "token"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "mapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 1000000,
+              "unit": "token"
+            }
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "present_valid",
+            "value": {
+              "kind": "integer",
+              "value": 1000000,
+              "unit": "token"
+            }
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "limits.contextWindow.maxTokens",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:models-chrome-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "limits.contextWindow.maxTokens",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:models-chrome-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:effort-default:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.effort.providerDefault",
+      "canonicalValue": {
+        "kind": "native_string",
+        "value": "high"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:models-chrome-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.effort.providerDefault",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:models-chrome-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.effort.providerDefault",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:models-chrome-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-required:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.required",
+      "canonicalValue": {
+        "kind": "boolean",
+        "value": false
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.required",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:pricing-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.required",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:pricing-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:reasoning-modes:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "reasoning.modes.nativeValues",
+      "canonicalValue": {
+        "kind": "native_string_set",
+        "values": [
+          "disabled",
+          "enabled"
+        ],
+        "completeness": "complete"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:pricing-20261002",
+        "deepseek:thinking-live-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.modes.nativeValues",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:pricing-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "reasoning.modes.nativeValues",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:pricing-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:top-p-default:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "sampling.topP.providerDefault",
+      "canonicalValue": {
+        "kind": "decimal",
+        "value": 1
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "sampling.topP.providerDefault",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:chat-live-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "sampling.topP.providerDefault",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:chat-live-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:content-generate:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "operations.supported",
+      "canonicalValue": {
+        "kind": "operation_kind_set",
+        "values": [
+          "content_generate"
+        ],
+        "completeness": "partial"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:chat-live-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "operations.supported",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:chat-live-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "operations.supported",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:chat-live-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    },
+    {
+      "factId": "deepseek:fact:flash-training-tool-use:compatibility-aliases",
+      "providerAuthorityId": "deepseek",
+      "endpointProfileId": "deepseek-stable-api-v1",
+      "canonicalPath": "tools.trainingForToolUse",
+      "canonicalValue": {
+        "kind": "support",
+        "value": "supported"
+      },
+      "explicitModels": [],
+      "inferredHighModels": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "inferredMediumModels": [],
+      "inferredLowModels": [],
+      "regexCandidate": null,
+      "identityPatternConfidence": "EXACT_DOCUMENTED_IDS",
+      "capabilityInheritanceConfidence": "INFERRED_HIGH",
+      "modelCoverageRationale": "Current pricing explicitly accepts both legacy IDs and routes them to DeepSeek-V4.1-Flash; assertion inferred through exact routing, with temporary identity lifetime unresolved.",
+      "evidenceRefs": [
+        "deepseek:flash-paper-20261002",
+        "deepseek:pricing-20261002",
+        "deepseek:flash-release-20260910",
+        "deepseek:updates-20261002"
+      ],
+      "temporalAssessment": {
+        "temporalClass": "unknown",
+        "validFrom": null,
+        "validThrough": null,
+        "recheckAfter": null,
+        "deprecatedAfter": null,
+        "supersededBy": null,
+        "lifecycleFlag": "temporary_moving_compatibility_alias"
+      },
+      "classification": "TEMPORALLY_UNSAFE",
+      "ambiguityNotes": "Aliases remain accepted but old backends were retired. No retirement deadline for aliases found. Coordinator lifecycle decision required; no candidate selector includes aliases. Does not invent future subject coverage.",
+      "proposedRuleIds": [],
+      "providerNative": {
+        "mappingSupport": "identity_only",
+        "currentValue": null,
+        "currentObservation": "local_source_not_read",
+        "codeRefs": [
+          "src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts#factsForSurface",
+          "src/next/generation-v2/model-facts/sourceCoverageManifestV1.ts"
+        ]
+      },
+      "modelsDev": {
+        "mappingSupport": "unmapped",
+        "currentValue": null,
+        "currentObservation": "public_snapshot_transformed_with_current_adapter",
+        "localObservation": "not_read",
+        "snapshotEvidenceRef": "deepseek:models-dev-canonical-20261002",
+        "byModel": [
+          {
+            "nativeModelId": "deepseek-v4-flash",
+            "state": "no_coverage",
+            "value": null
+          },
+          {
+            "nativeModelId": "deepseek-v4-flash-vision-exp",
+            "state": "no_coverage",
+            "value": null
+          }
+        ]
+      },
+      "coordinatorApproval": "pending",
+      "inferenceAudit": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "tools.trainingForToolUse",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:flash-paper-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "providerAuthorityId": "deepseek",
+          "endpointProfileId": "deepseek-stable-api-v1",
+          "assertionPath": "tools.trainingForToolUse",
+          "explicitlyDocumentedSiblingModels": [
+            "deepseek-flash"
+          ],
+          "primaryEvidence": "deepseek:flash-paper-20261002",
+          "corroboratingEvidence": [
+            "deepseek:pricing-20261002",
+            "deepseek:flash-release-20260910",
+            "deepseek:updates-20261002"
+          ],
+          "sameSemanticSeriesRationale": "Provider explicitly routes this exact accepted compatibility ID to the same hosted DeepSeek-V4.1-Flash version; no prefix/name extrapolation.",
+          "newerThanPrimaryDocumentation": false,
+          "variantDifferencesConsidered": [
+            "Earlier V4-Flash and Vision-Exp backends retired",
+            "Current target is V4.1 Flash with native vision",
+            "Pro0813 is separate; excluded",
+            "Hosted instructed model vs base weights"
+          ],
+          "contradictionSearchesPerformed": [
+            "Current pricing alias acceptance and version mapping",
+            "September10 migration notice",
+            "Current changelog reverses planned Pro retirement but keeps Flash migration"
+          ],
+          "knownExceptionsSearched": [
+            "Legacy chat/reasoner retired",
+            "Original Flash/Vision-Exp backends retired",
+            "Alias removal date not documented"
+          ],
+          "finalInferenceRationale": "Equivalent current routed backend supports this assertion, but temporary alias lifecycle remains unresolved; defer publication.",
+          "coordinatorVerdict": "pending"
+        }
+      ],
+      "modelCoverage": [
+        {
+          "nativeModelId": "deepseek-v4-flash",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        },
+        {
+          "nativeModelId": "deepseek-v4-flash-vision-exp",
+          "basis": "INFERRED_HIGH",
+          "coordinatorVerdict": "pending"
+        }
+      ]
+    }
+  ],
+  "researchStatus": "provider_research_complete_coordinator_review_pending",
+  "modelInventory": {
+    "currentPrimary": [
+      {
+        "nativeModelId": "deepseek-flash",
+        "modelVersion": "DeepSeek-V4.1-Flash",
+        "status": "stable_moving_alias"
+      },
+      {
+        "nativeModelId": "deepseek-v4-pro",
+        "modelVersion": "DeepSeek-V4-Pro-0813",
+        "status": "stable_moving_alias"
+      }
+    ],
+    "acceptedCompatibilityAliases": [
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp"
+    ],
+    "retiredNativeIds": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+    ],
+    "unestablishedNativeVersionNames": [
+      "DeepSeek-V4-Pro-0813",
+      "DeepSeek-V4.1-Flash"
+    ],
+    "inventoryBasis": "Official catalog documentation/current pricing; authenticated current model list not called",
+    "acceptedCompatibilityAliasDisposition": "TEMPORALLY_UNSAFE assertions documented separately; no candidate selectors; removal deadline unknown.",
+    "retiredNativeIdDisposition": "No current assertions/rules; documented retirement 2026-07-24T15:59:00.000Z; old values not revived.",
+    "nativeInventoryObservation": "Current official documentation and accepted-ID pricing, not authenticated current /models."
+  },
+  "finishedAt": "2026-10-02T05:22:19.000Z"
+}

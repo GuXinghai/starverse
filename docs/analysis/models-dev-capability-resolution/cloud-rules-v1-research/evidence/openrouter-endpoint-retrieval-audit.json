@@ -1,0 +1,810 @@
+[
+  {
+    "nativeModelId": "openai/gpt-6.1-sol",
+    "url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol-20260929/endpoints",
+    "retrievedAt": "2026-10-02T05:25:54.717Z",
+    "statusCode": 200,
+    "headers": {
+      "Date": "Fri, 02 Oct 2026 05:25:55 GMT",
+      "Content-Type": "application/json"
+    },
+    "sha256NetworkPayload": "670aa8bc088eb2cb72187104a13d4f7ee13428ed39355d2dfc2300118a4ffd37",
+    "savedFile": "evidence/openrouter-endpoints-openai--gpt-6.1-sol.json",
+    "payloadKeys": [
+      "data"
+    ],
+    "error": null,
+    "endpointSummary": [
+      {
+        "provider_name": "OpenAI",
+        "name": "OpenAI | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "openai/flex",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Azure",
+        "name": "Azure | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_completion_tokens",
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "azure",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "OpenAI",
+        "name": "OpenAI | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "openai",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Azure",
+        "name": "Azure | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_completion_tokens",
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "azure/eu",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Azure",
+        "name": "Azure | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_completion_tokens",
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "azure/us",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "OpenAI",
+        "name": "OpenAI | openai/gpt-6.1-sol-20260929",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "openai/fast",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      }
+    ]
+  },
+  {
+    "nativeModelId": "google/gemini-3.8-flash",
+    "url": "https://openrouter.ai/api/v1/models/google/gemini-3.8-flash-20260902/endpoints",
+    "retrievedAt": "2026-10-02T05:25:55.076Z",
+    "statusCode": 200,
+    "headers": {
+      "Date": "Fri, 02 Oct 2026 05:25:56 GMT",
+      "Content-Type": "application/json"
+    },
+    "sha256NetworkPayload": "991a5bbf62c233c66ad00031e13d2b2ffa136fce7eb6ef75e2e52d3ef4b0e68c",
+    "savedFile": "evidence/openrouter-endpoints-google--gemini-3.8-flash.json",
+    "payloadKeys": [
+      "data"
+    ],
+    "error": null,
+    "endpointSummary": [
+      {
+        "provider_name": "Google AI Studio",
+        "name": "Google AI Studio | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tool_choice",
+          "tools",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-ai-studio/flex",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "seed",
+          "response_format",
+          "stop",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/global/flex",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google AI Studio",
+        "name": "Google AI Studio | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tool_choice",
+          "tools",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-ai-studio",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "seed",
+          "response_format",
+          "stop",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/global",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google AI Studio",
+        "name": "Google AI Studio | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tool_choice",
+          "tools",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-ai-studio/priority",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | google/gemini-3.8-flash-20260902",
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "seed",
+          "response_format",
+          "stop",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/global/priority",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      }
+    ]
+  },
+  {
+    "nativeModelId": "anthropic/claude-sonnet-5",
+    "url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5-20260630/endpoints",
+    "retrievedAt": "2026-10-02T05:25:55.549Z",
+    "statusCode": 200,
+    "headers": {
+      "Date": "Fri, 02 Oct 2026 05:25:56 GMT",
+      "Content-Type": "application/json"
+    },
+    "sha256NetworkPayload": "d6c586b019e06b92b876e5c7b764ff1721c1be7ded40c8aea36e60ed64c6d481",
+    "savedFile": "evidence/openrouter-endpoints-anthropic--claude-sonnet-5.json",
+    "payloadKeys": [
+      "data"
+    ],
+    "error": null,
+    "endpointSummary": [
+      {
+        "provider_name": "Claude Platform on AWS",
+        "name": "Claude Platform on AWS | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_tokens",
+          "stop",
+          "reasoning",
+          "include_reasoning",
+          "tool_choice",
+          "tools",
+          "structured_outputs",
+          "response_format",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "claude-on-aws",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Azure",
+        "name": "Azure | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "structured_outputs",
+          "max_tokens",
+          "max_completion_tokens",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "stop",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "azure/global",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_tokens",
+          "stop",
+          "reasoning",
+          "include_reasoning",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "structured_outputs",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/global",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Amazon Bedrock",
+        "name": "Amazon Bedrock | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "amazon-bedrock/global",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Anthropic",
+        "name": "Anthropic | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_tokens",
+          "stop",
+          "reasoning",
+          "include_reasoning",
+          "tools",
+          "tool_choice",
+          "structured_outputs",
+          "response_format",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "anthropic",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Amazon Bedrock",
+        "name": "Amazon Bedrock | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "amazon-bedrock/eu-west-1",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Azure",
+        "name": "Azure | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "structured_outputs",
+          "max_tokens",
+          "max_completion_tokens",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "stop",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "azure/us",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_tokens",
+          "stop",
+          "reasoning",
+          "include_reasoning",
+          "tool_choice",
+          "tools",
+          "response_format",
+          "verbosity",
+          "structured_outputs",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/us",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Google",
+        "name": "Google | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "max_tokens",
+          "stop",
+          "reasoning",
+          "include_reasoning",
+          "tool_choice",
+          "tools",
+          "response_format",
+          "verbosity",
+          "structured_outputs",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "google-vertex/europe",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      },
+      {
+        "provider_name": "Amazon Bedrock",
+        "name": "Amazon Bedrock | anthropic/claude-sonnet-5-20260630",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "verbosity",
+          "reasoning_effort"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "amazon-bedrock/us-east-1",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      }
+    ]
+  },
+  {
+    "nativeModelId": "openai/o3-mini",
+    "url": "https://openrouter.ai/api/v1/models/openai/o3-mini-2025-01-31/endpoints",
+    "retrievedAt": "2026-10-02T05:25:55.805Z",
+    "statusCode": 200,
+    "headers": {
+      "Date": "Fri, 02 Oct 2026 05:25:56 GMT",
+      "Content-Type": "application/json"
+    },
+    "sha256NetworkPayload": "bbfe5b59db4026ef8063ac3026d7b6bc3df86b0c6f1fb1f340e0d490f683bccf",
+    "savedFile": "evidence/openrouter-endpoints-openai--o3-mini.json",
+    "payloadKeys": [
+      "data"
+    ],
+    "error": null,
+    "endpointSummary": [
+      {
+        "provider_name": "OpenAI",
+        "name": "OpenAI | openai/o3-mini-2025-01-31",
+        "context_length": 200000,
+        "max_completion_tokens": 100000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice"
+        ],
+        "supported_reasoning_efforts": null,
+        "default_parameters": null,
+        "tag": "openai",
+        "fieldPresence": {
+          "provider_name": true,
+          "name": true,
+          "context_length": true,
+          "max_completion_tokens": true,
+          "supported_parameters": true,
+          "supported_reasoning_efforts": false,
+          "default_parameters": false,
+          "tag": true
+        },
+        "nullSemantics": "Missing fields summarized as null are unknown, not explicit null in payload; fieldPresence is authoritative."
+      }
+    ]
+  }
+]

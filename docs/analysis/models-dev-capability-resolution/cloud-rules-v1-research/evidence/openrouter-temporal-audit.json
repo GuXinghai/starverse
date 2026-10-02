@@ -1,0 +1,373 @@
+{
+  "verifiedAt": "2026-10-02T05:48:04.482Z",
+  "expirationModels": [
+    {
+      "id": "stealth/space-bunny-alpha",
+      "date": "2026-10-05"
+    },
+    {
+      "id": "dots-studio/dots-3-note-preview:free",
+      "date": "2026-12-31"
+    },
+    {
+      "id": "bytedance-seed/seed-2.0-code",
+      "date": "2026-11-11"
+    },
+    {
+      "id": "qwen/qwen3-asr-flash-2026-02-10",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3.6-max-preview",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "bytedance/seedance-1-5-pro",
+      "date": "2026-11-11"
+    },
+    {
+      "id": "qwen/qwen3-max-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "bytedance-seed/seed-1.6-flash",
+      "date": "2026-11-11"
+    },
+    {
+      "id": "bytedance-seed/seed-1.6",
+      "date": "2026-11-11"
+    },
+    {
+      "id": "minimax/minimax-m2.1",
+      "date": "2026-10-08"
+    },
+    {
+      "id": "z-ai/glm-4.7",
+      "date": "2026-12-31"
+    },
+    {
+      "id": "qwen/qwen3-vl-32b-instruct",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-instruct",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-max",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-coder-plus",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen-plus-2025-07-28",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-thinking-2507",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "z-ai/glm-4.5",
+      "date": "2026-12-31"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-thinking-2507",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite",
+      "date": "2026-10-20"
+    },
+    {
+      "id": "baidu/ernie-4.5-vl-424b-a47b",
+      "date": "2026-10-08"
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "date": "2026-10-20"
+    },
+    {
+      "id": "google/gemini-2.5-flash:batch",
+      "date": "2026-10-20"
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "date": "2026-10-20"
+    },
+    {
+      "id": "google/gemini-2.5-pro:batch",
+      "date": "2026-10-20"
+    },
+    {
+      "id": "qwen/qwen3-8b",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b",
+      "date": "2026-10-09"
+    }
+  ],
+  "nearTermBeforeOrOnRecheck": [
+    {
+      "id": "stealth/space-bunny-alpha",
+      "date": "2026-10-05"
+    },
+    {
+      "id": "qwen/qwen3-asr-flash-2026-02-10",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3.6-max-preview",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-max-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "minimax/minimax-m2.1",
+      "date": "2026-10-08"
+    },
+    {
+      "id": "qwen/qwen3-vl-32b-instruct",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-instruct",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-thinking",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-max",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-coder-plus",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen-plus-2025-07-28",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-thinking-2507",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-thinking-2507",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "baidu/ernie-4.5-vl-424b-a47b",
+      "date": "2026-10-08"
+    },
+    {
+      "id": "qwen/qwen3-8b",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b",
+      "date": "2026-10-09"
+    }
+  ],
+  "candidatePreviewFacts": [
+    {
+      "factId": "openrouter.fact.a456c2373e0800b9",
+      "models": [
+        "tencent/hy3-preview",
+        "tencent/hy4-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.a456c2373e0800b9.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.56a9ed2ca8bc95d3",
+      "models": [
+        "tencent/hy3-preview",
+        "tencent/hy4-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.56a9ed2ca8bc95d3.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.cb78a85fb47802ae",
+      "models": [
+        "tencent/hy4-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.cb78a85fb47802ae.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.073bf8adb7d961f6",
+      "models": [
+        "tencent/hy3-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.073bf8adb7d961f6.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.8c67df1ddb050375",
+      "models": [
+        "tencent/hy3-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.8c67df1ddb050375.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.aead014299e1e6f4",
+      "models": [
+        "google/gemini-3-flash-preview",
+        "google/gemini-3.1-flash-lite-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.aead014299e1e6f4.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.1bae8dad90a1c216",
+      "models": [
+        "google/gemini-3-pro-image-preview",
+        "google/gemini-3.1-flash-image-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.1bae8dad90a1c216.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.115d56aa6f87dabf",
+      "models": [
+        "google/gemini-3.1-flash-image-preview"
+      ],
+      "ruleIds": [
+        "openrouter.rule.115d56aa6f87dabf.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.ea018949b4474583",
+      "models": [
+        "google/gemini-2.5-pro-preview",
+        "google/gemini-3-pro-image-preview",
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3.1-pro-preview-customtools"
+      ],
+      "ruleIds": [
+        "openrouter.rule.ea018949b4474583.1"
+      ]
+    },
+    {
+      "factId": "openrouter.fact.304c0ca5535b040d",
+      "models": [
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3.1-pro-preview-customtools"
+      ],
+      "ruleIds": [
+        "openrouter.rule.304c0ca5535b040d.1"
+      ]
+    }
+  ],
+  "candidateExpirationModels": [],
+  "candidateAliasModels": [],
+  "dateCutoverTime": null,
+  "recheckAfter": "2026-10-09",
+  "lifecyclePolicy": "version_bound is current captured metadata/release scope; ordinary IDs are not proven immutable. Preview spelling is a review flag, not provider lifecycle proof.",
+  "coordinatorFirstCorpusReviewEligibleRuleIds": [
+    "openrouter.rule.03855e07829f6516.1",
+    "openrouter.rule.3ab3b830d559f092.1",
+    "openrouter.rule.a36e9db36811b000.1",
+    "openrouter.rule.e483a4a0c5ef3b35.1",
+    "openrouter.rule.906cb84e93ae5e63.1",
+    "openrouter.rule.216376e6a6c2c843.1",
+    "openrouter.rule.871729e1334b5ebb.1",
+    "openrouter.rule.a23c7cf5a2fc7441.1",
+    "openrouter.rule.755b0860506f5e87.1",
+    "openrouter.rule.c32ffc34f3a41899.1",
+    "openrouter.rule.7a5f2e41c98493e5.1",
+    "openrouter.rule.dfaf2c2368959371.1",
+    "openrouter.rule.d976dfbef17b7279.1",
+    "openrouter.rule.d009afd978421548.1",
+    "openrouter.rule.5d560de48e7948a2.1",
+    "openrouter.rule.a63f756c8b3dd993.1",
+    "openrouter.rule.a6e637cc5f3d8313.1",
+    "openrouter.rule.a3156fcbe7a2b024.1",
+    "openrouter.rule.4be42485224d28a0.1",
+    "openrouter.rule.02d11ccc9c6faceb.1",
+    "openrouter.rule.0653e39d1a0993aa.1",
+    "openrouter.rule.f706e9cfacac2235.1",
+    "openrouter.rule.b822cb7ab4ba0ee8.1",
+    "openrouter.rule.da321143163bb5c5.1",
+    "openrouter.rule.cde4acb2f910bb2f.1",
+    "openrouter.rule.bd3e107c7e4147e2.1",
+    "openrouter.rule.e6f774edc49adbda.1",
+    "openrouter.rule.1f275137cf78b4e7.1",
+    "openrouter.rule.57712909a978803c.1",
+    "openrouter.rule.c153d3575f11b537.1",
+    "openrouter.rule.2bffa58c0c943a0f.1",
+    "openrouter.rule.0dfe223d3d6457cc.1",
+    "openrouter.rule.eb7b2ecde320d461.1",
+    "openrouter.rule.1fdaaa0e967a35c1.1"
+  ],
+  "ownerReviewBeforeInclusionRuleIds": [
+    "openrouter.rule.bd2595b98ce01b3e.1",
+    "openrouter.rule.a68ddcce1820f9d5.1",
+    "openrouter.rule.e560284fbcfc2a9e.1",
+    "openrouter.rule.877fb124f7b60075.1",
+    "openrouter.rule.27599ea19b608088.1",
+    "openrouter.rule.a456c2373e0800b9.1",
+    "openrouter.rule.56a9ed2ca8bc95d3.1",
+    "openrouter.rule.cb78a85fb47802ae.1",
+    "openrouter.rule.3842b26ea4819b9f.1",
+    "openrouter.rule.68777a33f1b5dd22.1",
+    "openrouter.rule.cd66f8302e72beba.1",
+    "openrouter.rule.f8c81ecdfb3b1960.1",
+    "openrouter.rule.1fad893070e6b4f9.1",
+    "openrouter.rule.722a0bd55e536d15.1",
+    "openrouter.rule.073bf8adb7d961f6.1",
+    "openrouter.rule.8c67df1ddb050375.1",
+    "openrouter.rule.d1f8b4cba1cc2d25.1",
+    "openrouter.rule.21d233d464e2801a.1",
+    "openrouter.rule.fb8e3b23fc5d4d52.1",
+    "openrouter.rule.aead014299e1e6f4.1",
+    "openrouter.rule.1bae8dad90a1c216.1",
+    "openrouter.rule.115d56aa6f87dabf.1",
+    "openrouter.rule.ea018949b4474583.1",
+    "openrouter.rule.304c0ca5535b040d.1",
+    "openrouter.rule.1e948a45c5e4099a.1",
+    "openrouter.rule.96059455c09c018f.1",
+    "openrouter.rule.f24aa5428e8ce459.1",
+    "openrouter.rule.47f7012702033abb.1",
+    "openrouter.rule.4e2ad4c6d989b738.1",
+    "openrouter.rule.bcb5890eb313b035.1"
+  ],
+  "publication": false
+}

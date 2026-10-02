@@ -1,0 +1,39 @@
+{
+  "branch": "models-dev-capability-resolution",
+  "baselineCommit": "f2cd20d97f14aef9504da206ee2de89c8487446b",
+  "recordedAt": "2026-10-02T06:12:09.785Z",
+  "contracts": [
+    {
+      "path": "src/next/generation-v2/capability-rules/capabilityRuleCoreV1.ts",
+      "sha256": "be22d54a852ee3b19522cb83501fc26f237ab2fe0528b03da903e583ea7a5796"
+    },
+    {
+      "path": "src/next/generation-v2/model-facts/canonicalSourceFactsV1.ts",
+      "sha256": "61006e3b7c878ff04c951cd32df1bb0391b7010a49e3cdc84e1c03f9f3c08644"
+    },
+    {
+      "path": "src/next/generation-v2/model-facts/providerAuthorityRegistryV1.ts",
+      "sha256": "c0dbc4aa3cbedc7fbf2223d39ee8de4a15633ed94ace756c834859d847415ac4"
+    },
+    {
+      "path": "src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1.ts",
+      "sha256": "547e527bb87f4c6c8b5ad00fbe24813d901df613b2581c85eb0367cf24753a86"
+    },
+    {
+      "path": "docs/analysis/models-dev-capability-resolution/12-model-facts-ui-synchronization-plan.md",
+      "sha256": "66a825bf10af544b4377c5198168e8489f92ce898393192ca001bb863ea19571"
+    },
+    {
+      "path": "docs/analysis/models-dev-capability-resolution/13-cloud-managed-rules-distribution-contract.md",
+      "sha256": "7aef1e71ecb8db70d3e6dd2ba2b1fe4b9f7ab629f98bd075745dfdb1d40a8c0a"
+    },
+    {
+      "path": "docs/analysis/models-dev-capability-resolution/15-goal-3-three-source-resolution-implementation-plan.md",
+      "sha256": "f15df998aae53d1799c4a4ce4cd237941a1d9c8782f017dd0b2565fa55feb042"
+    },
+    {
+      "path": "docs/analysis/models-dev-capability-resolution/16-goal-4-model-facts-operationalization-plan.md",
+      "sha256": "3849e603ba5b1d8f3e31195b8622a5536b59f6889b48c2054f6b7ac29aa67495"
+    }
+  ]
+}

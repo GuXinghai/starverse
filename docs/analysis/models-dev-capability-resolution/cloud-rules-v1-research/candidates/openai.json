@@ -1,0 +1,2042 @@
+[
+  {
+    "schemaVersion": 1,
+    "packId": "openai-responses-research-v1",
+    "displayName": "OpenAI Responses documented capabilities",
+    "description": "Research proposal; coordinator approval required.",
+    "priority": 0,
+    "mode": "no_control",
+    "target": "enabled",
+    "rules": [
+      {
+        "ruleId": "cloud.openai.gpt-6-astra.tools.codeExecution.support",
+        "label": "gpt-6-astra tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-astra"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-astra",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-astra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-astra.search.web.support",
+        "label": "gpt-6-astra search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-astra"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-astra",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-astra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.tools.codeExecution.support",
+        "label": "gpt-6.1-sol tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.reasoning.effort.providerDefault",
+        "label": "gpt-6.1-sol reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.tools.codeExecution.support",
+        "label": "gpt-6-sol tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.reasoning.effort.providerDefault",
+        "label": "gpt-6-sol reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.search.web.support",
+        "label": "gpt-6-sol search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.tools.codeExecution.support",
+        "label": "gpt-6-luna tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.reasoning.effort.providerDefault",
+        "label": "gpt-6-luna reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.search.web.support",
+        "label": "gpt-6-luna search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-sol.tools.codeExecution.support",
+        "label": "gpt-5.6-sol tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-sol.reasoning.effort.providerDefault",
+        "label": "gpt-5.6-sol reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-sol.search.web.support",
+        "label": "gpt-5.6-sol search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-terra.tools.codeExecution.support",
+        "label": "gpt-5.6-terra tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-terra"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-terra.reasoning.effort.providerDefault",
+        "label": "gpt-5.6-terra reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-terra"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-terra.search.web.support",
+        "label": "gpt-5.6-terra search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-terra"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-luna.tools.codeExecution.support",
+        "label": "gpt-5.6-luna tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses matrix marks hosted Code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-luna.reasoning.effort.providerDefault",
+        "label": "gpt-5.6-luna reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page explicitly marks medium as reasoning effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-luna.search.web.support",
+        "label": "gpt-5.6-luna search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Responses tools matrix explicitly marks Web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.search.web.support",
+        "label": "gpt-6.1-sol search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Live Chrome Responses tools matrix explicitly marks Web search supported; Exa cached page omission recorded.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+          "verifiedAt": "2026-10-02T05:10:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5.search.web.support",
+        "label": "gpt-5.5 search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5.tools.codeExecution.support",
+        "label": "gpt-5.5 tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5.reasoning.effort.providerDefault",
+        "label": "gpt-5.5 reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5-pro.search.web.support",
+        "label": "gpt-5.5-pro search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5-pro"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5-pro.tools.codeExecution.support",
+        "label": "gpt-5.5-pro tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5-pro"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.5-pro.reasoning.effort.providerDefault",
+        "label": "gpt-5.5-pro reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.5-pro"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "high"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.5-pro",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4.search.web.support",
+        "label": "gpt-5.4 search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4.tools.codeExecution.support",
+        "label": "gpt-5.4 tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4.reasoning.effort.providerDefault",
+        "label": "gpt-5.4 reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "none"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4-pro.tools.codeExecution.support",
+        "label": "gpt-5.4-pro tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4-pro"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "unsupported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide3-gpt-5.4-pro",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact GPT-5.4 Pro Responses tool matrix excludes code interpreter.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4-pro",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
+          "verifiedAt": "2026-10-02T05:25:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4-pro.reasoning.effort.providerDefault",
+        "label": "gpt-5.4-pro reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4-pro"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "medium"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4-pro",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4-pro",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4-mini.search.web.support",
+        "label": "gpt-5.4-mini search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4-mini"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix web search supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4-mini.tools.codeExecution.support",
+        "label": "gpt-5.4-mini tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4-mini"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Explicit Responses tools matrix code interpreter supported.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.4-mini.reasoning.effort.providerDefault",
+        "label": "gpt-5.4-mini reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.4-mini"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "none"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.4-mini",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.2.reasoning.effort.providerDefault",
+        "label": "gpt-5.2 reasoning.effort.providerDefault",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.2"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.effort.providerDefault",
+          "value": {
+            "kind": "native_string",
+            "value": "none"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.2",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model description marks effort default.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.2",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.2",
+          "verifiedAt": "2026-10-02T05:21:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.limits.contextWindow.maxTokens",
+        "label": "gpt-5.6-cyber limits.contextWindow.maxTokens",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "limits.contextWindow.maxTokens",
+          "value": {
+            "kind": "integer",
+            "value": 400000,
+            "unit": "token"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page context-window limit.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.limits.output.maxTokens",
+        "label": "gpt-5.6-cyber limits.output.maxTokens",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "limits.output.maxTokens",
+          "value": {
+            "kind": "integer",
+            "value": 128000,
+            "unit": "token"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page output-token limit, distinct from a reasoning-only budget.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.modalities.output",
+        "label": "gpt-5.6-cyber modalities.output",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "modalities.output",
+          "value": {
+            "kind": "media_kind_set",
+            "values": [
+              "text"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Native text output; hosted image-generation tool output is distinct.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.reasoning.support",
+        "label": "gpt-5.6-cyber reasoning.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model page declares reasoning-token support.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.tools.calling.support",
+        "label": "gpt-5.6-cyber tools.calling.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "tools.calling.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Function calling row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.structuredOutput.support",
+        "label": "gpt-5.6-cyber structuredOutput.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "structuredOutput.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Structured outputs row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.search.web.support",
+        "label": "gpt-5.6-cyber search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Web search row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-cyber.tools.codeExecution.support",
+        "label": "gpt-5.6-cyber tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-cyber"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Code interpreter row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-cyber",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-5.6-cyber",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-daybreak-red-latest.search.web.support",
+        "label": "gpt-daybreak-red-latest search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-daybreak-red-latest"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-daybreak-red-latest",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Web search row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-daybreak-red-latest",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-daybreak-red-latest",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-daybreak-red-latest.tools.codeExecution.support",
+        "label": "gpt-daybreak-red-latest tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-daybreak-red-latest"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-daybreak-red-latest",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Code interpreter row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-daybreak-red-latest",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-daybreak-red-latest",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-daybreak-blue-latest.search.web.support",
+        "label": "gpt-daybreak-blue-latest search.web.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-daybreak-blue-latest"
+          ]
+        },
+        "assertion": {
+          "path": "search.web.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-daybreak-blue-latest",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Web search row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-daybreak-blue-latest",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-daybreak-blue-latest",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-daybreak-blue-latest.tools.codeExecution.support",
+        "label": "gpt-daybreak-blue-latest tools.codeExecution.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-daybreak-blue-latest"
+          ]
+        },
+        "assertion": {
+          "path": "tools.codeExecution.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-model-gpt-daybreak-blue-latest",
+          "evidenceKind": "explicit_provider",
+          "evidenceNote": "Exact model Code interpreter row; web/code rows explicitly concern Responses tools.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-daybreak-blue-latest",
+          "provenanceUrl": "https://developers.openai.com/api/docs/models/gpt-daybreak-blue-latest",
+          "verifiedAt": "2026-10-02T05:21:16.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-astra.reasoning.modes.nativeValues",
+        "label": "gpt-6-astra reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-astra"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-astra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.reasoning.modes.nativeValues",
+        "label": "gpt-6.1-sol reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.reasoning.modes.nativeValues",
+        "label": "gpt-6-sol reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.reasoning.modes.nativeValues",
+        "label": "gpt-6-luna reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-sol.reasoning.modes.nativeValues",
+        "label": "gpt-5.6-sol reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-terra.reasoning.modes.nativeValues",
+        "label": "gpt-5.6-terra reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-terra"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-terra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-5.6-luna.reasoning.modes.nativeValues",
+        "label": "gpt-5.6-luna reasoning.modes.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-5.6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "reasoning.modes.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "standard",
+              "pro"
+            ],
+            "completeness": "complete"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-reasoning-live-20261002",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Live Responses guide explicitly names GPT-5.6 and GPT-6 model families; exact catalogue membership corroborated.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-5.6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/reasoning?api-mode=responses",
+          "verifiedAt": "2026-10-02T05:22:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-astra.contextManagement.support",
+        "label": "gpt-6-astra contextManagement.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-astra"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-latest-model",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "GPT-6 migration guide explicitly preserves GPT-5.6 compaction; Responses compaction guide specifies context_management.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-astra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/latest-model",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-astra.contextManagement.actions.nativeValues",
+        "label": "gpt-6-astra contextManagement.actions.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-astra"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.actions.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "compaction"
+            ],
+            "completeness": "partial"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-compaction",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Responses context_management action observed is compaction; partial collection avoids unsupported exhaustive claim.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-astra",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/compaction",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.contextManagement.support",
+        "label": "gpt-6.1-sol contextManagement.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-latest-model",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "GPT-6 migration guide explicitly preserves GPT-5.6 compaction; Responses compaction guide specifies context_management.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/latest-model",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6.1-sol.contextManagement.actions.nativeValues",
+        "label": "gpt-6.1-sol contextManagement.actions.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6.1-sol"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.actions.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "compaction"
+            ],
+            "completeness": "partial"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-compaction",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Responses context_management action observed is compaction; partial collection avoids unsupported exhaustive claim.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6.1-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/compaction",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.contextManagement.support",
+        "label": "gpt-6-sol contextManagement.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-latest-model",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "GPT-6 migration guide explicitly preserves GPT-5.6 compaction; Responses compaction guide specifies context_management.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/latest-model",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-sol.contextManagement.actions.nativeValues",
+        "label": "gpt-6-sol contextManagement.actions.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-sol"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.actions.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "compaction"
+            ],
+            "completeness": "partial"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-compaction",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Responses context_management action observed is compaction; partial collection avoids unsupported exhaustive claim.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-sol",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/compaction",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.contextManagement.support",
+        "label": "gpt-6-luna contextManagement.support",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.support",
+          "value": {
+            "kind": "support",
+            "value": "supported"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-latest-model",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "GPT-6 migration guide explicitly preserves GPT-5.6 compaction; Responses compaction guide specifies context_management.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/latest-model",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      },
+      {
+        "ruleId": "cloud.openai.gpt-6-luna.contextManagement.actions.nativeValues",
+        "label": "gpt-6-luna contextManagement.actions.nativeValues",
+        "description": null,
+        "priority": 0,
+        "configured": "default",
+        "providerAuthorityId": "openai",
+        "endpointProfileId": "openai-api-v1",
+        "selector": {
+          "kind": "exact",
+          "nativeModelIds": [
+            "gpt-6-luna"
+          ]
+        },
+        "assertion": {
+          "path": "contextManagement.actions.nativeValues",
+          "value": {
+            "kind": "native_string_set",
+            "values": [
+              "compaction"
+            ],
+            "completeness": "partial"
+          }
+        },
+        "evidence": {
+          "evidenceSourceRef": "openai-guide-compaction",
+          "evidenceKind": "explicit_provider_series",
+          "evidenceNote": "Responses context_management action observed is compaction; partial collection avoids unsupported exhaustive claim.",
+          "identityEvidenceKind": "official_exact_model_doc",
+          "identityEvidenceSourceRef": "openai-model-gpt-6-luna",
+          "provenanceUrl": "https://developers.openai.com/api/docs/guides/compaction",
+          "verifiedAt": "2026-10-02T05:13:00.000Z",
+          "derivation": null
+        }
+      }
+    ]
+  }
+]

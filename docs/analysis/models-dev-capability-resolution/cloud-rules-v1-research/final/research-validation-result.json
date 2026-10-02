@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "checkedAt": "2026-10-02T06:13:02.838Z",
+  "requiredArtifacts": 29,
+  "providers": [
+    {
+      "provider": "gemini",
+      "evidenceRecords": 63,
+      "factRecords": 416,
+      "proposalRules": 216
+    },
+    {
+      "provider": "deepseek",
+      "evidenceRecords": 18,
+      "factRecords": 51,
+      "proposalRules": 7
+    },
+    {
+      "provider": "openai",
+      "evidenceRecords": 72,
+      "factRecords": 328,
+      "proposalRules": 62
+    },
+    {
+      "provider": "anthropic",
+      "evidenceRecords": 50,
+      "factRecords": 79,
+      "proposalRules": 49
+    },
+    {
+      "provider": "openrouter",
+      "evidenceRecords": 61,
+      "factRecords": 476,
+      "proposalRules": 64
+    }
+  ],
+  "totalEvidenceRecords": 264,
+  "totalFactRecords": 1350,
+  "finalModelPathRows": 6333,
+  "anthropicNestedInferenceAudits": 332,
+  "boundary": "Structure and traceability validation; semantic approval is recorded separately in manual-review and fact-decisions. No database or release operations."
+}

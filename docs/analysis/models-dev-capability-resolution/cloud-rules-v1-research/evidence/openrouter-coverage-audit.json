@@ -1,0 +1,655 @@
+{
+  "verifiedAt": "2026-10-02T05:48:04.482Z",
+  "ontologyPathCount": 36,
+  "modelPathRows": 23220,
+  "scope": "All 645 exact inventory IDs x 36 paths; static adapters + live public raw snapshots; no app DB opened.",
+  "paths": [
+    {
+      "canonicalPath": "limits.contextWindow.maxTokens",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "context_length",
+      "providerNativePublicRawPresentModels": 464,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 56,
+        "AMBIGUOUS_DEFER": 21
+      },
+      "unassertedInventoryModels": 181,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "limits.input.maxTokens",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 32,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.19"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "limits.output.maxTokens",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 83
+      },
+      "unassertedInventoryModels": 188,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "modalities.input",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "architecture.input_modalities",
+      "providerNativePublicRawPresentModels": 464,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 24,
+        "AMBIGUOUS_DEFER": 26
+      },
+      "unassertedInventoryModels": 0,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "modalities.output",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "architecture.output_modalities",
+      "providerNativePublicRawPresentModels": 464,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 12,
+        "AMBIGUOUS_DEFER": 12
+      },
+      "unassertedInventoryModels": 0,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "input.attachments.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.01"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "operations.supported",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 2
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.02",
+        "openrouter.fact.manual.22"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "reasoning",
+      "providerNativePublicRawPresentModels": 331,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 8,
+        "AMBIGUOUS_DEFER": 4
+      },
+      "unassertedInventoryModels": 314,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.required",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "reasoning.mandatory",
+      "providerNativePublicRawPresentModels": 331,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 13,
+        "AMBIGUOUS_DEFER": 8
+      },
+      "unassertedInventoryModels": 314,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.toggle.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 132,
+      "candidateRuleCount": 4,
+      "candidateExactModelCount": 113,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 4,
+        "AMBIGUOUS_DEFER": 6,
+        "TEMPORALLY_UNSAFE": 4,
+        "ALREADY_MODELS_DEV": 1
+      },
+      "unassertedInventoryModels": 467,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.modes.nativeValues",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.03"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.effort.nativeValues",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 31,
+      "candidateExactModelCount": 121,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 31,
+        "AMBIGUOUS_DEFER": 19,
+        "TEMPORALLY_UNSAFE": 2
+      },
+      "unassertedInventoryModels": 452,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.effort.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": "reasoning.default_effort",
+      "providerNativePublicRawPresentModels": 192,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 1,
+      "candidateExactModelCount": 1,
+      "classificationCounts": {
+        "ALREADY_PROVIDER_NATIVE": 12,
+        "AMBIGUOUS_DEFER": 11,
+        "RULE_CANDIDATE": 1
+      },
+      "unassertedInventoryModels": 452,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.budgetTokens.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 12,
+      "candidateRuleCount": 2,
+      "candidateExactModelCount": 2,
+      "classificationCounts": {
+        "ALREADY_MODELS_DEV": 1,
+        "AMBIGUOUS_DEFER": 3,
+        "RULE_CANDIDATE": 2
+      },
+      "unassertedInventoryModels": 631,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "reasoning.budgetTokens.domain",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 12,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.04"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "generation.effort.nativeValues",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 1,
+      "candidateExactModelCount": 1,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 1,
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 644,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.05"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "generation.effort.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.06"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.temperature.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_MODELS_DEV": 3,
+        "AMBIGUOUS_DEFER": 4,
+        "TEMPORALLY_UNSAFE": 6
+      },
+      "unassertedInventoryModels": 281,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.temperature.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 11,
+      "candidateExactModelCount": 77,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 11,
+        "AMBIGUOUS_DEFER": 5,
+        "TEMPORALLY_UNSAFE": 7
+      },
+      "unassertedInventoryModels": 547,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.temperature.modelMaximum",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.07"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.topP.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 5,
+      "candidateExactModelCount": 57,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 5,
+        "AMBIGUOUS_DEFER": 4,
+        "TEMPORALLY_UNSAFE": 5
+      },
+      "unassertedInventoryModels": 570,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.topK.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 3,
+      "candidateExactModelCount": 182,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 3,
+        "AMBIGUOUS_DEFER": 2,
+        "TEMPORALLY_UNSAFE": 3
+      },
+      "unassertedInventoryModels": 426,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "sampling.topK.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 4,
+      "candidateExactModelCount": 18,
+      "classificationCounts": {
+        "RULE_CANDIDATE": 4,
+        "TEMPORALLY_UNSAFE": 1
+      },
+      "unassertedInventoryModels": 623,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "tools.calling.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_MODELS_DEV": 2,
+        "AMBIGUOUS_DEFER": 4,
+        "TEMPORALLY_UNSAFE": 6,
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 248,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.23"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "tools.trainingForToolUse",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.08"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "tools.codeExecution.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.09"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "structuredOutput.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 389,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ALREADY_MODELS_DEV": 2,
+        "AMBIGUOUS_DEFER": 4,
+        "TEMPORALLY_UNSAFE": 4
+      },
+      "unassertedInventoryModels": 265,
+      "apiLevelGapFactIds": [],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "image.generation.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 2,
+      "candidateExactModelCount": 9,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 2,
+        "RULE_CANDIDATE": 2
+      },
+      "unassertedInventoryModels": 634,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.10"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "image.generation.aspectRatios",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.11"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "image.generation.resolutionPresets.nativeValues",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.12"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "image.generation.resolutionPreset.providerDefault",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.13"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "search.web.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.14"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "search.image.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "AMBIGUOUS_DEFER": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.15"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "documents.citations.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.16"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "contextManagement.support",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.17"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    },
+    {
+      "canonicalPath": "contextManagement.actions.nativeValues",
+      "inventoryModels": 645,
+      "defaultTextModels": 464,
+      "providerNativeStaticField": null,
+      "providerNativePublicRawPresentModels": 0,
+      "modelsDevPublicRawPresentModels": 0,
+      "candidateRuleCount": 0,
+      "candidateExactModelCount": 0,
+      "classificationCounts": {
+        "ONTOLOGY_GAP": 1
+      },
+      "unassertedInventoryModels": 645,
+      "apiLevelGapFactIds": [
+        "openrouter.fact.manual.18"
+      ],
+      "unknownPolicy": "No negative capability inferred from zero coverage or absent fields."
+    }
+  ]
+}

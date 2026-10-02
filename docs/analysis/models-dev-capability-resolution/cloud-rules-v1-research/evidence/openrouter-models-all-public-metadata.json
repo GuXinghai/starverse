@@ -1,0 +1,16 @@
+{
+  "url": "https://openrouter.ai/api/v1/models?output_modalities=all",
+  "retrievedAt": "2026-10-02T05:15:31.666Z",
+  "publishedAt": null,
+  "updatedAt": null,
+  "statusCode": 200,
+  "modelCount": 645,
+  "totalCount": 645,
+  "next": null,
+  "headers": {
+    "date": "Fri, 02 Oct 2026 05:15:31 GMT",
+    "contentType": "application/json"
+  },
+  "sha256": "5b25e4400e906048ef29ea43e139990ee5855ef7a07a53221b85d9edc7b63bcb",
+  "authentication": "none; public GET"
+}

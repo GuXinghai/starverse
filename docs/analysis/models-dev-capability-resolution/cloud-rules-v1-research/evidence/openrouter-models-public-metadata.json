@@ -1,0 +1,17 @@
+{
+  "url": "https://openrouter.ai/api/v1/models",
+  "retrievedAt": "2026-10-02T05:14:00.920Z",
+  "userResearchDate": "2026-10-02",
+  "userTimezone": "Asia/Tokyo",
+  "statusCode": 200,
+  "headers": {
+    "date": "Fri, 02 Oct 2026 05:14:01 GMT",
+    "lastModified": null,
+    "contentType": "application/json",
+    "etag": null
+  },
+  "modelCount": 464,
+  "sha256": "c2c2fab0c7d704a247bc4dd83fdc81bd9da532fd8a619ee95aa32e0db569790c",
+  "authentication": "none; public GET",
+  "completeness": "complete returned public catalog at retrieval; not entitlement or runtime success guarantee"
+}

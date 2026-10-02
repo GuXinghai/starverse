@@ -1,0 +1,101 @@
+{
+  "status": "PASS",
+  "evaluatedAt": "2026-10-02T05:51:25.294Z",
+  "purpose": "Grammar verification only; no capability assertion or materialization",
+  "rows": [
+    {
+      "familyId": "gemini25-pro-dated",
+      "selector": {
+        "kind": "regex",
+        "pattern": "^gemini-2[.]5-pro-preview-[0-9]{2}-[0-9]{2}$",
+        "positiveExamples": [
+          "gemini-2.5-pro-preview-05-06",
+          "gemini-2.5-pro-preview-06-05"
+        ],
+        "negativeExamples": [
+          "gemini-2.5-pro",
+          "gemini-2.5-pro-preview-tts",
+          "gemini-2.5-flash-preview-05-20"
+        ]
+      },
+      "decoder": "PASS",
+      "examples": "PASS",
+      "identityRationale": "Historical provider MM-DD snapshots; no claim these IDs remain current.",
+      "currentMatchingIds": [],
+      "coordinatorVerdict": "KNOWN_MEMBERS_ONLY; grammar does not establish future assertion inheritance; no Rule emitted"
+    },
+    {
+      "familyId": "gemini25-flash-dated",
+      "selector": {
+        "kind": "regex",
+        "pattern": "^gemini-2[.]5-flash-preview-[0-9]{2}-[0-9]{2}$",
+        "positiveExamples": [
+          "gemini-2.5-flash-preview-05-20",
+          "gemini-2.5-flash-preview-09-25"
+        ],
+        "negativeExamples": [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-preview-tts",
+          "gemini-2.5-flash-preview-09-2025",
+          "gemini-2.5-flash-native-audio-preview-12-2025"
+        ]
+      },
+      "decoder": "PASS",
+      "examples": "PASS",
+      "identityRationale": "Two-date-component preview grammar, separate from month-year native audio.",
+      "currentMatchingIds": [],
+      "coordinatorVerdict": "KNOWN_MEMBERS_ONLY; grammar does not establish future assertion inheritance; no Rule emitted"
+    },
+    {
+      "familyId": "gemini25-lite-monthyear",
+      "selector": {
+        "kind": "regex",
+        "pattern": "^gemini-2[.]5-flash-lite-preview-[0-9]{2}-[0-9]{4}$",
+        "positiveExamples": [
+          "gemini-2.5-flash-lite-preview-09-2025"
+        ],
+        "negativeExamples": [
+          "gemini-2.5-flash-lite",
+          "gemini-2.5-flash-preview-09-2025",
+          "gemini-2.5-flash-preview-09-25"
+        ]
+      },
+      "decoder": "PASS",
+      "examples": "PASS",
+      "identityRationale": "Official exact historical month-year preview; only one documented member, weak general grammar evidence.",
+      "currentMatchingIds": [],
+      "coordinatorVerdict": "KNOWN_MEMBERS_ONLY; grammar does not establish future assertion inheritance; no Rule emitted"
+    },
+    {
+      "familyId": "gemini3-stable-flash",
+      "selector": {
+        "kind": "regex",
+        "pattern": "^gemini-3[.][0-9]-flash$",
+        "positiveExamples": [
+          "gemini-3.5-flash",
+          "gemini-3.6-flash",
+          "gemini-3.7-flash",
+          "gemini-3.8-flash"
+        ],
+        "negativeExamples": [
+          "gemini-3-flash-preview",
+          "gemini-3.5-flash-lite",
+          "gemini-3.1-flash-image",
+          "gemini-3.8-flash-tts",
+          "gemini-3.8-live",
+          "gemini-flash-latest"
+        ]
+      },
+      "decoder": "PASS",
+      "examples": "PASS",
+      "identityRationale": "Known stable major.minor Flash IDs; bounded digits accepted grammar but only documented four releases justify membership. Only single-digit minor grammar is represented; no range quantifier allowed by core.",
+      "currentMatchingIds": [
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash"
+      ],
+      "coordinatorVerdict": "KNOWN_MEMBERS_ONLY; grammar does not establish future assertion inheritance; no Rule emitted"
+    }
+  ]
+}
