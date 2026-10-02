@@ -230,7 +230,7 @@ function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
     }
     const allowedDomains = input.allowedDomains === undefined ? undefined : denseArray(input.allowedDomains, 100, false)
     if (allowedDomains?.some((domain) => typeof domain !== 'string' || domain.length === 0 || domain.trim() !== domain ||
-        domain.includes('/') || /\s/u.test(domain)) || new Set(allowedDomains).size !== allowedDomains?.length) {
+        domain.includes('/') || /\s/u.test(domain)) || allowedDomains !== undefined && new Set(allowedDomains).size !== allowedDomains.length) {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
     return Object.freeze({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeProviderBindingRecordV2 } from '../domain/providerBindingV2'
+import { decodeProviderBindingRecordV2, projectDecodedProviderBindingRecordV2 } from '../domain/providerBindingV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from './modelCapabilitySchemaV2'
 import { projectResolvedModelFactsToRuntimeV2 } from './resolvedModelFactsRuntimeProjectionV1'
 import type { ResolvedModelFactsV1 } from '../model-facts/resolvedModelFactsV1'
@@ -16,6 +16,9 @@ import {
 import { buildExplicitAssertionV1, presentOutcomeV1 } from '../model-facts/sourceAdapterV1'
 import { buildSourcePriorityConfigV1 } from '../model-facts/sourcePriorityConfigV1'
 import { resolveModelFactsV1 } from '../model-facts/resolveModelFactsV1'
+import { runtimeProjectionSourcePathsV1 } from './runtimeProjectionSourcePathsV1'
+import { readReviewedGeminiInteractionsDefinitionV2 } from '../contracts/providerContractRegistryV2'
+import { canonicalizeResolvedCapabilityV2, resolvedCapabilityFromRecordV2, runtimeSnapshotRecordFromResolvedCapabilityV2 } from './resolvedCapabilityV2'
 
 const binding = decodeProviderBindingRecordV2({
   credentialScopeId: 'credential-scope:test', providerId: 'openai_responses',
@@ -121,6 +124,48 @@ function resolvedFromSources(input: Readonly<{
 }
 
 describe('Goal 3 model facts runtime projection V1', () => {
+  it('uses web support for text search types while preserving image-operation source and presentation parity', () => {
+    const definition=readReviewedGeminiInteractionsDefinitionV2()
+    const imageBinding=decodeProviderBindingRecordV2({...projectDecodedProviderBindingRecordV2(binding),providerId:'google_ai_studio',
+      protocolContractId:definition.protocolContractId.value,contractRevision:definition.contractRevision.value,
+      contractDefinitionDigest:definition.definitionDigest.value,registryRevision:definition.registryRevision.value,operation:'image_generate'})
+    for(const [web,image] of [['supported','unsupported'],['unsupported','supported']] as const) {
+      const resolvedFacts=resolvedFromSources({providerNative:{path:'search.web.support',value:{kind:'support',value:web}},
+        modelsDev:{path:'search.image.support',value:{kind:'support',value:image}}})
+      const text=projectResolvedModelFactsToRuntimeV2({binding,resolvedFacts})
+      const generated=projectResolvedModelFactsToRuntimeV2({binding:imageBinding,resolvedFacts})
+      expect(text.fields.find(field=>field.path==='web.mode')?.state).toBe(web)
+      expect(text.fields.find(field=>field.path==='web.types')?.state).toBe(web)
+      expect(generated.fields.find(field=>field.path==='web.types')?.state).toBe(image)
+      expect(text.fields.find(field=>field.path==='web.types')?.domain).toBeUndefined()
+      expect(text.capabilityRevision).toBe(resolvedFacts.capabilityRevision)
+    }
+    expect(runtimeProjectionSourcePathsV1('web.types')).toEqual(['search.web.support'])
+    expect(runtimeProjectionSourcePathsV1('web.types','text')).toEqual(['search.web.support'])
+    expect(runtimeProjectionSourcePathsV1('web.types','image_generate')).toEqual(['search.image.support'])
+    expect(runtimeProjectionSourcePathsV1('web.mode','image_generate')).toEqual(['search.web.support'])
+  })
+
+  it('round-trips historical stored web fields without reprojecting them or changing the frozen encoder', () => {
+    const historical=canonicalizeResolvedCapabilityV2({binding:projectDecodedProviderBindingRecordV2(binding),
+      evidence:[{evidenceId:'historical.supports',kind:'contract_invariant',effect:'supports',sourceRef:'test.historical',verifiedAt:'2026-10-03T00:00:00.000Z',contentDigest:'a'.repeat(64)},
+        {evidenceId:'historical.rejects',kind:'contract_invariant',effect:'rejects',sourceRef:'test.historical',verifiedAt:'2026-10-03T00:00:00.000Z',contentDigest:'b'.repeat(64)}],
+      fields:MODEL_CAPABILITY_SEMANTIC_PATHS_V2.map(path=>({path,state:path==='web.types'?'unsupported':path==='web.mode'?'supported':'missing',
+        constraints:[],evidenceIds:path==='web.types'?['historical.rejects']:path==='web.mode'?['historical.supports']:[]})),
+      continuation:{kind:'none',evidenceIds:['historical.supports']}})
+    const record=runtimeSnapshotRecordFromResolvedCapabilityV2({capability:historical,resolvedAt:'2026-10-03T00:00:00.000Z',tools:[]})
+    const current=projectResolvedModelFactsToRuntimeV2({binding,resolvedFacts:resolvedFromSources({
+      providerNative:{path:'search.web.support',value:{kind:'support',value:'supported'}},
+      modelsDev:{path:'search.image.support',value:{kind:'support',value:'unsupported'}}})})
+    expect(current.fields.find(field=>field.path==='web.types')?.state).toBe('supported')
+    const restored=resolvedCapabilityFromRecordV2(record)
+    expect(restored.modelFacts.fields.find(field=>field.path==='web.types')?.state).toBe('unsupported')
+    const roundtrip=runtimeSnapshotRecordFromResolvedCapabilityV2({capability:restored,resolvedAt:record.resolvedAt,tools:[]})
+    expect(roundtrip).toEqual(record)
+    expect(restored.executionContext.encodingCoverage.encoderRevision).toBe(historical.executionContext.encodingCoverage.encoderRevision)
+    expect(restored.modelFacts.capabilityRevision).toBe(historical.modelFacts.capabilityRevision)
+  })
+
   it('projects only frozen facts, preserves the Goal 3 revision, and closes the runtime field set', () => {
     const projected = projectResolvedModelFactsToRuntimeV2({
       binding,

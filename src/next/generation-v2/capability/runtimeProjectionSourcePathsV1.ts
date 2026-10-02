@@ -1,5 +1,6 @@
 import type { CanonicalSemanticPathV1 } from '../model-facts/canonicalSourceFactsV1'
 import type { ModelCapabilitySemanticPathV2 } from './modelCapabilitySchemaV2'
+import type { ProviderContractOperationV2 } from '../contracts/providerContractRegistryV2'
 
 export type RuntimeProjectionRuleV1 = Readonly<{
   runtimePath: ModelCapabilitySemanticPathV2
@@ -36,10 +37,19 @@ export const RUNTIME_PROJECTION_RULES_V1: readonly RuntimeProjectionRuleV1[] = O
     'image.generation.resolutionPresets.nativeValues', 'image.generation.resolutionPreset.providerDefault',
   ] },
   { runtimePath: 'web.mode', sourcePaths: ['search.web.support'] },
-  { runtimePath: 'web.types', sourcePaths: ['search.image.support'] },
+  { runtimePath: 'web.types', sourcePaths: ['search.web.support'] },
 ])
 
+const IMAGE_RUNTIME_PROJECTION_RULES_V1: readonly RuntimeProjectionRuleV1[] = Object.freeze(
+  RUNTIME_PROJECTION_RULES_V1.map(rule => rule.runtimePath === 'web.types'
+    ? Object.freeze({runtimePath:rule.runtimePath,sourcePaths:Object.freeze(['search.image.support'] as const)}) : rule),
+)
+
+export function runtimeProjectionRulesV1(operation: ProviderContractOperationV2 = 'text'): readonly RuntimeProjectionRuleV1[] {
+  return operation === 'image_generate' ? IMAGE_RUNTIME_PROJECTION_RULES_V1 : RUNTIME_PROJECTION_RULES_V1
+}
+
 /** Ordered Model Facts source paths for one runtime control; empty when no Model Facts field feeds it. */
-export function runtimeProjectionSourcePathsV1(runtimePath: string): readonly CanonicalSemanticPathV1[] {
-  return RUNTIME_PROJECTION_RULES_V1.find((rule) => rule.runtimePath === runtimePath)?.sourcePaths ?? Object.freeze([])
+export function runtimeProjectionSourcePathsV1(runtimePath: string, operation: ProviderContractOperationV2 = 'text'): readonly CanonicalSemanticPathV1[] {
+  return runtimeProjectionRulesV1(operation).find((rule) => rule.runtimePath === runtimePath)?.sourcePaths ?? Object.freeze([])
 }

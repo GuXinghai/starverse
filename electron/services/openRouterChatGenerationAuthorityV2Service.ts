@@ -37,6 +37,7 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { resolveWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 
 export type VerifiedOpenRouterChatBindingAuthorityV2 = Readonly<{
   trust: 'verified_openrouter_chat_binding_v2'
@@ -139,11 +140,15 @@ function field(
     case 'reasoning.exclude': return contractParameters.has('reasoning') ? supported({ kind: 'boolean' }) : unsupported()
     case 'reasoning.summary': return unsupported()
     case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) })
-    case 'web.types': return supported({ kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 })
-    case 'web.engine': return supported({ kind: 'enum', values: Object.freeze(['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity']) })
-    case 'web.maxResults': return supported({ kind: 'range', min: 1, max: 25, integer: true })
+    case 'web.types': return supported(resolveWebSearchProtocolParametersV2({providerId:'openrouter',protocolContractId:'openrouter-chat-completions-v1',operation:'text'}).types)
+    case 'web.engine':
+    case 'web.maxResults':
+    case 'web.searchContextSize': {
+      const domain=resolveWebSearchProtocolParametersV2({providerId:'openrouter',protocolContractId:'openrouter-chat-completions-v1',operation:'text'}).optionalParameters[path.slice(4) as 'engine'|'maxResults'|'searchContextSize']
+      if (!domain) return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
+      return supported(domain)
+    }
     case 'web.maxTotalResults': return supported({ kind: 'range', min: 1, max: 1_000_000, integer: true })
-    case 'web.searchContextSize': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) })
     case 'web.maxCharacters': return supported({ kind: 'range', min: 1, max: 100_000, integer: true })
     case 'web.userLocation': return supported({ kind: 'approximate_location', maxFieldLength: 256 })
     case 'web.allowedDomains':

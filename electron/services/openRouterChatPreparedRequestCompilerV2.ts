@@ -15,6 +15,7 @@ import {
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
@@ -84,6 +85,11 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_BINDING_INVALID')
   }
   const intent = snapshot.semanticIntent
+  try {
+    validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},intent.web)
+  } catch {
+    throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
+  }
   if (intent.image.mode !== 'disabled' ||
       intent.providerExtension.kind !== 'none' && intent.providerExtension.kind !== 'openrouter_chat' ||
       (intent.tools.mode === 'enabled') !== (input.toolRegistry !== null)) {

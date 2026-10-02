@@ -45,6 +45,9 @@ export type GenerationV2LocalEndpointProfile = Readonly<{ endpointProfileId:stri
   protocolContractId:LocalEndpointProtocolV2;
   baseUrl:string; credentialMode:'none'; credentialScopeId:string; protocolConfig:Readonly<Record<string,unknown>>;
   revisionGeneration:number; profileRevision:string; profileDigest:string; createdAtMs:number; updatedAtMs:number }>
+export type GenerationV2SearchTargetResult = Readonly<{status:'ready';projectId:string;conversationId:string;
+  branchId:string;messageId:string;view:GenerationV2BranchView}> | Readonly<{status:'unavailable';
+  reason:'message_missing'|'message_unsupported'|'conversation_hidden'|'no_visible_route'|'projection_unavailable'}>
 export type GenerationV2ConfigLayerView = Readonly<{ ownerKind:'global'|'project'|'conversation'; ownerId:string;
   configRevision:string; semanticLayer:Readonly<Record<string,unknown>> }>
 export type GenerationV2MessageCandidateTarget = Readonly<{messageId:string;branchId:string}>
@@ -74,6 +77,9 @@ export async function listGenerationV2Conversations(projectId:string,cursor:Gene
 }
 export async function readGenerationV2Branch(branchId:string,beforeMessageId:string|null=null,limit=50) {
   return unwrap<GenerationV2BranchView>(await bridge().readBranch(branchId,beforeMessageId,limit))
+}
+export async function readGenerationV2SearchTarget(messageId:string,preferredBranchId:string|null=null,limit=50) {
+  return unwrap<GenerationV2SearchTargetResult>(await bridge().readSearchTarget({messageId,preferredBranchId,limit}))
 }
 export async function getGenerationV2MessageCandidateNavigation(branchId:string,messageId:string) {
   return unwrap<GenerationV2MessageCandidateNavigation>(

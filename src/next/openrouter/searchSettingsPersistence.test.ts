@@ -9,6 +9,12 @@ import {
 } from './searchSettingsPersistence'
 
 describe('searchSettingsPersistence', () => {
+  it('preserves native/dormant conversation maxima without widening global defaults', () => {
+    const layer = { searchDepth: 'custom' as const, maxResults: 20 }
+    expect(normalizeSearchSettingsLayer(layer, { maxResultsBounds: { min: 1, max: 20 } })?.maxResults).toBe(20)
+    expect(mergeConvoWebSearchOverrideMeta(null, layer, { preserveExplicitMaxResults: true }).webSearchOverride).toEqual(layer)
+    expect(normalizeSearchSettingsLayer(layer)?.maxResults).toBe(10)
+  })
   it('normalizes and clamps layer fields', () => {
     const normalized = normalizeSearchSettingsLayer({
       searchMode: 'enable',

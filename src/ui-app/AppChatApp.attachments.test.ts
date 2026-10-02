@@ -6,6 +6,9 @@ import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2B
 import AppChatApp from './AppChatApp.vue'
 
 const ok = <T>(value: T) => ({ ok: true as const, value })
+const observedDfcBinding = { sourceAssetId: 'asset-text', sourceAssetRevisionId: 'revision:asset-text', sourceAssetSha256: 'a'.repeat(64),
+  targetKind: 'markdown' as const, effectiveAssetId: 'derived-markdown', effectiveAssetRevisionId: 'revision:derived-markdown', effectiveAssetSha256: 'b'.repeat(64),
+  producer: { contractId: 'starverse-dfc-text-v1', revision: 1, settingsDigest: 'c'.repeat(64) } }
 const model = {
   providerKey: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
   modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
@@ -134,7 +137,8 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
       dfcManaged: true, selectedOptionId: null, selectedAssetRefs: [],
       decision: { status: 'needs_user_selection', reasonCode: 'selected_option_missing', selectedOptionId: null, targetKind: null, sendStrategy: null, sendAssetRefs: [], needsUserAction: true },
       options: [{ optionId: `dfc:${input.assetId}:markdown`, targetKind: 'markdown', sendStrategy: 'text_in_prompt', status: 'ready', isAvailable: true,
-        compatibilityStatus: 'compatible', sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-markdown' }], warnings: [], diagnostics: [] }],
+        compatibilityStatus: 'compatible', selectionBinding: { ...observedDfcBinding, sourceAssetId: input.assetId, sourceAssetRevisionId: `revision:${input.assetId}` },
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-markdown' }], warnings: [], diagnostics: [] }],
     }))
     g.composer.dfcPreview = vi.fn(async () => ok({ attachmentId: 'revision:asset-text', conversationId: 'c1', rawFileId: 'asset-text', filename: 'notes.txt',
       sizeBytes: 12, dfcManaged: true, selectedOptionId: 'dfc:asset-text:markdown', selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-markdown' }],
@@ -181,8 +185,33 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
     render(AppChatApp)
     await user.click(await screen.findByTestId('draft-attachment-card-asset-text'))
     await user.click(await screen.findByTestId('draft-attachment-dfc-option-markdown'))
-    await waitFor(() => expect((globalThis as any).generationV2.composer.dfcSelect).toHaveBeenCalledWith(expect.objectContaining({ assetId: 'asset-text' })))
+    await waitFor(() => expect((globalThis as any).generationV2.composer.dfcSelect).toHaveBeenCalledWith(expect.objectContaining({ assetId: 'asset-text', selectionBinding: observedDfcBinding })))
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Converted markdown preview')
+  })
+
+  it('carries displayed DFC output A unchanged while queued text preparation waits and current options change to B', async () => {
+    const user = userEvent.setup()
+    const g = (globalThis as any).generationV2
+    draft = nextDraft({ attachments: [managedFile('asset-text')] })
+    render(AppChatApp)
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-text'))
+    await screen.findByTestId('draft-attachment-dfc-option-markdown')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const originalUpdate = g.composer.updateText.getMockImplementation()
+    g.composer.updateText.mockImplementationOnce(async (packet: any) => { await gate; return originalUpdate(packet) })
+    await user.type(screen.getByTestId('composer-draft'), 'T')
+    await user.click(screen.getByTestId('draft-attachment-dfc-option-markdown'))
+    await waitFor(() => expect(g.composer.updateText).toHaveBeenCalled())
+    const originalOptions = g.composer.dfcOptions.getMockImplementation()
+    g.composer.dfcOptions.mockImplementation(async (packet: any) => {
+      const result = await originalOptions(packet)
+      return ok({ ...result.value, options: result.value.options.map((option: any) => ({ ...option,
+        selectionBinding: { ...option.selectionBinding, effectiveAssetRevisionId: 'revision:output-B', effectiveAssetSha256: 'd'.repeat(64) } })) })
+    })
+    release()
+    await waitFor(() => expect(g.composer.dfcSelect).toHaveBeenCalledWith(expect.objectContaining({ selectionBinding: observedDfcBinding })))
+    expect(g.composer.dfcSelect).toHaveBeenCalledTimes(1)
   })
 
   it('removes the draft attachment through the Generation V2 revision authority', async () => {

@@ -14,10 +14,10 @@ import {
   type CanonicalModelFactSubjectPublicationV1,
 } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import {
-  ResolvedModelFactsV1Repo,
-  ResolvedModelFactsV1RepoError,
   type ResolvedModelFactsSnapshotV1,
 } from '../../infra/db/repo/resolvedModelFactsV1Repo'
+import { ResolvedModelFactsV1Service } from '../../infra/db/services/resolvedModelFactsV1Service'
+import { buildInspectorSourceScopeSelectionV1 } from './modelFactsInspectorScopeV1'
 
 type AuthoritativeSubjectSetReader = Readonly<{ readCurrent: () => Promise<AuthoritativeModelSubjectSetV1> }>
 
@@ -58,23 +58,22 @@ function boundedText(value: unknown, max: number): string {
   return value
 }
 
-function exactSubjectIn(set: AuthoritativeModelSubjectSetV1, subject: CanonicalModelSubjectV1): boolean {
+function exactSubjectIn(set: AuthoritativeModelSubjectSetV1, subject: CanonicalModelSubjectV1) {
   const key = subjectKey(subject)
-  return set.records.some((record) => subjectKey(record.subject) === key)
+  return set.records.find((record) => subjectKey(record.subject) === key)
 }
 
 /**
- * Read-only UI projection over persisted canonical source facts. It deliberately
- * returns one row per source state and never selects a winner or synthesizes a
- * resolved fact.
+ * Safe UI read projection over current persisted authorities. Winner selection
+ * and snapshot publication remain delegated to the existing authoritative resolver.
  */
 export class ModelFactsInspectorV1Service {
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
-  readonly #resolvedRepo: ResolvedModelFactsV1Repo
+  readonly #resolver: ResolvedModelFactsV1Service
 
-  constructor(db: BetterSqlite3.Database, private readonly subjectSets: AuthoritativeSubjectSetReader) {
+  constructor(private readonly db: BetterSqlite3.Database, private readonly subjectSets: AuthoritativeSubjectSetReader) {
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db)
-    this.#resolvedRepo = new ResolvedModelFactsV1Repo(db)
+    this.#resolver = new ResolvedModelFactsV1Service(db)
   }
 
   async searchSubjects(input: Readonly<{ query?: string; cursor?: string | null; limit: number }>): Promise<ModelFactsInspectorSubjectPageV1> {
@@ -106,18 +105,18 @@ export class ModelFactsInspectorV1Service {
     if (input.expectedSubjectSetRevision !== undefined && input.expectedSubjectSetRevision !== set.subjectSetRevision) {
       throw new Error('GENERATION_V2_MODEL_FACTS_INSPECTOR_STALE_SUBJECT_SET')
     }
-    if (!exactSubjectIn(set, subject)) throw new Error('GENERATION_V2_MODEL_FACTS_INSPECTOR_SUBJECT_NOT_FOUND')
-    const sources = this.#sourceRepo.listSourceStates().map((state) => Object.freeze({ state,
-      subjectFact: state.currentSourceRevision === null ? null : this.#sourceRepo.readSubjectFact({
-        canonicalSourceRevision: state.currentSourceRevision, subject,
-      }) }))
-    let resolved: ResolvedModelFactsSnapshotV1 | null = null
-    try { resolved = this.#resolvedRepo.readCurrent(subject).snapshot }
-    catch (cause) {
-      if (!(cause instanceof ResolvedModelFactsV1RepoError) ||
-          cause.code !== 'GENERATION_V2_RESOLVED_MODEL_FACTS_NOT_FOUND') throw cause
+    const record = exactSubjectIn(set, subject)
+    if (!record) throw new Error('GENERATION_V2_MODEL_FACTS_INSPECTOR_SUBJECT_NOT_FOUND')
+    const read = () => {
+      const sourceScopeSelection = buildInspectorSourceScopeSelectionV1(this.db, record)
+      const resolved = this.#resolver.resolveAndPublishInActiveTransaction({ subject, sourceScopeSelection }).snapshot
+      const sources = this.#sourceRepo.listSourceStates().map((state) => Object.freeze({ state,
+        subjectFact: state.currentSourceRevision === null ? null : this.#sourceRepo.readSubjectFact({
+          canonicalSourceRevision: state.currentSourceRevision, subject,
+        }) }))
+      return Object.freeze({ subjectSetRevision: set.subjectSetRevision, subject, sources: Object.freeze(sources), resolved })
     }
-    return Object.freeze({ subjectSetRevision: set.subjectSetRevision, subject, sources: Object.freeze(sources), resolved })
+    return this.db.inTransaction ? read() : this.db.transaction(read).immediate()
   }
 
   async readEvidenceSlice(input: Readonly<{

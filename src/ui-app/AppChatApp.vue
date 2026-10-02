@@ -6,6 +6,7 @@ import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
 import ReasoningArtifactDiagnostics from './components/ReasoningArtifactDiagnostics.vue'
 import ChatWorkspaceShell from './components/ChatWorkspaceShell.vue'
 import ChatTopSummaryBar from './components/ChatTopSummaryBar.vue'
+import WorkspaceStartupRecovery from './components/WorkspaceStartupRecovery.vue'
 import ChatRightRail from './components/ChatRightRail.vue'
 import ChatSessionConsole from './components/ChatSessionConsole.vue'
 import ChatInlineReasoning from './components/ChatInlineReasoning.vue'
@@ -28,6 +29,9 @@ import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/c
 
 const {
   isReady,
+  startupState,
+  retryStartup,
+  settingsAllowed,
   loadError,
   convoListItems,
   activeConvoId,
@@ -422,8 +426,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       :activeProjectId="activeProjectId"
       :activeConvoId="activeConvoId"
       :disabled="!isReady || isDraftInteractionLocked"
+      :selectHit="onSelectSearchHit"
       @close="closeSearchModal"
-      @select="onSelectSearchHit"
     />
 
     <ChatWorkspaceShell
@@ -468,8 +472,10 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             <button type="button" class="ml-2 mt-2 rounded border px-3 py-1" @click="confirmDraftConflictReload">{{ t('errors.draftConflict.discardAndReload') }}</button>
           </div>
         </div>
+        <WorkspaceStartupRecovery :state="startupState" :empty="isReady && workspaceMode === 'none'"
+          @retry="retryStartup" @openSettings="openSettings" />
         <ChatTopSummaryBar
-          v-if="workspaceMode !== 'none'"
+          v-if="isReady && workspaceMode !== 'none'"
           :title="activeTitle || 'No active conversation'"
           :branchSummary="branchSummary"
           :runSummary="runSummary"
@@ -531,7 +537,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
       <template #transcript>
         <div
-          v-if="workspaceMode !== 'none' && hasEarlierTranscript"
+          v-if="isReady && workspaceMode !== 'none' && hasEarlierTranscript"
           class="flex justify-center border-b border-gray-100 bg-white px-3 py-2"
         >
           <button
@@ -545,7 +551,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           </button>
         </div>
         <ChatTranscript
-          v-if="workspaceMode !== 'none'"
+          v-if="isReady && workspaceMode !== 'none'"
           :messageIds="transcriptMessageIds"
           :messagesById="transcriptMessagesById"
           :activeMessageId="activeCursorMessageId"
@@ -560,6 +566,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 historyIncompatibleAttachmentSummary.activeItem?.messageId === message.messageId ? 'ring-2 ring-amber-200 ring-offset-2 ring-offset-gray-50' : '',
               ]"
               :data-testid="`msg-wrap-${message.messageId}`"
+              tabindex="-1"
               @click="onSelectCursor(message.messageId, $event)"
             >
               <ChatMessageBubble
@@ -1181,13 +1188,13 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
     <SettingsModal
       :open="settingsOpen"
-      :disabled="!isReady"
+      :disabled="!settingsAllowed"
       :isRunning="effectiveIsRunning"
       variant="categorized"
       @close="closeSettings"
     >
       <SettingsPanel
-        :disabled="!isReady"
+        :disabled="!settingsAllowed"
         :isRunning="effectiveIsRunning"
         :initialCategory="modelFactsInspectorSubject ? 'models-capabilities' : undefined"
         :inspectorSubject="modelFactsInspectorSubject"

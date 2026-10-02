@@ -73,7 +73,9 @@ describe('model fact control explanations', () => {
   it('explains a supported control that hides an option by the resolved domain, not as unsupported', () => {
     const explanations = buildModelFactControlExplanationsV1({ projection: projection(CONTROLS), subject })
     expect(modelFactControlReasonV1(explanations, 'web.types')).toMatchObject({ state: 'supported',
-      path: 'search.image.support', text: t('settings.modelsCapabilities.facts.control.notInDomain') })
+      path: 'search.web.support', text: t('settings.modelsCapabilities.facts.control.notInDomain') })
+    const image = buildModelFactControlExplanationsV1({ projection: { ...projection(CONTROLS), binding: { operation: 'image_generate' } }, subject })
+    expect(modelFactControlReasonV1(image, 'web.types')?.path).toBe('search.image.support')
   })
 
   it('ignores Inspector data for a different capabilityRevision instead of guessing', () => {

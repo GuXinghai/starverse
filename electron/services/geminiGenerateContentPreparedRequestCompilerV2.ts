@@ -32,6 +32,7 @@ import {
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 /* eslint-enable no-restricted-imports */
 
 export class GeminiGenerateContentPreparedRequestCompilerV2Error extends Error {
@@ -86,6 +87,11 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_BINDING_INVALID')
   }
   const intent = snapshot.semanticIntent
+  try {
+    validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},intent.web)
+  } catch {
+    throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
+  }
   const toolsEnabled = intent.tools.mode === 'enabled'
   if (toolsEnabled) {
     if (snapshot.toolAuthority.kind !== 'registry' ||

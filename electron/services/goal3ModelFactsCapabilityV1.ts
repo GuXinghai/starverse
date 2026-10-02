@@ -1,6 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
-  buildCapabilityRuleSourceScopeIdV1,
   buildModelsDevSourceScopeIdV1,
   buildProviderNativeSourceScopeIdV1,
 } from '../../src/next/generation-v2/model-facts/sourceScopeV1'
@@ -19,10 +18,10 @@ import type { ResolvedModelFactsSnapshotBindingV1 } from '../../src/next/generat
 import { projectResolvedModelFactsToRuntimeV2 } from '../../src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1'
 import { ResolvedModelFactsV1Service } from '../../infra/db/services/resolvedModelFactsV1Service'
 import type { ResolvedModelFactsSourceScopeSelectionV1 } from '../../infra/db/repo/resolvedModelFactsV1Repo'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
 
 const MODELS_DEV_DISTRIBUTION_ID = 'models.dev-official-api'
 const MODELS_DEV_DISTRIBUTION_CHANNEL = 'https://models.dev/api.json'
-const RULE_STORE_ID = 'epoch-2-capability-rules'
 
 function unconfiguredScope(kind: string, authorityId: string, endpointProfileId: string): string {
   return `canonical-source-scope-v1:${canonicalSourceFactDigestV1({ kind, authorityId, endpointProfileId })}`
@@ -60,19 +59,40 @@ export function buildGoal3SourceScopeSelectionV1(input: Readonly<{
     throw new Error('GENERATION_V2_RESOLVED_MODEL_FACTS_SCOPE_INVALID')
   }
   const authority = authorityForBinding(input.binding)
-  const native = authority.providerNativeSurfaceId === null
-    ? unconfiguredScope('provider_native', authority.providerAuthorityId, input.binding.endpointProfileId.value)
-    : buildProviderNativeSourceScopeIdV1({ providerAuthorityId: authority.providerAuthorityId,
-      providerNativeSurfaceId: authority.providerNativeSurfaceId, endpointProfileId: input.binding.endpointProfileId.value,
-      credentialScopeId: input.binding.credentialScopeId.value, credentialRevision: input.credentialRevision })
-  const modelsDevKey = input.binding.providerId.value === 'openai_compatible'
-    ? null : modelsDevProviderKeyForAuthorityV1(authority.providerAuthorityId)
+  return buildServerModelFactsSourceScopeSelectionV1({ ...authority,
+    endpointProfileId: input.binding.endpointProfileId.value,
+    credentialScopeId: input.binding.credentialScopeId.value, credentialRevision: input.credentialRevision,
+    compatible: input.binding.providerId.value === 'openai_compatible' })
+}
+
+/** Shared server-authority projection; callers establish an exact binding or persisted subject proof. */
+export function buildServerModelFactsSourceScopeSelectionV1(input: Readonly<{
+  providerAuthorityId: string
+  providerNativeSurfaceId: string | null
+  endpointProfileId: string
+  credentialScopeId?: string
+  credentialRevision?: number
+  catalogCategory?: string
+  compatible?: boolean
+}>): ResolvedModelFactsSourceScopeSelectionV1 {
+  if (input.providerNativeSurfaceId !== null &&
+      (!Number.isSafeInteger(input.credentialRevision) || input.credentialRevision! < 0 ||
+       typeof input.credentialScopeId !== 'string')) {
+    throw new Error('GENERATION_V2_RESOLVED_MODEL_FACTS_SCOPE_INVALID')
+  }
+  const native = input.providerNativeSurfaceId === null
+    ? unconfiguredScope('provider_native', input.providerAuthorityId, input.endpointProfileId)
+    : buildProviderNativeSourceScopeIdV1({ providerAuthorityId: input.providerAuthorityId,
+      providerNativeSurfaceId: input.providerNativeSurfaceId, endpointProfileId: input.endpointProfileId,
+      credentialScopeId: input.credentialScopeId!, credentialRevision: input.credentialRevision!,
+      ...(input.catalogCategory ? { catalogCategory: input.catalogCategory } : {}) })
+  const modelsDevKey = input.compatible ? null : modelsDevProviderKeyForAuthorityV1(input.providerAuthorityId)
   const modelsDev = modelsDevKey === null
-    ? unconfiguredScope('models_dev', authority.providerAuthorityId, input.binding.endpointProfileId.value)
+    ? unconfiguredScope('models_dev', input.providerAuthorityId, input.endpointProfileId)
     : buildModelsDevSourceScopeIdV1({ distributionId: MODELS_DEV_DISTRIBUTION_ID,
       distributionChannel: MODELS_DEV_DISTRIBUTION_CHANNEL })
   return Object.freeze({ providerNative: native, modelsDev,
-    capabilityRules: buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: RULE_STORE_ID }) })
+    capabilityRules: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 })
 }
 
 export function resolveGoal3ModelFactsForBindingV1(input: Readonly<{

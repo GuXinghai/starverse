@@ -1,0 +1,916 @@
+{
+  "date": "2026-10-03",
+  "branch": "models-dev-capability-resolution",
+  "baseHead": "7896ddfbe0c3ca678340baa79475bb78fe00e96d",
+  "secondWaveCommitted": true,
+  "secondWaveCommitIdentity": "Git commit containing this record",
+  "secondWaveCommitSubject": "fix: close second-wave capability and workspace gaps",
+  "finalExecutionMode": "single-thread; further delegation stopped by user instruction",
+  "pushed": false,
+  "status": "AUTOMATED_CONTRACT_CLOSURE",
+  "findings": [
+    {
+      "id": "SV-PGA-006",
+      "status": "CLOSED_WITH_DOCUMENTED_BOUNDARIES"
+    },
+    {
+      "id": "SV-PGA-007",
+      "status": "CLOSED_WITH_DOCUMENTED_BOUNDARIES"
+    },
+    {
+      "id": "SV-PGA-011",
+      "status": "CLOSED_WITH_DOCUMENTED_BOUNDARIES"
+    },
+    {
+      "id": "SV-PGA-009",
+      "status": "CLOSED_WITH_DOCUMENTED_BOUNDARIES"
+    },
+    {
+      "id": "SV-PGA-010",
+      "status": "CLOSED_WITH_DOCUMENTED_BOUNDARIES"
+    }
+  ],
+  "testSummary": {
+    "uniqueFiles": 59,
+    "uniqueTests": 469,
+    "failed": 0,
+    "pending": 0,
+    "aggregation": "latest receipt per actual test file; overlapping runs are not summed"
+  },
+  "groups": [
+    {
+      "id": "unit",
+      "success": true,
+      "tests": 112,
+      "passed": 112,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/next/openrouter/searchSettingsPersistence.test.ts",
+          "status": "passed",
+          "tests": 7
+        },
+        {
+          "path": "src/next/openrouter/searchSettingsResolver.test.ts",
+          "status": "passed",
+          "tests": 9
+        },
+        {
+          "path": "src/shared/files/documentFormatConversion.test.ts",
+          "status": "passed",
+          "tests": 20
+        },
+        {
+          "path": "src/shared/provider/providerFailureUiProjectionV2.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "src/shared/provider/providerFailureV2.test.ts",
+          "status": "passed",
+          "tests": 22
+        },
+        {
+          "path": "src/next/generation-v2/capability/resolvedCapabilityV2.test.ts",
+          "status": "passed",
+          "tests": 9
+        },
+        {
+          "path": "src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.test.ts",
+          "status": "passed",
+          "tests": 18
+        },
+        {
+          "path": "src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.test.ts",
+          "status": "passed",
+          "tests": 18
+        },
+        {
+          "path": "src/next/generation-v2/contracts/webSearchProtocolParametersV2.test.ts",
+          "status": "passed",
+          "tests": 5
+        },
+        {
+          "path": "src/next/generation-v2/model-facts/semanticInvalidationV1.test.ts",
+          "status": "passed",
+          "tests": 1
+        },
+        {
+          "path": "src/next/generation-v2/renderer/generationV2ComposerClient.test.ts",
+          "status": "passed",
+          "tests": 1
+        }
+      ],
+      "command": "npx vitest --run --config vitest.unit.config.ts src/next/generation-v2/contracts/webSearchProtocolParametersV2.test.ts src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.test.ts src/next/generation-v2/capability/resolvedCapabilityV2.test.ts src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.test.ts src/next/generation-v2/model-facts/semanticInvalidationV1.test.ts src/next/generation-v2/renderer/generationV2ComposerClient.test.ts src/next/openrouter/searchSettingsPersistence.test.ts src/next/openrouter/searchSettingsResolver.test.ts src/shared/files/documentFormatConversion.test.ts src/shared/provider/providerFailureV2.test.ts src/shared/provider/providerFailureUiProjectionV2.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "unit-config",
+      "success": true,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/ui-app/app/chatSessionConfig.test.ts",
+          "status": "passed",
+          "tests": 6
+        }
+      ],
+      "command": "npx vitest --run --config vitest.unit.config.ts src/ui-app/app/chatSessionConfig.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "unit-codec",
+      "success": true,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/next/generation-v2/providers/openai-responses/responsesRequestV1.test.ts",
+          "status": "passed",
+          "tests": 9
+        }
+      ],
+      "command": "npx vitest --run --config vitest.unit.config.ts src/next/generation-v2/providers/openai-responses/responsesRequestV1.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "integration-base",
+      "success": true,
+      "tests": 149,
+      "passed": 149,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "electron/preload.test.ts",
+          "status": "passed",
+          "tests": 6
+        },
+        {
+          "path": "electron/data-epoch/freshEpochDatabaseInitializer.test.ts",
+          "status": "passed",
+          "tests": 19
+        },
+        {
+          "path": "electron/ipc/generationV2CloudCapabilityRulesIpc.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "electron/ipc/generationV2ComposerIpc.test.ts",
+          "status": "passed",
+          "tests": 1
+        },
+        {
+          "path": "electron/ipc/generationV2SourcePriorityConfigIpc.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "electron/ipc/generationV2UserCapabilityRulesIpc.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "electron/ipc/generationV2WorkspaceIpc.test.ts",
+          "status": "passed",
+          "tests": 11
+        },
+        {
+          "path": "electron/services/cloudRulesApplicationV1Service.test.ts",
+          "status": "passed",
+          "tests": 11
+        },
+        {
+          "path": "electron/services/generationV2CapabilityResolutionService.test.ts",
+          "status": "passed",
+          "tests": 7
+        },
+        {
+          "path": "electron/services/generationV2DfcService.test.ts",
+          "status": "passed",
+          "tests": 17
+        },
+        {
+          "path": "electron/services/modelFactsInspectorScopeV1.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "electron/services/modelFactsInspectorV1Service.test.ts",
+          "status": "passed",
+          "tests": 4
+        },
+        {
+          "path": "electron/services/modelFactsSemanticInvalidationV1.test.ts",
+          "status": "passed",
+          "tests": 1
+        },
+        {
+          "path": "infra/files/dfcLibreOfficePdfAdapter.test.ts",
+          "status": "passed",
+          "tests": 10
+        },
+        {
+          "path": "infra/db/repo/branchRouteResolverV2.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "infra/db/repo/composerDraftV2Repo.test.ts",
+          "status": "passed",
+          "tests": 5
+        },
+        {
+          "path": "infra/db/repo/conversationReadV2Repo.test.ts",
+          "status": "passed",
+          "tests": 7
+        },
+        {
+          "path": "infra/db/repo/generationExecutionV2Repo.test.ts",
+          "status": "passed",
+          "tests": 14
+        },
+        {
+          "path": "infra/db/repo/generationV2SearchRepo.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "infra/db/repo/generationV2SearchTargetRepo.test.ts",
+          "status": "passed",
+          "tests": 12
+        },
+        {
+          "path": "infra/db/repo/modelCatalogV2Repo.test.ts",
+          "status": "passed",
+          "tests": 9
+        }
+      ],
+      "command": "npx vitest --run --config vitest.integration.config.ts electron/services/generationV2DfcService.test.ts infra/db/repo/composerDraftV2Repo.test.ts electron/ipc/generationV2ComposerIpc.test.ts electron/ipc/generationV2WorkspaceIpc.test.ts electron/preload.test.ts infra/files/dfcLibreOfficePdfAdapter.test.ts infra/db/repo/generationV2SearchTargetRepo.test.ts infra/db/repo/conversationReadV2Repo.test.ts infra/db/repo/branchRouteResolverV2.test.ts infra/db/repo/generationV2SearchRepo.test.ts electron/services/modelFactsSemanticInvalidationV1.test.ts electron/services/modelFactsInspectorScopeV1.test.ts electron/services/modelFactsInspectorV1Service.test.ts electron/services/cloudRulesApplicationV1Service.test.ts electron/ipc/generationV2UserCapabilityRulesIpc.test.ts electron/ipc/generationV2CloudCapabilityRulesIpc.test.ts electron/ipc/generationV2SourcePriorityConfigIpc.test.ts electron/services/generationV2CapabilityResolutionService.test.ts infra/db/repo/authoritativeModelSubjectSetV1Repo.test.ts electron/data-epoch/freshEpochDatabaseInitializer.test.ts infra/db/repo/generationExecutionV2Repo.test.ts infra/db/repo/modelCatalogV2Repo.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "integration-native",
+      "success": true,
+      "tests": 36,
+      "passed": 36,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "electron/services/anthropicPlainTextSnapshotCommitV2.test.ts",
+          "status": "passed",
+          "tests": 1
+        },
+        {
+          "path": "electron/services/geminiInteractionsImageGenerationV2.test.ts",
+          "status": "passed",
+          "tests": 9
+        },
+        {
+          "path": "electron/services/openAIResponsesGenerationAuthorityV2Service.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "electron/services/openAIResponsesWebSearchPreparedV2.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "electron/services/openRouterChatGenerationAuthorityV2Service.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "infra/db/repo/anthropicNativeHistoryV2Repo.test.ts",
+          "status": "passed",
+          "tests": 18
+        }
+      ],
+      "command": "npx vitest --run --config vitest.integration.config.ts electron/services/openAIResponsesWebSearchPreparedV2.test.ts infra/db/repo/anthropicNativeHistoryV2Repo.test.ts electron/services/geminiInteractionsImageGenerationV2.test.ts electron/services/anthropicPlainTextSnapshotCommitV2.test.ts electron/services/openRouterChatGenerationAuthorityV2Service.test.ts electron/services/openAIResponsesGenerationAuthorityV2Service.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "integration-responses-complete",
+      "success": true,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "electron/services/openAIResponsesWebSearchPreparedV2.test.ts",
+          "status": "passed",
+          "tests": 5
+        }
+      ],
+      "command": "npx vitest --run --config vitest.integration.config.ts electron/services/openAIResponsesWebSearchPreparedV2.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "ui-helpers",
+      "success": true,
+      "tests": 40,
+      "passed": 40,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/ui-app/app/generationV2WebSearchProjection.test.ts",
+          "status": "passed",
+          "tests": 10
+        },
+        {
+          "path": "src/ui-app/app/workspaceStartupController.test.ts",
+          "status": "passed",
+          "tests": 6
+        },
+        {
+          "path": "src/ui-app/components/ModelFactsInspectorPanel.invalidation.test.ts",
+          "status": "passed",
+          "tests": 10
+        },
+        {
+          "path": "src/ui-app/components/ModelFactsInspectorPanel.test.ts",
+          "status": "passed",
+          "tests": 2
+        },
+        {
+          "path": "src/ui-app/components/WebSearchSettingsEditor.test.ts",
+          "status": "passed",
+          "tests": 9
+        },
+        {
+          "path": "src/ui-app/components/WorkspaceStartupRecovery.test.ts",
+          "status": "passed",
+          "tests": 3
+        }
+      ],
+      "command": "npx vitest --run --config vitest.ui.config.ts src/ui-app/app/generationV2WebSearchProjection.test.ts src/ui-app/app/workspaceStartupController.test.ts src/ui-app/components/WorkspaceStartupRecovery.test.ts src/ui-app/app/chatSessionConfig.test.ts src/ui-app/components/WebSearchSettingsEditor.test.ts src/ui-app/components/ModelFactsInspectorPanel.test.ts src/ui-app/components/ModelFactsInspectorPanel.invalidation.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "unit-queue",
+      "success": true,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/ui-app/app/conversationConfigUpdateQueue.test.ts",
+          "status": "passed",
+          "tests": 1
+        }
+      ],
+      "command": "npx vitest --run --config vitest.unit.config.ts src/ui-app/app/conversationConfigUpdateQueue.test.ts",
+      "exitCode": 0
+    },
+    {
+      "id": "ui-root-frozen",
+      "success": true,
+      "tests": 114,
+      "passed": 114,
+      "failed": 0,
+      "pending": 0,
+      "files": [
+        {
+          "path": "src/ui-app/AppChatApp.attachments.test.ts",
+          "status": "passed",
+          "tests": 6
+        },
+        {
+          "path": "src/ui-app/AppChatApp.candidatePager.test.ts",
+          "status": "passed",
+          "tests": 3
+        },
+        {
+          "path": "src/ui-app/AppChatApp.filters.test.ts",
+          "status": "passed",
+          "tests": 1
+        },
+        {
+          "path": "src/ui-app/AppChatApp.nativeWebSearch.test.ts",
+          "status": "passed",
+          "tests": 11
+        },
+        {
+          "path": "src/ui-app/AppChatApp.regenRetry.test.ts",
+          "status": "passed",
+          "tests": 13
+        },
+        {
+          "path": "src/ui-app/AppChatApp.scopeOwnership.test.ts",
+          "status": "passed",
+          "tests": 33
+        },
+        {
+          "path": "src/ui-app/AppChatApp.searchNavigation.test.ts",
+          "status": "passed",
+          "tests": 9
+        },
+        {
+          "path": "src/ui-app/AppChatApp.semanticInvalidation.test.ts",
+          "status": "passed",
+          "tests": 7
+        },
+        {
+          "path": "src/ui-app/AppChatApp.semanticOperation.test.ts",
+          "status": "passed",
+          "tests": 5
+        },
+        {
+          "path": "src/ui-app/AppChatApp.send.test.ts",
+          "status": "passed",
+          "tests": 5
+        },
+        {
+          "path": "src/ui-app/AppChatApp.startupRecovery.test.ts",
+          "status": "passed",
+          "tests": 16
+        },
+        {
+          "path": "src/ui-app/app/modelFactControlExplanations.test.ts",
+          "status": "passed",
+          "tests": 5
+        }
+      ],
+      "command": "npx vitest --run --config vitest.ui.config.ts src/ui-app/AppChatApp.scopeOwnership.test.ts src/ui-app/AppChatApp.send.test.ts src/ui-app/AppChatApp.attachments.test.ts src/ui-app/AppChatApp.regenRetry.test.ts src/ui-app/AppChatApp.filters.test.ts src/ui-app/AppChatApp.candidatePager.test.ts src/ui-app/AppChatApp.startupRecovery.test.ts src/ui-app/AppChatApp.nativeWebSearch.test.ts src/ui-app/AppChatApp.semanticInvalidation.test.ts src/ui-app/AppChatApp.searchNavigation.test.ts src/ui-app/app/modelFactControlExplanations.test.ts src/ui-app/AppChatApp.semanticOperation.test.ts",
+      "exitCode": 0
+    }
+  ],
+  "checks": [
+    {
+      "name": "types",
+      "command": "npx vue-tsc --noEmit",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "zero-residual",
+      "command": "node scripts/gates/generation-v2-zero-residual.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "goal3-authority",
+      "command": "node scripts/gates/generation-v2-goal3-authority.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "rule-authority",
+      "command": "node scripts/gates/generation-v2-capability-rule-authority.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "model-identity",
+      "command": "node scripts/gates/model-identity-compatibility-purge.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "partitions",
+      "command": "node scripts/check-test-partitions.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "i18n",
+      "command": "node scripts/i18n/check-i18n-coverage.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "hardcoded-ui",
+      "command": "node scripts/i18n/check-hardcoded-ui-text.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "smoke-syntax",
+      "command": "node --check scripts/dfc/office-pdf-libreoffice-live-installed-state-smoke.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "smoke-syntax",
+      "command": "node --check scripts/dfc/office-pdf-libreoffice-packaged-electron-smoke.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "smoke-syntax",
+      "command": "node --check scripts/smoke/electron-shell-smoke.mjs",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "diff",
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0
+    }
+  ],
+  "privacyFinal": {
+    "command": "node scripts/gates/privacy-scan.mjs",
+    "status": "PASS",
+    "exitCode": 0,
+    "scannedFiles": 2527,
+    "unclassifiedSensitiveMatches": 0
+  },
+  "testReceiptLimits": [
+    "Only matched testResults are counted. integration-base requested a nonexistent authoritativeModelSubjectSetV1Repo.test.ts path; no coverage is claimed for it.",
+    "chatSessionConfig.test.ts is unit-owned: its unmatched UI request is not counted, and its separate unit run is counted.",
+    "Operation-transition capabilities and endpoint selections are deterministic canonical boundary stubs; repositories and priority commits are real isolated fixtures."
+  ],
+  "sourceIntegrity": {
+    "fingerprints": [
+      {
+        "path": "electron/electron-env.d.ts",
+        "sha256": "E98EC41230B97F6C367D218B4EDAF244F15C1004DDED0A3EFA7E6F1806347684"
+      },
+      {
+        "path": "electron/ipc/generationV2CloudCapabilityRulesIpc.test.ts",
+        "sha256": "CCF184E80644B0CCE83B13445B34445A1D087B86F2ED015B4583AFF9CC39A58F"
+      },
+      {
+        "path": "electron/ipc/generationV2CloudCapabilityRulesIpc.ts",
+        "sha256": "0D0C13A663180E9DED1470E3097C624E38602CC1D45B4A8278606A61663B9033"
+      },
+      {
+        "path": "electron/ipc/generationV2ComposerIpc.ts",
+        "sha256": "36A72803F92A213FAF9CD437DC031341B8AE4B81212C7F908DA494C0E0247F53"
+      },
+      {
+        "path": "electron/ipc/generationV2IpcRegistration.ts",
+        "sha256": "0C65463446CEF38B4D13063616A87CF473206080F993FC560960844E3BFDCF3A"
+      },
+      {
+        "path": "electron/ipc/generationV2SourcePriorityConfigIpc.test.ts",
+        "sha256": "FF1E047C797A61C5106B3B0EED6D3B7FA83C2C463D40832A36C78F7387F915C8"
+      },
+      {
+        "path": "electron/ipc/generationV2SourcePriorityConfigIpc.ts",
+        "sha256": "AD542B8AAF908DB2FFA8F513C463D328E8F1598118A3286A05952BA61337F027"
+      },
+      {
+        "path": "electron/ipc/generationV2UserCapabilityRulesIpc.test.ts",
+        "sha256": "11A9E9424F0E1574805D49504B64C0196744E2BA612FA8090758B22B3DD4EDA6"
+      },
+      {
+        "path": "electron/ipc/generationV2UserCapabilityRulesIpc.ts",
+        "sha256": "5869074267F9CB890DE7EA7846DA785F867B683E6E5EEE018EF3C653C58D07DB"
+      },
+      {
+        "path": "electron/ipc/generationV2WorkspaceIpc.ts",
+        "sha256": "3E5BF6911C6CFE3084FA9D96FFB08A0253241A3637B2808F19940608ACC2D7D7"
+      },
+      {
+        "path": "electron/mainV2.ts",
+        "sha256": "20A97D451CB68213197778F3DF390FD840CE8322E59E9C492B10D14849D84059"
+      },
+      {
+        "path": "electron/preload.test.ts",
+        "sha256": "933FB08CD77E42F9873BA694200FC0A9D70705E74B46AB51C8F75B9766D94B89"
+      },
+      {
+        "path": "electron/preload.ts",
+        "sha256": "F17D90F45FE8F1EDB2DCC802ED25B0D1059F8BA773D06D45CA3CB25247D7E665"
+      },
+      {
+        "path": "electron/services/anthropicGenerationAuthorityV2Service.ts",
+        "sha256": "D2CB2C5D24729AE47A73201C063F25457AB8885124C5B0FE18E5C10A29EAE41A"
+      },
+      {
+        "path": "electron/services/anthropicMessagesPreparedRequestCompilerV2.ts",
+        "sha256": "358D6968E070E3834F245EA496BE96018DD5CCD981A6FAD06371AF92B1D6CD4F"
+      },
+      {
+        "path": "electron/services/cloudRulesApplicationV1Service.test.ts",
+        "sha256": "2BED8740BA7E1E8DCB4AD7F7009E4FA4730328E02EA0E6B4B3CE784977732D7B"
+      },
+      {
+        "path": "electron/services/geminiGenerateContentPreparedRequestCompilerV2.ts",
+        "sha256": "5BA03FEC649AC1AB778697A5FE6E97C8D4EE119F449FE586DFE5A9EEFA083069"
+      },
+      {
+        "path": "electron/services/geminiInteractionsImagePreparedRequestCompilerV2.ts",
+        "sha256": "9BDF42CDB6B5526F9578D01B82254A1F7B46361D1CB9E6A905E86E51A0D903D3"
+      },
+      {
+        "path": "electron/services/generationV2DfcService.test.ts",
+        "sha256": "572F092F0D575DBA448B167E9958B09777FC747FDAF3AC30BE43D1CC8BF03D85"
+      },
+      {
+        "path": "electron/services/generationV2DfcService.ts",
+        "sha256": "C9CC1AF79D126F65329C3803405A5A36C3C8D0F1765AE167777AB54B819A2D47"
+      },
+      {
+        "path": "electron/services/goal3ModelFactsCapabilityV1.ts",
+        "sha256": "CFA31BEA4C68526E2E422CEFA76316A06FD607AE740EBE293E66A04DDEDC8415"
+      },
+      {
+        "path": "electron/services/modelFactsInspectorScopeV1.test.ts",
+        "sha256": "2C9E491D317684CD81503362A298B440E4B8938EE031D5045C0C87B10CC7E319"
+      },
+      {
+        "path": "electron/services/modelFactsInspectorScopeV1.ts",
+        "sha256": "F1FBDBF99B3F8E494C58AF2149AAE4C08E957A8DE5CA8F295217409E150340DD"
+      },
+      {
+        "path": "electron/services/modelFactsInspectorV1Service.test.ts",
+        "sha256": "185A893052A33AD433DA9C152F2644D21D2784C8A462F14F61461C0B62F89029"
+      },
+      {
+        "path": "electron/services/modelFactsInspectorV1Service.ts",
+        "sha256": "892191B20450D945ED44510ABEF94DCE47202296BAC8649DC3277FAE04CC425C"
+      },
+      {
+        "path": "electron/services/modelFactsSemanticInvalidationV1.test.ts",
+        "sha256": "C331AE8C0FB47957C3E199CCB00F210BC9A99C5C2A71227473BF7D028FECBA65"
+      },
+      {
+        "path": "electron/services/modelFactsSemanticInvalidationV1.ts",
+        "sha256": "90503F8ECB04A9D9503C77E014EC0E2A354147533043BA35F44BDB444C475526"
+      },
+      {
+        "path": "electron/services/openAIResponsesPreparedRequestCompilerV2.ts",
+        "sha256": "F1CE50C31191A2DCD1AB2366A6FEF20727A4BF126F4347D7F572AA10DF4CD1D6"
+      },
+      {
+        "path": "electron/services/openAIResponsesWebSearchPreparedV2.test.ts",
+        "sha256": "3DFDCA0337AA6F7DD49FBAE353815685A5445D344DB249FD44777F3C892A05FC"
+      },
+      {
+        "path": "electron/services/openRouterChatGenerationAuthorityV2Service.ts",
+        "sha256": "4176476FA96D239805306A8F821A1FEBCEE5F97E123163E9FD4C915834F37FCE"
+      },
+      {
+        "path": "electron/services/openRouterChatPreparedRequestCompilerV2.ts",
+        "sha256": "87A766DC4B592B5C17FFDAD6FB454BA0E9C16EF190E0962783943394A85ACC6A"
+      },
+      {
+        "path": "infra/db/repo/composerDraftV2Repo.ts",
+        "sha256": "45CC5D7C4960976E7D530C7144CB7EF3C6D83D2C24944CA89BC7F87B082E929E"
+      },
+      {
+        "path": "infra/db/repo/generationV2SearchTargetRepo.test.ts",
+        "sha256": "C3AB055A0B76E67C4759F4DDA286BDF749DCFE6DBF425D5E336A1D517A439BB9"
+      },
+      {
+        "path": "infra/db/repo/generationV2SearchTargetRepo.ts",
+        "sha256": "1BCA20546F4BB0613D6FA59DF557DC0880287955CF7221A5BC67020EA3E8E5FA"
+      },
+      {
+        "path": "scripts/dfc/office-pdf-libreoffice-live-installed-state-smoke.mjs",
+        "sha256": "14FD8D1A483C3427369A5C6B7F356164218AD6D846CA9C55983F6EEE93FA881F"
+      },
+      {
+        "path": "scripts/dfc/office-pdf-libreoffice-packaged-electron-smoke.mjs",
+        "sha256": "3092F1408F2845D56AC96146E60FF5A67C108FBA1BD9183764F69CB995DC3912"
+      },
+      {
+        "path": "scripts/smoke/electron-shell-smoke.mjs",
+        "sha256": "55881125E79DCB339B89070273E043868F8677E69732AB928820C1242E60D957"
+      },
+      {
+        "path": "src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.test.ts",
+        "sha256": "312295E2945496C67D9A5CA2C35589AEE3F9C1DA25E9934551122179DDF679EC"
+      },
+      {
+        "path": "src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.ts",
+        "sha256": "D38877399037EB7C7DD951C19A930B94C62FF28594FF66E290B8E49C3A05C421"
+      },
+      {
+        "path": "src/next/generation-v2/capability/runtimeProjectionSourcePathsV1.ts",
+        "sha256": "5435F9CEA382BACDF6B01789F6D1E1E20563E7E8590E88A76E61D29E7F8CAD3E"
+      },
+      {
+        "path": "src/next/generation-v2/contracts/webSearchProtocolParametersV2.test.ts",
+        "sha256": "2F29B121FE5CD0D73C03FF49EADC8980F34219CD6A30960D6DF389E325F18F1C"
+      },
+      {
+        "path": "src/next/generation-v2/contracts/webSearchProtocolParametersV2.ts",
+        "sha256": "5F72192CB02E7D2D9143722399B994DBD636617698B1DB7D75F77EAC0E00BF8F"
+      },
+      {
+        "path": "src/next/generation-v2/model-facts/semanticInvalidationV1.test.ts",
+        "sha256": "EFA8A8EC5EBBB1ADFDBA1B21386751211DD63171019C6F2AA0BA4588AEF6B443"
+      },
+      {
+        "path": "src/next/generation-v2/model-facts/semanticInvalidationV1.ts",
+        "sha256": "F53C446582D60FB9D3FFA560CAA493A755C52DFA948E3875298F7918406DCD09"
+      },
+      {
+        "path": "src/next/generation-v2/providers/openai-responses/responsesRequestV1.ts",
+        "sha256": "956E9EF06D16E2E0C8F584FADD29F748FC578ACB22A81BAC5B4DEDC4C777EA2E"
+      },
+      {
+        "path": "src/next/generation-v2/renderer/generationV2ComposerClient.ts",
+        "sha256": "58893BB864B9B25772BA27B989D3A2F80128B103D673998994F8C52B14898133"
+      },
+      {
+        "path": "src/next/generation-v2/renderer/generationV2WorkspaceClient.ts",
+        "sha256": "998F329D559021103E547679A5160AF12395E5E745E01D1E2A306976265A27AA"
+      },
+      {
+        "path": "src/next/openrouter/searchSettingsPersistence.test.ts",
+        "sha256": "6F254E3E2524773B108C46A55D5EFB3E730668546ADA57DCC1363CAC6CB5A54F"
+      },
+      {
+        "path": "src/next/openrouter/searchSettingsPersistence.ts",
+        "sha256": "901439CB45A68589D0A7357B5B9CEAE84680201D845B3E3B4C6402412376E249"
+      },
+      {
+        "path": "src/next/openrouter/searchSettingsResolver.test.ts",
+        "sha256": "F4122DDCA3592BF331CDEF5582F7E212B1950F3724C22E1E9CD3249B8CE36CE2"
+      },
+      {
+        "path": "src/next/openrouter/searchSettingsResolver.ts",
+        "sha256": "7D3118792135FA5106B5C2F0D088504FEA3EDE1D3916A12820D9EFA2E6D1807F"
+      },
+      {
+        "path": "src/shared/files/documentFormatConversion.ts",
+        "sha256": "7C424DE5F118703A39EECEB6A189A027622486A0FA64D2497FE600879C454118"
+      },
+      {
+        "path": "src/shared/i18n/locales/en-US/errors.json",
+        "sha256": "4D198DCC8A234E1BCAE24939DEB06B421D23F6758748FA2AC6AAD208A0369644"
+      },
+      {
+        "path": "src/shared/i18n/locales/zh-CN/errors.json",
+        "sha256": "024A4DF564773CE4DC9ECA27037CACEBC9A609B1497D7E082823518B30967A4F"
+      },
+      {
+        "path": "src/ui-app/app/appChatApp.logic.ts",
+        "sha256": "1EFEC0EF29F29B24043AE1DCD62ADB6ABFE035E800BEB311FF3B0D9483388248"
+      },
+      {
+        "path": "src/ui-app/app/chatSessionConfig.test.ts",
+        "sha256": "B686856601E86B1AED048B0DC09F8604F4A32BEA725816AAAC0224699F2D0002"
+      },
+      {
+        "path": "src/ui-app/app/chatSessionConfig.ts",
+        "sha256": "EA770E628A5996D4913DFB593D8A00C9E7571944B992751072BF5CF08ED141F7"
+      },
+      {
+        "path": "src/ui-app/app/generationV2WebSearchProjection.test.ts",
+        "sha256": "9FBC2ED9D22F9631F153F9946EA120D5AB7928636B9A96E7403DF129847E2AD2"
+      },
+      {
+        "path": "src/ui-app/app/generationV2WebSearchProjection.ts",
+        "sha256": "ACA26FE6970B2C0A58E860181E50AFC1D4C7DF7E4965548EECEF6117B4D074B2"
+      },
+      {
+        "path": "src/ui-app/app/modelFactControlExplanations.test.ts",
+        "sha256": "1C579393037CA71DC98C189C0FEA7C5DCCCEB9F72A90BEC857AAF228AD90B9CA"
+      },
+      {
+        "path": "src/ui-app/app/modelFactControlExplanations.ts",
+        "sha256": "B891FA4E1F5042EBC9E690598C539CBF20AD0114D7260BE469292217F624960A"
+      },
+      {
+        "path": "src/ui-app/app/workspaceStartupController.test.ts",
+        "sha256": "EC471521FAA5775737DD0794C035101611BE6BA69A7A0A7653BF6518613BA28C"
+      },
+      {
+        "path": "src/ui-app/app/workspaceStartupController.ts",
+        "sha256": "BAEA772E09E7F4B0B3776DDCCB01163AF1362A15DD94C713E4FADFEA7B36BB24"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.attachments.test.ts",
+        "sha256": "AF4A208C9B391A9FD6DF976E44658A619AF265FAB9775E47B67708123CE25AC4"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.nativeWebSearch.test.ts",
+        "sha256": "D7F06E7897AF8AA38BF178A5EB1CE2A59BB54DAE80FE94F4896E44AF30A0B905"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.searchNavigation.test.ts",
+        "sha256": "C991CC1349FFCE68FA9AD358718BDDAB368C887951F2FC561C5DAB11C329407A"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.semanticInvalidation.test.ts",
+        "sha256": "B285D5915EB6776110DC8E2B5FF0E8C021022C4B407FCF4975F7B6DDEF5163AF"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.semanticOperation.test.ts",
+        "sha256": "4585E283B22FD6BD2DD8CAD69D432D5E094E2C4C0165D4BAA867DFA1563677CE"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.startupRecovery.test.ts",
+        "sha256": "B101020D06217F22E9369BB00DE03BBB83D9B6316701C6DF12B6C848A66C74D5"
+      },
+      {
+        "path": "src/ui-app/AppChatApp.vue",
+        "sha256": "119D69702AA2D7500E93913D8E562E4293A1E2F7DB1E84A716983D163D18F06D"
+      },
+      {
+        "path": "src/ui-app/components/ChatSessionConsole.vue",
+        "sha256": "B7FFB0715D24B6CAAEC5CB0EA4BEDD8A9684B8CD904ABC06346CB2FA4BC2069E"
+      },
+      {
+        "path": "src/ui-app/components/ModelFactsInspectorPanel.invalidation.test.ts",
+        "sha256": "A000A1AF69222AC2FB7F379997D95BBC077E84F90A6029AEC4777DF25FE7A34E"
+      },
+      {
+        "path": "src/ui-app/components/ModelFactsInspectorPanel.vue",
+        "sha256": "A0D0BA0E89C8D4CAD5B414F8C3A4FD3A67F0BF53BC33418677BDC993C337FC84"
+      },
+      {
+        "path": "src/ui-app/components/SearchModal.vue",
+        "sha256": "B3B5398A5A42F95751FAA1C57B33E3CC18A6A2734AF3F9C2798E696B651C61FB"
+      },
+      {
+        "path": "src/ui-app/components/WebSearchSettingsEditor.test.ts",
+        "sha256": "C4144B40F4C1EAEE99A9DCD179E3EF44845A4C9C9D6D42BC14A331BBC2228792"
+      },
+      {
+        "path": "src/ui-app/components/WebSearchSettingsEditor.vue",
+        "sha256": "02E7BFD4ED00A60A5B0EB2E94D1CA7658F3D7BF9766B0F8ADB166E948B7A39E2"
+      },
+      {
+        "path": "src/ui-app/components/WorkspaceStartupRecovery.test.ts",
+        "sha256": "CCB070E957DB82021A59493B32A3AA1CB815F37172F6ADB511F33F888337B93A"
+      },
+      {
+        "path": "src/ui-app/components/WorkspaceStartupRecovery.vue",
+        "sha256": "1F9A895A1B2DF498BC018D2865D6E5B1658A2487FE55B3F2BE066E5A5F9E4223"
+      }
+    ],
+    "count": 78,
+    "postRunMatch": true,
+    "postRunChangedCount": 0,
+    "previousReceiptFiles": 77,
+    "changedSincePreviousReceipt": [
+      "src/ui-app/app/appChatApp.logic.ts"
+    ],
+    "newFixture": "src/ui-app/AppChatApp.semanticOperation.test.ts",
+    "affectedRootRunRepeated": true,
+    "stableUnitBoundaryFiles": 13,
+    "stableUnitBoundaryChanged": 0
+  },
+  "gitHygiene": {
+    "headUnchangedBeforeCommit": true,
+    "indexEmptyBeforeExactStaging": true,
+    "commitAllowlistCodePaths": 78,
+    "commitAllowlistRecordPaths": 6,
+    "protectedHashesMatch": true,
+    "protectedPaths": [
+      ".codex/config.toml",
+      "pelican-bicycle.html"
+    ],
+    "nativeArtifactsCommitted": false
+  },
+  "abi": {
+    "mismatchEncountered": false,
+    "command": "npm run rebuild:node",
+    "result": "PASS",
+    "target": "node",
+    "testsRetriedDueToMismatch": [],
+    "electronSmokeRetried": false,
+    "nativeArtifactsCommitted": false
+  },
+  "notExecuted": [
+    "Live provider calls",
+    "Managed LibreOffice/package runtime smoke",
+    "Electron smoke",
+    "Full repository test suite"
+  ],
+  "deferred": [
+    "OpenRouter managed-attachment encoding discriminant and ledger compatibility policy"
+  ],
+  "remainingHistoricalAuditFindingIds": [
+    "SV-PGA-013", "SV-PGA-014", "SV-PGA-015", "SV-PGA-016", "SV-PGA-017",
+    "SV-PGA-018", "SV-PGA-019", "SV-PGA-020", "SV-PGA-021",
+    "SV-PGA-023", "SV-PGA-024", "SV-PGA-025", "SV-PGA-026", "SV-PGA-027"
+  ],
+  "remainingHistoricalAuditSeverity": "MEDIUM; no new investigation during final closeout",
+  "cleanup": {
+    "status": "BLOCKED_BY_AUTOMATIC_APPROVAL_REVIEW",
+    "executed": false,
+    "targets": [
+      "%TEMP%/starverse-repair-schema-digest.mjs",
+      "%TEMP%/starverse-repair-predecessor-digest.mjs"
+    ],
+    "reason": "CreateProcess Rejected: blocked by policy",
+    "bypassAttempted": false,
+    "retainedTargetsVerified": true,
+    "predecessorScratchDirectoryRetained": true
+  },
+  "review": {
+    "remainingActionableP0P1": 0,
+    "scope": "Reviewed five finding contracts; source-only independent reviewers and primary synthesis",
+    "owner": "primary agent"
+  }
+}

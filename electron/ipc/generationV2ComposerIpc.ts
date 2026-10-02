@@ -17,7 +17,7 @@ import {
   projectGenerationIntentLayerV2,
 } from '../../infra/db/generationV2DomainBoundary'
 import type { ProviderFetch } from '../net/providerHttpTransport'
-import { GenerationV2DfcService } from '../services/generationV2DfcService'
+import { decodeDfcReadyOptionBindingV2, GenerationV2DfcService } from '../services/generationV2DfcService'
 import type { ElectronConversionBridge } from '../../infra/files/electronConversionBridge'
 import { FileTypeDetectionV2Repo } from '../../infra/db/repo/fileTypeDetectionV2Repo'
 import type { Epoch2FileTypeDetectionService } from '../services/epoch2FileTypeDetectionService'
@@ -253,9 +253,9 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
     return dfc.ensureOptions({conversationId:text(raw.conversationId),assetId:text(raw.assetId),providerId:text(raw.providerId),operation:raw.operation})
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[11],safe((_event,payload)=>{
-    const raw=object(payload,['conversationId','expectedRevision','assetId','optionId','providerId','operation'])
+    const raw=object(payload,['conversationId','expectedRevision','assetId','optionId','providerId','operation','selectionBinding'])
     if(raw.operation!=='chat_completions'&&raw.operation!=='images'&&raw.operation!=='responses')throw new Error('GENERATION_V2_COMPOSER_INPUT_INVALID')
-    return dfc.select({conversationId:text(raw.conversationId),expectedRevision:revision(raw.expectedRevision),assetId:text(raw.assetId),optionId:text(raw.optionId),providerId:text(raw.providerId),operation:raw.operation})
+    return dfc.select({conversationId:text(raw.conversationId),expectedRevision:revision(raw.expectedRevision),assetId:text(raw.assetId),optionId:text(raw.optionId),providerId:text(raw.providerId),operation:raw.operation,selectionBinding:decodeDfcReadyOptionBindingV2(raw.selectionBinding)})
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[12],safe((_event,payload)=>{
     const raw=object(payload,['conversationId','assetId','maxCharacters'])

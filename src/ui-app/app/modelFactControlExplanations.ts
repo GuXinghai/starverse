@@ -20,6 +20,7 @@ export type ModelFactControlExplanationsV1 = Readonly<{
   status: 'loading' | 'ready' | 'failed'
   errorCode: string | null
   subject: CanonicalModelSubjectV1 | null
+  operation?: 'text' | 'image_generate'
   controls: Readonly<Record<string, ModelFactControlPresentation>>
 }>
 
@@ -68,11 +69,12 @@ export function buildModelFactControlExplanationsV1(input: Readonly<{
     runtimePath,
     modelFactControlPresentation({
       controlState: control.state,
-      sourcePaths: runtimeProjectionSourcePathsV1(runtimePath),
+      sourcePaths: runtimeProjectionSourcePathsV1(runtimePath, input.projection.binding.operation === 'image_generate' ? 'image_generate' : 'text'),
       ...(matching ? { resolvedFieldFor: (path: string) => fieldsByPath.get(path), coverageFor } : {}),
     }),
   ]))
-  return Object.freeze({ status: 'ready', errorCode: null, subject: input.subject, controls: Object.freeze(controls) })
+  return Object.freeze({ status: 'ready', errorCode: null, subject: input.subject,
+    operation: input.projection.binding.operation === 'image_generate' ? 'image_generate' : 'text', controls: Object.freeze(controls) })
 }
 
 export type ModelFactControlReasonV1 = Readonly<{
@@ -97,7 +99,7 @@ export function modelFactControlReasonV1(
     return Object.freeze({ state: 'checking', label: t(modelFactControlKey('checking')), text: '', path: null })
   }
   if (explanations.status === 'failed') {
-    const path = paths.map((runtimePath) => runtimeProjectionSourcePathsV1(runtimePath)[0]).find((item) => item !== undefined) ?? null
+    const path = paths.map((runtimePath) => runtimeProjectionSourcePathsV1(runtimePath, explanations.operation ?? 'text')[0]).find((item) => item !== undefined) ?? null
     return Object.freeze({ state: 'data_gap', label: t(modelFactStateKey('data_gap')),
       text: tf(modelFactControlKey('refreshFailed'), { code: explanations.errorCode ?? '' }), path })
   }

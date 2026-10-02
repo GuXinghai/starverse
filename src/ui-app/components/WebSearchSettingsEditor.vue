@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { t } from '@/shared/i18n'
+import type { GenerationV2WebSearchControls } from '../app/generationV2WebSearchProjection'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import type {
   ResolvedSearchSettings,
@@ -14,6 +16,7 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   resolved?: ResolvedSearchSettings | null
   inheritanceHint?: string | null
+  controls?: GenerationV2WebSearchControls
 }>(), {
   disabled: false,
   resolved: null,
@@ -24,7 +27,26 @@ const emit = defineEmits<{
   'update:modelValue': [value: SearchSettingsLayer | null]
 }>()
 
-const normalizedLayer = computed<SearchSettingsLayer>(() => normalizeSearchSettingsLayer(props.modelValue) ?? {})
+const normalizedLayer = computed<SearchSettingsLayer>(() => normalizeSearchSettingsLayer(props.modelValue,
+  props.controls ? { preserveExplicitMaxResults: true } : {}) ?? {})
+const maxResultsBounds = computed(() => props.controls?.maxResultsBounds ?? { min: 1, max: 10 })
+const engineAvailable = computed(() => props.controls === undefined || props.controls.engines.length > 0)
+const depthAvailable = computed(() => props.controls === undefined || !!props.controls.maxResultsBounds || props.controls.contexts.length > 0)
+const customAvailable = computed(() => props.controls === undefined || !!props.controls.maxResultsBounds)
+const searchUnavailable = computed(() => props.controls !== undefined && !props.controls.enabled)
+const controlFeedback = computed(() => {
+  if (!props.controls) return null
+  if (props.controls.reason) return props.controls.reason
+  if (props.resolved?.effectiveMode === false) return null
+  const layer = props.modelValue
+  if (layer?.searchEngine && layer.searchEngine !== 'default' && !props.controls.engines.includes(layer.searchEngine)) return 'errors.webSearch.unsupportedSetting'
+  if (typeof layer?.maxResults === 'number') {
+    if (!props.controls.maxResultsBounds) return 'errors.webSearch.unsupportedSetting'
+    if (!Number.isSafeInteger(layer.maxResults) || layer.maxResults < maxResultsBounds.value.min || layer.maxResults > maxResultsBounds.value.max) return 'errors.webSearch.invalidMaxResults'
+  }
+  if (layer?.searchDepth && layer.searchDepth !== 'default' && !depthAvailable.value) return 'errors.webSearch.unsupportedSetting'
+  return searchUnavailable.value ? 'errors.webSearch.capabilityUnavailable' : null
+})
 const modeValue = computed<SearchMode>(() => normalizedLayer.value.searchMode ?? 'default')
 const depthValue = computed<SearchDepth>(() => normalizedLayer.value.searchDepth ?? 'default')
 const engineValue = computed<SearchEngine>(() => normalizedLayer.value.searchEngine ?? 'default')
@@ -39,7 +61,9 @@ const effectiveSummary = computed(() => {
   if (!resolved) return null
   const modeLabel = resolved.effectiveMode ? 'On' : 'Off'
   const engineLabel = resolved.effectiveEngine || 'auto'
-  return `Effective: ${modeLabel} | engine ${engineLabel} | max ${resolved.effectiveMaxResults} | context ${resolved.effectiveSearchContextSize}`
+  return [`Effective: ${modeLabel}`, ...(engineAvailable.value ? [`engine ${engineLabel}`] : []),
+    ...(customAvailable.value ? [`max ${resolved.effectiveMaxResults}`] : []),
+    ...(props.controls === undefined || props.controls.contexts.length > 0 ? [`context ${resolved.effectiveSearchContextSize}`] : [])].join(' | ')
 })
 
 const inheritedMode = computed<'enable' | 'disable'>(() => {
@@ -76,13 +100,13 @@ const engineIcon = computed(() => {
 function clampMaxResults(value: number): number {
   if (!Number.isFinite(value)) return 5
   const rounded = Math.round(value)
-  if (rounded < 1) return 1
-  if (rounded > 10) return 10
+  if (rounded < maxResultsBounds.value.min) return maxResultsBounds.value.min
+  if (rounded > maxResultsBounds.value.max) return maxResultsBounds.value.max
   return rounded
 }
 
 function emitLayer(next: SearchSettingsLayer) {
-  emit('update:modelValue', normalizeSearchSettingsLayer(next))
+  emit('update:modelValue', normalizeSearchSettingsLayer(next, props.controls ? { preserveExplicitMaxResults: true } : {}))
 }
 
 function parseValidCustomMaxResults(raw: string): number | null {
@@ -91,11 +115,15 @@ function parseValidCustomMaxResults(raw: string): number | null {
   if (!/^-?\d+$/.test(trimmed)) return null
   const value = Number(trimmed)
   if (!Number.isInteger(value)) return null
-  if (value < 1 || value > 10) return null
+  if (value < maxResultsBounds.value.min || value > maxResultsBounds.value.max) return null
   return value
 }
 
 function cycleEngine(current: 'auto' | 'native' | 'exa'): 'auto' | 'native' | 'exa' {
+  if (props.controls) {
+    const engines = props.controls.engines.filter((v): v is 'auto' | 'native' | 'exa' => v === 'auto' || v === 'native' || v === 'exa')
+    return engines[(engines.indexOf(current) + 1) % engines.length] ?? current
+  }
   if (current === 'auto') return 'native'
   if (current === 'native') return 'exa'
   return 'auto'
@@ -137,6 +165,7 @@ function onEngineDefaultChange(event: Event) {
 
 function onModeValueClick() {
   if (props.disabled) return
+  if (searchUnavailable.value && modeDisplayValue.value !== 'enable') return
   if (modeDefaultSelected.value) {
     const inherited = modeDisplayValue.value
     lastExplicitMode.value = inherited
@@ -180,6 +209,7 @@ function buttonClass(active: boolean): string {
 
 function onDepthSelect(nextRaw: string) {
   if (props.disabled) return
+  if (!depthAvailable.value || nextRaw === 'custom' && !customAvailable.value) return
   const next: SearchDepth =
     nextRaw === 'low' || nextRaw === 'medium' || nextRaw === 'high' || nextRaw === 'custom' || nextRaw === 'default'
       ? nextRaw
@@ -215,6 +245,7 @@ function onDepthSelect(nextRaw: string) {
 }
 
 function onCustomInput(event: Event) {
+  if (props.disabled || !customAvailable.value) return
   customInputText.value = (event.target as HTMLInputElement).value
   const valid = parseValidCustomMaxResults(customInputText.value)
   if (valid === null) return
@@ -228,6 +259,8 @@ function onCustomInput(event: Event) {
 }
 
 function onCustomCommit() {
+  if (props.disabled || !customAvailable.value) return
+  if (props.controls && parseValidCustomMaxResults(customInputText.value) === null) return
   const trimmed = customInputText.value.trim()
   if (!trimmed) return
   if (!/^-?\d+$/.test(trimmed)) return
@@ -288,7 +321,7 @@ watch(
   () => [depthValue.value, normalizedLayer.value.maxResults] as const,
   ([depth, maxResults]) => {
     if (typeof maxResults === 'number' && Number.isFinite(maxResults)) {
-      const clamped = clampMaxResults(maxResults)
+      const clamped = props.controls ? maxResults : clampMaxResults(maxResults)
       lastValidCustomMaxResults.value = clamped
       if (depth === 'custom') customInputText.value = String(clamped)
       return
@@ -324,7 +357,7 @@ watch(
           type="button"
           class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           :class="buttonClass(modeDisplayValue === 'enable')"
-          :disabled="props.disabled"
+          :disabled="props.disabled || (searchUnavailable && modeDisplayValue !== 'enable')"
           data-testid="search-mode-toggle"
           @click="onModeValueClick"
           :title="`search mode ${modeDisplayValue}`"
@@ -335,7 +368,7 @@ watch(
       </div>
     </div>
 
-    <div>
+    <div v-if="engineAvailable">
       <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Engine</div>
       <div class="mt-1 flex flex-wrap items-center gap-2">
         <label class="inline-flex items-center gap-1 text-[11px] text-gray-700">
@@ -363,7 +396,7 @@ watch(
       </div>
     </div>
 
-    <div>
+    <div v-if="depthAvailable">
       <div class="flex items-center justify-between gap-2">
         <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Depth presets</div>
         <button
@@ -388,14 +421,14 @@ watch(
             @change="onDepthSelect(($event.target as HTMLSelectElement).value)"
           >
             <option value="default">default</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="custom">custom</option>
+            <option v-if="customAvailable || props.controls?.contexts.includes('low')" value="low">low</option>
+            <option v-if="customAvailable || props.controls?.contexts.includes('medium')" value="medium">medium</option>
+            <option v-if="customAvailable || props.controls?.contexts.includes('high')" value="high">high</option>
+            <option v-if="customAvailable" value="custom">custom</option>
           </select>
         </label>
-        <div class="flex items-center gap-2">
-          <div class="text-[11px] font-semibold text-gray-700">Custom max results (1-10)</div>
+        <div v-if="customAvailable" class="flex items-center gap-2">
+          <div class="text-[11px] font-semibold text-gray-700">Custom max results ({{ maxResultsBounds.min }}-{{ maxResultsBounds.max }})</div>
           <input
             type="text"
             inputmode="numeric"
@@ -409,6 +442,9 @@ watch(
         </div>
       </div>
     </div>
+
+    <div v-if="controlFeedback" role="status" data-testid="search-control-feedback" class="text-[11px] text-amber-700">{{ t(controlFeedback) }}</div>
+    <div v-if="props.controls && isCustomDepth && !isCustomInputValid" role="status" class="text-[11px] text-amber-700">{{ t('errors.webSearch.invalidMaxResults') }}</div>
 
     <div v-if="effectiveSummary" class="rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2 text-[11px] text-gray-600">
       {{ effectiveSummary }}

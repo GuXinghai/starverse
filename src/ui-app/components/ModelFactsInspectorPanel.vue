@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
+import { decodeModelFactsSemanticInvalidationV1 } from '@/next/generation-v2/model-facts/semanticInvalidationV1'
 import {
   modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
   modelFactPresentationState, modelFactPresentationTone, modelFactSelectionReasonKey, modelFactSourceKindKey,
@@ -57,7 +58,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ (event: 'open-source-priority'): void }>()
 
 const query = ref('')
-const loading = ref(false)
+const searchLoading = ref(false)
+const inspectionLoading = ref(false)
+const loading = computed(() => searchLoading.value || inspectionLoading.value)
 const evidenceLoading = ref(false)
 const error = ref<string | null>(null)
 const records = ref<readonly SubjectRecord[]>([])
@@ -70,6 +73,12 @@ const selectedField = ref<SelectedField | null>(null)
 const rawPayload = ref<unknown>(null)
 const filter = ref<ModelFactFilter>('all')
 const detailPath = ref<string | null>(null)
+let mounted = true
+let inspectionAttempt = 0
+let searchAttempt = 0
+let evidenceAttempt = 0
+let rawAttempt = 0
+let unsubscribeInvalidation: (() => void) | null = null
 const FILTERS: readonly ModelFactFilter[] = ['all', 'conflict', 'unknown', 'diagnostics']
 const TONE_CLASS: Readonly<Record<ModelFactPresentationTone, string>> = {
   positive: 'bg-green-100 text-green-800',
@@ -96,41 +105,68 @@ function subjectKey(subject: ExactSubject): string {
 }
 
 async function search(append = false) {
-  loading.value = true
+  const attempt = ++searchAttempt
+  const inspection = inspectionAttempt
+  const capturedQuery = query.value
+  const current = () => mounted && searchAttempt === attempt && inspectionAttempt === inspection && query.value === capturedQuery
+  searchLoading.value = true
   error.value = null
   try {
-    const result = await bridge().searchSubjects({ query: query.value, limit: 100,
+    const result = await bridge().searchSubjects({ query: capturedQuery, limit: 100,
       ...(append ? { cursor: nextCursor.value } : {}) }) as Readonly<{
         subjectSetRevision: string; records: readonly SubjectRecord[]; nextCursor: string | null
       }>
+    if (!current()) return
     if (!append) records.value = result.records
     else records.value = Object.freeze([...records.value, ...result.records])
     subjectSetRevision.value = result.subjectSetRevision
     nextCursor.value = result.nextCursor
-    if (selected.value && !records.value.some((record) => subjectKey(record.subject) === subjectKey(selected.value!))) {
-      selected.value = null
-      snapshot.value = null
-      selectedField.value = null
-    }
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
-  finally { loading.value = false }
+  } catch { if (current()) error.value = t('common.error') }
+  finally { if (mounted && searchAttempt === attempt) searchLoading.value = false }
 }
 
-async function inspect(subject: ExactSubject) {
-  loading.value = true
+async function inspect(subject: ExactSubject, refresh = false) {
+  const attempt = ++inspectionAttempt
+  ++evidenceAttempt
+  ++rawAttempt
+  const retainedField = refresh && selectedField.value ? {
+    path: selectedField.value.outcome.path, sourceKind: selectedField.value.source.state.sourceKind,
+    sourceScopeId: selectedField.value.source.state.sourceScopeId,
+  } : null
+  const current = () => mounted && inspectionAttempt === attempt && selected.value !== null &&
+    subjectKey(selected.value) === subjectKey(subject)
+  inspectionLoading.value = true
+  evidenceLoading.value = false
   error.value = null
   selected.value = subject
+  snapshot.value = null
   selectedField.value = null
   rawPayload.value = null
-  detailPath.value = null
-  filter.value = 'all'
-  try {
-    snapshot.value = await bridge().readInspector({ subject, expectedSubjectSetRevision: subjectSetRevision.value }) as InspectorSnapshot
+  if (!refresh) {
+    detailPath.value = null
+    filter.value = 'all'
     view.value = 'overview'
-  } catch (cause) {
+  }
+  try {
+    const result = await bridge().readInspector({ subject,
+      ...(!refresh && subjectSetRevision.value ? { expectedSubjectSetRevision: subjectSetRevision.value } : {}),
+    }) as InspectorSnapshot
+    if (!current()) return
+    snapshot.value = result
+    subjectSetRevision.value = result.subjectSetRevision
+    if (detailPath.value && !resolvedFieldFor(detailPath.value)) detailPath.value = null
+    if (retainedField) {
+      const source = result.sources.find((row) => row.state.sourceKind === retainedField.sourceKind &&
+        row.state.sourceScopeId === retainedField.sourceScopeId)
+      const outcome = source ? sourceOutcome(source, retainedField.path) : null
+      if (source && outcome) selectedField.value = { source, outcome }
+      else if (view.value === 'evidence') view.value = 'overview'
+    }
+  } catch {
+    if (!current()) return
     snapshot.value = null
-    error.value = cause instanceof Error ? cause.message : String(cause)
-  } finally { loading.value = false }
+    error.value = t('common.error')
+  } finally { if (current()) inspectionLoading.value = false }
 }
 
 function sourceOutcome(source: InspectorSourceRow, path: string): FieldOutcome | null {
@@ -200,21 +236,29 @@ function evidenceRefs(outcome: FieldOutcome): readonly Readonly<{ rawPayloadRef?
 
 async function inspectField(source: InspectorSourceRow, outcome: FieldOutcome) {
   if (!snapshot.value || !selected.value) return
+  const capturedSnapshot = snapshot.value
+  const subject = selected.value
+  const inspection = inspectionAttempt
+  const attempt = ++evidenceAttempt
+  ++rawAttempt
+  const current = () => mounted && inspectionAttempt === inspection && evidenceAttempt === attempt &&
+    snapshot.value === capturedSnapshot && selected.value !== null && subjectKey(selected.value) === subjectKey(subject)
   evidenceLoading.value = true
   error.value = null
   selectedField.value = { source, outcome }
   rawPayload.value = null
   try {
-    const result = await bridge().readEvidenceSlice({ subject: selected.value,
-      expectedSubjectSetRevision: snapshot.value.subjectSetRevision, sourceKind: source.state.sourceKind,
+    const result = await bridge().readEvidenceSlice({ subject,
+      expectedSubjectSetRevision: capturedSnapshot.subjectSetRevision, sourceKind: source.state.sourceKind,
       sourceScopeId: source.state.sourceScopeId, path: outcome.path })
     const resolvedOutcome = result as FieldOutcome | null
+    if (!current()) return
     selectedField.value = { source,
       outcome: resolvedOutcome && (evidenceRefs(resolvedOutcome).length > 0 || evidenceRefs(outcome).length === 0)
         ? resolvedOutcome : outcome }
     view.value = 'evidence'
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
-  finally { evidenceLoading.value = false }
+  } catch { if (current()) error.value = t('common.error') }
+  finally { if (current()) evidenceLoading.value = false }
 }
 
 async function readRawPayload() {
@@ -222,11 +266,19 @@ async function readRawPayload() {
   if (!field) { error.value = t('settings.modelsCapabilities.selectField'); return }
   const refValue = evidenceRefs(field.outcome).find((entry) => entry.rawPayloadRef !== undefined)?.rawPayloadRef
   if (!refValue) { error.value = t('settings.modelsCapabilities.rawUnavailable'); return }
+  const capturedSnapshot = snapshot.value
+  const inspection = inspectionAttempt
+  const evidence = evidenceAttempt
+  const attempt = ++rawAttempt
+  const current = () => mounted && inspectionAttempt === inspection && evidenceAttempt === evidence &&
+    rawAttempt === attempt && snapshot.value === capturedSnapshot && selectedField.value === field
   evidenceLoading.value = true
   error.value = null
-  try { rawPayload.value = await bridge().readSanitizedRawPayload({ rawPayloadRef: refValue }) }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
-  finally { evidenceLoading.value = false }
+  try {
+    const result = await bridge().readSanitizedRawPayload({ rawPayloadRef: refValue })
+    if (current()) rawPayload.value = result
+  } catch { if (current()) error.value = t('common.error') }
+  finally { if (current()) evidenceLoading.value = false }
 }
 
 /** Opens the "why" panel for an exact resolved path only; an absent path leaves the overview as is. */
@@ -235,17 +287,54 @@ function openInitialPath() {
 }
 
 onMounted(async () => {
+  const initialAttempt = inspectionAttempt
+  unsubscribeInvalidation = window.generationV2?.onModelFactsSemanticInvalidated?.((value) => {
+    try { decodeModelFactsSemanticInvalidationV1(value) } catch { return }
+    if (!mounted) return
+    const subject = selected.value ?? props.initialSubject
+    if (subject) void inspect(subject, true)
+    else {
+      ++inspectionAttempt
+      ++evidenceAttempt
+      ++rawAttempt
+      snapshot.value = null
+      selectedField.value = null
+      rawPayload.value = null
+    }
+    void search()
+  }) ?? null
   await search()
-  if (props.initialSubject) {
+  if (mounted && inspectionAttempt === initialAttempt && props.initialSubject) {
     await inspect(props.initialSubject)
     openInitialPath()
   }
 })
 
 watch(() => [props.initialSubject, props.initialPath] as const, async ([subject], previous) => {
-  if (!subject) return
+  if (!subject) {
+    if (!previous[0]) return
+    ++inspectionAttempt
+    ++evidenceAttempt
+    ++rawAttempt
+    selected.value = null
+    snapshot.value = null
+    selectedField.value = null
+    rawPayload.value = null
+    inspectionLoading.value = false
+    evidenceLoading.value = false
+    return
+  }
   if (!previous[0] || subjectKey(previous[0]) !== subjectKey(subject)) await inspect(subject)
   openInitialPath()
+})
+
+onUnmounted(() => {
+  mounted = false
+  ++inspectionAttempt
+  ++searchAttempt
+  ++evidenceAttempt
+  ++rawAttempt
+  unsubscribeInvalidation?.()
 })
 </script>
 

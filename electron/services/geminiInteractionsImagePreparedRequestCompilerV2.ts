@@ -3,6 +3,7 @@ import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/r
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 import { createGoogleApiKeyHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 } from '../../src/next/generation-v2/contracts/geminiDeveloperApiContractV2'
 import { compileGeminiInteractionsRequestV1 } from '../../src/next/generation-v2/providers/gemini/interactionsRequestV1'
@@ -45,6 +46,11 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
   }
   const intent = snapshot.semanticIntent
+  try {
+    validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},intent.web)
+  } catch {
+    throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
+  }
   if (intent.image.mode !== 'generate') {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
   }

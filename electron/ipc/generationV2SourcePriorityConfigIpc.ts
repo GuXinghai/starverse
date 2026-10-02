@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { SourcePriorityConfigV1Service } from '../services/sourcePriorityConfigV1Service'
 import type { RegisterInvoke } from './types'
+import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 export const GENERATION_V2_SOURCE_PRIORITY_CONFIG_IPC_CHANNELS = Object.freeze([
   'generation-v2:model-facts:source-priority:get',
@@ -29,6 +30,7 @@ function revision(value: unknown): string {
 export function registerGenerationV2SourcePriorityConfigIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   db: BetterSqlite3.Database
+  notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
 }>): readonly string[] {
   const service = new SourcePriorityConfigV1Service(input.db)
   input.registerInvoke(GENERATION_V2_SOURCE_PRIORITY_CONFIG_IPC_CHANNELS[0], (_event, payload) => {
@@ -38,8 +40,12 @@ export function registerGenerationV2SourcePriorityConfigIpc(input: Readonly<{
   input.registerInvoke(GENERATION_V2_SOURCE_PRIORITY_CONFIG_IPC_CHANNELS[1], (_event, payload) => {
     if (!plainObject(payload)) invalid()
     exactKeys(payload, ['expectedConfigRevision', 'priorities'])
-    return service.update({ expectedConfigRevision: revision(payload.expectedConfigRevision),
+    const result = service.update({ expectedConfigRevision: revision(payload.expectedConfigRevision),
       priorities: payload.priorities })
+    notifyModelFactsSemanticInvalidationV1(input.notifyModelFactsSemanticInvalidated, {
+      kind: 'source_priority', sourcePriorityConfigRevision: result.config.sourcePriorityConfigRevision,
+    })
+    return result
   })
   return GENERATION_V2_SOURCE_PRIORITY_CONFIG_IPC_CHANNELS
 }

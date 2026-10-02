@@ -4,12 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
+import type { GenerationV2WebSearchControls } from '../app/generationV2WebSearchProjection'
 
 type HarnessInput = Readonly<{
   convo: SearchSettingsLayer | null
   project?: SearchSettingsLayer | null
   global?: SearchSettingsLayer | null
   accountDefaultEnabled?: boolean
+  controls?: GenerationV2WebSearchControls
 }>
 
 function createHarness(input: HarnessInput) {
@@ -20,15 +22,15 @@ function createHarness(input: HarnessInput) {
       const resolved = computed(() =>
         resolveSearchSettings(
           { convo: layer.value, project: input.project ?? null, global: input.global ?? null },
-          { accountDefaultEnabled: input.accountDefaultEnabled === true }
+          { accountDefaultEnabled: input.accountDefaultEnabled === true, ...(input.controls?.maxResultsBounds ? { maxResultsBounds: input.controls.maxResultsBounds } : {}) }
         )
       )
       const serialized = computed(() => JSON.stringify(layer.value))
-      return { layer, resolved, serialized }
+      return { layer, resolved, serialized, controls: input.controls }
     },
     template: `
       <div>
-        <WebSearchSettingsEditor v-model="layer" :resolved="resolved" />
+        <WebSearchSettingsEditor v-model="layer" :resolved="resolved" :controls="controls" />
         <pre data-testid="layer-json">{{ serialized }}</pre>
       </div>
     `,
@@ -45,6 +47,27 @@ async function selectDepth(user: ReturnType<typeof userEvent.setup>, value: 'def
 }
 
 describe('WebSearchSettingsEditor', () => {
+  it('exposes native max 20 without engine/context and preserves the entered value on invalid commit', async () => {
+    const user = userEvent.setup()
+    render(createHarness({ convo: { searchMode: 'enable', searchDepth: 'custom', maxResults: 20 },
+      controls: { ready: true, enabled: true, engines: [], contexts: [], maxResultsBounds: { min: 1, max: 20 }, reason: null } }))
+    expect(screen.queryByTestId('search-engine-toggle')).not.toBeInTheDocument()
+    const input = screen.getByTestId('search-max-results-input')
+    expect(input).toHaveValue('20')
+    await user.clear(input)
+    await user.type(input, '21{enter}')
+    expect(input).toHaveValue('21')
+    expect(readLayer()?.maxResults).toBe(2)
+  })
+
+  it('hides Gemini optional controls and visibly retains unsupported explicit intent', () => {
+    render(createHarness({ convo: { searchMode: 'enable', searchDepth: 'custom', maxResults: 20, searchEngine: 'exa' },
+      controls: { ready: true, enabled: true, engines: [], contexts: [], maxResultsBounds: null, reason: null } }))
+    expect(screen.queryByTestId('search-engine-toggle')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('search-depth-select')).not.toBeInTheDocument()
+    expect(screen.getByTestId('search-control-feedback')).toBeInTheDocument()
+    expect(readLayer()?.maxResults).toBe(20)
+  })
   it('SearchMode default shows inherited value and uses two-click behavior', async () => {
     const user = userEvent.setup()
     render(createHarness({

@@ -1,0 +1,43 @@
+# Second-wave closeout
+
+Date: 2026-10-03. Branch: `models-dev-capability-resolution`.
+
+The first wave was committed as `7896ddfbe0c3ca678340baa79475bb78fe00e96d` (`fix: close workspace ownership and credential redaction gaps`). Its exact 41-path allowlist excludes native artifacts and unrelated local work. The commit containing this closeout is the single coherent second-wave repair commit, with subject `fix: close second-wave capability and workspace gaps`. No push was performed. Historical first-wave precommit receipts retain their original time-specific claims.
+
+## Acceptance decision
+
+All five requested findings are closed within the reviewed contracts and automated boundaries below. This does not claim live provider, managed runtime, packaged Electron or full-repository test completion. Final read-only implementation reviews found no remaining actionable P0/P1 in those boundaries. Primary agent owns this decision.
+
+| Finding | Resulting behavior and evidence | Limit |
+| --- | --- | --- |
+| SV-PGA-006 | Native web-search controls follow the selected provider/contract/operation. Registered wire bounds preserve Anthropic max-results 20; explicit model domains are intersected, and missing/unsupported/conflict facts remain authoritative. Responses uses the strict codec's semantic DTO with optional-domain absence handled correctly. Actual prepared-request coordinators and mounted UI tests prove supported settings, disabled intent, provider switching and frozen retry. | No provider calls or model-support claims from protocol parameter constants. Gemini Interactions image search retains its separate contract. |
+| SV-PGA-007 | A ready DFC option carries the observed immutable source/output revision/hash and producer/settings binding. Selection validates that exact packet; DOCX PDF uses its persisted DOCX producer rather than the HTML producer. Composer reads and previews verify the same provenance. Actual persisted OOXML conversion output, selection, preview and Responses preparation preserve the selected bytes/revision/hash. | Managed LibreOffice/package smoke was not executed because required managed inputs are unavailable. OpenRouter option/selection provenance is covered; successful OpenRouter prepared attachments are deferred for encoder compatibility. |
+| SV-PGA-011 | Startup has loading/ready/error, bounded retry and independent recovery/settings access. Retry uses the same strict pipeline with new authoritative reads. Committed template-reset acknowledgement prevents repetition after later failure. Stale/disposed/scope-changed hydration cannot publish ready; retained transcript actions remain guarded. | Synthetic isolated workspace/database acceptance; no reconstruction/reset of a real profile or Electron smoke. |
+| SV-PGA-009 | Committed User Rules, priority and Cloud semantic mutations emit typed revision notifications, including bootstrap. Delivery failure cannot change a successful mutation result. Active readiness clears immediately; existing resolver and lease fences protect subsequent authoring. Inspector resolves current server-derived subject/scope and fences detail responses. Private explicit operation transitions persist only after target resolution and current-scope validation. | Broader acquisition/scheduler invalidation and blanket SV-PGA-018 closure remain outside scope. Operation fixtures use canonical capability boundary stubs with real workspace/config/draft/priority repositories, not live image authority. |
+| SV-PGA-010 | Historical hits resolve their current project and an exact eligible visible route. A bounded anchored page is revalidated after the draft-aware transition. Branches beyond the first 50 cached summaries retain operation availability. The cursor changes and modal closes only after exact DOM focus; cancellation/conflict/stale results preserve actionable state. | No ranking/index/schema change or full-history load; unsupported targets fail closed. No blanket corrupt-database recovery claim. |
+
+## Final automated evidence
+
+Scoped acceptance: **59 unique test files, 469 tests PASS, zero failures or pending tests**. Counts deduplicate overlapping file runs using the latest receipt per path. The final frozen root run passes 12 files / 114 tests, including 16 startup, 11 native-search, 9 historical-navigation, 7 committed-invalidation and 5 operation-transition/rebinding tests. Existing scope ownership, send, attachments, retry/regenerate, filtering, candidate paging and control explanations also pass.
+
+The unit, UI-helper and integration groups cover strict packets/codecs, SQLite repositories, actual IPC services, notification commits, Inspector authority and prepared-request coordinators. Full commands and actual matched file counts are in `validation.json`. An unmatched historical test path and a unit-owned test requested under the UI partition are not counted; the unit-owned test was run separately under its correct partition.
+
+`npx vue-tsc --noEmit`, four generation/model authority gates, privacy, test partition ownership, i18n coverage and the hardcoded-text scan pass. The hardcoded scan retains 46 existing findings in three files within its accepted range; this is not blanket i18n closure. The three modified smoke scripts pass syntax checks only. Normal `git diff --check` passes; existing line-ending warnings do not change that result.
+
+Final acceptance binds to SHA-256 fingerprints of 78 changed code/test/script paths. The only prior 77-path receipt change was the reviewed shared app-logic correction; the complete frozen root run was repeated afterward. Thirteen unit-boundary fingerprints remained unchanged. Post-run fingerprints match. Protected `.codex/config.toml` and `pelican-bicycle.html` hashes match the baseline; prior audit drafts remain preserved. Before exact staging, HEAD was the first-wave commit and the index was empty. The commit allowlist contains those 78 paths and these six second-wave records; protected/unrelated files and native outputs are excluded.
+
+After the user's final closeout instruction, the primary agent stopped delegation and reconciled final records alone. Passing suites were not rerun without a relevant code change; no third repair wave, OpenRouter compatibility implementation or further blocked cleanup attempt was started. Commit identity is obtained from the containing Git commit rather than embedding a self-referential hash in this file.
+
+## Deferred dependency and runtime limits
+
+The historical audit still has 14 MEDIUM findings outside this wave: SV-PGA-013 through SV-PGA-021, and SV-PGA-023 through SV-PGA-027. SV-PGA-018 has relevant selection fences covered by 009, but is not declared wholly closed. SV-PGA-012 and SV-PGA-022 were handled by the predecessor patch; the historical audit's original RETAINED labels are time-specific evidence, not the current repair ledger. These remaining findings were not reopened or investigated during final single-thread closeout.
+
+`NEXT-PLANS.md` records the separate OpenRouter managed-attachment discriminant/ledger omission. Adding encoding coverage changes frozen encoder revisions; choose and review an immutable compatibility policy before implementing it. This wave does not rewrite snapshots or widen that registry.
+
+OpenRouter's current image encoding contract excludes `image.outputMode`. The operation fixture proves supported ratio/resolution persistence (2K, 16:9) and unchanged preflight transfer of already persisted unexposed fields and attachments; it does not claim a newly supported output-mode control or successful image submission. Google disabled/re-enabled image controls follow existing defaults; retention of the disabled choice and a visible Google text-back action are not claimed by this fixture.
+
+No real provider credential/profile, provider request, Cloud Apply, runtime install or Electron launch was used. The final ABI target is Node. `better-sqlite3 ABI mismatch encountered: no`; rebuild command: `npm run rebuild:node` (PASS). Tests retried due to ABI mismatch: none. Electron smoke retried: no. No native artifacts committed: confirmed.
+
+## Temporary cleanup
+
+The exact nonrecursive deletion attempt for `%TEMP%/starverse-repair-schema-digest.mjs` and `%TEMP%/starverse-repair-predecessor-digest.mjs` was rejected before execution by automatic approval review: `CreateProcess Rejected: blocked by policy`. Both files and the related predecessor scratch directory remain. No alternate executor or bypass was attempted. External validation logs are retained as diagnostic evidence and were not placed under the Vite watch scope.

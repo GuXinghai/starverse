@@ -23,6 +23,15 @@ function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionCo
 }
 
 describe('chatSessionConfig', () => {
+  it('preserves native mode-only absence and max20 without widening legacy serialization', () => {
+    const config = createConfig({ webSearch: { enabled: true, level: 'high', detail: { searchMode: 'enable' } } })
+    expect(serializeChatSessionConfigToConvoMeta({ config, preserveOptionalWebSearchFields: true })?.webSearchOverride).toEqual({ searchMode: 'enable' })
+    expect(serializeChatSessionConfigToConvoMeta({ config })?.webSearchOverride).toEqual({ searchMode: 'enable', searchDepth: 'high' })
+    const native = createConfig({ webSearch: { enabled: true, level: 'high', detail: { searchMode: 'enable', searchDepth: 'custom', maxResults: 20 } } })
+    const meta = serializeChatSessionConfigToConvoMeta({ config: native, preserveOptionalWebSearchFields: true, webSearchNormalization: { preserveExplicitMaxResults: true } })
+    expect(meta?.webSearchOverride).toEqual({ searchMode: 'enable', searchDepth: 'custom', maxResults: 20 })
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: meta }).webSearch.detail?.maxResults).toBe(20)
+  })
   it('ignores all retired model-selection meta and leaves route selection unset', () => {
     const config = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: {

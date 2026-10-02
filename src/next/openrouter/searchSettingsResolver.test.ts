@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { resolveSearchSettings } from './searchSettingsResolver'
 
 describe('resolveSearchSettings', () => {
+  it('uses selected native bounds while retaining the legacy default maximum', () => {
+    const layers = { convo: { searchDepth: 'custom' as const, maxResults: 20 } }
+    expect(resolveSearchSettings(layers, { maxResultsBounds: { min: 1, max: 20 } }).effectiveMaxResults).toBe(20)
+    expect(resolveSearchSettings(layers).effectiveMaxResults).toBe(10)
+  })
   it('applies hierarchy precedence: convo > project > global', () => {
     const resolved = resolveSearchSettings({
       convo: { searchMode: 'enable' },

@@ -54,6 +54,7 @@ export type ResolveSearchSettingsOptions = Readonly<{
   accountDefaultEnabled?: boolean
   customMaxResultsFallback?: number
   starverseSearchPromptPreset?: string
+  maxResultsBounds?: Readonly<{ min: number; max: number }>
 }>
 
 const MIN_MAX_RESULTS = 1
@@ -159,14 +160,15 @@ function mapDepthToContextSize(depth: SearchDepth, maxResults: number): SearchCo
 
 function resolveCustomMaxResults(
   layers: Array<SearchSettingsLayer | null | undefined>,
-  fallback: number
+  fallback: number,
+  bounds: Readonly<{ min: number; max: number }>,
 ): number {
   for (const layer of layers) {
     const raw = layer?.maxResults
     if (raw === null || raw === undefined) continue
-    return clampInt(raw, MIN_MAX_RESULTS, MAX_MAX_RESULTS, fallback)
+    return clampInt(raw, bounds.min, bounds.max, fallback)
   }
-  return clampInt(fallback, MIN_MAX_RESULTS, MAX_MAX_RESULTS, DEPTH_RESULTS_DEFAULT)
+  return clampInt(fallback, bounds.min, bounds.max, DEPTH_RESULTS_DEFAULT)
 }
 
 function resolveEffectivePromptText(
@@ -200,7 +202,7 @@ export function resolveSearchSettings(
   const customFallback = options.customMaxResultsFallback ?? DEPTH_RESULTS_DEFAULT
   const effectiveMaxResults =
     resolvedDepth === 'custom'
-      ? resolveCustomMaxResults(ordered, customFallback)
+      ? resolveCustomMaxResults(ordered, customFallback, options.maxResultsBounds ?? { min: MIN_MAX_RESULTS, max: MAX_MAX_RESULTS })
       : mapDepthToMaxResults(resolvedDepth)
 
   const effectiveSearchContextSize = mapDepthToContextSize(resolvedDepth, effectiveMaxResults)

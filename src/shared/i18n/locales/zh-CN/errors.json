@@ -1,5 +1,21 @@
 {
   "errors": {
+    "startup": {
+      "loading": "正在打开工作区…",
+      "failed": "未能打开工作区。",
+      "bridgeUnavailable": "桌面连接不可用。请在 Starverse 桌面应用中打开后重试。",
+      "interrupted": "工作区加载已中断。",
+      "retryHint": "重试以读取当前保存的工作区，或打开设置。",
+      "empty": "工作区已就绪。请选择对话或新建对话。"
+    },
+    "search": {
+      "openingResult": "正在打开搜索结果…"
+    },
+    "webSearch": {
+      "capabilityUnavailable": "当前无法获取所选模型的网络搜索能力。请刷新模型选择后再发送。",
+      "unsupportedSetting": "所选模型不支持此网络搜索设置。请更改设置或关闭网络搜索。",
+      "invalidMaxResults": "自定义的最大结果数超出了所选模型支持的范围。"
+    },
     "draftConflict": {
       "message": "此草稿未能保存。未保存的文本已保留；重新加载前，发送和草稿修改已暂停。",
       "retainedText": "未保存的草稿文本（可选择复制）",

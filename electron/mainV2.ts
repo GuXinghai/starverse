@@ -36,6 +36,9 @@ import { AuthoritativeModelSubjectSetV1Service } from
   '../infra/db/services/authoritativeModelSubjectSetV1Service'
 import { CloudRulesApplicationV1Repo } from '../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CloudRulesDistributionV1Repo } from '../infra/db/repo/cloudRulesDistributionV1Repo'
+import { GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED,
+  type ModelFactsSemanticInvalidationV1 } from '../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { applyBootstrapCapabilityRulesWithInvalidationV1 } from './services/modelFactsSemanticInvalidationV1'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -80,6 +83,15 @@ export async function startMainV2(): Promise<void> {
   const registerInvoke = (channel: string, handler: (...args: any[]) => unknown) => {
   ipcMain.handle(channel, handler)
 }
+  const notifyModelFactsSemanticInvalidated = (event: ModelFactsSemanticInvalidationV1) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      try {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send(GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED, event)
+        }
+      } catch { console.warn('[model-facts-v1] semantic invalidation delivery failed', { code: 'DELIVERY_FAILED' }) }
+    }
+  }
   const inAppBrowserManager = createInAppBrowserManager()
   const fileSelectionGrants = createFileSelectionGrantStore()
   const packagedTestDocxFixtureAuthority = await createPackagedTestDocxFixtureAuthorityV1({
@@ -136,7 +148,10 @@ export async function startMainV2(): Promise<void> {
   void cloudRulesCandidateRefresh.start().then((result) => {
     if (!result.ok) console.warn('[cloud-rules-candidate-v1] refresh failed', { code: result.code })
   }).catch(() => console.warn('[cloud-rules-candidate-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
-    .finally(() => cloudRulesApplication.applyBootstrapCandidate().then((result) => {
+    .finally(() => applyBootstrapCapabilityRulesWithInvalidationV1({
+      applyBootstrapCandidate: () => cloudRulesApplication.applyBootstrapCandidate(),
+      notify: notifyModelFactsSemanticInvalidated,
+    }).then((result) => {
       if (result) console.info('[cloud-rules-application-v1] bootstrap applied')
     }).catch((error: unknown) => console.warn('[cloud-rules-application-v1] bootstrap failed', {
       code: error instanceof Error ? error.message : 'UNEXPECTED_BOOTSTRAP_FAILURE',
@@ -168,11 +183,12 @@ export async function startMainV2(): Promise<void> {
 
   recoverGenerationOrphansV2(runtime.epoch2.database)
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
-  cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode })
+  cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
+  notifyModelFactsSemanticInvalidated })
   registerGenerationV2CloudCapabilityRulesIpc({ registerInvoke, refresh: cloudRulesCandidateRefresh,
     application: cloudRulesApplication,
     applicationRepo: new CloudRulesApplicationV1Repo(runtime.epoch2.database),
-    distributionRepo: new CloudRulesDistributionV1Repo(runtime.epoch2.database) })
+    distributionRepo: new CloudRulesDistributionV1Repo(runtime.epoch2.database), notifyModelFactsSemanticInvalidated })
   registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,

@@ -2,6 +2,7 @@ import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 import {
   resolveSearchSettingsFromStoredLayers,
   mergeConvoWebSearchOverrideMeta,
+  type SearchSettingsNormalizationOptions,
 } from '@/next/openrouter/searchSettingsPersistence'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import {
@@ -124,12 +125,13 @@ function buildWebSearchDetail(input: Readonly<{
   detail: SearchSettingsLayer | null
   enabled: boolean
   level: ChatSessionConfigWebSearchLevel
+  preserveOptionalFields?: boolean
 }>): SearchSettingsLayer {
   const base = input.detail ? { ...input.detail } : {}
   if (base.searchMode !== 'enable' && base.searchMode !== 'disable' && base.searchMode !== 'default') {
     base.searchMode = input.enabled ? 'enable' : 'disable'
   }
-  if (base.searchDepth !== 'custom' && base.searchDepth !== 'low' && base.searchDepth !== 'medium' && base.searchDepth !== 'high' && base.searchDepth !== 'default') {
+  if (!input.preserveOptionalFields && base.searchDepth !== 'custom' && base.searchDepth !== 'low' && base.searchDepth !== 'medium' && base.searchDepth !== 'high' && base.searchDepth !== 'default') {
     base.searchDepth = input.level
   }
   if (base.searchDepth !== 'custom' && 'maxResults' in base) delete base.maxResults
@@ -238,6 +240,8 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
   baseMeta?: unknown
   config: ChatSessionConfig
   convoProjectId?: string | null
+  webSearchNormalization?: SearchSettingsNormalizationOptions
+  preserveOptionalWebSearchFields?: boolean
 }>): Record<string, unknown> | null {
   const reasoningPrefs = toReasoningPrefs(input.config.reasoning)
   const reasoningPlan = buildReasoningPrefsSavePlan({
@@ -258,7 +262,9 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
       enabled: input.config.webSearch.enabled,
       level: input.config.webSearch.level,
       detail: input.config.webSearch.detail,
+      preserveOptionalFields: input.preserveOptionalWebSearchFields,
     }),
+    input.webSearchNormalization,
   )
 
   const withGenerationParams = mergeConvoGenerationParamsOverrideMeta(withWebSearch, input.config.generationParams.detail)

@@ -1,5 +1,21 @@
 {
   "errors": {
+    "startup": {
+      "loading": "Opening your workspace…",
+      "failed": "Your workspace could not be opened.",
+      "bridgeUnavailable": "The desktop connection is unavailable. Open Starverse in the desktop app, then retry.",
+      "interrupted": "Workspace loading was interrupted.",
+      "retryHint": "Retry to read the currently saved workspace, or open Settings.",
+      "empty": "Your workspace is ready. Select a conversation or create a new one."
+    },
+    "search": {
+      "openingResult": "Opening the search result…"
+    },
+    "webSearch": {
+      "capabilityUnavailable": "Web search capabilities for the selected model are unavailable. Refresh the model selection before sending.",
+      "unsupportedSetting": "This web search setting is unsupported by the selected model. Change the setting or disable web search.",
+      "invalidMaxResults": "The custom maximum results is outside the selected model's supported range."
+    },
     "draftConflict": {
       "message": "This draft could not be saved. Your unsaved text is retained; sending and draft changes are paused until you reload.",
       "retainedText": "Unsaved draft text (select to copy)",

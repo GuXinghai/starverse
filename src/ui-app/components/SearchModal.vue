@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { rebuildGenerationV2SearchIndex, runGenerationV2SearchQuery } from '@/next/generation-v2/renderer/generationV2SearchClient'
 import type { SearchHit, SearchQueryParams, SearchScope } from '@/next/search/searchTypes'
 import type { SearchConvoOption, SearchProjectOption } from './SearchModal.types'
+import { t } from '@/shared/i18n'
 
 const props = defineProps<{
   open: boolean
@@ -11,11 +12,11 @@ const props = defineProps<{
   activeProjectId: string | null
   activeConvoId: string | null
   disabled?: boolean
+  selectHit: (hit: SearchHit) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
   close: []
-  select: [hit: SearchHit]
 }>()
 
 const query = ref('')
@@ -31,6 +32,8 @@ const error = ref<string | null>(null)
 const results = ref<SearchHit[]>([])
 const hasSearched = ref(false)
 const advancedOpen = ref(false)
+let modalOperation = 0
+const selecting = ref(false)
 
 const projectOptions = computed(() => props.projects)
 const convoOptions = computed(() => props.convos)
@@ -38,6 +41,9 @@ const convoOptions = computed(() => props.convos)
 watch(
   () => props.open,
   (next) => {
+    modalOperation += 1
+    selecting.value = false
+    loading.value = false
     if (!next) return
     error.value = null
     results.value = []
@@ -48,7 +54,7 @@ watch(
     if (convoId.value == null && props.activeConvoId !== undefined) {
       convoId.value = props.activeConvoId
     }
-  },
+  }, { flush: 'sync' },
 )
 
 function toEpochSec(value: string): number | undefined {
@@ -59,8 +65,10 @@ function toEpochSec(value: string): number | undefined {
 }
 
 async function runSearch() {
+  if (props.disabled || !props.open || selecting.value) return
   const q = query.value.trim()
   if (!q) return
+  const operation = ++modalOperation
   error.value = null
   loading.value = true
   hasSearched.value = true
@@ -78,31 +86,49 @@ async function runSearch() {
   }
 
   try {
-    results.value = await runGenerationV2SearchQuery(params)
+    const next = await runGenerationV2SearchQuery(params)
+    if (operation !== modalOperation || !props.open) return
+    results.value = next
   } catch (err: any) {
+    if (operation !== modalOperation || !props.open) return
     error.value = err?.message ? String(err.message) : 'Search failed'
     results.value = []
   } finally {
-    loading.value = false
+    if (operation === modalOperation) loading.value = false
   }
 }
 
 async function onRebuildIndex() {
-  if (loading.value) return
+  if (loading.value || props.disabled || !props.open || selecting.value) return
+  const operation = ++modalOperation
   loading.value = true
   error.value = null
   try {
     await rebuildGenerationV2SearchIndex()
   } catch (err: any) {
+    if (operation !== modalOperation || !props.open) return
     error.value = err?.message ? String(err.message) : 'Rebuild failed'
   } finally {
-    loading.value = false
+    if (operation === modalOperation) loading.value = false
   }
 }
 
-function onSelect(hit: SearchHit) {
-  emit('select', hit)
-  emit('close')
+async function onSelect(hit: SearchHit) {
+  if (props.disabled || !props.open) return
+  const operation = ++modalOperation
+  selecting.value = true
+  loading.value = false
+  error.value = null
+  try {
+    const success = await props.selectHit(hit)
+    if (operation !== modalOperation || !props.open) return
+    if (success) emit('close')
+    else error.value = t('sendPlan.targetMessageUnavailable')
+  } catch {
+    if (operation === modalOperation && props.open) error.value = t('sendPlan.targetMessageUnavailable')
+  } finally {
+    if (operation === modalOperation) selecting.value = false
+  }
 }
 
 function renderTitle(hit: SearchHit): string {
@@ -229,7 +255,7 @@ function splitSnippet(value: string): SnippetPart[] {
             <button
               type="submit"
               class="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-              :disabled="props.disabled || query.trim().length === 0"
+              :disabled="props.disabled || selecting || query.trim().length === 0"
             >
               Search
             </button>
@@ -283,7 +309,7 @@ function splitSnippet(value: string): SnippetPart[] {
             <button
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-              :disabled="props.disabled"
+              :disabled="props.disabled || selecting"
               @click="onRebuildIndex"
             >
               Rebuild index
@@ -293,8 +319,9 @@ function splitSnippet(value: string): SnippetPart[] {
       </form>
 
       <div class="border-t border-gray-200 px-4 py-3">
+        <div v-if="selecting" class="text-sm text-gray-500" data-testid="search-target-loading">{{ t('errors.search.openingResult') }}</div>
+        <div v-if="error && !loading" class="text-sm text-red-600" data-testid="search-target-error">{{ error }}</div>
         <div v-if="loading" class="text-sm text-gray-500">Searching...</div>
-        <div v-else-if="error" class="text-sm text-red-600">{{ error }}</div>
         <div v-else-if="hasSearched && results.length === 0" class="text-sm text-gray-500">No results.</div>
 
         <div v-else class="space-y-3">
@@ -302,6 +329,8 @@ function splitSnippet(value: string): SnippetPart[] {
             v-for="hit in results"
             :key="`${hit.entityType}:${hit.entityId}`"
             type="button"
+            :disabled="props.disabled"
+            :data-testid="`search-hit-${hit.entityId}`"
             class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left shadow-sm hover:bg-gray-50"
             @click="onSelect(hit)"
           >

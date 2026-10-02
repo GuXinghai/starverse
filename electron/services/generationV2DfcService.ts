@@ -10,6 +10,7 @@ import { requestElectronConversion, type ElectronConversionBridge } from '../../
 import { runDfcLibreOfficeDocxToPdfAdapter } from '../../infra/files/dfcLibreOfficePdfAdapter'
 import { getDfcLibreOfficeManagedRuntimeRoot, resolveDfcLibreOfficePluginManagedRuntimeHandle } from '../../infra/files/dfcManagedLibreOfficeRuntime'
 import { runExternalProcess } from '../../infra/files/fileTypeRuntimeBoundary'
+import { DFC_TARGET_KINDS, type DfcReadyOptionBindingV2 } from '../../src/shared/files/documentFormatConversion'
 
 type TargetKind = 'original_file'|'plain_text'|'markdown'|'code'|'table_markdown'|'pdf_attachment'
 type SendStrategy = 'text_in_prompt'|'file_attachment'
@@ -17,7 +18,7 @@ type DfcSendAssetRef = Readonly<{kind:'raw_file'|'derived_asset';assetId:string}
 type DfcDiagnostic = Readonly<{code:string;message:string;severity:'info'|'warning'|'error'}>
 type DfcOption = Readonly<{optionId:string;rawFileId:string;targetKind:TargetKind;sendStrategy:SendStrategy;
   status:'ready'|'blocked';isAvailable:boolean;compatibilityStatus:'compatible'|'blocked';sendAssetRefs:ReadonlyArray<DfcSendAssetRef>;
-  warnings:readonly string[];diagnostics:ReadonlyArray<DfcDiagnostic>}>
+  warnings:readonly string[];diagnostics:ReadonlyArray<DfcDiagnostic>;selectionBinding:DfcReadyOptionBindingV2|null}>
 
 export class GenerationV2DfcServiceError extends Error {
   constructor(readonly code: 'GENERATION_V2_DFC_INPUT_INVALID'|'GENERATION_V2_DFC_ATTACHMENT_NOT_FOUND'|'GENERATION_V2_DFC_OPTION_UNAVAILABLE'|'GENERATION_V2_DFC_TEXT_DECODE_FAILED'|
@@ -30,6 +31,31 @@ const TEXT_TARGETS: readonly Exclude<TargetKind,'original_file'|'pdf_attachment'
 const CONVERTER_CONTRACT = 'starverse-dfc-text-v1'
 const CONVERTER_REVISION = '1'
 const HTML_PDF_CONVERTER_CONTRACT = 'starverse-dfc-html-pdf-v1'
+
+export function decodeDfcReadyOptionBindingV2(value:unknown):DfcReadyOptionBindingV2 {
+  function record(raw:unknown,keys:readonly string[]):Record<string,unknown> {
+    if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.getPrototypeOf(raw)!==Object.prototype)throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+    const descriptors=Object.getOwnPropertyDescriptors(raw)
+    if(Reflect.ownKeys(raw).some(key=>typeof key!=='string')||Object.keys(descriptors).sort().join('\0')!==[...keys].sort().join('\0')||
+      Object.values(descriptors).some(entry=>!entry.enumerable||!('value'in entry)||entry.value===undefined))throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+    return Object.fromEntries(keys.map(key=>[key,descriptors[key].value]))
+  }
+  function identity(raw:unknown):string {
+    if(typeof raw!=='string'||raw.length<1||raw.length>512||raw.trim()!==raw)throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+    return raw
+  }
+  function digest(raw:unknown):string {
+    if(typeof raw!=='string'||!/^[0-9a-f]{64}$/u.test(raw))throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+    return raw
+  }
+  const raw=record(value,['sourceAssetId','sourceAssetRevisionId','sourceAssetSha256','targetKind','effectiveAssetId','effectiveAssetRevisionId','effectiveAssetSha256','producer'])
+  if(!DFC_TARGET_KINDS.includes(raw.targetKind as TargetKind))throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+  const producer=raw.producer===null?null:record(raw.producer,['contractId','revision','settingsDigest'])
+  if((raw.targetKind==='original_file')!==(producer===null))throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_INPUT_INVALID')
+  return Object.freeze({sourceAssetId:identity(raw.sourceAssetId),sourceAssetRevisionId:identity(raw.sourceAssetRevisionId),sourceAssetSha256:digest(raw.sourceAssetSha256),
+    targetKind:raw.targetKind as TargetKind,effectiveAssetId:identity(raw.effectiveAssetId),effectiveAssetRevisionId:identity(raw.effectiveAssetRevisionId),effectiveAssetSha256:digest(raw.effectiveAssetSha256),
+    producer:producer===null?null:Object.freeze({contractId:identity(producer.contractId),revision:identity(producer.revision),settingsDigest:digest(producer.settingsDigest)})})
+}
 
 function optionId(target:TargetKind):string { return `dfc:${target}:v1` }
 function settingsDigest(target:TargetKind):string { return createHash('sha256').update(`dfc-text-v1:${target}`,'utf8').digest('hex') }
@@ -71,23 +97,25 @@ export class GenerationV2DfcService {
     return Object.freeze({attachmentId:attachment.assetId,conversationId:input.conversationId,rawFileId:attachment.assetId,filename:attachment.filename,sizeBytes:attachment.sizeBytes,
       dfcManaged:true,selectedOptionId:selected?.optionId??null,selectedAssetRefs:Object.freeze(selectedAssetRefs),recommendedOptionId:optionId('original_file'),recommendedReasonCode:'original_file_preserves_bytes',decision,options:Object.freeze(options)})
   }
-  async select(input:Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>):Promise<ReturnType<ComposerDraftV2Repo['setDfcSelection']>> {
+  async select(input:Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses';selectionBinding:DfcReadyOptionBindingV2}>):Promise<ReturnType<ComposerDraftV2Repo['setDfcSelection']>> {
+    const binding=decodeDfcReadyOptionBindingV2(input.selectionBinding)
     const attachment=this.attachment(input.conversationId,input.assetId)
-    const dto=await this.ensureOptions({conversationId:input.conversationId,assetId:input.assetId,providerId:input.providerId,operation:input.operation})
-    const option=dto.options.find(entry=>entry.optionId===input.optionId)
-    if(!option||!option.isAvailable) throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_OPTION_UNAVAILABLE')
-    const effective=option.targetKind==='original_file'?this.assets.getRevision(attachment.assetId,attachment.assetRevisionId)
-      : option.targetKind==='pdf_attachment'?this.derivedForWithContract(attachment.assetRevisionId,option.targetKind,HTML_PDF_CONVERTER_CONTRACT)
-        : this.derivedFor(attachment.assetRevisionId,option.targetKind)
-    if(!effective) throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_OPTION_UNAVAILABLE')
+    if(!attachment.include||input.optionId!==optionId(binding.targetKind)||
+      (binding.targetKind==='pdf_attachment'&&!this.pdfProviderCompatible(input.providerId,input.operation))||
+      (binding.targetKind!=='original_file'&&binding.targetKind!=='pdf_attachment'&&
+        (input.providerId!=='openrouter'||input.operation!=='chat_completions'||!this.detectedTextual(attachment))))throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_OPTION_UNAVAILABLE')
+    this.verifyBinding(attachment,binding)
     return this.drafts.setDfcSelection({conversationId:input.conversationId,expectedRevision:input.expectedRevision,sourceAssetRevisionId:attachment.assetRevisionId,
-      selectedOptionId:option.optionId,targetKind:option.targetKind,sendStrategy:option.sendStrategy,effectiveAssetId:effective.assetId.value,
-      effectiveAssetRevisionId:effective.assetRevisionId.value,effectiveAssetSha256:effective.blob.sha256.value})
+      selectedOptionId:input.optionId,targetKind:binding.targetKind,sendStrategy:binding.targetKind==='original_file'||binding.targetKind==='pdf_attachment'?'file_attachment':'text_in_prompt',
+      effectiveAssetId:binding.effectiveAssetId,effectiveAssetRevisionId:binding.effectiveAssetRevisionId,effectiveAssetSha256:binding.effectiveAssetSha256})
   }
   preview(input:Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) {
     const attachment=this.attachment(input.conversationId,input.assetId)
     const selected=attachment.dfcSelection
     if(!selected) return this.previewDto(input.conversationId,attachment,null,'needs_user_selection',null,input.maxCharacters)
+    if(selected.optionId!==optionId(selected.targetKind)||selected.sendStrategy!==(selected.targetKind==='original_file'||selected.targetKind==='pdf_attachment'?'file_attachment':'text_in_prompt')) {
+      throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_OPTION_UNAVAILABLE')
+    }
     if(selected.targetKind==='original_file'||selected.targetKind==='pdf_attachment') return this.previewDto(input.conversationId,attachment,selected,'ready',null,input.maxCharacters)
     const output=this.assets.getRevision(selected.effectiveAssetId,selected.effectiveAssetRevisionId)
     const bytes=this.blobs.readRevisionBytes(output)
@@ -106,27 +134,61 @@ export class GenerationV2DfcService {
     if(detection.blocked)throw new GenerationV2DfcServiceError('GENERATION_V2_FILE_DETECTION_BLOCKED',detection.blockingReasonCodes.join(',')||null)
     return attachment
   }
-  private originalOption(attachment:ComposerDraftManagedFileAttachmentV2):DfcOption {return Object.freeze({optionId:optionId('original_file'),rawFileId:attachment.assetId,targetKind:'original_file',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'raw_file' as const,assetId:attachment.assetId}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})}
+  private originalOption(attachment:ComposerDraftManagedFileAttachmentV2):DfcOption {return this.readyOption(attachment,'original_file',this.assets.getRevision(attachment.assetId,attachment.assetRevisionId))}
   private textOption(attachment:ComposerDraftManagedFileAttachmentV2,target:Exclude<TargetKind,'original_file'|'pdf_attachment'>,providerId:string,operation:'chat_completions'|'images'|'responses'):DfcOption {
     if(providerId!=='openrouter'||operation!=='chat_completions') return this.blocked(attachment,target,'GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     if(!this.detectedTextual(attachment)) return this.blocked(attachment,target,'GENERATION_V2_DFC_TEXT_SOURCE_UNSUPPORTED','This source cannot be converted to text without a reviewed converter.')
     const output=this.ensureTextOutput(attachment,target)
-    return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:'text_in_prompt',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+    return this.readyOption(attachment,target,output)
+  }
+  private pdfProviderCompatible(providerId:string,operation:'chat_completions'|'images'|'responses'):boolean {
+    return providerId==='openrouter'&&operation==='chat_completions'||providerId==='openai_responses'&&operation==='responses'
   }
   private async pdfOption(attachment:ComposerDraftManagedFileAttachmentV2,providerId:string,operation:'chat_completions'|'images'|'responses'):Promise<DfcOption> {
-    if (!((providerId==='openrouter'&&operation==='chat_completions') || (providerId==='openai_responses'&&operation==='responses'))) return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
+    if (!this.pdfProviderCompatible(providerId,operation)) return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     const detectedFormatId=attachment.fileTypeDetection?.formatId
     if ((detectedFormatId==='html'||attachment.mime === 'text/html') && this.conversion && this.tempRoot) {
       const output=await this.ensureHtmlPdfOutput(attachment)
-      return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+      return this.readyOption(attachment,'pdf_attachment',output)
     }
     if ((detectedFormatId==='docx'||attachment.mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') && this.runtimesRoot && this.tempRoot) {
       const output=await this.ensureDocxPdfOutput(attachment)
-      if (output) return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+      if (output) return this.readyOption(attachment,'pdf_attachment',output)
     }
     return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PDF_CONVERTER_NOT_YET_BOUND','PDF conversion requires the reviewed browser or managed LibreOffice converter contract.')
   }
-  private blocked(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,code:string,message:string):DfcOption {return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:target==='pdf_attachment'||target==='original_file'?'file_attachment':'text_in_prompt',status:'blocked',isAvailable:false,compatibilityStatus:'blocked',sendAssetRefs:Object.freeze([]),warnings:Object.freeze([]),diagnostics:Object.freeze([{code,message,severity:'warning' as const}])})}
+  private blocked(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,code:string,message:string):DfcOption {return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:target==='pdf_attachment'||target==='original_file'?'file_attachment':'text_in_prompt',status:'blocked',isAvailable:false,compatibilityStatus:'blocked',sendAssetRefs:Object.freeze([]),warnings:Object.freeze([]),diagnostics:Object.freeze([{code,message,severity:'warning' as const}]),selectionBinding:null})}
+  private readyOption(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,effective:ReturnType<AttachmentAssetV2Repo['getRevision']>):DfcOption {
+    const producer=target==='original_file'?null:this.db.prepare(`SELECT converter_contract_id,converter_revision,conversion_settings_digest
+      FROM dfc_conversion_output_v2 WHERE derived_asset_revision_id=?`).get(effective.assetRevisionId.value) as Record<string,unknown>|undefined|null
+    const selectionBinding=decodeDfcReadyOptionBindingV2({sourceAssetId:attachment.assetId,sourceAssetRevisionId:attachment.assetRevisionId,sourceAssetSha256:attachment.assetSha256,
+      targetKind:target,effectiveAssetId:effective.assetId.value,effectiveAssetRevisionId:effective.assetRevisionId.value,effectiveAssetSha256:effective.blob.sha256.value,
+      producer:target==='original_file'?null:{contractId:producer?.converter_contract_id,revision:producer?.converter_revision,settingsDigest:producer?.conversion_settings_digest}})
+    this.verifyBinding(attachment,selectionBinding)
+    return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:target==='original_file'||target==='pdf_attachment'?'file_attachment':'text_in_prompt',
+      status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:target==='original_file'?'raw_file' as const:'derived_asset' as const,assetId:effective.assetId.value}]),
+      warnings:Object.freeze([]),diagnostics:Object.freeze([]),selectionBinding})
+  }
+  private verifyBinding(attachment:ComposerDraftManagedFileAttachmentV2,binding:DfcReadyOptionBindingV2):void {
+    const unavailable=()=>{throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_OPTION_UNAVAILABLE')}
+    if(binding.sourceAssetId!==attachment.assetId||binding.sourceAssetRevisionId!==attachment.assetRevisionId||binding.sourceAssetSha256!==attachment.assetSha256)unavailable()
+    let source:ReturnType<AttachmentAssetV2Repo['getRevision']>,effective:ReturnType<AttachmentAssetV2Repo['getRevision']>
+    try {source=this.assets.getRevision(binding.sourceAssetId,binding.sourceAssetRevisionId);effective=this.assets.getRevision(binding.effectiveAssetId,binding.effectiveAssetRevisionId)} catch {return unavailable()}
+    if(source.retiredAtMs!==null||source.revisionKind!=='source'||source.blob.sha256.value!==binding.sourceAssetSha256||
+      effective.retiredAtMs!==null||effective.blob.sha256.value!==binding.effectiveAssetSha256)unavailable()
+    if(binding.targetKind==='original_file') {
+      if(binding.producer!==null||binding.effectiveAssetId!==binding.sourceAssetId||binding.effectiveAssetRevisionId!==binding.sourceAssetRevisionId||binding.effectiveAssetSha256!==binding.sourceAssetSha256)unavailable()
+      return
+    }
+    const output=this.db.prepare(`SELECT source_asset_revision_id,target_kind,converter_contract_id,converter_revision,conversion_settings_digest
+      FROM dfc_conversion_output_v2 WHERE derived_asset_revision_id=?`).get(binding.effectiveAssetRevisionId) as Record<string,unknown>|undefined
+    if(!binding.producer||!output||effective.revisionKind!=='derived'||effective.parentAssetRevisionId?.value!==binding.sourceAssetRevisionId||
+      effective.conversionKind!==(binding.targetKind==='pdf_attachment'?'pdf':'plain_text')||
+      (binding.targetKind==='pdf_attachment'&&effective.blob.mime!=='application/pdf')||
+      output.source_asset_revision_id!==binding.sourceAssetRevisionId||output.target_kind!==binding.targetKind||
+      output.converter_contract_id!==binding.producer.contractId||output.converter_revision!==binding.producer.revision||output.conversion_settings_digest!==binding.producer.settingsDigest||
+      effective.conversionContractId!==binding.producer.contractId||effective.conversionRevision!==binding.producer.revision)unavailable()
+  }
   private detectedTextual(attachment:ComposerDraftManagedFileAttachmentV2):boolean {
     const kind=attachment.fileTypeDetection?.kind
     return kind==='text'||kind==='code'||textual(attachment.mime)

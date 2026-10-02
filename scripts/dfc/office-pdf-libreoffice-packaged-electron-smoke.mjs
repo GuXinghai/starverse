@@ -114,9 +114,9 @@ async function main() {
       const options = unwrap(await api.composer.dfcOptions({ conversationId: workspace.conversationId, assetId: attachment.assetId,
         providerId: 'openrouter', operation: 'chat_completions' }))
       const option = options.options.find((item) => item.optionId === 'dfc:pdf_attachment:v1' && item.isAvailable)
-      if (!option) throw new Error('packaged_docx_pdf_option_unavailable')
+      if (!option?.selectionBinding) throw new Error('packaged_docx_pdf_option_unavailable')
       draft = unwrap(await api.composer.dfcSelect({ conversationId: workspace.conversationId, expectedRevision: draft.revision,
-        assetId: attachment.assetId, optionId: option.optionId, providerId: 'openrouter', operation: 'chat_completions' }))
+        assetId: attachment.assetId, optionId: option.optionId, providerId: 'openrouter', operation: 'chat_completions', selectionBinding: option.selectionBinding }))
       const preview = unwrap(await api.composer.dfcPreview({ conversationId: workspace.conversationId, assetId: attachment.assetId, maxCharacters: 2048 }))
       const selected = draft.attachments.find((item) => item.kind === 'managed_file' && item.assetId === attachment.assetId)
       return { backendOwned: true, conversationId: workspace.conversationId, assetId: attachment.assetId, attachmentId: attachment.assetRevisionId,

@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-03",
+  "timezone": "Asia/Tokyo",
+  "branch": "models-dev-capability-resolution",
+  "baseHead": "7896ddfbe0c3ca678340baa79475bb78fe00e96d",
+  "firstWaveCommit": {
+    "message": "fix: close workspace ownership and credential redaction gaps",
+    "files": 41,
+    "validatedSourceFingerprintsMatch": true,
+    "nativeArtifactsCommitted": false,
+    "pushed": false
+  },
+  "protectedPaths": [
+    {"path": ".codex/config.toml", "sha256": "D376736F495A6C74A0FE0F588920D162F084FBF2AE319A44985B905554C1683A"},
+    {"path": "pelican-bicycle.html", "sha256": "19627F10660AA848FBA112FF40FEC48155098BEBCB23B45ED4B9BDF051DBB3D9"}
+  ],
+  "abi": {"command": "npm run rebuild:node", "status": "PASS", "mismatchEncountered": false, "target": "node"},
+  "cleanup": {
+    "preciseNonrecursiveAttempt": true,
+    "executed": false,
+    "status": "BLOCKED_BY_AUTOMATIC_APPROVAL_REVIEW",
+    "reason": "CreateProcess Rejected: blocked by policy",
+    "targets": ["%TEMP%/starverse-repair-schema-digest.mjs", "%TEMP%/starverse-repair-predecessor-digest.mjs"],
+    "alternateExecutorAttempted": false
+  },
+  "revalidation": {
+    "SV-PGA-006": "OPEN: universal legacy optional fields conflict with selected native operation contracts",
+    "SV-PGA-007": "OPEN: PDF selection hardcodes HTML producer despite persisted DOCX output authority",
+    "SV-PGA-011": "OPEN: bootstrap failure marks ready, recovery/settings hidden without active scope",
+    "SV-PGA-009": "OPEN: committed rules/priority mutations do not invalidate active resolution; Inspector uses old pointer",
+    "SV-PGA-010": "OPEN: hit lacks eligible branch/anchor, trusts stale project and closes modal before focus outcome"
+  }
+}

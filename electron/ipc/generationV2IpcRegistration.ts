@@ -40,6 +40,7 @@ import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/a
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
 import { ModelFactsInspectorV1Service } from '../services/modelFactsInspectorV1Service'
+import type { ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -52,6 +53,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
   cloudFetch: ProviderFetch
   localDirectFetch: ProviderFetch
   proxyMode: () => 'environment' | 'manual' | 'direct' | 'system'
+  notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
 }>): readonly string[] {
   input.epoch2.assertCurrent()
   const common = Object.freeze({ db: input.epoch2.database,
@@ -72,11 +74,12 @@ export function registerGenerationV2Ipc(input: Readonly<{
     ...registerGenerationV2CapabilityIpc({ registerInvoke: input.registerInvoke, epoch2: input.epoch2 }),
     ...registerGenerationV2UserCapabilityRulesIpc({ registerInvoke: input.registerInvoke,
       db: input.epoch2.database, credentialService: input.epoch2.credentialService,
-      openAICompatibleCredentialService: input.epoch2.openAICompatibleCredentialService }),
+      openAICompatibleCredentialService: input.epoch2.openAICompatibleCredentialService,
+      notifyModelFactsSemanticInvalidated: input.notifyModelFactsSemanticInvalidated }),
     ...registerGenerationV2ModelFactsInspectorIpc({ registerInvoke: input.registerInvoke,
       service: modelFactsInspector }),
     ...registerGenerationV2SourcePriorityConfigIpc({ registerInvoke: input.registerInvoke,
-      db: input.epoch2.database }),
+      db: input.epoch2.database, notifyModelFactsSemanticInvalidated: input.notifyModelFactsSemanticInvalidated }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),

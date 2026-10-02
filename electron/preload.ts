@@ -1,4 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import type { DfcReadyOptionBindingV2 } from '../src/shared/files/documentFormatConversion'
+import { decodeModelFactsSemanticInvalidationV1, GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED,
+  type ModelFactsSemanticInvalidationV1 } from '../src/next/generation-v2/model-facts/semanticInvalidationV1'
 import type {
   LocalEndpointExecutionProviderId,
   LocalEndpointProtocolV2,
@@ -71,6 +74,15 @@ function createGenerationV2CredentialBridge(provider: 'openrouter' | 'openai-res
 // Epoch-2 generation commands. Provider and operation contracts are selected
 // by these fixed channel maps, never inferred from command payload shape.
 contextBridge.exposeInMainWorld('generationV2', Object.freeze({
+  onModelFactsSemanticInvalidated: (listener: (event: ModelFactsSemanticInvalidationV1) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      let event: ModelFactsSemanticInvalidationV1
+      try { event = decodeModelFactsSemanticInvalidationV1(value) } catch { return }
+      listener(event)
+    }
+    ipcRenderer.on(GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED, handler)
+    return () => ipcRenderer.removeListener(GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED, handler)
+  },
   ...(epoch2SmokeFixtureAuthorityEnabled ? {
     smokeFixture: Object.freeze({
       requestLocalFileGrant: (fixtureName: 'markdown' | 'html' | 'docx') =>
@@ -148,6 +160,8 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
       ipcRenderer.invoke('generation-v2:workspace:list-conversations', { projectId, cursor, limit }),
     readBranch: (branchId: string, beforeMessageId: string | null = null, limit = 50) =>
       ipcRenderer.invoke('generation-v2:workspace:read-branch', { branchId, beforeMessageId, limit }),
+    readSearchTarget: (payload: Readonly<{messageId:string;preferredBranchId:string|null;limit:number}>) =>
+      ipcRenderer.invoke('generation-v2:workspace:read-search-target', payload),
     getMessageCandidateNavigation: (branchId: string, messageId: string) =>
       ipcRenderer.invoke('generation-v2:workspace:get-message-candidate-navigation', {
         branchId, messageId,
@@ -217,7 +231,7 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     cancelEditSession: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;openedDraftRevision:number}>) =>
       ipcRenderer.invoke('generation-v2:composer:cancel-edit-session', payload),
     dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-options', payload),
-    dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
+    dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses';selectionBinding:DfcReadyOptionBindingV2}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
     dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => ipcRenderer.invoke('generation-v2:composer:dfc-preview', payload),
     retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) =>
       ipcRenderer.invoke('generation-v2:composer:retry-file-type-detection', payload),

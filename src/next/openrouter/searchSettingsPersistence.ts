@@ -46,11 +46,19 @@ function normalizeSearchPrompt(value: unknown): SearchPromptSetting | undefined 
   return undefined
 }
 
-function normalizeMaxResults(value: unknown): number | undefined {
+export type SearchSettingsNormalizationOptions = Readonly<{
+  maxResultsBounds?: Readonly<{ min: number; max: number }>
+  /** Conversation observations retain dormant intent; editing validates the selected domain. */
+  preserveExplicitMaxResults?: boolean
+}>
+
+function normalizeMaxResults(value: unknown, options: SearchSettingsNormalizationOptions): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  if (options.preserveExplicitMaxResults) return value
   const rounded = Math.round(value)
-  if (rounded < 1) return 1
-  if (rounded > 10) return 10
+  const bounds = options.maxResultsBounds ?? { min: 1, max: 10 }
+  if (rounded < bounds.min) return bounds.min
+  if (rounded > bounds.max) return bounds.max
   return rounded
 }
 
@@ -62,7 +70,7 @@ type SearchSettingsLayerDraft = {
   searchPrompt?: SearchSettingsLayer['searchPrompt']
 }
 
-export function normalizeSearchSettingsLayer(raw: unknown): SearchSettingsLayer | null {
+export function normalizeSearchSettingsLayer(raw: unknown, options: SearchSettingsNormalizationOptions = {}): SearchSettingsLayer | null {
   const value = asRecord(raw)
   if (!value) return null
 
@@ -77,7 +85,7 @@ export function normalizeSearchSettingsLayer(raw: unknown): SearchSettingsLayer 
   const engine = normalizeEngine(value.searchEngine)
   if (engine !== undefined) next.searchEngine = engine
 
-  const maxResults = normalizeMaxResults(value.maxResults)
+  const maxResults = normalizeMaxResults(value.maxResults, options)
   if (maxResults !== undefined) next.maxResults = maxResults
 
   const searchPrompt = normalizeSearchPrompt(value.searchPrompt)
@@ -116,11 +124,12 @@ export function mergeProjectWebSearchDefaultsMeta(
 
 export function mergeConvoWebSearchOverrideMeta(
   meta: unknown,
-  layer: SearchSettingsLayer | null
+  layer: SearchSettingsLayer | null,
+  options: SearchSettingsNormalizationOptions = {},
 ): Record<string, unknown> {
   const root = asRecord(meta)
   const next: Record<string, unknown> = root ? { ...root } : {}
-  const normalized = normalizeSearchSettingsLayer(layer)
+  const normalized = normalizeSearchSettingsLayer(layer, options)
   if (normalized) next[CONVO_WEB_SEARCH_OVERRIDE_META_KEY] = normalized
   else delete next[CONVO_WEB_SEARCH_OVERRIDE_META_KEY]
   return next

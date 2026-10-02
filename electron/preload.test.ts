@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1, GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED } from
+  '../src/next/generation-v2/model-facts/semanticInvalidationV1'
 
 describe('Generation V2 preload boundary', () => {
   afterEach(() => {
@@ -10,14 +12,16 @@ describe('Generation V2 preload boundary', () => {
   async function load(argv = process.argv) {
     const invoke = vi.fn()
     const exposeInMainWorld = vi.fn()
+    const on = vi.fn()
+    const removeListener = vi.fn()
     vi.doMock('electron', () => ({
       contextBridge: { exposeInMainWorld },
-      ipcRenderer: { invoke, on: vi.fn(), removeListener: vi.fn() },
+      ipcRenderer: { invoke, on, removeListener },
     }))
     const previousArgv = process.argv
     Object.defineProperty(process, 'argv', { configurable: true, value: argv })
     try { await import('./preload') } finally { Object.defineProperty(process, 'argv', { configurable: true, value: previousArgv }) }
-    return { invoke, exposeInMainWorld }
+    return { invoke, exposeInMainWorld, on, removeListener }
   }
 
   it('exposes only the retained shell/settings surfaces plus one Generation V2 namespace', async () => {
@@ -95,5 +99,32 @@ describe('Generation V2 preload boundary', () => {
       ['generation-v2:local-runtime:lmstudio:load-model', { model: 'model:1' }],
       ['generation-v2:local-runtime:ollama:unload-model', { model: 'model:1' }],
     ])
+  })
+
+  it('decodes closed semantic events and removes the exact main listener on unsubscribe', async () => {
+    const { exposeInMainWorld, on, removeListener } = await load()
+    const bridge = exposeInMainWorld.mock.calls.find(([name]) => name === 'generationV2')?.[1]
+    const listener = vi.fn()
+    const unsubscribe = bridge.onModelFactsSemanticInvalidated(listener)
+    const registered = on.mock.calls.find(([channel]) => channel === GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED)!
+    const handler = registered[1]
+    const event = { kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1,
+      canonicalSourceRevision: `canonical-source-v1:${'a'.repeat(64)}` }
+    handler({}, { ...event, sourceScopeId: 'renderer-scope' })
+    handler({}, { ...event, sequence: 1 })
+    expect(listener).not.toHaveBeenCalled()
+    handler({}, event)
+    expect(listener).toHaveBeenCalledExactlyOnceWith(event)
+    expect(Object.isFrozen(listener.mock.calls[0]![0])).toBe(true)
+    unsubscribe()
+    expect(removeListener).toHaveBeenCalledExactlyOnceWith(GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED, handler)
+  })
+
+  it('forwards the exact search target packet through the fixed workspace channel', async () => {
+    const { invoke, exposeInMainWorld } = await load()
+    const generationV2 = exposeInMainWorld.mock.calls.find(([name]) => name === 'generationV2')?.[1]
+    const packet = { messageId:'question:old',preferredBranchId:'branch:inherited',limit:1 }
+    await generationV2.workspace.readSearchTarget(packet)
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('generation-v2:workspace:read-search-target',packet)
   })
 })

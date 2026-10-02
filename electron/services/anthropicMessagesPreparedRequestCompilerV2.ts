@@ -12,6 +12,7 @@ import {
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 import {
   issuePreparedProviderRequestV2,
   createPreparedAttachmentRequirementsV2,
@@ -192,6 +193,11 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
   }
 
   const attachmentRequirements = createPreparedAttachmentRequirementsV2(snapshot.semanticIntent.attachments)
+  try {
+    validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},snapshot.semanticIntent.web)
+  } catch {
+    throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
+  }
   const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = []
   const attachmentBlocks: AnthropicMessagesUserContentBlockV1[] = []
   for (const [index, attachment] of snapshot.semanticIntent.attachments.entries()) {

@@ -206,9 +206,13 @@ export class ComposerDraftV2Repo {
         ON selection.conversation_id=draft.conversation_id AND selection.source_asset_revision_id=draft.asset_revision_id
       LEFT JOIN file_type_detection_v2 AS detection ON detection.asset_revision_id=draft.asset_revision_id
       WHERE draft.conversation_id=? ORDER BY draft.attachment_order,draft.asset_revision_id,draft.url_reference_revision`).all(conversationId) as AttachmentRow[]
+    const decodedAttachments=attachments.map((entry,index)=>this.decodeAttachment(entry,index))
+    for(const attachment of decodedAttachments) {
+      if(attachment.kind==='managed_file'&&attachment.dfcSelection)this.verifyDfcSelection({sourceAssetRevisionId:attachment.assetRevisionId,...attachment.dfcSelection})
+    }
     return Object.freeze({conversationId,draftText:row.draft_text,draftMode:row.draft_mode,
       editingSourceQuestionId:row.editing_source_question_id as string|null,revision:row.revision as number,
-      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(attachments.map((entry,index)=>this.decodeAttachment(entry,index))),
+      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(decodedAttachments),
       editSession:this.readEditSession(conversationId,row.draft_mode,row.editing_source_question_id,row.revision as number)})
   }
 

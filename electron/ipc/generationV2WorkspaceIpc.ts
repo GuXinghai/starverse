@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { ConversationReadV2Repo } from '../../infra/db/repo/conversationReadV2Repo'
+import { GenerationV2SearchTargetRepo } from '../../infra/db/repo/generationV2SearchTargetRepo'
 import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWorkspaceV2Repo'
 import { BranchContextFilterV2Repo } from '../../infra/db/repo/branchContextFilterV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
@@ -33,6 +34,7 @@ export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:clear-conversation-route-preference',
   'generation-v2:workspace:hide-answer',
   'generation-v2:workspace:list-branches',
+  'generation-v2:workspace:read-search-target',
 ] as const)
 
 type Raw = Readonly<Record<string, unknown>>
@@ -70,6 +72,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   const nowMs = input.nowMs ?? Date.now
   const graph = new ConversationGraphV2Repo(input.db)
   const read = new ConversationReadV2Repo(input.db)
+  const searchTarget = new GenerationV2SearchTargetRepo(input.db)
   const workspace = new ConversationWorkspaceV2Repo(input.db)
   const contextFilters = new BranchContextFilterV2Repo(input.db)
   const config = new GenerationConfigV2Repo(input.db, nowMs)
@@ -307,6 +310,11 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       }),
       boundedInteger(raw.limit, 1, 50),
     )
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[31], safe((payload) => {
+    const raw = object(payload, ['messageId', 'preferredBranchId', 'limit'])
+    return searchTarget.read({ messageId: text(raw.messageId), preferredBranchId: nullableText(raw.preferredBranchId),
+      limit: boundedInteger(raw.limit, 1, 50) })
   }))
   return GENERATION_V2_WORKSPACE_IPC_CHANNELS
 }

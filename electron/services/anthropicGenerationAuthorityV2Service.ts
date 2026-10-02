@@ -46,6 +46,7 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
+import { resolveWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 
 export type VerifiedAnthropicProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_anthropic_provider_binding'
@@ -120,6 +121,9 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 }
 
 function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly PersistedRuntimeCapabilityFieldV2[] {
+  const webProtocol=resolveWebSearchProtocolParametersV2({providerId:'anthropic',protocolContractId:'anthropic-messages-2023-06-01',operation:'text'})
+  const maxResults=webProtocol.optionalParameters.maxResults
+  if (!maxResults) throw new Error('GENERATION_V2_ANTHROPIC_AUTHORITY_INVALID')
   const values = new Map<RuntimeCapabilitySemanticPathV2, PersistedRuntimeCapabilityFieldV2>()
   for (const path of RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2) values.set(path, unavailable(path))
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', { kind: 'range', min: 1, max: evidence.maxTokens, integer: true }))
@@ -129,8 +133,8 @@ function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly Persisted
   values.set('reasoning.summary', unsupported('reasoning.summary'))
   values.set('reasoning.exclude', unsupported('reasoning.exclude'))
   values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }))
-  values.set('web.types', supported('web.types', { kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 }))
-  values.set('web.maxResults', supported('web.maxResults', { kind: 'range', min: 1, max: 20, integer: true }))
+  values.set('web.types', supported('web.types', webProtocol.types))
+  values.set('web.maxResults', supported('web.maxResults', maxResults))
   values.set('web.allowedDomains', supported('web.allowedDomains', { kind: 'string_list', maxItems: 100, maxItemLength: 253 }))
   values.set('web.excludedDomains', supported('web.excludedDomains', { kind: 'string_list', maxItems: 100, maxItemLength: 253 }))
   values.set('web.userLocation', supported('web.userLocation', { kind: 'approximate_location', maxFieldLength: 256 }))

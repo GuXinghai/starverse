@@ -5,6 +5,7 @@ import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFa
 import { isReviewedProviderContractDefinitionV2, readReviewedOpenAIResponsesDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { isVerifiedProviderContractReferenceV2, verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
 import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
 import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
 import { compileOpenAIResponsesRequestV1, type OpenAIResponsesToolV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
@@ -31,10 +32,15 @@ export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
   }
 }
 
+type OpenAIResponsesCompilerToolInputV2 = Exclude<OpenAIResponsesToolV1, {type:'web_search'}> | Readonly<{
+  type:'web_search'
+  searchContextSize?:string
+  allowedDomains?:readonly string[]
+}>
 type EncodedOpenAIResponsesIntentV2 = Readonly<{
   reasoning?: Readonly<{ effort?: string; summary?: string; mode?: 'standard' | 'pro'; context?: 'auto' | 'current_turn' | 'all_turns' }>
   generation: Readonly<{ maxOutputTokens?: number; verbosity?: string }>
-  tools?: readonly OpenAIResponsesToolV1[]
+  tools?: readonly OpenAIResponsesCompilerToolInputV2[]
   maxToolCalls?: number
   parallelToolCalls?: boolean
   serviceTier?: 'auto' | 'default' | 'flex' | 'priority'
@@ -81,16 +87,16 @@ function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundl
     if (intent.reasoning.exclude !== undefined) reject('reasoning.exclude')
     if (Object.keys(reasoning).length === 0) reasoning = undefined
   }
-  const tools: OpenAIResponsesToolV1[] = []
+  const tools: OpenAIResponsesCompilerToolInputV2[] = []
   if (intent.web.mode === 'disabled') accept('web.mode')
   else if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') reject('web.types')
   else {
     accept('web.types'); encode('web.mode', 'tools[].type', 'structural')
-    const webTool: { type: 'web_search'; search_context_size?: string; filters?: Readonly<{ allowed_domains: readonly string[] }> } = { type: 'web_search' }
+    const webTool: { type: 'web_search'; searchContextSize?: string; allowedDomains?: readonly string[] } = { type: 'web_search' }
     for (const [key, value] of Object.entries(intent.web)) {
       if (key === 'mode' || key === 'types' || value === undefined) continue
-      if (key === 'searchContextSize') { webTool.search_context_size = value as string; encode('web.searchContextSize', 'tools[].search_context_size') }
-      else if (key === 'allowedDomains') { webTool.filters = Object.freeze({ allowed_domains: value as readonly string[] }); encode('web.allowedDomains', 'tools[].filters.allowed_domains', 'structural') }
+      if (key === 'searchContextSize') { webTool.searchContextSize = value as string; encode('web.searchContextSize', 'tools[].search_context_size') }
+      else if (key === 'allowedDomains') { webTool.allowedDomains = value as readonly string[]; encode('web.allowedDomains', 'tools[].filters.allowed_domains', 'structural') }
       else reject(`web.${key}`)
     }
     tools.push(Object.freeze(webTool))
@@ -108,7 +114,7 @@ function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundl
         image[key === 'format' ? 'outputFormat' : key] = value; encode(`image.${key}`, `tools[].${key === 'format' ? 'output_format' : key}`)
       } else reject(`image.${key}`)
     }
-    tools.push(Object.freeze(image) as OpenAIResponsesToolV1)
+    tools.push(Object.freeze(image) as Extract<OpenAIResponsesToolV1,{type:'image_generation'}>)
   }
   if (intent.attachments.length > 0) {
     const included = intent.attachments.filter((attachment) => attachment.include)
@@ -200,6 +206,11 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID')
   }
   const tools = snapshot.semanticIntent.tools
+  try {
+    validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},snapshot.semanticIntent.web)
+  } catch {
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
+  }
   if (tools.mode === 'enabled') {
     if (snapshot.toolAuthority.kind !== 'registry' ||
         !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context) ||

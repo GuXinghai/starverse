@@ -17,7 +17,7 @@ import {
   type PersistedModelCapabilityFieldV2,
 } from './modelCapabilitySchemaV2'
 import type { DecodedProviderBindingRecordV2 } from '../domain/providerBindingV2'
-import { RUNTIME_PROJECTION_RULES_V1, type RuntimeProjectionRuleV1 } from './runtimeProjectionSourcePathsV1'
+import { runtimeProjectionRulesV1, type RuntimeProjectionRuleV1 } from './runtimeProjectionSourcePathsV1'
 
 export class ResolvedModelFactsRuntimeProjectionV1Error extends Error {
   constructor(readonly code = 'GENERATION_V2_RESOLVED_MODEL_FACTS_RUNTIME_PROJECTION_INVALID') {
@@ -40,8 +40,6 @@ type EvidenceRole = 'supporting' | 'opposing' | 'overridden'
 type RuntimeProjectionRule = RuntimeProjectionRuleV1
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
-
-const RUNTIME_PROJECTION_RULES: readonly RuntimeProjectionRule[] = RUNTIME_PROJECTION_RULES_V1
 
 function digest(value: unknown): string {
   return canonicalSourceFactDigestV1(value)
@@ -192,7 +190,7 @@ export function projectResolvedModelFactsToRuntimeV2(input: Readonly<{
 }>): CanonicalModelFactsV2 {
   const fields = new Map(input.resolvedFacts.fields.map((field) => [field.path, field]))
   const evidence = new Map<string, EvidenceDraft>()
-  const projected = RUNTIME_PROJECTION_RULES.map((rule) => projectedField(rule,
+  const projected = runtimeProjectionRulesV1(input.binding.operation).map((rule) => projectedField(rule,
     rule.sourcePaths.map((path) => fields.get(path)).filter((field): field is ResolvedModelFactFieldV1 => field !== undefined), evidence))
   const projectedPaths = new Set(projected.map((field) => field.path))
   const unknownFields = MODEL_CAPABILITY_SEMANTIC_PATHS_V2

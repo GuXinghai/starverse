@@ -983,6 +983,7 @@ type OpenRouterImageGenerationV2Bridge = GenerationV2TextBridge & Readonly<{
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   generationV2?: Readonly<{
+    onModelFactsSemanticInvalidated: (listener: (event: import('../src/next/generation-v2/model-facts/semanticInvalidationV1').ModelFactsSemanticInvalidationV1) => void) => () => void
     capabilities: Readonly<{
       resolve: (payload: unknown) => Promise<unknown>
     }>
@@ -1025,6 +1026,7 @@ interface Window {
       listConversations: (projectId: string, cursor?: Readonly<{ updatedAtMs: number;
         conversationId: string }> | null, limit?: number) => Promise<unknown>
       readBranch: (branchId: string, beforeMessageId?: string | null, limit?: number) => Promise<unknown>
+      readSearchTarget: (payload: Readonly<{messageId:string;preferredBranchId:string|null;limit:number}>) => Promise<unknown>
       getMessageCandidateNavigation: (branchId: string, messageId: string) => Promise<unknown>
       setContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude'}>) => Promise<unknown>
       clearContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string}>) => Promise<unknown>
@@ -1076,7 +1078,7 @@ interface Window {
       replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) => Promise<unknown>
       cancelEditSession: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;openedDraftRevision:number}>) => Promise<unknown>
       dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
-      dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
+      dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses';selectionBinding:import('../src/shared/files/documentFormatConversion').DfcReadyOptionBindingV2}>) => Promise<unknown>
       dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => Promise<unknown>
       retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) => Promise<unknown>
       onFileTypeDetectionUpdated: (listener: (event: unknown) => void) => () => void

@@ -6,6 +6,8 @@ import { CloudRulesDistributionV1Repo } from '../../infra/db/repo/cloudRulesDist
 import { CloudRulesApplicationV1Service } from '../services/cloudRulesApplicationV1Service'
 import { CloudRulesCandidateRefreshV1 } from '../services/cloudRulesCandidateRefreshV1'
 import type { RegisterInvoke } from './types'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 export const GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS = Object.freeze([
   'generation-v2:capability-rules:cloud:read',
@@ -85,12 +87,20 @@ export function registerGenerationV2CloudCapabilityRulesIpc(input: Readonly<{
   application: CloudRulesApplicationV1Service
   applicationRepo: CloudRulesApplicationV1Repo
   distributionRepo: CloudRulesDistributionV1Repo
+  notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
 }>): readonly string[] {
   const register = (channel: string, handler: (payload: unknown) => unknown | Promise<unknown>) =>
     input.registerInvoke(channel, (_event, payload) => handler(payload))
   const read = () => Object.freeze({ distribution: input.distributionRepo.readState(),
     application: input.applicationRepo.readState(), active: input.application.readActiveProjection(),
     history: input.applicationRepo.listHistory() })
+  const notifyCommitted = <T extends { canonicalSourceRevision: string }>(result: T): T => {
+    notifyModelFactsSemanticInvalidationV1(input.notifyModelFactsSemanticInvalidated, {
+      kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1,
+      canonicalSourceRevision: result.canonicalSourceRevision,
+    })
+    return result
+  }
 
   register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[0], (value) => {
     empty(value)
@@ -116,26 +126,26 @@ export function registerGenerationV2CloudCapabilityRulesIpc(input: Readonly<{
       candidate: stableSerializeProviderRequestV2(current.distribution.candidate.document),
     })
   })
-  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[3], (value) => {
+  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[3], async (value) => {
     if (!plainObject(value)) invalid()
     exactKeys(value, ['expectedAppliedRecordRevision', 'expectedCandidateRecordRevision'])
-    return input.application.applyCandidate({ expectedCandidateRecordRevision: id(value.expectedCandidateRecordRevision),
-      expectedAppliedRecordRevision: nullableInteger(value.expectedAppliedRecordRevision) })
+    return notifyCommitted(await input.application.applyCandidate({ expectedCandidateRecordRevision: id(value.expectedCandidateRecordRevision),
+      expectedAppliedRecordRevision: nullableInteger(value.expectedAppliedRecordRevision) }))
   })
-  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[4], (value) => {
+  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[4], async (value) => {
     if (!plainObject(value)) invalid()
     exactKeys(value, ['expectedAppliedRecordRevision', 'expectedHistoryTargetRecordRevision', 'pinTarget'])
     if (typeof value.pinTarget !== 'boolean') invalid()
-    return input.application.rollback({ expectedAppliedRecordRevision: positiveInteger(value.expectedAppliedRecordRevision),
-      expectedHistoryTargetRecordRevision: positiveInteger(value.expectedHistoryTargetRecordRevision), pinTarget: value.pinTarget })
+    return notifyCommitted(await input.application.rollback({ expectedAppliedRecordRevision: positiveInteger(value.expectedAppliedRecordRevision),
+      expectedHistoryTargetRecordRevision: positiveInteger(value.expectedHistoryTargetRecordRevision), pinTarget: value.pinTarget }))
   })
-  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[5], (value) => {
+  register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[5], async (value) => {
     if (!plainObject(value)) invalid()
     exactKeys(value, ['expectedAppliedRecordRevision', 'expectedOverrideRevision', 'overrides'])
-    return input.application.replaceActivationOverrides({
+    return notifyCommitted(await input.application.replaceActivationOverrides({
       expectedAppliedRecordRevision: positiveInteger(value.expectedAppliedRecordRevision),
       expectedOverrideRevision: positiveInteger(value.expectedOverrideRevision), overrides: overrides(value.overrides),
-    })
+    }))
   })
   register(GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS[6], (value) => {
     if (!plainObject(value)) invalid()

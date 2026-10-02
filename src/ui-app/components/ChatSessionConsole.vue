@@ -48,6 +48,7 @@ import type {
 } from '../app/chatSessionConfig'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
+import { projectGenerationV2WebSearchControls, webSearchBindingForRouteV2 } from '../app/generationV2WebSearchProjection'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import ModelFactControlReason from './ModelFactControlReason.vue'
@@ -297,6 +298,8 @@ function updateOpenRouterImageFreshness(key: 'refreshAfterMs' | 'hardExpireAfter
   })
 }
 const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationPolicyV2(props.capabilityProjection))
+const webSearchControls = computed(() => projectGenerationV2WebSearchControls(props.capabilityProjection,
+  webSearchBindingForRouteV2(props.sessionConfig.routeSelection, props.sessionConfig.imageGeneration.enabled)))
 const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModelIdentity.value))
@@ -2475,7 +2478,7 @@ function chipClass(active: boolean): string {
             <input
               type="checkbox"
               :checked="props.sessionConfig.webSearch.enabled"
-              :disabled="disabled"
+              :disabled="disabled || (!props.sessionConfig.webSearch.enabled && !webSearchControls.enabled)"
               @change="emit('updateWebSearchEnabled', ($event.target as HTMLInputElement).checked)"
             />
             {{ t('chat.console.status.enabled') }}
@@ -2486,7 +2489,7 @@ function chipClass(active: boolean): string {
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
             :class="chipClass(props.sessionConfig.webSearch.level === 'low')"
-            :disabled="disabled || !props.sessionConfig.webSearch.enabled"
+            :disabled="disabled || !props.sessionConfig.webSearch.enabled || (!webSearchControls.maxResultsBounds && !webSearchControls.contexts.includes('low'))"
             @click="emit('updateWebSearchLevel', 'low')"
           >
             {{ formatWebSearchLevel('low') }}
@@ -2495,7 +2498,7 @@ function chipClass(active: boolean): string {
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
             :class="chipClass(props.sessionConfig.webSearch.level === 'high')"
-            :disabled="disabled || !props.sessionConfig.webSearch.enabled"
+            :disabled="disabled || !props.sessionConfig.webSearch.enabled || (!webSearchControls.maxResultsBounds && !webSearchControls.contexts.includes('high'))"
             @click="emit('updateWebSearchLevel', 'high')"
           >
             {{ formatWebSearchLevel('high') }}
@@ -2505,6 +2508,7 @@ function chipClass(active: boolean): string {
           :model-value="props.sessionConfig.webSearch.detail"
           :disabled="disabled"
           :resolved="props.webSearchResolved"
+          :controls="webSearchControls"
           @update:model-value="emit('updateWebSearchLayer', $event)"
         />
       </section>

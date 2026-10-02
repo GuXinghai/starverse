@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import {
   CLOUD_RULES_RELEASE_ASSET_NAME_V1,
@@ -23,6 +23,8 @@ import { CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 } from
   './capabilityRuleMaterializationSchedulerV1Service'
 import { CloudRulesApplicationV1Service, CloudRulesApplicationV1ServiceError } from
   './cloudRulesApplicationV1Service'
+import { applyBootstrapCapabilityRulesWithInvalidationV1 } from './modelFactsSemanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
 
 function database(): BetterSqlite3.Database {
   const db = new BetterSqlite3(':memory:')
@@ -70,6 +72,48 @@ function publish(db: BetterSqlite3.Database, prepared: ReturnType<typeof candida
 }
 
 describe('CloudRulesApplicationV1Service', () => {
+  it('signals actual committed bootstrap once, skips the null result, and preserves success when delivery throws', async () => {
+    const db = database()
+    try {
+      const prepared = candidate('1.0.0')
+      publish(db, prepared, 10)
+      const subjects = subjectSet()
+      const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjects }, () => 20)
+      const notify = vi.fn((event: any) => {
+        expect(db.inTransaction).toBe(false)
+        expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('capability_rule', CAPABILITY_RULE_SOURCE_SCOPE_ID_V1)
+          ?.currentSourceRevision).toBe(event.canonicalSourceRevision)
+        expect(new CloudRulesApplicationV1Repo(db).readState().applied?.contentRevision).toBe(prepared.contentRevision)
+        throw new Error('SYNTHETIC_DELIVERY_FAILURE')
+      })
+      const input = { applyBootstrapCandidate: () => service.applyBootstrapCandidate(), notify }
+      const result = await applyBootstrapCapabilityRulesWithInvalidationV1(input)
+      expect(result?.applied.contentRevision).toBe(prepared.contentRevision)
+      expect(notify).toHaveBeenCalledExactlyOnceWith({ kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1,
+        canonicalSourceRevision: result!.canonicalSourceRevision })
+      expect(await applyBootstrapCapabilityRulesWithInvalidationV1(input)).toBeNull()
+      expect(notify).toHaveBeenCalledTimes(1)
+    } finally { db.close() }
+  })
+
+  it('does not emit a bootstrap signal after a rolled-back apply', async () => {
+    const db = database()
+    try {
+      const prepared = candidate('1.0.0')
+      publish(db, prepared, 10)
+      db.exec(`CREATE TRIGGER synthetic_bootstrap_abort BEFORE INSERT ON cloud_rules_applied_snapshot_v1
+        BEGIN SELECT RAISE(ABORT, 'SYNTHETIC_BOOTSTRAP_ABORT'); END`)
+      const subjects = subjectSet()
+      const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjects }, () => 20)
+      const notify = vi.fn()
+      await expect(applyBootstrapCapabilityRulesWithInvalidationV1({ applyBootstrapCandidate: () => service.applyBootstrapCandidate(), notify }))
+        .rejects.toThrow('SYNTHETIC_BOOTSTRAP_ABORT')
+      expect(notify).not.toHaveBeenCalled()
+      expect(new CloudRulesApplicationV1Repo(db).readState().applied).toBeNull()
+      expect(new CloudRulesDistributionV1Repo(db).readState().candidate?.candidateRecordRevision).toBe(prepared.candidateRecordRevision)
+    } finally { db.close() }
+  })
+
   it('atomically applies the persisted candidate and publishes one materialized Rules source', async () => {
     const db = database()
     try {

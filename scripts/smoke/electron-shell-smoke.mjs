@@ -71,12 +71,13 @@ async function seedV2DfcFixture(page, fixtureName, optionId) {
       operation: 'chat_completions',
     }))
     const selected = options.options.find((option) => option.optionId === optionId && option.isAvailable)
-    if (!selected) throw new Error('generation_v2_smoke_option_unavailable')
+    if (!selected?.selectionBinding) throw new Error('generation_v2_smoke_option_unavailable')
     draft = unwrap(await api.composer.dfcSelect({
       conversationId,
       expectedRevision: draft.revision,
       assetId: attachment.assetId,
       optionId,
+      selectionBinding: selected.selectionBinding,
       providerId: 'openrouter',
       operation: 'chat_completions',
     }))

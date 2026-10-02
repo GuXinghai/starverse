@@ -15,6 +15,18 @@ export type DfcSendStrategy =
   | 'text_in_prompt'
   | 'file_attachment'
 
+/** Projection of one persisted V2 source/output binding, never a converter lookup request. */
+export type DfcReadyOptionBindingV2 = Readonly<{
+  sourceAssetId: string
+  sourceAssetRevisionId: string
+  sourceAssetSha256: string
+  targetKind: DfcTargetKind
+  effectiveAssetId: string
+  effectiveAssetRevisionId: string
+  effectiveAssetSha256: string
+  producer: Readonly<{ contractId: string; revision: string; settingsDigest: string }> | null
+}>
+
 export type DfcSendAssetRef =
   | Readonly<{
     kind: 'raw_file'
@@ -222,6 +234,8 @@ export type DfcDraftOptionCandidateDto = Readonly<{
   sendAssetRefs: readonly DfcSendAssetRef[]
   warnings: readonly string[]
   diagnostics: readonly DfcSanitizedDiagnostic[]
+  /** Legacy options may omit this; every V2 option publishes it explicitly. */
+  selectionBinding?: DfcReadyOptionBindingV2 | null
 }>
 
 export type DfcDraftAttachmentOptionsDto = Readonly<{

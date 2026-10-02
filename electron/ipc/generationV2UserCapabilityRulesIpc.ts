@@ -12,6 +12,8 @@ import { type createOpenAICompatibleCredentialV2Service } from
   '../credentials/openAICompatibleCredentialV2Service'
 import { UserCapabilityRulesV1Service } from '../services/userCapabilityRulesV1Service'
 import type { RegisterInvoke } from './types'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 export const GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS = Object.freeze([
   'generation-v2:capability-rules:user:read-committed',
@@ -74,6 +76,7 @@ export function registerGenerationV2UserCapabilityRulesIpc(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
   openAICompatibleCredentialService: ReturnType<typeof createOpenAICompatibleCredentialV2Service>
+  notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
 }>): readonly string[] {
   const subjects = new AuthoritativeModelSubjectSetV1Service(input.db, input.credentialService,
     input.openAICompatibleCredentialService)
@@ -134,8 +137,14 @@ export function registerGenerationV2UserCapabilityRulesIpc(input: Readonly<{
     exactKeys(value, ['packId'])
     return service.exportCommittedPack({ packId: boundedId(value.packId) })
   })
-  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[8], (value) =>
-    service.saveDraft(sessionPayload(value)))
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[8], async (value) => {
+    const result = await service.saveDraft(sessionPayload(value))
+    notifyModelFactsSemanticInvalidationV1(input.notifyModelFactsSemanticInvalidated, {
+      kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1,
+      canonicalSourceRevision: result.canonicalSourceRevision,
+    })
+    return result
+  })
   register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[9], (value) => {
     service.cancelDraft(sessionPayload(value))
     return null
