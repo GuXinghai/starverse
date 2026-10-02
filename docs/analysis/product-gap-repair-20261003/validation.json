@@ -1,0 +1,470 @@
+{
+  "date": "2026-10-03",
+  "timezone": "Asia/Tokyo",
+  "branch": "models-dev-capability-resolution",
+  "baseHead": "4ac2de5796e2ef75f180c3efc4a67354d351a77a",
+  "coreRepairStatus": "COMPLETE_SCOPED_AUTOMATED",
+  "temporaryCleanupStatus": "BLOCKED_BY_AUTOMATIC_APPROVAL_REVIEW",
+  "closedFindings": [
+    "SV-PGA-001",
+    "SV-PGA-002",
+    "SV-PGA-003",
+    "SV-PGA-004",
+    "SV-PGA-005",
+    "SV-PGA-008"
+  ],
+  "closedByExistingCommit": [
+    "SV-PGA-012",
+    "SV-PGA-022"
+  ],
+  "all27RevalidatedBeforeProduction": true,
+  "nextPlansOnly": [
+    "SV-PGA-006",
+    "SV-PGA-007",
+    "SV-PGA-011",
+    "SV-PGA-009",
+    "SV-PGA-010"
+  ],
+  "suites": [
+    {
+      "command": "npx vitest --run --config vitest.unit.config.ts src/shared/provider/providerFailureV2.test.ts src/shared/provider/providerFailureUiProjectionV2.test.ts src/shared/model-facts/cloudRulesPresentation.test.ts src/next/convo/systemChatTemplateClient.test.ts src/next/generation-v2/renderer/generationV2ComposerClient.test.ts src/next/generation-v2/domain/conversationGraphV2.test.ts",
+      "status": "PASS",
+      "files": 6,
+      "tests": 37
+    },
+    {
+      "command": "npx vitest --run --config vitest.integration.config.ts infra/db/repo/composerDraftV2Repo.test.ts electron/ipc/generationV2WorkspaceIpc.test.ts electron/ipc/generationV2ComposerIpc.test.ts infra/db/v2/schemaComposerV2.test.ts electron/data-epoch/freshEpochDatabaseInitializer.test.ts electron/preload.test.ts infra/db/repo/generationExecutionV2Repo.test.ts infra/db/repo/modelCatalogV2Repo.test.ts infra/db/repo/conversationGraphV2Repo.test.ts infra/db/repo/generationV2AuthorityTransaction.test.ts infra/db/repo/generationCommandFactsAuthorityV2.test.ts",
+      "status": "PASS",
+      "files": 11,
+      "tests": 106
+    },
+    {
+      "command": "npx vitest --run --config vitest.ui.config.ts --silent=true src/ui-app/AppChatApp.scopeOwnership.test.ts src/ui-app/AppChatApp.send.test.ts src/ui-app/AppChatApp.attachments.test.ts src/ui-app/AppChatApp.regenRetry.test.ts src/ui-app/components/ProviderFailureDetailsV2.test.ts src/ui-app/components/CapabilityRulesOverviewPanel.test.ts src/ui-app/components/ChatAppComposer.attachments.test.ts src/ui-app/components/ChatAppComposer.webSearchSendGuard.test.ts",
+      "status": "PASS",
+      "files": 8,
+      "tests": 84,
+      "stage": "FINAL_AFTER_ATTACHMENT_ACTION_AND_TIMER_REVIEW"
+    }
+  ],
+  "uniqueTotals": {
+    "files": 25,
+    "tests": 227,
+    "focusedAndBaselineRerunsExcluded": true
+  },
+  "type": {
+    "command": "npx vue-tsc --noEmit",
+    "status": "PASS",
+    "stage": "FINAL_AFTER_TIMER_AND_TS7030_CORRECTIONS"
+  },
+  "gates": [
+    {
+      "command": "node scripts/gates/generation-v2-zero-residual.mjs",
+      "status": "PASS",
+      "stage": "FINAL_CODE_AFTER_REVIEW"
+    },
+    {
+      "command": "node scripts/gates/generation-v2-goal3-authority.mjs",
+      "status": "PASS",
+      "stage": "FINAL_CODE_AFTER_REVIEW"
+    },
+    {
+      "command": "node scripts/gates/generation-v2-capability-rule-authority.mjs",
+      "status": "PASS",
+      "stage": "FINAL_CODE_AFTER_REVIEW"
+    },
+    {
+      "command": "node scripts/gates/model-identity-compatibility-purge.mjs",
+      "status": "PASS",
+      "stage": "FINAL_CODE_AFTER_REVIEW"
+    },
+    {
+      "command": "node scripts/gates/privacy-scan.mjs",
+      "status": "PASS",
+      "stage": "FINAL_CODE_AFTER_REVIEW"
+    }
+  ],
+  "otherChecks": [
+    {
+      "command": "node scripts/check-test-partitions.mjs",
+      "status": "PASS",
+      "files": 572
+    },
+    {
+      "command": "npm run i18n:check",
+      "status": "PASS",
+      "warnings": 0,
+      "errorsNamespaceKeys": 281,
+      "stage": "AFTER_LOCALIZED_STALE_ATTACHMENT_RESULT"
+    },
+    {
+      "command": "npm run i18n:scan-hardcoded",
+      "status": "PASS",
+      "toleratedFindings": 46,
+      "stage": "FINAL"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "stage": "FINAL"
+    }
+  ],
+  "review": {
+    "scope": "G-A/G-B bounded review",
+    "remainingConfirmedP0P1": 0,
+    "independentReviewerSlotUnavailable": true,
+    "substitute": "Privacy worker performed read-only G-A review after independent G-B work; coordinator reviewed G-B and owned synthesis.",
+    "productionBackedScopeTests": 33,
+    "attachmentAndTimerRegressionTestsIncluded": 8,
+    "maxDepth": 1
+  },
+  "resolvedEarlierFailures": [
+    {
+      "command": "unit suite above",
+      "failure": "systemChatTemplateClient snapshot fixture omitted editSession:null",
+      "resolution": "Explicit fixture contract updated; final 6-file run passed."
+    },
+    {
+      "failure": "Attachment continuation borrowed newer compose/edit aggregate CAS",
+      "evidence": "Pre-fix real repository picker and edit batch regressions failed; read-only actual queue trace confirmed cancel between files.",
+      "resolution": "One captured action identity+CAS across steps; eight continuation/timer regressions included in final scope suite."
+    },
+    {
+      "failure": "Stale attachment preparation cancelled T2 text save timer",
+      "evidence": "Pre-fix actual repository T1/T2 regression failed.",
+      "resolution": "Timer cancellation only after accepted callback for exact binding and unchanged captured visible text; newer/read-no-op variations pass."
+    },
+    {
+      "failure": "TS7030 on file/image handlers after returned ingestion result",
+      "resolution": "Explicit Promise<void> handlers await internal ingestion; final typecheck passes."
+    }
+  ],
+  "worktree": {
+    "head": "4ac2de5796e2ef75f180c3efc4a67354d351a77a",
+    "literallyClean": false,
+    "status": [
+      " M .codex/config.toml",
+      " M docs/analysis/models-dev-capability-resolution/cloud-rules-v1-research/evidence/openrouter-validation.json",
+      " M electron/data-epoch/freshEpochDatabaseInitializer.test.ts",
+      " M electron/data-epoch/freshEpochDatabaseInitializer.ts",
+      " M electron/electron-env.d.ts",
+      " M electron/ipc/generationV2ComposerIpc.ts",
+      " M electron/ipc/generationV2WorkspaceIpc.test.ts",
+      " M electron/ipc/generationV2WorkspaceIpc.ts",
+      " M electron/preload.ts",
+      " M infra/db/repo/composerDraftV2Repo.test.ts",
+      " M infra/db/repo/composerDraftV2Repo.ts",
+      " M infra/db/repo/conversationWorkspaceV2Repo.ts",
+      " M infra/db/repo/generationExecutionV2Repo.test.ts",
+      " M infra/db/repo/modelCatalogV2Repo.test.ts",
+      " M infra/db/repo/systemChatTemplateV2Repo.ts",
+      " M infra/db/v2/composerDraftSchema.sql",
+      " M infra/db/v2/schemaComposerV2.ts",
+      " M scripts/gates/model-identity-compatibility-purge.mjs",
+      " M src/next/convo/systemChatTemplateClient.test.ts",
+      " M src/next/convo/systemChatTemplateClient.ts",
+      " M src/next/generation-v2/renderer/generationV2ComposerClient.test.ts",
+      " M src/next/generation-v2/renderer/generationV2ComposerClient.ts",
+      " M src/shared/i18n/locales/en-US/errors.json",
+      " M src/shared/i18n/locales/zh-CN/errors.json",
+      " M src/shared/provider/providerFailureUiProjectionV2.test.ts",
+      " M src/shared/provider/providerFailureV2.test.ts",
+      " M src/shared/provider/providerFailureV2.ts",
+      " M src/ui-app/AppChatApp.vue",
+      " M src/ui-app/app/appChatApp.logic.ts",
+      " M tests/helpers/generationV2Bridge.ts",
+      "?? docs/analysis/product-gap-audit-20261002/01-main-ui.md",
+      "?? docs/analysis/product-gap-audit-20261002/02-model-provider-capability.md",
+      "?? docs/analysis/product-gap-audit-20261002/03-files-dfc.md",
+      "?? docs/analysis/product-gap-audit-20261002/04-feature-wiring.md",
+      "?? docs/analysis/product-gap-audit-20261002/05-settings-persistence.md",
+      "?? docs/analysis/product-gap-audit-20261002/06-errors-recovery.md",
+      "?? docs/analysis/product-gap-audit-20261002/07-i18n-a11y.md",
+      "?? docs/analysis/product-gap-audit-20261002/08-architecture-tests.md",
+      "?? docs/analysis/product-gap-audit-20261002/SUMMARY.md",
+      "?? docs/analysis/product-gap-audit-20261002/artifact-validation.json",
+      "?? docs/analysis/product-gap-audit-20261002/baseline.json",
+      "?? docs/analysis/product-gap-audit-20261002/coverage-map.md",
+      "?? docs/analysis/product-gap-audit-20261002/findings.json",
+      "?? docs/analysis/product-gap-audit-20261002/synthetic-redaction-probe.json",
+      "?? docs/analysis/product-gap-audit-20261002/validation.json",
+      "?? docs/analysis/product-gap-repair-20261003/CLOSEOUT.md",
+      "?? docs/analysis/product-gap-repair-20261003/NEXT-PLANS.md",
+      "?? docs/analysis/product-gap-repair-20261003/PLAN.md",
+      "?? docs/analysis/product-gap-repair-20261003/REVALIDATION.md",
+      "?? docs/analysis/product-gap-repair-20261003/REVIEW.md",
+      "?? docs/analysis/product-gap-repair-20261003/baseline.json",
+      "?? docs/analysis/product-gap-repair-20261003/revalidation.json",
+      "?? docs/analysis/product-gap-repair-20261003/validation.json",
+      "?? pelican-bicycle.html",
+      "?? src/ui-app/AppChatApp.scopeOwnership.test.ts",
+      "?? src/ui-app/components/ProviderFailureDetailsV2.test.ts"
+    ],
+    "snapshotPhase": "FINAL_AFTER_ALL_REPAIR_ARTIFACTS_CREATED",
+    "stagedPaths": [],
+    "noNewCommits": true,
+    "noPush": true,
+    "initialPreservedPaths": [
+      ".codex/config.toml",
+      "pelican-bicycle.html",
+      "docs/analysis/product-gap-audit-20261002/"
+    ],
+    "protectedHashes": [
+      {
+        "path": ".codex/config.toml",
+        "sha256": "D376736F495A6C74A0FE0F588920D162F084FBF2AE319A44985B905554C1683A"
+      },
+      {
+        "path": "pelican-bicycle.html",
+        "sha256": "19627F10660AA848FBA112FF40FEC48155098BEBCB23B45ED4B9BDF051DBB3D9"
+      }
+    ],
+    "protectedHashesMatchBaseline": true,
+    "trackedTaskAllowlist": [
+      "infra/db/repo/conversationWorkspaceV2Repo.ts",
+      "infra/db/repo/systemChatTemplateV2Repo.ts",
+      "infra/db/repo/composerDraftV2Repo.ts",
+      "infra/db/repo/composerDraftV2Repo.test.ts",
+      "infra/db/v2/composerDraftSchema.sql",
+      "infra/db/v2/schemaComposerV2.ts",
+      "electron/data-epoch/freshEpochDatabaseInitializer.ts",
+      "electron/data-epoch/freshEpochDatabaseInitializer.test.ts",
+      "electron/ipc/generationV2WorkspaceIpc.ts",
+      "electron/ipc/generationV2WorkspaceIpc.test.ts",
+      "electron/ipc/generationV2ComposerIpc.ts",
+      "electron/preload.ts",
+      "electron/electron-env.d.ts",
+      "src/ui-app/app/appChatApp.logic.ts",
+      "src/ui-app/AppChatApp.vue",
+      "src/next/convo/systemChatTemplateClient.ts",
+      "src/next/convo/systemChatTemplateClient.test.ts",
+      "src/next/generation-v2/renderer/generationV2ComposerClient.ts",
+      "src/next/generation-v2/renderer/generationV2ComposerClient.test.ts",
+      "src/shared/i18n/locales/en-US/errors.json",
+      "src/shared/i18n/locales/zh-CN/errors.json",
+      "tests/helpers/generationV2Bridge.ts",
+      "src/shared/provider/providerFailureV2.ts",
+      "src/shared/provider/providerFailureV2.test.ts",
+      "src/shared/provider/providerFailureUiProjectionV2.test.ts",
+      "infra/db/repo/generationExecutionV2Repo.test.ts",
+      "infra/db/repo/modelCatalogV2Repo.test.ts",
+      "scripts/gates/model-identity-compatibility-purge.mjs",
+      "docs/analysis/models-dev-capability-resolution/cloud-rules-v1-research/evidence/openrouter-validation.json"
+    ],
+    "newTestPaths": [
+      "src/ui-app/AppChatApp.scopeOwnership.test.ts",
+      "src/ui-app/components/ProviderFailureDetailsV2.test.ts"
+    ],
+    "evidenceMetadataOnlyChanges": [
+      "docs/analysis/product-gap-audit-20261002/baseline.json",
+      "docs/analysis/product-gap-audit-20261002/validation.json",
+      "docs/analysis/models-dev-capability-resolution/cloud-rules-v1-research/evidence/openrouter-validation.json"
+    ],
+    "nativeLockBuildIdDiff": [],
+    "sourceFingerprintsVerifiedAfterAcceptance": true,
+    "protectedHashesVerifiedAtCloseout": true
+  },
+  "validatedSourceSha256": [
+    {
+      "path": "electron/data-epoch/freshEpochDatabaseInitializer.test.ts",
+      "sha256": "B25AD65C4717DAB9068D257C623D2B81490A0054610A311F40C6B97161675060"
+    },
+    {
+      "path": "electron/data-epoch/freshEpochDatabaseInitializer.ts",
+      "sha256": "0C35FDE4DC2D33F6F8063D45C4B5E3B6D47AA171825B150B6649E705BF3D05D2"
+    },
+    {
+      "path": "electron/electron-env.d.ts",
+      "sha256": "40ABE6B1D51DE22999840D0B7DAF27782FF996697871D4CB12F9327DEB9B5198"
+    },
+    {
+      "path": "electron/ipc/generationV2ComposerIpc.ts",
+      "sha256": "6E87CD7C592FEAFF7C3DE6DF00330A824CB5E5ACB9721D55C1B24552646A7347"
+    },
+    {
+      "path": "electron/ipc/generationV2WorkspaceIpc.test.ts",
+      "sha256": "9C1308541B9D49C3D3C97AABABEA73104E6C62956F7B720C4C4936FA43080DAB"
+    },
+    {
+      "path": "electron/ipc/generationV2WorkspaceIpc.ts",
+      "sha256": "0D189C938E1A12CB09893D0BEFDC2C2E79CF84D2D80CC9FFA8DF3FA2C440A6BC"
+    },
+    {
+      "path": "electron/preload.ts",
+      "sha256": "15BB42D3A6B0AD7897B5EB037613A3BD365B6D236E008A1530AE45E663D9431E"
+    },
+    {
+      "path": "infra/db/repo/composerDraftV2Repo.test.ts",
+      "sha256": "5433C7E92A05D288D7A2637465B5FA2BBAA42D1CD276680E2E4621C72C64FBB9"
+    },
+    {
+      "path": "infra/db/repo/composerDraftV2Repo.ts",
+      "sha256": "00FD9CAC90F59061F7F08889D15A5C30480754177819ACC8389D1394E6F256F5"
+    },
+    {
+      "path": "infra/db/repo/conversationWorkspaceV2Repo.ts",
+      "sha256": "6E82A78F121159C0F66090D9BC0053D91554C2797FC60637E551C3538465CB56"
+    },
+    {
+      "path": "infra/db/repo/generationExecutionV2Repo.test.ts",
+      "sha256": "AC09207A98555BC03A978862CA929C1B3DA5A6918AE1C4DAC738A1D9CD7954EA"
+    },
+    {
+      "path": "infra/db/repo/modelCatalogV2Repo.test.ts",
+      "sha256": "000A26B1FF2759BFFBA0A8F117C0D2FC06D9E6C2C0AA43B953399B7BA963CBE1"
+    },
+    {
+      "path": "infra/db/repo/systemChatTemplateV2Repo.ts",
+      "sha256": "E2A0B4A31FA2577CBEC178A450E8565F26CB27885E7D7E53F634F2FD29DCD437"
+    },
+    {
+      "path": "infra/db/v2/composerDraftSchema.sql",
+      "sha256": "1AA577F0E707A3C4BB6857A04A0CD12F4C6621135FA7427785EE8EFAA0A4E049"
+    },
+    {
+      "path": "infra/db/v2/schemaComposerV2.ts",
+      "sha256": "F59C2D9364AA911C5AA566025FE2187C33128D15AACAB87326B563BE71BD4D9D"
+    },
+    {
+      "path": "scripts/gates/model-identity-compatibility-purge.mjs",
+      "sha256": "AD91BEDBED70B0CD2281522365E4DE0F455BD03C5CC655E771988280258F7174"
+    },
+    {
+      "path": "src/next/convo/systemChatTemplateClient.test.ts",
+      "sha256": "49D4919A6EF961120812D736717D033210B71E3D5DCB76A7432C10B7C962DB95"
+    },
+    {
+      "path": "src/next/convo/systemChatTemplateClient.ts",
+      "sha256": "B1F441A9C5706DD1360D7FFF263DEC41F6CBDAF6BC0E7BC82701505BDA88078B"
+    },
+    {
+      "path": "src/next/generation-v2/renderer/generationV2ComposerClient.test.ts",
+      "sha256": "F5A7A5DBC9BA15DEDCEC9EDE43C6C58AE95EC5861E9761E963DC5453D07341DA"
+    },
+    {
+      "path": "src/next/generation-v2/renderer/generationV2ComposerClient.ts",
+      "sha256": "953531597D05D283269656A4C7CF31C987B3AE3FF3F9585D6921AD139E953877"
+    },
+    {
+      "path": "src/shared/i18n/locales/en-US/errors.json",
+      "sha256": "8E58D94F2584F6D3078E587E0AA5EF33FED7AFEEC06AAC174DDB2F7611ADA91C"
+    },
+    {
+      "path": "src/shared/i18n/locales/zh-CN/errors.json",
+      "sha256": "E0B6114EFA995986F220C55179C1E52B9F152316B043C68B27CCB0D4CC71A72A"
+    },
+    {
+      "path": "src/shared/provider/providerFailureUiProjectionV2.test.ts",
+      "sha256": "F556399E5CBDA86B0537D98E54BC57EDF04BD4DFA52A1E45802F3C72DF96D888"
+    },
+    {
+      "path": "src/shared/provider/providerFailureV2.test.ts",
+      "sha256": "42D2032DC76BFFCB39162DBCB1E1200AF04A86D2A4E4C522E6DD61A76E1FDBA1"
+    },
+    {
+      "path": "src/shared/provider/providerFailureV2.ts",
+      "sha256": "665DA8B9AAA88C9D5CBA957EF31FE5D822916EEC57CC1BE6B8A5F9BB0AAA4E40"
+    },
+    {
+      "path": "src/ui-app/AppChatApp.vue",
+      "sha256": "E2C4C38A9DCCE810798BA4EB907B03A744B8EAB997824A1B3BC3522B1918484C"
+    },
+    {
+      "path": "src/ui-app/app/appChatApp.logic.ts",
+      "sha256": "EA02293D92BEEB6FA9C09C6805D3189BE7499F64796918FAF70BE52BBD6ED87A"
+    },
+    {
+      "path": "tests/helpers/generationV2Bridge.ts",
+      "sha256": "5EA348666ECF56B2384583E3DE9073EB1371E10C3EC3348B996B7E1D5B8324D7"
+    },
+    {
+      "path": "src/ui-app/AppChatApp.scopeOwnership.test.ts",
+      "sha256": "E4E86E60B92BD5B09491103A59FD964ECF898F216337747D46FB855738A8A748"
+    },
+    {
+      "path": "src/ui-app/components/ProviderFailureDetailsV2.test.ts",
+      "sha256": "D7AEE0D4892B4A8F678240A97A736FBF1EA6D1C5493F6EE3759035E14CFBBF9A"
+    }
+  ],
+  "abi": {
+    "mismatchEncountered": false,
+    "rebuildCommand": "npm run rebuild:node",
+    "invocation": "Existing npm ci postinstall",
+    "currentTarget": "node",
+    "testsRetriedAfterAbiRepair": [],
+    "electronSmokeRetried": false,
+    "nativeArtifactsCommitted": false
+  },
+  "migration": {
+    "recognizedPredecessorSerializations": [
+      "committed LF",
+      "CRLF",
+      "reviewed mixed endings"
+    ],
+    "actualPredecessorRuntimeReplay": [
+      "committed LF",
+      "CRLF"
+    ],
+    "historicalMixedByteReplay": false,
+    "legacyEditTransition": "Preserve current text/attachments as compose; clear unrecoverable edit marker and increment CAS.",
+    "realUserDatabaseMigrated": false
+  },
+  "safety": {
+    "isolatedStateOnly": true,
+    "syntheticCredentialsOnly": true,
+    "realProfileUsed": false,
+    "providerRequests": 0,
+    "cloudApplyTouched": false,
+    "electronManualSmoke": false,
+    "fullAggregateVerifySsotRun": false
+  },
+  "cleanup": {
+    "userExplicitlyAuthorizedOnResume": true,
+    "action": "Guarded exact-target native PowerShell deletion",
+    "resumedAttemptExecuted": false,
+    "reason": "CreateProcess Rejected: blocked by policy",
+    "retryAfterResumedRejection": false,
+    "scratchVerifiedPresent": [
+      {
+        "path": "%TEMP%/starverse-repair-schema-digest.mjs",
+        "exists": true
+      },
+      {
+        "path": "%TEMP%/starverse-repair-predecessor-digest.mjs",
+        "exists": true
+      },
+      {
+        "path": "%TEMP%/starverse-committed-predecessor-DifO5F",
+        "exists": true
+      }
+    ],
+    "workerReportedExternalLogs": [
+      "%TEMP%/starverse-renderer-final-gates.log",
+      "%TEMP%/starverse-renderer-final-scoped.log",
+      "%TEMP%/starverse-renderer-final-unit.log",
+      "%TEMP%/starverse-renderer-first-failure.log",
+      "%TEMP%/starverse-renderer-identity.log",
+      "%TEMP%/starverse-renderer-input-flush.log",
+      "%TEMP%/starverse-renderer-new-cases.log",
+      "%TEMP%/starverse-renderer-real-composer.log",
+      "%TEMP%/starverse-renderer-scope.log",
+      "%TEMP%/starverse-renderer-scoped-pass.log",
+      "%TEMP%/starverse-renderer-scopes-and-regen.log",
+      "%TEMP%/starverse-renderer-types.log",
+      "%TEMP%/starverse-attachment-continuation-final.log",
+      "%TEMP%/starverse-attachment-continuation-green.log",
+      "%TEMP%/starverse-attachment-continuation-red.log",
+      "%TEMP%/starverse-attachment-continuation-scoped.log",
+      "%TEMP%/starverse-attachment-incarnation.log",
+      "%TEMP%/starverse-attachment-pending-text-red.log",
+      "%TEMP%/starverse-attachment-pending-text-green.log"
+    ],
+    "taskScratchContainsRealDatabaseOrCredentials": false
+  },
+  "finalArtifactPrivacyScan": {
+    "command": "node scripts/gates/privacy-scan.mjs",
+    "status": "PASS",
+    "scannedFiles": 2498,
+    "allowedHits": 727,
+    "unclassifiedHits": 0
+  }
+}

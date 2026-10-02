@@ -1,0 +1,61 @@
+{
+  "inspected_date": "2026-10-03",
+  "timezone": "Asia/Tokyo",
+  "result": "PASS",
+  "branch": "models-dev-capability-resolution",
+  "head": "8d928d6d913d61e51052a8c52f2b665cac332c03",
+  "head_and_branch_unchanged": true,
+  "original_tracked_diff_unchanged": true,
+  "protected_files": [
+    {
+      "path": "pelican-bicycle.html",
+      "baseline_sha256": "19627F10660AA848FBA112FF40FEC48155098BEBCB23B45ED4B9BDF051DBB3D9",
+      "current_sha256": "19627F10660AA848FBA112FF40FEC48155098BEBCB23B45ED4B9BDF051DBB3D9",
+      "unchanged": true
+    },
+    {
+      "path": ".codex\\config.toml",
+      "baseline_sha256": "D376736F495A6C74A0FE0F588920D162F084FBF2AE319A44985B905554C1683A",
+      "current_sha256": "D376736F495A6C74A0FE0F588920D162F084FBF2AE319A44985B905554C1683A",
+      "unchanged": true
+    }
+  ],
+  "git_diff_check_pass": true,
+  "index_clean": true,
+  "final_status": [
+    " M .codex/config.toml",
+    "?? docs/analysis/product-gap-audit-20261002/",
+    "?? pelican-bicycle.html"
+  ],
+  "artifact_validation": {
+    "artifact_validation": "PASS",
+    "normalized_findings": 27,
+    "counts": {
+      "BLOCKER": 1,
+      "HIGH": 11,
+      "MEDIUM": 15,
+      "LOW": 0
+    },
+    "source_paths_and_line_bounds_checked": true,
+    "markdown_local_links_and_trailing_whitespace_checked": true,
+    "errors": []
+  },
+  "static_checks": [
+    "npm run i18n:check PASS",
+    "npm run i18n:scan-hardcoded PASS with tolerated candidates",
+    "generation-v2-zero-residual PASS",
+    "generation-v2-goal3-authority PASS",
+    "generation-v2-capability-rule-authority PASS",
+    "model-identity-compatibility-purge PASS"
+  ],
+  "pure_function_probe": "Current createProviderFailureV2 dummy tokens: credential+URL and structured provider header defects reproduced; two redaction control shapes pass",
+  "vitest_db_electron_provider_execution": "NOT RUN",
+  "abi": {
+    "mismatch_encountered": false,
+    "rebuild_command": "none",
+    "current_target": "unchanged, not inspected",
+    "native_artifacts_committed": false
+  },
+  "user_db_profile_settings_cloud_rules": "not accessed or changed",
+  "commits_pushes_releases": "none"
+}

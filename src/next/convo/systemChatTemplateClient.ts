@@ -45,6 +45,11 @@ const draftSchema = z.object({
   draftText: z.string(),
   draftMode: z.enum(['compose', 'edit']),
   editingSourceQuestionId: z.string().nullable(),
+  editSession: z.object({
+    schemaVersion: z.literal(1), conversationId: z.string().min(1), branchId: z.string().min(1),
+    questionId: z.string().min(1), answerRootId: z.string().min(1), openedDraftRevision: z.number().int().positive(),
+    previousDraft: z.object({ draftText: z.string(), attachments: z.array(attachmentSchema) }).strict(),
+  }).strict().nullable().default(null),
   revision: z.number().int().nonnegative(),
   updatedAtMs: z.number().int().nonnegative(),
   attachments: z.array(attachmentSchema),

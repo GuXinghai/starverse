@@ -90,6 +90,9 @@ const nativeModelIdAllowlist = [
   'src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts',
   'src/ui-app/components/CapabilityRulesUserPanel.vue',
   'src/ui-app/components/ModelFactsInspectorPanel.vue',
+  // Pure display/diff of canonical exact rule selectors; no runtime identity resolution.
+  'src/shared/model-facts/cloudRulesPresentation.ts',
+  'src/ui-app/components/CapabilityRulesOverviewPanel.vue',
 ]
 for (const absolute of productionFiles) {
   const name = relative(absolute)

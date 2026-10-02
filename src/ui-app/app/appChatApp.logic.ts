@@ -211,13 +211,13 @@ import type {
 } from '@/next/ipc/contracts/dbBridgeContracts'
 import {
   clearCommittedGenerationV2ComposerDraft,
+  cancelGenerationV2ComposerEditSession,
   addGenerationV2ComposerUrlReference,
   getGenerationV2ComposerDraft,
   importGenerationV2ComposerLocalFile,
   importGenerationV2ComposerUrlFile,
   projectGenerationV2ComposerAttachments,
   readGenerationV2ComposerPreview,
-  replaceGenerationV2ComposerDraft,
   replaceGenerationV2ComposerDraftFromAnswerSnapshot,
   removeGenerationV2ComposerAttachment,
   getGenerationV2ComposerDfcOptions,
@@ -227,6 +227,8 @@ import {
   retryGenerationV2ComposerFileTypeDetection,
   updateGenerationV2ComposerText,
   type GenerationV2ComposerDraft,
+  type GenerationV2ComposerEditIdentity,
+  type GenerationV2ComposerEditSession,
   type GenerationV2ComposerManagedFileAttachment,
 } from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
@@ -385,8 +387,22 @@ export function useAppChatAppLogic() {
   const draftSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftSendPlanRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-  const draftFlushPromise = ref<Promise<void> | null>(null)
   const generationV2ComposerDraft = ref<GenerationV2ComposerDraft | null>(null)
+  type DraftScope = Readonly<{ convoId: string; branchId: string | null; binding: number }>
+  const boundDraftScope = shallowRef<DraftScope | null>(null)
+  const draftScopeHydrated = ref(false)
+  const composerDraftsByConversation = new Map<string, GenerationV2ComposerDraft>()
+  const composerMutationQueue = createConversationConfigUpdateQueue()
+  const composerHydrations = new WeakMap<DraftScope, Promise<void>>()
+  const deletingConversationIds = shallowRef<ReadonlySet<string>>(new Set())
+  const deletedConversationIds = new Set<string>()
+  type DraftConflict = Readonly<{ captured: CapturedDraftPersistence; error: string }>
+  const pendingDraftConflicts = shallowRef<ReadonlyMap<string, DraftConflict>>(new Map())
+  const draftConflictReloadConfirmation = shallowRef<DraftScope | null>(null)
+  const activeDraftConflict = computed(() => activeConvoId.value
+    ? pendingDraftConflicts.value.get(activeConvoId.value) ?? null : null)
+  const submittingComposerConversationIds = shallowRef<ReadonlySet<string>>(new Set())
+  let applyingDraftProjection = false
   let unsubscribeFileTypeDetectionUpdated: (()=>void)|null=null
   const lastDraftScopeKey = ref<string | null>(null)
   const attachmentFeedbackTone = ref<'info' | 'warning' | 'error' | 'success' | null>(null)
@@ -689,7 +705,10 @@ export function useAppChatAppLogic() {
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
   const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
-  const isDraftInteractionLocked = computed(() => isAttachmentConfirmationActive.value)
+  const isDraftInteractionLocked = computed(() => isAttachmentConfirmationActive.value ||
+    (boundDraftScope.value !== null && (!draftScopeHydrated.value ||
+      deletingConversationIds.value.has(boundDraftScope.value.convoId) ||
+      submittingComposerConversationIds.value.has(boundDraftScope.value.convoId) || activeDraftConflict.value !== null)))
   const hasSendableDraftAttachment = computed(() =>
     draftAttachmentRecords.value.some((attachment) => attachment.includeInNextRequest)
   )
@@ -762,10 +781,7 @@ export function useAppChatAppLogic() {
   const messageCandidateEpochGlobal = ref(0)
   const messageCandidateLoading = ref<Map<string, string>>(new Map())
 
-  const questionEditSession = ref<{
-    questionId: string
-    previousDraft: GenerationV2ComposerDraft
-  } | null>(null)
+  const questionEditSession = ref<GenerationV2ComposerEditSession | null>(null)
   const isQuestionEditMode = computed(() => questionEditSession.value != null)
   const draftPersistenceMode = ref<'compose' | 'edit'>('compose')
   const draftPersistenceEditingSourceMessageId = ref<string | null>(null)
@@ -1052,24 +1068,42 @@ export function useAppChatAppLogic() {
       branchProjectionRefreshCoordinator.invalidate()
       transcriptRefreshToken.value += 1
     }
-    const prevScopeValid = String(prevConvoId ?? '').trim().length > 0 && String(prevBranchId ?? '').trim().length > 0
-    if (prevScopeValid) {
-      await flushDraftPersistence()
+    // The visible composer still belongs to the outgoing binding here. Capture
+    // it before clearing/rebinding, never from the newly active IDs after await.
+    const outgoing = captureDraftPersistence()
+    clearDraftPersistenceTimer()
+    const saving = outgoing ? persistCapturedDraft(outgoing).catch((error) => {
+      retainFailedDraft(outgoing, error)
+    }) : Promise.resolve()
+    const nextScope: DraftScope | null = nextConvoId
+      ? Object.freeze({ convoId: nextConvoId, branchId: nextBranchId, binding: navigationRevision.value }) : null
+    boundDraftScope.value = nextScope
+    clearBoundComposerProjection()
+    if (nextConvoId !== prevConvoId) {
+      generationV2BranchView.value = null
+      branchViewSnapshot.value = emptyBranchViewSnapshot<MessageMetaEntry>()
+      runtimeMessageSeqById.value = new Map()
+      runtimeMessageMetaById.value = new Map()
+      state.value = createInitialState()
+      branches.value = []
+      branchNextCursor.value = null
     }
     if (nextBranchId) {
       branchRuntimeCache.get(nextBranchId)
       branchRuntimeCache.prune(nextBranchId)
       branchRuntimeCacheRevision.value += 1
     }
-    await restoreDraftForActiveScope()
+    await saving
+    if (nextScope && !isDraftScopeCurrent(nextScope)) return
+    await restoreDraftForActiveScope(nextScope)
   }, { flush: 'sync' })
 
   watch(draft, () => {
-    if (!getActiveDraftScope()) return
+    if (applyingDraftProjection || !draftScopeHydrated.value || !getActiveDraftScope()) return
     scheduleDraftPersistence()
     // Draft text changes can alter whether the composer has sendable current input.
     scheduleDraftSendPlanRefresh()
-  })
+  }, { flush: 'sync' })
 
   watch(
     [activeConvoId, globalReasoningPrefs, globalWebSearchDefaults, globalGenerationParamsDefaults, globalImageGenerationDefault],
@@ -2087,7 +2121,7 @@ export function useAppChatAppLogic() {
       right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
   }
 
-  async function refreshConvos() {
+  async function refreshConvos(selectWhenEmpty = true) {
     loadError.value = null
     const filterProjectId = activeProjectId.value
     const projectIds = filterProjectId === null ? projects.value.map((project) => project.id) : [filterProjectId]
@@ -2100,7 +2134,7 @@ export function useAppChatAppLogic() {
     convos.value = sortConversationSummaries(
       pages.flatMap(([, page]) => projectConversationPageItems(page.items)),
     )
-    if (!projectsOnlyWorkspace.value && !activeConvoId.value && convos.value.length > 0) activeConvoId.value = convos.value[0].id
+    if (selectWhenEmpty && !projectsOnlyWorkspace.value && !activeConvoId.value && convos.value.length > 0) activeConvoId.value = convos.value[0].id
   }
 
   async function loadMoreConvos() {
@@ -2147,6 +2181,7 @@ export function useAppChatAppLogic() {
 
   async function refreshBranchesForActiveConvo() {
     const convoId = activeConvoId.value
+    const binding = navigationRevision.value
     if (!convoId) {
       branches.value = []
       branchNextCursor.value = null
@@ -2167,7 +2202,7 @@ export function useAppChatAppLogic() {
       return
     }
     const page = await listGenerationV2Branches(convoId)
-    if (activeConvoId.value !== convoId) return
+    if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
     const firstPage = page.items.map((branch) => ({ id: branch.branchId, convoId,
       headMessageId: branch.headMessageId, name: branch.name, createdAt: branch.updatedAtMs,
       updatedAt: branch.updatedAtMs, deletedAt: null }))
@@ -2427,8 +2462,9 @@ export function useAppChatAppLogic() {
     ])
   }
 
-      async function loadTranscriptForActiveConvo() {
+  async function loadTranscriptForActiveConvo() {
     const convoId = activeConvoId.value
+    const binding = navigationRevision.value
     if (!convoId) {
       branchProjectionRefreshCoordinator.invalidate()
       transcriptRefreshToken.value += 1
@@ -2444,20 +2480,35 @@ export function useAppChatAppLogic() {
     }
 
     const ensured = await ensureGenerationV2BranchForConversation(convoId)
+    if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
     await Promise.all([
       loadGenerationV2RoutePreference(convoId),
       loadGenerationV2SemanticConfig(convoId),
     ])
+    if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
     await refreshBranchesForActiveConvo()
+    if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
     if (!branches.value.some((b) => b.id === ensured.id)) branches.value = [ensured, ...branches.value]
 
-    const preferredId = activeBranchId.value
+    const scope = getActiveDraftScope()
+    const persistedDraft = scope ? await readScopedComposerDraft(scope) : null
+    if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
+    const preferredId = persistedDraft?.editSession?.branchId ?? activeBranchId.value
+    if (persistedDraft?.editSession && !branches.value.some(branch => branch.id === preferredId)) {
+      const persistedBranch = await readGenerationV2Branch(persistedDraft.editSession.branchId)
+      if (activeConvoId.value !== convoId || navigationRevision.value !== binding) return
+      if (persistedBranch.conversationId !== convoId) throw new Error('GENERATION_V2_EDIT_SCOPE_MISMATCH')
+      branches.value = [{ id: persistedBranch.branchId, convoId, headMessageId: persistedBranch.headMessageId,
+        name: persistedBranch.branchName, createdAt: 0, updatedAt: 0, deletedAt: null }, ...branches.value]
+    }
     const selected =
       (preferredId ? branches.value.find((b) => b.id === preferredId) : null) ??
       branches.value.find((b) => b.id === ensured.id) ??
       branches.value[0] ??
       ensured
     activeBranchId.value = selected.id
+    await restoreDraftForActiveScope()
+    if (activeConvoId.value !== convoId || activeBranchId.value !== selected.id) return
     resetCandidatesCache()
     await refreshTranscriptLatestOnly()
     await loadReasoningPrefsForActiveConvo()
@@ -2466,8 +2517,11 @@ export function useAppChatAppLogic() {
   }
 
   async function onSelectConvo(convoId: string) {
+    if (convoId === activeConvoId.value) return
+    activeBranchId.value = null
     activeConvoId.value = convoId
     await loadTranscriptForActiveConvo()
+    if (activeConvoId.value !== convoId) return
     if (convoId !== systemTemplateSnapshot.value?.conversation.id) {
       await setLastFormalConversationId(convoId)
     }
@@ -2477,10 +2531,23 @@ export function useAppChatAppLogic() {
   async function onSelectBranch(branchId: string) {
     const bid = String(branchId ?? '').trim()
     if (!bid || bid === activeBranchId.value) return
-    activeBranchId.value = bid
+    if (!await transitionToBranch(bid)) return
     resetCandidatesCache()
     await refreshTranscriptLatestOnly()
     assertInvariants() // Stable boundary: branch switched and refreshed
+  }
+
+  async function transitionToBranch(bid: string, afterCommittedClear = false): Promise<boolean> {
+    if (bid === activeBranchId.value) return true
+    const scope = getActiveDraftScope()
+    if (!scope) return false
+    if (!afterCommittedClear && submittingComposerConversationIds.value.has(scope.convoId)) return false
+    if (questionEditSession.value) await cancelEditForScope(scope, questionEditSession.value)
+    else await flushDraftPersistence({ failOnError: true })
+    if (!isDraftScopeCurrent(scope)) return false
+    activeBranchId.value = bid
+    await restoreDraftForActiveScope()
+    return activeConvoId.value === scope.convoId && activeBranchId.value === bid
   }
 
   function findRenderedMessageElement(messageId: string): HTMLElement | null {
@@ -2503,7 +2570,7 @@ export function useAppChatAppLogic() {
         navigationRevision.value !== expectedSourceRevision) return
 
     if (activeBranchId.value !== bid) {
-      activeBranchId.value = bid
+      if (!await transitionToBranch(bid)) return
       resetCandidatesCache()
     }
     const targetRevision = navigationRevision.value
@@ -2566,11 +2633,7 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      const deletingActiveConvo = String(activeConvoId.value ?? '') === String(convoId ?? '')
-      await deleteGenerationV2Conversation(convoId)
-      if (deletingActiveConvo) reasoningArtifactsByMessageId.value = {}
-      await refreshConvos()
-      await loadTranscriptForActiveConvo()
+      await deleteConversationsAndRebind([convoId])
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     }
@@ -2593,14 +2656,42 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      const activeDeleted = convoIds.some((id) => String(id ?? '') === String(activeConvoId.value ?? ''))
-      await Promise.all(convoIds.map((id) => deleteGenerationV2Conversation(id)))
-      if (activeDeleted) reasoningArtifactsByMessageId.value = {}
-      await refreshConvos()
-      await loadTranscriptForActiveConvo()
+      await deleteConversationsAndRebind(convoIds)
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     }
+  }
+
+  async function deleteConversationsAndRebind(convoIds: readonly string[]) {
+    const ids = [...new Set(convoIds.map(id => String(id ?? '').trim()).filter(Boolean))]
+    if (ids.length === 0) return
+    if (activeConvoId.value && ids.includes(activeConvoId.value)) await flushDraftPersistence({ failOnError: true })
+    deletingConversationIds.value = new Set([...deletingConversationIds.value, ...ids])
+    const results = await Promise.allSettled(ids.map(id => composerMutationQueue.enqueue(id, async () => {
+      await deleteGenerationV2Conversation(id)
+      deletedConversationIds.add(id)
+      composerDraftsByConversation.delete(id)
+      if (activeConvoId.value === id) {
+        activeBranchId.value = null
+        activeConvoId.value = null
+        reasoningArtifactsByMessageId.value = {}
+      }
+    })))
+    deletingConversationIds.value = new Set([...deletingConversationIds.value].filter(id => !ids.includes(id)))
+    await refreshConvos(false)
+    if (!activeConvoId.value && !projectsOnlyWorkspace.value) {
+      const survivor = convos.value.find(conversation => !deletedConversationIds.has(conversation.id))
+      if (survivor) await onSelectConvo(survivor.id)
+      else {
+        const emptyBinding = navigationRevision.value
+        const template = await getSystemChatTemplate()
+        if (navigationRevision.value !== emptyBinding || activeConvoId.value !== null || projectsOnlyWorkspace.value) return
+        systemTemplateSnapshot.value = template
+        await onSelectConvo(template.conversation.id)
+      }
+    }
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failed) throw failed.reason
   }
 
   async function onBulkMoveConvosToProject(convoIds: string[], projectId: string | null) {
@@ -2667,7 +2758,9 @@ export function useAppChatAppLogic() {
   async function onCreateConvo() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
+    const requestBinding = navigationRevision.value
     const template = await getSystemChatTemplate()
+    if (navigationRevision.value !== requestBinding) return
     systemTemplateSnapshot.value = template
     projectsOnlyWorkspace.value = false
     activeProjectId.value = template.conversation.projectId
@@ -3012,19 +3105,10 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function ensureActiveConvo(): Promise<string> {
-    if (activeConvoId.value) return activeConvoId.value
-    const template = systemTemplateSnapshot.value ?? await getSystemChatTemplate()
-    systemTemplateSnapshot.value = template
-    projectsOnlyWorkspace.value = false
-    activeConvoId.value = template.conversation.id
-    activeBranchId.value = template.conversation.branchId
-    await loadTranscriptForActiveConvo()
-    return template.conversation.id
-  }
-
   async function onResetSystemTemplate(input: Readonly<{ resetModelConfig: boolean; resetDraftAttachments: boolean }>) {
     if (workspaceMode.value !== 'template' || isRunning.value || isDraftInteractionLocked.value) return
+    const scope = getActiveDraftScope()
+    if (!scope) return
     const current = await getSystemChatTemplate()
     const updated = await resetSystemChatTemplate({
       templateConversationId: current.conversation.id,
@@ -3035,8 +3119,12 @@ export function useAppChatAppLogic() {
     systemTemplateSnapshot.value = updated
     await reloadGenerationV2ConversationAuthorities(updated.conversation.id)
     if (input.resetDraftAttachments) {
-      draft.value = ''
-      await restoreDraftForActiveScope()
+      if (!isDraftScopeCurrent(scope)) return
+      clearDraftPersistenceTimer()
+      composerHydrations.delete(scope)
+      composerDraftsByConversation.delete(scope.convoId)
+      clearBoundComposerProjection()
+      await restoreDraftForActiveScope(scope)
     }
   }
 
@@ -3654,15 +3742,177 @@ export function useAppChatAppLogic() {
     applySessionConfigToUi(activeSessionConfig.value)
   }
 
-  function getActiveDraftScope(): Readonly<{ convoId: string }> | null {
-    const convoId = String(activeConvoId.value ?? '').trim()
-    if (!convoId) return null
-    return { convoId }
+  function getActiveDraftScope(): DraftScope | null {
+    const scope = boundDraftScope.value
+    return scope && isDraftScopeCurrent(scope) ? scope : null
   }
 
-  function getDraftScopeKey(scope: Readonly<{ convoId: string }> | null): string | null {
+  function getDraftScopeKey(scope: DraftScope | null): string | null {
     if (!scope) return null
-    return scope.convoId
+    return `${scope.convoId}:${scope.branchId ?? ''}:${scope.binding}`
+  }
+
+  function isDraftScopeCurrent(scope: DraftScope): boolean {
+    return boundDraftScope.value === scope && activeConvoId.value === scope.convoId &&
+      activeBranchId.value === scope.branchId
+  }
+
+  function clearDraftPersistenceTimer() {
+    if (draftSaveTimer.value) clearTimeout(draftSaveTimer.value)
+    draftSaveTimer.value = null
+  }
+
+  function clearBoundComposerProjection() {
+    draftScopeHydrated.value = false
+    applyingDraftProjection = true
+    draft.value = ''
+    applyingDraftProjection = false
+    generationV2ComposerDraft.value = null
+    questionEditSession.value = null
+    draftConflictReloadConfirmation.value = null
+    applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
+    editRestoredDraftAttachmentAssetIds.value = new Set()
+    draftAttachmentRefreshSeq += 1
+    draftAttachmentDfcOptionsSeq += 1
+    draftAttachmentDfcPreviewSeq += 1
+    draftAttachmentViewModels.value = []
+    draftAttachmentRecords.value = []
+    draftAttachmentAssetsById.value = {}
+    draftAttachmentPlansByAssetId.value = {}
+    selectedDraftAttachmentAssetId.value = null
+    resetHistoryIncompatibleAttachmentSummary()
+  }
+
+  function publishComposerDraft(scope: DraftScope, next: GenerationV2ComposerDraft, syncText = false): boolean {
+    if (!isDraftScopeCurrent(scope) || next.conversationId !== scope.convoId) return false
+    generationV2ComposerDraft.value = next
+    questionEditSession.value = next.editSession ?? null
+    applyDraftPersistenceState({ draftMode: next.draftMode, editingSourceMessageId: next.editingSourceQuestionId })
+    if (syncText) {
+      applyingDraftProjection = true
+      draft.value = pendingDraftConflicts.value.get(scope.convoId)?.captured.text ?? next.draftText
+      applyingDraftProjection = false
+    }
+    draftScopeHydrated.value = true
+    return true
+  }
+
+  function readScopedComposerDraft(scope: DraftScope, discardConflict = false): Promise<GenerationV2ComposerDraft> {
+    if (!discardConflict && pendingDraftConflicts.value.has(scope.convoId)) {
+      const acknowledged = composerDraftsByConversation.get(scope.convoId)
+      if (acknowledged) return Promise.resolve(acknowledged)
+    }
+    const canAdoptPersistedRevision = discardConflict || isDraftScopeCurrent(scope) && !draftScopeHydrated.value
+    const captured = isDraftScopeCurrent(scope) ? captureDraftPersistence(true) : null
+    return composerMutationQueue.enqueue(scope.convoId, async () => {
+      const next = await getGenerationV2ComposerDraft(scope.convoId)
+      const acknowledged = composerDraftsByConversation.get(scope.convoId)
+      if (acknowledged && next.revision !== acknowledged.revision && !canAdoptPersistedRevision) {
+        if (captured) retainFailedDraft(captured, new Error('GENERATION_V2_DRAFT_REVISION_CONFLICT'))
+        return acknowledged
+      }
+      if (!acknowledged || next.revision >= acknowledged.revision) composerDraftsByConversation.set(scope.convoId, next)
+      return composerDraftsByConversation.get(scope.convoId)!
+    })
+  }
+
+  function publishCommittedComposerDraft(scope: DraftScope, submitted: GenerationV2ComposerDraft,
+    cleared: GenerationV2ComposerDraft): boolean {
+    if (isDraftScopeCurrent(scope)) return publishComposerDraft(scope, cleared, true)
+    const currentScope = getActiveDraftScope()
+    const projection = generationV2ComposerDraft.value
+    // Returning to the submission owner creates another binding, but its input
+    // stayed locked. Only that exact acknowledged aggregate may show this clear.
+    if (!currentScope || currentScope.convoId !== scope.convoId || currentScope.branchId !== scope.branchId ||
+        !submittingComposerConversationIds.value.has(scope.convoId) || !draftScopeHydrated.value || !projection ||
+        projection.revision !== submitted.revision || projection.draftMode !== submitted.draftMode ||
+        projection.editingSourceQuestionId !== submitted.editingSourceQuestionId || draft.value !== submitted.draftText ||
+        !sameComposerEditIdentity(composerEditIdentity(projection), composerEditIdentity(submitted))) return false
+    return publishComposerDraft(currentScope, cleared, true)
+  }
+
+  type AttachmentMutationAction = {
+    identity: Readonly<{ scope: DraftScope; mode: 'compose' | 'edit'; questionId: string | null;
+      editIdentity: GenerationV2ComposerEditIdentity | null; initialRevision: number }>
+    acknowledgedRevision: number
+  }
+
+  function captureAttachmentMutationAction(): AttachmentMutationAction | null {
+    const scope = getActiveDraftScope()
+    const current = generationV2ComposerDraft.value
+    if (!scope || isDraftInteractionLocked.value || !current || current.conversationId !== scope.convoId) return null
+    return { identity: Object.freeze({ scope, mode: current.draftMode, questionId: current.editingSourceQuestionId,
+      editIdentity: composerEditIdentity(current), initialRevision: current.revision }), acknowledgedRevision: current.revision }
+  }
+
+  function attachmentActionMatches(action: AttachmentMutationAction, current: GenerationV2ComposerDraft): boolean {
+    const identity = action.identity
+    return current.conversationId === identity.scope.convoId && current.draftMode === identity.mode &&
+      current.editingSourceQuestionId === identity.questionId &&
+      sameComposerEditIdentity(composerEditIdentity(current), identity.editIdentity)
+  }
+
+  function mutateScopedComposerDraft(scope: DraftScope,
+    mutation: (current: GenerationV2ComposerDraft) => Promise<GenerationV2ComposerDraft>,
+    attachmentAction?: AttachmentMutationAction): Promise<GenerationV2ComposerDraft> {
+    return composerMutationQueue.enqueue(scope.convoId, async () => {
+      const conflict = pendingDraftConflicts.value.get(scope.convoId)
+      if (conflict) throw new Error(conflict.error)
+      const current = composerDraftsByConversation.get(scope.convoId) ?? await getGenerationV2ComposerDraft(scope.convoId)
+      if (attachmentAction && (current.revision !== attachmentAction.acknowledgedRevision ||
+          !attachmentActionMatches(attachmentAction, current) || submittingComposerConversationIds.value.has(scope.convoId))) {
+        throw new Error('GENERATION_V2_ATTACHMENT_ACTION_STALE')
+      }
+      const next = await mutation(current)
+      if (next.conversationId !== scope.convoId) throw new Error('GENERATION_V2_DRAFT_OWNER_MISMATCH')
+      composerDraftsByConversation.set(scope.convoId, next)
+      if (attachmentAction) attachmentAction.acknowledgedRevision = next.revision
+      return next
+    })
+  }
+
+  async function mutateAttachmentAction(action: AttachmentMutationAction,
+    mutation: (current: GenerationV2ComposerDraft) => Promise<GenerationV2ComposerDraft>): Promise<GenerationV2ComposerDraft> {
+    const previousRevision = action.acknowledgedRevision
+    const scope = action.identity.scope
+    const updated = await mutateScopedComposerDraft(scope, mutation, action)
+    if (!publishComposerDraft(scope, updated)) {
+      const currentScope = getActiveDraftScope()
+      const projection = generationV2ComposerDraft.value
+      if (currentScope?.convoId === scope.convoId && projection?.revision === previousRevision &&
+          attachmentActionMatches(action, projection)) publishComposerDraft(currentScope, updated)
+    }
+    return updated
+  }
+
+  async function prepareAttachmentMutationAction(action: AttachmentMutationAction) {
+    const text = draft.value
+    const capturedText = captureDraftPersistence()
+    try {
+      await mutateAttachmentAction(action, current => {
+        if (isDraftScopeCurrent(action.identity.scope) && draft.value === text) clearDraftPersistenceTimer()
+        return current.draftText === text ? Promise.resolve(current)
+        : updateGenerationV2ComposerText({ conversationId: action.identity.scope.convoId, expectedRevision: current.revision,
+          draftText: text, draftMode: action.identity.mode, editingSourceQuestionId: action.identity.questionId,
+          editSessionIdentity: action.identity.editIdentity })
+      })
+    } catch (error) {
+      if (capturedText && (!(error instanceof Error) || error.message !== 'GENERATION_V2_ATTACHMENT_ACTION_STALE')) {
+        retainFailedDraft(capturedText, error)
+      }
+      throw error
+    }
+  }
+
+  function reportAttachmentActionFailure(action: AttachmentMutationAction, error: unknown) {
+    if (getActiveDraftScope()?.convoId !== action.identity.scope.convoId) return
+    setAttachmentFeedback('error', isStaleAttachmentActionError(error) ? t('errors.attachment.actionStale')
+      : error instanceof Error ? error.message : t('errors.attachment.importFailed'))
+  }
+
+  function isStaleAttachmentActionError(error: unknown): boolean {
+    return error instanceof Error && (error.message === 'GENERATION_V2_ATTACHMENT_ACTION_STALE' ||
+      error.message === 'GENERATION_V2_DRAFT_CONFLICT' || error.message === 'GENERATION_V2_DRAFT_REVISION_CONFLICT')
   }
 
   type FileSelectionGrant = Readonly<{
@@ -4539,11 +4789,9 @@ export function useAppChatAppLogic() {
     }
 
     const seq = ++draftAttachmentRefreshSeq
-    const current = await getGenerationV2ComposerDraft(scope.convoId)
-    if (seq !== draftAttachmentRefreshSeq) return
-    generationV2ComposerDraft.value = current
-    applyDraftPersistenceState({ draftMode: current.draftMode, editingSourceMessageId: current.editingSourceQuestionId })
-    if (input?.syncDraftText === true) draft.value = current.draftText
+    const current = await readScopedComposerDraft(scope)
+    if (seq !== draftAttachmentRefreshSeq || !isDraftScopeCurrent(scope)) return
+    publishComposerDraft(scope, current, input?.syncDraftText === true)
     const records: DecodedDraftAttachment[] = current.attachments.map((attachment) => {
       const selectedAssetRefs: DfcSendAssetRef[] = attachment.kind === 'managed_file' && attachment.dfcSelection
         ? [{ kind: attachment.dfcSelection.targetKind === 'original_file' ? 'raw_file' : 'derived_asset', assetId: attachment.dfcSelection.effectiveAssetId }]
@@ -4602,7 +4850,7 @@ export function useAppChatAppLogic() {
         return [attachment.assetRevisionId, preview.dataUrl] as const
       } catch { return [attachment.assetRevisionId, null] as const }
     })) as readonly (readonly [string,string|null])[]))
-    if (seq !== draftAttachmentRefreshSeq) return
+    if (seq !== draftAttachmentRefreshSeq || !isDraftScopeCurrent(scope)) return
     draftAttachmentViewModels.value = records.map((record) => buildDraftAttachmentViewModel(
       record, assets[record.assetId] ?? null, detectionPlans[record.assetId] ?? null, previewByRevision.get(record.id) ?? null,
     ))
@@ -4653,7 +4901,7 @@ export function useAppChatAppLogic() {
 
   async function ingestLocalFiles(
     filePaths: readonly (string | LocalFileIngestionTarget)[],
-    options?: Readonly<{ mimeType?: string | null; sourceKind?: 'local_upload' | 'generated' }>,
+    options?: Readonly<{ mimeType?: string | null; sourceKind?: 'local_upload' | 'generated'; action?: AttachmentMutationAction }>,
   ) {
     void options
     const cleaned = filePaths
@@ -4666,8 +4914,14 @@ export function useAppChatAppLogic() {
       })
       .filter((value) => value.filePath.length > 0)
     if (cleaned.length === 0) return
-    const convoId = await ensureActiveConvo()
-    await flushDraftPersistence({ failOnError: true })
+    const action = options?.action ?? captureAttachmentMutationAction()
+    if (!action) return
+    const scope = action.identity.scope
+    const convoId = scope.convoId
+    if (!options?.action) {
+      try { await prepareAttachmentMutationAction(action) }
+      catch (error) { reportAttachmentActionFailure(action, error); return { status: 'stale' as const, importedCount: 0 } }
+    }
 
     let successCount = 0
     let failureCount = 0
@@ -4676,21 +4930,23 @@ export function useAppChatAppLogic() {
     for (const file of cleaned) {
       try {
         if (!file.selectionGrantToken) throw new Error('GENERATION_V2_FILE_SELECTION_GRANT_INVALID')
-        const current = generationV2ComposerDraft.value?.conversationId === convoId
-          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
-        const updated = await importGenerationV2ComposerLocalFile({ conversationId: convoId,
-          expectedRevision: current.revision, filePath: file.filePath, selectionGrantToken: file.selectionGrantToken })
-        generationV2ComposerDraft.value = updated
+        await mutateAttachmentAction(action, current => importGenerationV2ComposerLocalFile({ conversationId: convoId,
+          expectedRevision: current.revision, filePath: file.filePath, selectionGrantToken: file.selectionGrantToken! }))
         successCount += 1
         lastSuccessLabel = normalizeExtension(file.filePath) ?? 'attachment'
-      } catch {
+      } catch (error) {
         failureCount += 1
+        if (isStaleAttachmentActionError(error)) {
+          reportAttachmentActionFailure(action, error)
+          return { status: 'stale' as const, importedCount: successCount }
+        }
         if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
           console.warn('[ui-app] ingestLocalFiles failed for one file (non-fatal)')
         }
       }
     }
 
+    if (getActiveDraftScope()?.convoId !== scope.convoId) return { status: 'completed' as const, importedCount: successCount }
     if (successCount > 0) {
       void refreshDraftAttachmentViewModels()
       const label = successCount === 1 ? 'attachment' : 'attachments'
@@ -4701,26 +4957,30 @@ export function useAppChatAppLogic() {
     if (successCount > 0 && lastSuccessLabel && shouldLogDebug()) {
       console.info('[ui-app] attachment import completed:', { successCount, failureCount, lastSuccessLabel })
     }
+    return { status: 'completed' as const, importedCount: successCount }
   }
 
   async function ingestUrlAttachment(url: string, retentionMode: 'default' | 'link_only' | 'link_and_file') {
+    const action = captureAttachmentMutationAction()
+    if (!action) return
+    const scope = action.identity.scope
     const trimmed = String(url ?? '').trim()
     if (!trimmed) {
       setAttachmentFeedback('error', t('errors.attachment.urlRequired'))
       return
     }
     try {
-      const convoId = await ensureActiveConvo()
-      const current = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      await prepareAttachmentMutationAction(action)
+      const convoId = scope.convoId
       const resolvedRetention = resolveAttachmentRetentionMode(retentionMode)
-      generationV2ComposerDraft.value = resolvedRetention === 'link_only'
-        ? await addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: current.revision, url: trimmed })
-        : await importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: current.revision, url: trimmed })
+      await mutateAttachmentAction(action, current => resolvedRetention === 'link_only'
+        ? addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: current.revision, url: trimmed })
+        : importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: current.revision, url: trimmed }))
+      if (getActiveDraftScope()?.convoId !== scope.convoId) return
       void refreshDraftAttachmentViewModels()
       setAttachmentFeedback('success', t('errors.attachment.urlAdded'))
     } catch (error) {
-      setAttachmentFeedback('error', error instanceof Error ? error.message : 'URL import failed.')
+      reportAttachmentActionFailure(action, error)
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
         console.warn('[ui-app] INGEST_URL_ATTACHMENT_FAILED')
       }
@@ -4740,17 +5000,113 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function flushDraftPersistence(options: Readonly<{ failOnError?: boolean }> = {}): Promise<void> {
-    if (draftFlushPromise.value) await draftFlushPromise.value
+  type CapturedDraftPersistence = Readonly<{ scope: DraftScope; text: string; mode: 'compose' | 'edit'; questionId: string | null;
+    editIdentity: GenerationV2ComposerEditIdentity | null; sequence: number }>
+  let capturedDraftSequence = 0
+
+  function composerEditIdentity(current: GenerationV2ComposerDraft): GenerationV2ComposerEditIdentity | null {
+    const session = current.editSession
+    return session ? Object.freeze({ branchId: session.branchId, questionId: session.questionId,
+      answerRootId: session.answerRootId, openedDraftRevision: session.openedDraftRevision }) : null
+  }
+
+  function sameComposerEditIdentity(left: GenerationV2ComposerEditIdentity | null,
+    right: GenerationV2ComposerEditIdentity | null): boolean {
+    return left === null ? right === null : right !== null && left.branchId === right.branchId &&
+      left.questionId === right.questionId && left.answerRootId === right.answerRootId &&
+      left.openedDraftRevision === right.openedDraftRevision
+  }
+
+  function capturedDraftMatches(current: GenerationV2ComposerDraft, captured: CapturedDraftPersistence): boolean {
+    return current.draftMode === captured.mode && current.editingSourceQuestionId === captured.questionId &&
+      sameComposerEditIdentity(composerEditIdentity(current), captured.editIdentity)
+  }
+
+  function captureDraftPersistence(allowDuringSubmit = false): CapturedDraftPersistence | null {
+    const scope = boundDraftScope.value
+    if (!scope || !allowDuringSubmit && submittingComposerConversationIds.value.has(scope.convoId) || pendingDraftConflicts.value.has(scope.convoId) || deletedConversationIds.has(scope.convoId) || deletingConversationIds.value.has(scope.convoId) ||
+        !draftScopeHydrated.value || generationV2ComposerDraft.value?.conversationId !== scope.convoId) return null
+    return Object.freeze({ scope, text: draft.value, mode: draftPersistenceMode.value, sequence: ++capturedDraftSequence,
+      questionId: draftPersistenceEditingSourceMessageId.value, editIdentity: composerEditIdentity(generationV2ComposerDraft.value) })
+  }
+
+  async function persistCapturedDraft(captured: CapturedDraftPersistence): Promise<void> {
+    let acceptedIdentity = false
+    const updated = await mutateScopedComposerDraft(captured.scope, current => {
+      // An open/cancel/commit ahead of this packet changed the draft identity.
+      // Its stale text must not reverse that accepted aggregate transition.
+      if (!capturedDraftMatches(current, captured)) {
+        return Promise.resolve(current)
+      }
+      acceptedIdentity = true
+      if (current.draftText === captured.text) return Promise.resolve(current)
+      return updateGenerationV2ComposerText({ conversationId: captured.scope.convoId,
+        expectedRevision: current.revision, draftText: captured.text, draftMode: captured.mode,
+        editingSourceQuestionId: captured.questionId, editSessionIdentity: captured.editIdentity })
+    })
+    if (acceptedIdentity) publishComposerDraft(captured.scope, updated)
+  }
+
+  function retainFailedDraft(captured: CapturedDraftPersistence, error: unknown) {
+    if (deletedConversationIds.has(captured.scope.convoId)) return
+    const acknowledged = composerDraftsByConversation.get(captured.scope.convoId)
+    if (acknowledged && !capturedDraftMatches(acknowledged, captured)) return
+    const newest = isDraftScopeCurrent(captured.scope) && draft.value !== captured.text
+      ? Object.freeze({ ...captured, text: draft.value, sequence: ++capturedDraftSequence }) : captured
+    const conflicts = new Map(pendingDraftConflicts.value)
+    const previous = conflicts.get(captured.scope.convoId)?.captured
+    const sameAggregate = !previous || previous.mode === newest.mode && previous.questionId === newest.questionId &&
+      sameComposerEditIdentity(previous.editIdentity, newest.editIdentity)
+    if (sameAggregate && (previous?.sequence ?? -1) < newest.sequence) conflicts.set(captured.scope.convoId, Object.freeze({
+      captured: newest, error: error instanceof Error ? error.message : 'GENERATION_V2_DRAFT_PERSIST_FAILED',
+    }))
+    pendingDraftConflicts.value = conflicts
+    if (isDraftScopeCurrent(captured.scope)) loadError.value = conflicts.get(captured.scope.convoId)!.error
+  }
+
+  function retainScopedComposerFailure(scope: DraftScope, error: unknown) {
+    const current = composerDraftsByConversation.get(scope.convoId)
+    if (!current) return
+    retainFailedDraft(Object.freeze({ scope, text: isDraftScopeCurrent(scope) ? draft.value : current.draftText, sequence: ++capturedDraftSequence,
+      mode: current.draftMode, questionId: current.editingSourceQuestionId, editIdentity: composerEditIdentity(current) }), error)
+  }
+
+  async function onRefreshWorkspace() {
     const scope = getActiveDraftScope()
-    const text = draft.value
-    if (!scope) return
+    if (scope && pendingDraftConflicts.value.has(scope.convoId)) {
+      draftConflictReloadConfirmation.value = scope
+      return
+    }
+    await refreshConvos()
+  }
+
+  function cancelDraftConflictReload() { draftConflictReloadConfirmation.value = null }
+
+  async function confirmDraftConflictReload() {
+    const scope = draftConflictReloadConfirmation.value
+    draftConflictReloadConfirmation.value = null
+    if (!scope || !isDraftScopeCurrent(scope)) return
+    // The user's explicit discard is the only operation allowed to replace the
+    // failed packet with the current persisted aggregate. No mutation is retried.
+    const restored = await readScopedComposerDraft(scope, true)
+    if (!isDraftScopeCurrent(scope)) return
+    const conflicts = new Map(pendingDraftConflicts.value)
+    conflicts.delete(scope.convoId)
+    pendingDraftConflicts.value = conflicts
+    loadError.value = null
+    publishComposerDraft(scope, restored, true)
+    await refreshDraftAttachmentViewModels()
+  }
+
+  async function flushDraftPersistence(options: Readonly<{ failOnError?: boolean; allowDuringSubmit?: boolean }> = {}): Promise<void> {
+    const captured = captureDraftPersistence(options.allowDuringSubmit === true)
+    if (!captured) return
     if (isAttachmentConfirmationActive.value) {
       draftPersistenceQueuedWhileAttachmentConfirmationActive.value = true
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
         console.warn('[ui-app] flushDraftPersistence deferred while attachment confirmation is active', {
           draftMode: draftPersistenceMode.value,
-          draftLength: text.length,
+          draftLength: captured.text.length,
           draftAttachmentCount: draftAttachmentRecords.value.length,
           hasEditingSourceMessageId: String(draftPersistenceEditingSourceMessageId.value ?? '').trim().length > 0,
         })
@@ -4758,36 +5114,21 @@ export function useAppChatAppLogic() {
       if (options.failOnError) throw new Error('draft_persistence_deferred_during_attachment_confirmation')
       return
     }
-    if (draftSaveTimer.value) {
-      clearTimeout(draftSaveTimer.value)
-      draftSaveTimer.value = null
-    }
-    draftFlushPromise.value = (async () => {
-      try {
-        const current = generationV2ComposerDraft.value?.conversationId === scope.convoId
-          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(scope.convoId)
-        const updated = await updateGenerationV2ComposerText({ conversationId: scope.convoId,
-          expectedRevision: current.revision, draftText: text, draftMode: draftPersistenceMode.value,
-          editingSourceQuestionId: draftPersistenceEditingSourceMessageId.value })
-        generationV2ComposerDraft.value = updated
-        applyDraftPersistenceState({ draftMode: updated.draftMode, editingSourceMessageId: updated.editingSourceQuestionId })
-      } catch (err) {
+    clearDraftPersistenceTimer()
+    try {
+      await persistCapturedDraft(captured)
+    } catch (err) {
         if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
           console.warn('[ui-app] flushDraftPersistence failed (non-fatal):', {
             err,
             draftMode: draftPersistenceMode.value,
-            draftLength: text.length,
+            draftLength: captured.text.length,
             draftAttachmentCount: draftAttachmentRecords.value.length,
             hasEditingSourceMessageId: String(draftPersistenceEditingSourceMessageId.value ?? '').trim().length > 0,
           })
         }
-        if (options.failOnError) throw err
-      }
-    })()
-    try {
-      await draftFlushPromise.value
-    } finally {
-      draftFlushPromise.value = null
+      retainFailedDraft(captured, err)
+      if (options.failOnError) throw err
     }
   }
 
@@ -4800,30 +5141,53 @@ export function useAppChatAppLogic() {
       }
       return
     }
-    if (draftSaveTimer.value) clearTimeout(draftSaveTimer.value)
+    const captured = captureDraftPersistence()
+    if (!captured) return
+    clearDraftPersistenceTimer()
     draftSaveTimer.value = setTimeout(() => {
-      void flushDraftPersistence()
+      draftSaveTimer.value = null
+      void persistCapturedDraft(captured).catch((error) => {
+        retainFailedDraft(captured, error)
+      })
     }, 250)
   }
 
-  async function restoreDraftForActiveScope() {
-    const scope = getActiveDraftScope()
+  function restoreDraftForActiveScope(scope = getActiveDraftScope()): Promise<void> {
+    if (!scope) return hydrateComposerScope(null)
+    const pending = composerHydrations.get(scope)
+    if (pending) return pending
+    const hydration = hydrateComposerScope(scope)
+    composerHydrations.set(scope, hydration)
+    return hydration
+  }
+
+  async function hydrateComposerScope(scope: DraftScope | null) {
     if (!scope) {
       lastDraftScopeKey.value = null
-      generationV2ComposerDraft.value = null
-      draft.value = ''
-      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
-      editRestoredDraftAttachmentAssetIds.value = new Set()
-      draftAttachmentViewModels.value = []
-      resetHistoryIncompatibleAttachmentSummary()
+      if (!boundDraftScope.value) clearBoundComposerProjection()
       return
     }
     lastDraftScopeKey.value = getDraftScopeKey(scope)
     try {
-      const restored = await getGenerationV2ComposerDraft(scope.convoId)
-      generationV2ComposerDraft.value = restored
-      applyDraftPersistenceState({ draftMode: restored.draftMode, editingSourceMessageId: restored.editingSourceQuestionId })
-      draft.value = restored.draftText
+      const failed = pendingDraftConflicts.value.get(scope.convoId)
+      if (failed) {
+        if (!isDraftScopeCurrent(scope)) return
+        const retained = composerDraftsByConversation.get(scope.convoId)
+        if (retained) publishComposerDraft(scope, retained)
+        applyingDraftProjection = true
+        draft.value = failed.captured.text
+        applyingDraftProjection = false
+        loadError.value = failed.error
+        return
+      }
+      const restored = await readScopedComposerDraft(scope)
+      if (!isDraftScopeCurrent(scope)) return
+      if (restored.editSession && restored.editSession.branchId !== scope.branchId) {
+        if (scope.branchId === null) return
+        activeBranchId.value = restored.editSession.branchId
+        return
+      }
+      if (!publishComposerDraft(scope, restored, true)) return
       editRestoredDraftAttachmentAssetIds.value = restored.draftMode === 'edit'
         ? new Set(restored.attachments.map((attachment) =>
             attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId))
@@ -4831,34 +5195,39 @@ export function useAppChatAppLogic() {
       await refreshDraftAttachmentViewModels()
       scheduleHistoryIncompatibleRefresh()
     } catch (err) {
+      if (!isDraftScopeCurrent(scope)) return
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
         console.warn('[ui-app] RESTORE_DRAFT_FOR_ACTIVE_SCOPE_FAILED')
       }
-      draft.value = ''
-      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
-      editRestoredDraftAttachmentAssetIds.value = new Set()
-      draftAttachmentViewModels.value = []
-      resetHistoryIncompatibleAttachmentSummary()
+      clearBoundComposerProjection()
+      loadError.value = err instanceof Error ? err.message : 'GENERATION_V2_DRAFT_RESTORE_FAILED'
     }
   }
 
-  async function onAttachFilesRequested() {
+  async function onAttachFilesRequested(): Promise<void> {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
+    const action = captureAttachmentMutationAction()
+    if (!action) return
     const api = getElectronApi()
     if (!api) {
       setAttachmentFeedback('error', t('errors.attachment.filePickerUnavailable'))
       return
     }
-    const result = await api.selectLocalFiles({ context: 'file', allowMultiple: true })
-    const files = selectedLocalFilesFromDialogResult(result)
-    if (files.length === 0) return
-    await ingestLocalFiles(files, { sourceKind: 'local_upload' })
+    try {
+      await prepareAttachmentMutationAction(action)
+      const result = await api.selectLocalFiles({ context: 'file', allowMultiple: true })
+      const files = selectedLocalFilesFromDialogResult(result)
+      if (files.length === 0) return
+      await ingestLocalFiles(files, { sourceKind: 'local_upload', action })
+    } catch (error) { reportAttachmentActionFailure(action, error) }
   }
 
-  async function onAttachImagesRequested() {
+  async function onAttachImagesRequested(): Promise<void> {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
+    const action = captureAttachmentMutationAction()
+    if (!action) return
     if (composerImageInputSupported.value === false) {
       setAttachmentFeedback('error', composerImageInputSupportReason.value ?? t('errors.attachment.modelNoImageSupport'))
       return
@@ -4868,10 +5237,13 @@ export function useAppChatAppLogic() {
       setAttachmentFeedback('error', t('errors.attachment.filePickerUnavailable'))
       return
     }
-    const result = await api.selectLocalFiles({ context: 'image', allowMultiple: true })
-    const files = selectedLocalFilesFromDialogResult(result)
-    if (files.length === 0) return
-    await ingestLocalFiles(files, { sourceKind: 'local_upload' })
+    try {
+      await prepareAttachmentMutationAction(action)
+      const result = await api.selectLocalFiles({ context: 'image', allowMultiple: true })
+      const files = selectedLocalFilesFromDialogResult(result)
+      if (files.length === 0) return
+      await ingestLocalFiles(files, { sourceKind: 'local_upload', action })
+    } catch (error) { reportAttachmentActionFailure(action, error) }
   }
 
   function onAttachUrlRequested(prefillUrl?: string | null) {
@@ -4895,20 +5267,25 @@ export function useAppChatAppLogic() {
 
   async function handleRemoveDraftAttachment(assetId: string) {
     if (isDraftInteractionLocked.value) return
-    const convoId = String(activeConvoId.value ?? '').trim()
-    if (!convoId || !assetId) return
+    const action = captureAttachmentMutationAction()
+    if (!action || !assetId) return
+    const scope = action.identity.scope
+    const convoId = scope.convoId
     try {
-      const current = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      await prepareAttachmentMutationAction(action)
+      const current = await readScopedComposerDraft(scope)
       const target = current.attachments.find((attachment) =>
         (attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId) === assetId)
       if (!target) { setAttachmentFeedback('warning', t('errors.attachment.alreadyRemoved')); return }
-      generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
-        expectedRevision: current.revision, assetRevisionId: target.kind === 'managed_file' ? target.assetRevisionId : target.referenceRevision })
+      await mutateAttachmentAction(action, latest => removeGenerationV2ComposerAttachment({ conversationId: convoId,
+        expectedRevision: latest.revision, assetRevisionId: target.kind === 'managed_file' ? target.assetRevisionId : target.referenceRevision }))
+      if (getActiveDraftScope()?.convoId !== scope.convoId) return
       await refreshDraftAttachmentViewModels()
+      if (!isDraftScopeCurrent(scope)) return
       setAttachmentFeedback('success', t('errors.attachment.removedFromDraft'))
     } catch (error) {
-      setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.removeFailed'))
+      if (!isDraftScopeCurrent(scope)) return
+      reportAttachmentActionFailure(action, error)
     }
   }
 
@@ -5015,12 +5392,17 @@ export function useAppChatAppLogic() {
     selectedAssetRefs?: readonly DfcSendAssetRef[]
   }>) {
     if (isDraftInteractionLocked.value) return
-    const convoId = String(activeConvoId.value ?? '').trim()
+    const action = captureAttachmentMutationAction()
+    const scope = action?.identity.scope
+    const convoId = scope?.convoId
     const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
-    if (!convoId || !assetId) return
+    if (!action || !scope || !convoId || !assetId) return
+    const providerId = executionProviderId() ?? 'unset'
+    const operation = executionProviderId() === 'openai_responses' ? 'responses' as const
+      : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const
     try {
-      const current = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      await prepareAttachmentMutationAction(action)
+      const current = await readScopedComposerDraft(scope)
       const attachment = current.attachments.find((item) =>
         (item.kind === 'managed_file' ? item.assetId : item.referenceId) === assetId)
       if (attachment) {
@@ -5028,13 +5410,12 @@ export function useAppChatAppLogic() {
           if (input.dfcManaged !== true || typeof input.selectedOptionId !== 'string' || input.selectedAssetRefs === undefined) {
             throw new Error('GENERATION_V2_ATTACHMENT_SETTING_INVALID')
           }
-          generationV2ComposerDraft.value = await selectGenerationV2ComposerDfcOption({
-            conversationId: convoId, expectedRevision: current.revision, assetId, optionId: input.selectedOptionId,
-            providerId: executionProviderId() ?? 'unset',
-            operation: executionProviderId() === 'openai_responses' ? 'responses' as const
-              : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
-          })
+          await mutateAttachmentAction(action, latest => selectGenerationV2ComposerDfcOption({
+            conversationId: convoId, expectedRevision: latest.revision, assetId, optionId: input.selectedOptionId!, providerId, operation,
+          }))
+          if (getActiveDraftScope()?.convoId !== scope.convoId) return
           await refreshDraftAttachmentViewModels()
+          if (!isDraftScopeCurrent(scope)) return
           selectedDraftAttachmentAssetId.value = assetId
           return
         }
@@ -5047,13 +5428,15 @@ export function useAppChatAppLogic() {
           if (currentMode === wanted) return
           const originalUrl = attachment.originalUrl
           if (!originalUrl) throw new Error('GENERATION_V2_URL_PROVENANCE_UNAVAILABLE')
-          const updated = wanted === 'link_only'
-            ? await addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: current.revision, url: originalUrl })
-            : await importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: current.revision, url: originalUrl })
+          await mutateAttachmentAction(action, latest => wanted === 'link_only'
+            ? addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: latest.revision, url: originalUrl })
+            : importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: latest.revision, url: originalUrl }))
           const oldRevision = attachment.kind === 'managed_file' ? attachment.assetRevisionId : attachment.referenceRevision
-          generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
-            expectedRevision: updated.revision, assetRevisionId: oldRevision })
+          await mutateAttachmentAction(action, latest => removeGenerationV2ComposerAttachment({ conversationId: convoId,
+            expectedRevision: latest.revision, assetRevisionId: oldRevision }))
+          if (getActiveDraftScope()?.convoId !== scope.convoId) return
           await refreshDraftAttachmentViewModels()
+          if (!isDraftScopeCurrent(scope)) return
           selectedDraftAttachmentAssetId.value = assetId
           return
         }
@@ -5061,7 +5444,8 @@ export function useAppChatAppLogic() {
       }
       throw new Error('GENERATION_V2_DRAFT_ATTACHMENT_NOT_FOUND')
     } catch (error) {
-      setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.updateFailed'))
+      if (!isDraftScopeCurrent(scope)) return
+      reportAttachmentActionFailure(action, error)
     }
   }
 
@@ -5074,6 +5458,8 @@ export function useAppChatAppLogic() {
   }
 
   async function updateSelectedDraftAttachmentDfcOption(optionId: string) {
+    const scope = getActiveDraftScope()
+    if (!scope) return
     const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
     if (!assetId) return
     const dto = draftAttachmentDfcOptionsByAssetId.value[assetId] ?? null
@@ -5093,6 +5479,7 @@ export function useAppChatAppLogic() {
       selectedOptionId: option.optionId,
       selectedAssetRefs: option.sendAssetRefs,
     })
+    if (!isDraftScopeCurrent(scope)) return
     void refreshDraftAttachmentDfcOptions(assetId)
     void refreshDraftAttachmentDfcPreview(assetId)
   }
@@ -5144,6 +5531,9 @@ export function useAppChatAppLogic() {
   }
 
   async function retrySelectedDraftAttachmentPreview() {
+    const action = captureAttachmentMutationAction()
+    if (!action) return
+    const scope = action.identity.scope
     const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
     if (!assetId) return
     const attachment = draftAttachmentRecords.value.find((item) => item.assetId === assetId) ?? null
@@ -5152,8 +5542,13 @@ export function useAppChatAppLogic() {
     if(composerAttachment?.kind==='managed_file'&&(!composerAttachment.fileTypeDetection||composerAttachment.fileTypeDetection.status==='failed')){
       const conversationId=generationV2ComposerDraft.value?.conversationId
       if(!conversationId)return
-      generationV2ComposerDraft.value=await retryGenerationV2ComposerFileTypeDetection({conversationId,assetRevisionId:composerAttachment.assetRevisionId})
+      try {
+        await prepareAttachmentMutationAction(action)
+        await mutateAttachmentAction(action,()=>retryGenerationV2ComposerFileTypeDetection({conversationId,assetRevisionId:composerAttachment.assetRevisionId}))
+      } catch (error) { reportAttachmentActionFailure(action, error); return }
+      if(getActiveDraftScope()?.convoId!==scope.convoId)return
       await refreshDraftAttachmentViewModels()
+      if(!isDraftScopeCurrent(scope))return
       selectedDraftAttachmentAssetId.value=assetId
       return
     }
@@ -5167,12 +5562,14 @@ export function useAppChatAppLogic() {
     }
     const seq = ++draftAttachmentRefreshSeq
     const preview = await resolveDraftAttachmentPreview(attachment, asset, seq, true)
+    if (!isDraftScopeCurrent(scope)) return
     if (preview?.status === 'ready') {
       setAttachmentFeedback('success', t('errors.attachment.previewRefreshed'))
     } else {
       setAttachmentFeedback('warning', t('errors.attachment.previewRetryNoReady'))
     }
     await refreshDraftAttachmentViewModels()
+    if (!isDraftScopeCurrent(scope)) return
     selectedDraftAttachmentAssetId.value = assetId
   }
 
@@ -5186,27 +5583,33 @@ export function useAppChatAppLogic() {
       setAttachmentFeedback('warning', t('filePipeline.attachment.details.retrySnapshotUnavailable'))
       return
     }
-    const convoId = String(activeConvoId.value ?? attachment.conversationId ?? '').trim()
-    if (!convoId) {
+    const action = captureAttachmentMutationAction()
+    const scope = action?.identity.scope
+    const convoId = scope?.convoId
+    if (!action || !scope || !convoId || convoId !== attachment.conversationId) {
       setAttachmentFeedback('warning', t('errors.attachment.draftLocked'))
       return
     }
     try {
-      const current = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
-      const replacement = await importGenerationV2ComposerUrlFile({ conversationId: convoId,
-        expectedRevision: current.revision, url: retryUrl })
+      await prepareAttachmentMutationAction(action)
+      const current = await readScopedComposerDraft(scope)
+      const replacement = await mutateAttachmentAction(action, latest => importGenerationV2ComposerUrlFile({ conversationId: convoId,
+        expectedRevision: latest.revision, url: retryUrl }))
       const previous = current.attachments.find((item) =>
         (item.kind === 'managed_file' ? item.assetId : item.referenceId) === previousAssetId)
       if (!previous) throw new Error('GENERATION_V2_DRAFT_ATTACHMENT_NOT_FOUND')
-      generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
-        expectedRevision: replacement.revision,
-        assetRevisionId: previous.kind === 'managed_file' ? previous.assetRevisionId : previous.referenceRevision })
+      await mutateAttachmentAction(action, latest => removeGenerationV2ComposerAttachment({ conversationId: convoId,
+        expectedRevision: latest.revision,
+        assetRevisionId: previous.kind === 'managed_file' ? previous.assetRevisionId : previous.referenceRevision }))
+      if (getActiveDraftScope()?.convoId !== scope.convoId) return
       await refreshDraftAttachmentViewModels()
+      if (!isDraftScopeCurrent(scope)) return
       const replacementAsset = replacement.attachments.find((item) => item.kind === 'managed_file' && item.sourceKind === 'url_import')
       selectedDraftAttachmentAssetId.value = replacementAsset?.kind === 'managed_file' ? replacementAsset.assetId : null
       setAttachmentFeedback('success', t('filePipeline.attachment.details.retrySnapshotReady'))
-    } catch {
+    } catch (error) {
+      if (!isDraftScopeCurrent(scope)) return
+      if (isStaleAttachmentActionError(error)) { reportAttachmentActionFailure(action, error); return }
       setAttachmentFeedback('warning', t('filePipeline.attachment.details.retrySnapshotStillBlocked'))
     }
   }
@@ -6242,13 +6645,18 @@ export function useAppChatAppLogic() {
   async function onSend() {
     if (sendOrchestrationLocked || isRunning.value || isDraftInteractionLocked.value) return
     if (!draft.value.trim() && draftAttachmentRecords.value.length === 0) return
+    const scope = getActiveDraftScope()
+    if (!scope) return
     sendOrchestrationLocked = true
+    submittingComposerConversationIds.value = new Set([...submittingComposerConversationIds.value, scope.convoId])
     try {
-      await flushDraftPersistence({ failOnError: true })
+      await flushDraftPersistence({ failOnError: true, allowDuringSubmit: true })
+      if (!isDraftScopeCurrent(scope)) return
       await onSendUnlocked()
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : 'send_orchestration_failed'
     } finally {
+      submittingComposerConversationIds.value = new Set([...submittingComposerConversationIds.value].filter(id => id !== scope.convoId))
       sendOrchestrationLocked = false
     }
   }
@@ -6840,8 +7248,10 @@ export function useAppChatAppLogic() {
   }
 
   async function onSendUnlocked() {
-    if (isRunning.value || isDraftInteractionLocked.value) return
+    if (isRunning.value || isAttachmentConfirmationActive.value || activeDraftConflict.value) return
     const text = draft.value.trim()
+    const scope = getActiveDraftScope()
+    if (!scope) return
     if (!text && draftAttachmentRecords.value.length === 0) return
     const selection = canonicalSendSelection()
     if (!selection) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
@@ -6851,8 +7261,9 @@ export function useAppChatAppLogic() {
       throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
     }
     await flushDraftPersistence({ failOnError: true })
-    const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
-      ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
+    if (!isDraftScopeCurrent(scope)) return
+    const composerDraft = await readScopedComposerDraft(scope)
+    if (!isDraftScopeCurrent(scope) || pendingDraftConflicts.value.has(scope.convoId)) return
     const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
     const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
       : providerId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
@@ -6864,6 +7275,7 @@ export function useAppChatAppLogic() {
     await persistCurrentGenerationV2SemanticLayer(providerId, view.conversationId)
     const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
       ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
+    if (!isDraftScopeCurrent(scope)) return
     const commandModelId = modelId
     const operationId = crypto.randomUUID()
     const sendingFromTemplate = view.conversationId === systemTemplateSnapshot.value?.conversation.id
@@ -6886,27 +7298,27 @@ export function useAppChatAppLogic() {
     if (sendingFromTemplate) {
       systemTemplateSnapshot.value = await getSystemChatTemplate()
       await reloadGenerationV2ConversationAuthorities(systemTemplateSnapshot.value.conversation.id)
-      activeConvoId.value = view.conversationId
-      activeBranchId.value = view.branchId
-      projectsOnlyWorkspace.value = false
+      if (isDraftScopeCurrent(scope)) projectsOnlyWorkspace.value = false
       await refreshConvos()
       await refreshBranchesForActiveConvo()
     }
     try {
-      generationV2ComposerDraft.value = await clearCommittedGenerationV2ComposerDraft({
+      const cleared = await mutateScopedComposerDraft(scope, () => clearCommittedGenerationV2ComposerDraft({
         conversationId: view.conversationId, expectedRevision: composerDraft.revision,
-      })
-      draft.value = generationV2ComposerDraft.value.draftText
-      await refreshDraftAttachmentViewModels()
+      }))
+      if (publishCommittedComposerDraft(scope, composerDraft, cleared)) await refreshDraftAttachmentViewModels()
     } catch (error) {
       if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_SEND_DRAFT_CLEAR_FAILED')
+      retainScopedComposerFailure(scope, error)
+      return
     }
-    await refreshRenderableBranchView(view.branchId)
+    if (isDraftScopeCurrent(scope)) await refreshRenderableBranchView(view.branchId)
     notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
   }
 
   async function onForkFromHead() {
     if (isRunning.value) return
+    if (activeConvoId.value && submittingComposerConversationIds.value.has(activeConvoId.value)) return
     const convoId = activeConvoId.value
     const branch = activeBranch.value
     if (!convoId || !branch?.id || !branch.headMessageId) return
@@ -6914,7 +7326,7 @@ export function useAppChatAppLogic() {
     try {
       const created = await forkGenerationV2Branch(branch.id, branch.headMessageId, null)
       await refreshBranchesForActiveConvo()
-      activeBranchId.value = created.branchId
+      if (activeConvoId.value !== convoId || !await transitionToBranch(created.branchId)) return
       resetCandidatesCache()
       await refreshRenderableBranchView(created.branchId)
     } catch (err: any) {
@@ -6924,16 +7336,20 @@ export function useAppChatAppLogic() {
 
   async function onDeleteActiveBranch() {
     if (isRunning.value) return
+    if (activeConvoId.value && submittingComposerConversationIds.value.has(activeConvoId.value)) return
     const convoId = activeConvoId.value
     const bid = activeBranchId.value
     if (!convoId || !bid) return
     if (branches.value.length <= 1) return
 
     try {
+      const scope = getActiveDraftScope()
+      if (scope && questionEditSession.value) await cancelEditForScope(scope, questionEditSession.value)
       await deleteGenerationV2Branch(bid)
+      if (activeConvoId.value !== convoId || activeBranchId.value !== bid) return
       await refreshBranchesForActiveConvo()
       const next = branches.value[0] ?? (await ensureGenerationV2BranchForConversation(convoId))
-      activeBranchId.value = next.id
+      if (!await transitionToBranch(next.id)) return
       resetCandidatesCache()
       await refreshRenderableBranchView(next.id)
     } catch (err: any) {
@@ -7017,7 +7433,7 @@ export function useAppChatAppLogic() {
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
         activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
       if (shouldFollow) {
-        activeBranchId.value = result.branch.branchId
+        if (!await transitionToBranch(result.branch.branchId)) return
         resetCandidatesCache()
         await refreshRenderableBranchView(result.branch.branchId)
       }
@@ -7033,25 +7449,22 @@ export function useAppChatAppLogic() {
     if (!qid) return
     const meta = messageMetaById.value.get(qid)
     if (!meta || meta.role !== 'user') return
-    const convoId = String(activeConvoId.value ?? '').trim()
-    if (!convoId) return
+    const scope = getActiveDraftScope()
+    if (!scope?.branchId || questionEditSession.value) return
+    const turn = generationV2BranchView.value?.turns.find((candidate) => candidate.questionId === qid)
+    const chosen = turn?.answers.find((answer) => answer.answerRootId === turn.chosenAnswerRootId)
+    if (!turn || !chosen || generationV2BranchView.value?.branchId !== scope.branchId) return
     try {
       await flushDraftPersistence({ failOnError: true })
-      const previousDraft = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
-      const turn = generationV2BranchView.value?.turns.find((candidate) => candidate.questionId === qid)
-      const chosen = turn?.answers.find((answer) => answer.answerRootId === turn.chosenAnswerRootId)
-      if (!turn || !chosen) throw new Error('GENERATION_V2_EDIT_TARGET_STALE')
-      const cloned = await replaceGenerationV2ComposerDraftFromAnswerSnapshot({ conversationId: convoId,
-        expectedRevision: previousDraft.revision, questionId: qid, answerRootId: chosen.answerRootId, draftText: turn.questionBody })
-      generationV2ComposerDraft.value = cloned
-      applyDraftPersistenceState({ draftMode: cloned.draftMode, editingSourceMessageId: cloned.editingSourceQuestionId })
-      draft.value = cloned.draftText
+      const cloned = await mutateScopedComposerDraft(scope, current =>
+        replaceGenerationV2ComposerDraftFromAnswerSnapshot({ conversationId: scope.convoId, branchId: scope.branchId!,
+          expectedRevision: current.revision, questionId: qid, answerRootId: chosen.answerRootId, draftText: turn.questionBody }))
+      if (!publishComposerDraft(scope, cloned, true)) return
       editRestoredDraftAttachmentAssetIds.value = new Set(cloned.attachments.map((attachment) =>
         attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId))
       await refreshDraftAttachmentViewModels()
-      questionEditSession.value = { questionId: qid, previousDraft }
     } catch (err) {
+      if (!isDraftScopeCurrent(scope)) return
       editRestoredDraftAttachmentAssetIds.value = new Set()
       questionEditSession.value = null
       setAttachmentFeedback('error', err instanceof Error ? err.message : 'Failed to open edit draft.')
@@ -7061,24 +7474,29 @@ export function useAppChatAppLogic() {
   async function closeQuestionEdit() {
     if (isDraftInteractionLocked.value) return
     const session = questionEditSession.value
-    questionEditSession.value = null
-    if (!session) return
+    const scope = getActiveDraftScope()
+    if (!scope || !session) return
     try {
-      const current = generationV2ComposerDraft.value?.conversationId === session.previousDraft.conversationId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(session.previousDraft.conversationId)
-      generationV2ComposerDraft.value = await replaceGenerationV2ComposerDraft({
-        conversationId: session.previousDraft.conversationId, expectedRevision: current.revision,
-        draftText: session.previousDraft.draftText, draftMode: session.previousDraft.draftMode,
-        editingSourceQuestionId: session.previousDraft.editingSourceQuestionId,
-        attachments: projectGenerationV2ComposerAttachments(session.previousDraft),
-      })
-      draft.value = generationV2ComposerDraft.value.draftText
-      applyDraftPersistenceState({ draftMode: generationV2ComposerDraft.value.draftMode,
-        editingSourceMessageId: generationV2ComposerDraft.value.editingSourceQuestionId })
-      await refreshDraftAttachmentViewModels()
+      await cancelEditForScope(scope, session)
     } catch (err) {
+      if (!isDraftScopeCurrent(scope)) return
       setAttachmentFeedback('error', err instanceof Error ? err.message : 'Failed to restore draft after cancel.')
     }
+  }
+
+  async function cancelEditForScope(scope: DraftScope, session: GenerationV2ComposerEditSession) {
+    if (scope.convoId !== session.conversationId || scope.branchId !== session.branchId) {
+      throw new Error('GENERATION_V2_EDIT_SCOPE_MISMATCH')
+    }
+    clearDraftPersistenceTimer()
+    const restored = await mutateScopedComposerDraft(scope, current => cancelGenerationV2ComposerEditSession({
+      conversationId: scope.convoId, branchId: session.branchId, expectedRevision: current.revision,
+      questionId: session.questionId, answerRootId: session.answerRootId,
+      openedDraftRevision: session.openedDraftRevision,
+    }))
+    if (!publishComposerDraft(scope, restored, true)) return
+    editRestoredDraftAttachmentAssetIds.value = new Set()
+    await refreshDraftAttachmentViewModels()
   }
 
   async function submitQuestionEdit() {
@@ -7086,18 +7504,19 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
 
-    const convoId = activeConvoId.value
+    const scope = getActiveDraftScope()
+    const convoId = scope?.convoId
     const branch = activeBranch.value
     const editSession = questionEditSession.value
-    if (!convoId || !branch?.id || !editSession) return
+    if (!scope || !convoId || !branch?.id || !editSession || editSession.conversationId !== convoId ||
+        editSession.branchId !== scope.branchId || branch.id !== editSession.branchId) return
 
     const oldQuestionId = String(editSession.questionId ?? '').trim()
     const newText = draft.value.trim()
     if (!oldQuestionId || !newText) return
 
     const v2View = generationV2BranchView.value
-    const sourceTurn = v2View?.turns.find((turn) => turn.questionId === oldQuestionId) ?? null
-    if (!v2View || v2View.branchId !== branch.id || !sourceTurn || !v2View.headMessageId) {
+    if (!v2View || v2View.branchId !== branch.id || !v2View.headMessageId) {
       loadError.value = 'GENERATION_V2_EDIT_TARGET_STALE'
       return
     }
@@ -7107,20 +7526,24 @@ export function useAppChatAppLogic() {
     const v2Route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
       : v2ProviderId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
         ? { kind: 'openrouter_images' } : generationV2RouteForProvider(v2ProviderId, v2ModelId)
+    submittingComposerConversationIds.value = new Set([...submittingComposerConversationIds.value, convoId])
     try {
-      await flushDraftPersistence({ failOnError: true })
-      const composerDraft = generationV2ComposerDraft.value?.conversationId === convoId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      await flushDraftPersistence({ failOnError: true, allowDuringSubmit: true })
+      if (!isDraftScopeCurrent(scope)) return
+      const composerDraft = await readScopedComposerDraft(scope)
+      if (!isDraftScopeCurrent(scope) || pendingDraftConflicts.value.has(scope.convoId) ||
+          !sameComposerEditIdentity(composerEditIdentity(composerDraft), editSession)) return
       const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
       await persistCurrentGenerationV2SemanticLayer(v2ProviderId, v2View.conversationId)
       const endpointProfileId = v2Route.kind === 'lmstudio_openresponses' || v2Route.kind === 'generic_local_openai_chat' || v2Route.kind === 'ollama_chat'
         ? await resolveGenerationV2LocalProfileForSend(v2Route, v2ModelId) : null
+      if (!isDraftScopeCurrent(scope)) return
       const operationId = crypto.randomUUID()
       const sourceNavigationRevision = navigationRevision.value
       const sourceConversationId = v2View.conversationId
       const sourceBranchId = v2View.branchId
       const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
-        sourceQuestionId: oldQuestionId, sourceAnswerRootId: sourceTurn.chosenAnswerRootId,
+        sourceQuestionId: oldQuestionId, sourceAnswerRootId: editSession.answerRootId,
         expectedHeadMessageId: v2View.headMessageId, modelId: v2ModelId, commandAttachments }
       const capabilityRevision = capabilityRevisionForCurrentProjection({ route: v2Route, providerId: v2ProviderId,
         modelId: common.modelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
@@ -7135,26 +7558,29 @@ export function useAppChatAppLogic() {
         if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
         throw new Error(result.code)
       }
-      questionEditSession.value = null
       try {
-        generationV2ComposerDraft.value = await clearCommittedGenerationV2ComposerDraft({ conversationId: convoId,
-          expectedRevision: composerDraft.revision })
-        draft.value = generationV2ComposerDraft.value.draftText
-        await refreshDraftAttachmentViewModels()
+        const cleared = await mutateScopedComposerDraft(scope, () => clearCommittedGenerationV2ComposerDraft({
+          conversationId: convoId, expectedRevision: composerDraft.revision }))
+        if (publishCommittedComposerDraft(scope, composerDraft, cleared)) await refreshDraftAttachmentViewModels()
       } catch (error) {
         if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_EDIT_RESEND_DRAFT_CLEAR_FAILED')
+        retainScopedComposerFailure(scope, error)
+        return
       }
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
         activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
       if (shouldFollow) {
-        activeBranchId.value = result.branch.branchId
+        if (!await transitionToBranch(result.branch.branchId, true)) return
         resetCandidatesCache()
         await refreshRenderableBranchView(result.branch.branchId)
       }
       notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
     } catch (error) {
+      if (!isDraftScopeCurrent(scope)) return
       loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_EDIT_RESEND_FAILED'
+    } finally {
+      submittingComposerConversationIds.value = new Set([...submittingComposerConversationIds.value].filter(id => id !== convoId))
     }
   }
 
@@ -7278,7 +7704,7 @@ export function useAppChatAppLogic() {
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
         activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
       if (shouldFollow) {
-        activeBranchId.value = result.branch.branchId
+        if (!await transitionToBranch(result.branch.branchId)) return
         resetCandidatesCache()
         await refreshRenderableBranchView(result.branch.branchId)
       }
@@ -7366,7 +7792,8 @@ export function useAppChatAppLogic() {
         activeBranchId.value = template.conversation.branchId
       }
       if (defaultWorkspace.conversationId !== template.conversation.id ||
-          defaultWorkspace.branchId !== template.conversation.branchId) {
+          defaultWorkspace.branchId !== template.conversation.branchId ||
+          defaultWorkspace.projectId !== template.conversation.projectId) {
         throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_STATE_INVALID')
       }
       await refreshGlobalReasoningPrefs()
@@ -7710,6 +8137,11 @@ export function useAppChatAppLogic() {
     onCreateConvo,
     onResetSystemTemplate,
     refreshConvos,
+    onRefreshWorkspace,
+    activeDraftConflict,
+    draftConflictReloadConfirmation,
+    cancelDraftConflictReload,
+    confirmDraftConflictReload,
     loadMoreConvos,
     hasMoreConversations,
     onRenameConvo,

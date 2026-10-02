@@ -19,22 +19,25 @@ export function createGenerationV2TestBridge() {
   const projectId = 'project:test'
   const conversationId = 'c1'
   const branchId = 'branch:c1'
-  let draft: {
+  type TestDraft = {
     conversationId: string
     draftText: string
     draftMode: 'compose' | 'edit'
     editingSourceQuestionId: string | null
+    editSession: any
     revision: number
     updatedAtMs: number
     attachments: unknown[]
-  } = {
-    conversationId,
-    draftText: '',
-    draftMode: 'compose',
-    editingSourceQuestionId: null,
-    revision: 0,
-    updatedAtMs: now,
-    attachments: [],
+  }
+  const drafts = new Map<string, TestDraft>()
+  const draftFor = (id: string) => {
+    let current = drafts.get(id)
+    if (!current) {
+      current = { conversationId: id, draftText: '', draftMode: 'compose', editingSourceQuestionId: null,
+        editSession: null, revision: 0, updatedAtMs: now, attachments: [] }
+      drafts.set(id, current)
+    }
+    return current
   }
   let routePreference: any = null
   const template = () => ({
@@ -49,7 +52,7 @@ export function createGenerationV2TestBridge() {
       systemKey: 'new_template' as const,
       templateRevision: 0,
     },
-    draft,
+    draft: draftFor(conversationId),
     settings: {
       startupNavigation: 'open_new' as const,
       startupTemplateReset: { modelConfig: false, draftAttachments: false },
@@ -72,16 +75,20 @@ export function createGenerationV2TestBridge() {
     clear: vi.fn(async () => ({ ok: true as const })),
   })
   const replaceDraft = (input: any) => {
-    draft = {
-      ...draft,
-      draftText: String(input?.draftText ?? draft.draftText),
+    const current = draftFor(String(input?.conversationId ?? conversationId))
+    if (input?.expectedRevision !== current.revision) return { ok: false as const, code: 'GENERATION_V2_DRAFT_REVISION_CONFLICT' }
+    const next: TestDraft = {
+      ...current,
+      draftText: String(input?.draftText ?? current.draftText),
       draftMode: input?.draftMode === 'edit' ? 'edit' : 'compose',
       editingSourceQuestionId: input?.editingSourceQuestionId ?? null,
-      revision: draft.revision + 1,
-      updatedAtMs: draft.updatedAtMs + 1,
-      attachments: Array.isArray(input?.attachments) ? input.attachments : draft.attachments,
+      editSession: input?.draftMode === 'edit' ? (input.editSession ?? current.editSession) : null,
+      revision: current.revision + 1,
+      updatedAtMs: current.updatedAtMs + 1,
+      attachments: Array.isArray(input?.attachments) ? input.attachments : current.attachments,
     }
-    return ok(draft)
+    drafts.set(current.conversationId, next)
+    return ok(next)
   }
 
   return {
@@ -256,19 +263,47 @@ export function createGenerationV2TestBridge() {
       setLastFormalConversation: vi.fn(async () => ok({})),
     },
     composer: {
-      get: vi.fn(async () => ok(draft)),
-      updateText: vi.fn(async (input: unknown) => replaceDraft(input)),
+      get: vi.fn(async (id: string) => ok(draftFor(id))),
+      updateText: vi.fn(async (input: any) => {
+        const session = draftFor(input.conversationId).editSession
+        const identity = input.editSessionIdentity
+        if (input.draftMode === 'edit' && (!session || !identity || session.branchId !== identity.branchId ||
+            session.questionId !== identity.questionId || session.answerRootId !== identity.answerRootId ||
+            session.openedDraftRevision !== identity.openedDraftRevision)) {
+          return { ok: false as const, code: 'GENERATION_V2_EDIT_SESSION_MISMATCH' }
+        }
+        return replaceDraft(input)
+      }),
       replace: vi.fn(async (input: unknown) => replaceDraft(input)),
-      replaceFromAnswerSnapshot: vi.fn(async (input: unknown) => replaceDraft(input)),
-      clearCommitted: vi.fn(async () => { draft = { ...draft, draftText: '', draftMode: 'compose',
-        editingSourceQuestionId: null, attachments: [], revision: draft.revision + 1 }; return ok(draft) }),
-      importLocal: vi.fn(async () => ok(draft)), addUrlReference: vi.fn(async () => ok(draft)),
-      importUrlFile: vi.fn(async () => ok(draft)), removeAttachment: vi.fn(async () => ok(draft)),
+      replaceFromAnswerSnapshot: vi.fn(async (input: any) => {
+        const current = draftFor(input.conversationId)
+        if (current.editSession) return { ok: false as const, code: 'GENERATION_V2_EDIT_SESSION_ALREADY_OPEN' }
+        return replaceDraft({ ...input, draftMode: 'edit', editingSourceQuestionId: input.questionId,
+          editSession: { schemaVersion: 1, conversationId: input.conversationId, branchId: input.branchId,
+            questionId: input.questionId, answerRootId: input.answerRootId, openedDraftRevision: current.revision + 1,
+            previousDraft: { draftText: current.draftText, attachments: current.attachments } }, attachments: [] })
+      }),
+      cancelEditSession: vi.fn(async (input: any) => {
+        const current = draftFor(input.conversationId)
+        const session = current.editSession
+        if (!session || session.branchId !== input.branchId || session.questionId !== input.questionId ||
+            session.answerRootId !== input.answerRootId || session.openedDraftRevision !== input.openedDraftRevision) {
+          return { ok: false as const, code: 'GENERATION_V2_EDIT_SESSION_MISMATCH' }
+        }
+        return replaceDraft({ ...input, draftText: session.previousDraft.draftText,
+          draftMode: 'compose', editingSourceQuestionId: null, attachments: session.previousDraft.attachments })
+      }),
+      clearCommitted: vi.fn(async (input: any) => replaceDraft({ ...input, draftText: '', draftMode: 'compose',
+        editingSourceQuestionId: null, attachments: [] })),
+      importLocal: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
+      addUrlReference: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
+      importUrlFile: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
+      removeAttachment: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
       readPreview: vi.fn(async () => ok({ status: 'missing', dataUrl: null, mime: 'application/octet-stream' })),
       dfcOptions: vi.fn(async () => ok({ status: 'ready', options: [] })),
-      dfcSelect: vi.fn(async () => ok(draft)),
+      dfcSelect: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
       dfcPreview: vi.fn(async () => ok({ status: 'unavailable', preview: null })),
-      retryFileTypeDetection: vi.fn(async () => ok(draft)),
+      retryFileTypeDetection: vi.fn(async (input: any) => ok(draftFor(input.conversationId))),
       onFileTypeDetectionUpdated: vi.fn(() => () => undefined),
     },
   }

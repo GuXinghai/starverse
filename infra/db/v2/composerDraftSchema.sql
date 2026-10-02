@@ -159,3 +159,63 @@ BEGIN SELECT RAISE(ABORT, 'GENERATION_V2_URL_IMPORT_PROVENANCE_IMMUTABLE'); END;
 CREATE TRIGGER IF NOT EXISTS trg_managed_url_import_provenance_v2_immutable_delete
 BEFORE DELETE ON managed_url_import_provenance_v2
 BEGIN SELECT RAISE(ABORT, 'GENERATION_V2_URL_IMPORT_PROVENANCE_IMMUTABLE'); END;
+
+-- Scoped composer edit session V2: one aggregate with its draft.
+CREATE TABLE IF NOT EXISTS composer_edit_session_v2 (
+  conversation_id TEXT PRIMARY KEY REFERENCES composer_draft_v2(conversation_id) ON DELETE CASCADE,
+  branch_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  answer_root_id TEXT NOT NULL,
+  opened_draft_revision INTEGER NOT NULL CHECK (opened_draft_revision BETWEEN 1 AND 9007199254740991),
+  previous_compose_snapshot_json TEXT NOT NULL CHECK (
+    length(CAST(previous_compose_snapshot_json AS BLOB)) <= 33554432
+    AND json_valid(previous_compose_snapshot_json)
+    AND json_type(previous_compose_snapshot_json) = 'object'
+  ),
+  FOREIGN KEY (branch_id, conversation_id) REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id, conversation_id) REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE,
+  FOREIGN KEY (answer_root_id, conversation_id) REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_composer_edit_session_v2_validate_insert
+AFTER INSERT ON composer_edit_session_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM branch_v2 AS branch
+    JOIN message_v2 AS question ON question.message_id = NEW.question_id AND question.conversation_id = branch.conversation_id
+    JOIN message_v2 AS answer ON answer.message_id = NEW.answer_root_id AND answer.conversation_id = branch.conversation_id
+    WHERE branch.branch_id = NEW.branch_id AND branch.conversation_id = NEW.conversation_id AND branch.deleted_at_ms IS NULL
+      AND question.role = 'user' AND question.status = 'completed'
+      AND answer.role = 'assistant' AND answer.answer_root_id = answer.message_id AND answer.question_id = question.message_id
+  ) THEN RAISE(ABORT, 'GENERATION_V2_DRAFT_EDIT_SCOPE_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_composer_edit_session_v2_immutable_update
+BEFORE UPDATE ON composer_edit_session_v2
+BEGIN SELECT RAISE(ABORT, 'GENERATION_V2_DRAFT_EDIT_SCOPE_IMMUTABLE'); END;
+
+-- These rows retain immutable previous-compose references while edit rows replace the draft.
+CREATE TABLE IF NOT EXISTS composer_edit_session_attachment_v2 (
+  conversation_id TEXT NOT NULL REFERENCES composer_edit_session_v2(conversation_id) ON DELETE CASCADE,
+  attachment_order INTEGER NOT NULL CHECK (attachment_order BETWEEN 0 AND 65535),
+  source_asset_revision_id TEXT REFERENCES asset_revision_v2(asset_revision_id) ON DELETE RESTRICT,
+  effective_asset_revision_id TEXT REFERENCES asset_revision_v2(asset_revision_id) ON DELETE RESTRICT,
+  url_reference_id TEXT,
+  url_reference_revision TEXT,
+  PRIMARY KEY (conversation_id, attachment_order),
+  FOREIGN KEY (url_reference_id, url_reference_revision)
+    REFERENCES url_attachment_reference_v2(reference_id, reference_revision) ON DELETE RESTRICT,
+  CHECK ((source_asset_revision_id IS NOT NULL AND url_reference_id IS NULL AND url_reference_revision IS NULL)
+    OR (source_asset_revision_id IS NULL AND effective_asset_revision_id IS NULL
+      AND url_reference_id IS NOT NULL AND url_reference_revision IS NOT NULL))
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_composer_edit_session_v2_retain_asset
+BEFORE UPDATE OF retired_at_ms ON file_asset_v2
+WHEN NEW.retired_at_ms IS NOT NULL AND EXISTS (
+  SELECT 1 FROM composer_edit_session_attachment_v2 AS retained
+  JOIN asset_revision_v2 AS revision ON revision.asset_id = OLD.asset_id
+  WHERE retained.source_asset_revision_id = revision.asset_revision_id
+    OR retained.effective_asset_revision_id = revision.asset_revision_id
+)
+BEGIN SELECT RAISE(ABORT, 'GENERATION_V2_DRAFT_EDIT_SNAPSHOT_ASSET_RETAINED'); END;

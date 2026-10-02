@@ -22,7 +22,7 @@ const snapshot = Object.freeze({
     systemKey: 'new_template' as const, templateRevision: 0,
   }),
   draft: Object.freeze({ conversationId: 'conversation:new-template', draftText: '', draftMode: 'compose' as const,
-    editingSourceQuestionId: null, revision: 0, updatedAtMs: 1, attachments: Object.freeze([]) }),
+    editingSourceQuestionId: null, editSession: null, revision: 0, updatedAtMs: 1, attachments: Object.freeze([]) }),
   settings,
 })
 

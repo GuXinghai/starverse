@@ -13,6 +13,13 @@ const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
 const MODEL_CATALOG_FRAGMENT_ID = 'model_catalog_v2'
 const GENERATION_EXECUTION_FRAGMENT_ID = 'generation_execution_v1'
+const COMPOSER_EDIT_SESSION_MARKER = '-- Scoped composer edit session V2: one aggregate with its draft.'
+// The complete reviewed 4ac2de5 predecessor bundle, including codec digests.
+const COMPOSER_EDIT_SESSION_PREDECESSOR_DIGESTS = Object.freeze([
+  '95267d0affa2648b9ebb568b4ed76da2c8404104f78801dd3b228135b8ff4681', // committed LF assets
+  'dbc731ea21ed71aacd13963bcb0be554dc4a03fbdbe4d5fc18a2dfa1ae74595d', // CRLF serialized assets
+  'f37bcbb510e7b7a20d61fa30601dd36fb8cbe2d58c8131b1c25e14e103aea51f', // reviewed mixed-ending Windows checkout
+])
 const LEGACY_MODEL_EVIDENCE_NAMESPACES = Object.freeze([
   Object.freeze({ setTable: 'deepseek_stable_model_evidence_sets', clockTable: 'deepseek_stable_model_evidence_generation_clock',
     setDeleteTrigger: 'deepseek_stable_model_evidence_no_delete',
@@ -399,6 +406,70 @@ export function verifyInstalledGenerationV2SchemaInActiveTransaction(
     digestFragments(fragments),
     extractExpectedObjects(fragments),
   )
+}
+
+/** Only the reviewed, intact pre-edit-session bundle can receive this additive upgrade. */
+export function upgradeComposerEditSessionSchemaInActiveTransaction(
+  db: BetterSqlite3.Database,
+  rootPath: string,
+  validatePredecessorIdentity: (bundle: GenerationV2SchemaBundle) => void,
+): void {
+  if (!db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+  if (db.pragma('foreign_keys', { simple: true }) !== 1) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  const fragments = loadFragments(rootPath)
+  const schemaDigest = digestFragments(fragments)
+  const manifest = db.prepare(`SELECT schema_digest FROM generation_v2_schema_manifest WHERE manifest_id=?`)
+    .get(MANIFEST_ID) as { schema_digest?: unknown } | undefined
+  if (manifest?.schema_digest === schemaDigest) return
+  const predecessorDigest = manifest?.schema_digest
+  if (typeof predecessorDigest !== 'string' || !COMPOSER_EDIT_SESSION_PREDECESSOR_DIGESTS.includes(predecessorDigest)) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
+  }
+  const composer = fragments.find(fragment => fragment.id === 'composer_draft_v1')
+  const markerOffset = composer?.sql.indexOf(COMPOSER_EDIT_SESSION_MARKER) ?? -1
+  if (!composer || markerOffset < 0) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
+  // Appending the reviewed objects adds one blank line after the original bytes.
+  const predecessorSql = composer.sql.slice(0, markerOffset).replace(/\r?\n$/u, '')
+  const predecessor = fragments.map(fragment => {
+    const sql = (fragment === composer ? predecessorSql : fragment.sql).replace(/\r\n/gu, '\n')
+    return Object.freeze({ ...fragment, sql, bytes: Buffer.from(sql, 'utf8') })
+  })
+  // Only the committed canonical predecessor is a source of old object SQL.
+  // Historical raw serialization is accepted through the three pinned digests,
+  // never by treating an arbitrary old manifest as a normalized predecessor.
+  if (digestFragments(predecessor) !== COMPOSER_EDIT_SESSION_PREDECESSOR_DIGESTS[0]) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
+  }
+  const predecessorBundle = verifyLoadedGenerationV2Schema(db, predecessor, predecessorDigest, extractExpectedObjects(predecessor))
+  const appMeta = db.prepare('SELECT data_epoch,schema_digest FROM app_meta_v2 WHERE singleton_id=1')
+    .get() as { data_epoch?: unknown; schema_digest?: unknown } | undefined
+  if (appMeta?.data_epoch !== 2 || appMeta.schema_digest !== predecessorDigest) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const expectedDb = new BetterSqlite3(':memory:')
+  try {
+    expectedDb.pragma('foreign_keys = ON')
+    for (const fragment of predecessor) expectedDb.exec(fragment.sql)
+    expectedDb.exec(MANIFEST_TABLE_SQL)
+    if (!schemaRowsEqual(installedSchemaRows(db), installedSchemaRows(expectedDb))) {
+      throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+    }
+  } finally { expectedDb.close() }
+  validatePredecessorIdentity(predecessorBundle)
+  db.exec(composer.sql.slice(markerOffset))
+  // Legacy edits never persisted their branch or previous compose snapshot.
+  // Retain all current text/attachments; do not invent missing edit ownership.
+  db.prepare(`UPDATE composer_draft_v2 SET draft_mode='compose',editing_source_question_id=NULL,
+    revision=revision+1 WHERE draft_mode='edit'`).run()
+  const projection = readInstalledProjection(db, extractExpectedObjects(fragments), true)
+  db.prepare(`UPDATE generation_v2_schema_manifest SET schema_digest=?,object_projection_digest=? WHERE manifest_id=?`)
+    .run(schemaDigest, projection.digest, MANIFEST_ID)
+  const identityTrigger = db.prepare(`SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_app_meta_v2_immutable'`)
+    .get() as {sql:string}
+  db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+  db.prepare('UPDATE app_meta_v2 SET schema_digest=? WHERE singleton_id=1').run(schemaDigest)
+  db.exec(identityTrigger.sql)
+  verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, extractExpectedObjects(fragments))
 }
 
 export function installGenerationV2SchemaInActiveTransaction(

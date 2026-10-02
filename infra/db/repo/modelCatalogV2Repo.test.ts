@@ -105,6 +105,35 @@ describe('ModelCatalogV2Repo', () => {
     } finally { db.close() }
   })
 
+  it('round-trips redacted catalog failure facts without replacing the last good snapshot', () => {
+    const db = createDb()
+    const repo = new ModelCatalogV2Repo(db, () => 200)
+    try {
+      repo.beginSync(scope, 'attempt:privacy-active')
+      repo.commitSync({ scope, attemptId: 'attempt:privacy-active', responseDigest: '6'.repeat(64), observedAtMs: 100,
+        applyMode: 'automatic', items: [catalogItem('known-good')] })
+      repo.beginSync(scope, 'attempt:privacy')
+      const fact = createProviderFailureV2({
+        context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: scope.providerKey },
+          contractId: scope.operationContractId, operationId: 'attempt:privacy', requestSequence: 1 },
+        httpStatus: 401, httpStatusText: 'Unauthorized',
+        bodyText: JSON.stringify({ error: { code: 'invalid_api_key', type: 'authentication_error', request_id: 'req-catalog-safe',
+          message: 'x-goog-api-key: AUDIT_DUMMY_MESSAGE See https://docs.example.test/api-key/docs',
+          nested: [{ 'X-Goog-API-KEY': 'AUDIT_DUMMY_GOOGLE', 'x-api-key': 'AUDIT_DUMMY_HEADER' }] } }),
+        headers: { 'retry-after': '30' },
+      })
+      repo.failSync(scope, 'attempt:privacy', fact)
+      const persisted = db.prepare('SELECT last_failure_json FROM model_catalog_scope_v2').get() as { last_failure_json: string }
+      expect(persisted.last_failure_json).not.toContain('AUDIT_DUMMY_')
+      const reopened = new ModelCatalogV2Repo(db, () => 300)
+      expect(reopened.readStatus(scope)?.lastFailure).toEqual(fact)
+      expect(reopened.readStatus(scope)?.lastFailure?.providerError).toMatchObject({ code: 'invalid_api_key',
+        type: 'authentication_error', requestId: 'req-catalog-safe', retryAfterMs: 30_000,
+        message: 'x-goog-api-key: [redacted] See https://docs.example.test/api-key/docs' })
+      expect(reopened.readActive(scope)?.items).toEqual([catalogItem('known-good')])
+    } finally { db.close() }
+  })
+
   it('persists a bounded near-limit raw ProviderFailure without replacing its provider facts', () => {
     const db = createDb()
     const repo = new ModelCatalogV2Repo(db, () => 200)

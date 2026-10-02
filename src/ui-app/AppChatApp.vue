@@ -44,7 +44,11 @@ const {
   onSelectConvo,
   onCreateConvo,
   onResetSystemTemplate,
-  refreshConvos,
+  onRefreshWorkspace,
+  activeDraftConflict,
+  draftConflictReloadConfirmation,
+  cancelDraftConflictReload,
+  confirmDraftConflictReload,
   loadMoreConvos,
   hasMoreConversations,
   onRenameConvo,
@@ -443,7 +447,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @deleteProject="onDeleteProject"
           @select="onSelectConvo"
           @create="onCreateConvo"
-          @refresh="refreshConvos"
+          @refresh="onRefreshWorkspace"
           @loadMore="loadMoreConvos"
           @rename="onRenameConvo"
           @delete="onDeleteConvo"
@@ -454,6 +458,16 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       </template>
 
       <template #topbar>
+        <div v-if="activeDraftConflict" class="border-b border-amber-300 bg-amber-50 px-3 py-2 text-sm" role="alert" data-testid="draft-conflict">
+          <p>{{ t('errors.draftConflict.message') }}</p>
+          <textarea readonly :value="activeDraftConflict.captured.text" class="mt-2 w-full rounded border bg-white p-2" :aria-label="t('errors.draftConflict.retainedText')" data-testid="draft-conflict-retained-text" />
+          <button type="button" class="mt-2 rounded border bg-white px-3 py-1" @click="onRefreshWorkspace">{{ t('errors.draftConflict.reload') }}</button>
+          <div v-if="draftConflictReloadConfirmation" role="alertdialog" :aria-label="t('errors.draftConflict.reload')" class="mt-2 rounded border border-amber-300 bg-white p-3" data-testid="draft-conflict-confirmation">
+            <p>{{ t('errors.draftConflict.discardConfirm') }}</p>
+            <button type="button" class="mt-2 rounded border px-3 py-1" @click="cancelDraftConflictReload">{{ t('common.cancel') }}</button>
+            <button type="button" class="ml-2 mt-2 rounded border px-3 py-1" @click="confirmDraftConflictReload">{{ t('errors.draftConflict.discardAndReload') }}</button>
+          </div>
+        </div>
         <ChatTopSummaryBar
           v-if="workspaceMode !== 'none'"
           :title="activeTitle || 'No active conversation'"

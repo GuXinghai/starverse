@@ -84,16 +84,19 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[0], safe(() => {
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const at = nowMs()
-      const existingProject = input.db.prepare(`SELECT project_id AS projectId FROM project_v2
-        ORDER BY updated_at_ms DESC,project_id ASC LIMIT 1`).get() as { projectId?: unknown } | undefined
-      const projectId = typeof existingProject?.projectId === 'string'
-        ? existingProject.projectId
-        : graph.createProject(context, { projectId: `project:${randomUUID()}`, name: 'Starverse', createdAtMs: at }).value
       const existingTemplate = input.db.prepare(`SELECT 1 FROM system_chat_template_v2 WHERE system_key='new_template'`).get()
+      if (existingTemplate) {
+        const template = systemTemplate.get()
+        return Object.freeze({ projectId: template.conversation.projectId, conversationId: template.conversation.id,
+          branchId: template.conversation.branchId, created: false })
+      }
+      const projectId = graph.createProject(context, {
+        projectId: `project:${randomUUID()}`, name: 'Starverse', createdAtMs: at,
+      }).value
       const template = systemTemplate.ensure(context, { projectId,
         conversationId: `conversation:new-template:${randomUUID()}`, branchId: `branch:new-template:${randomUUID()}`,
         createdAtMs: at })
-      return Object.freeze({ projectId, conversationId: template.conversation.id,
+      return Object.freeze({ projectId: template.conversation.projectId, conversationId: template.conversation.id,
         branchId: template.conversation.branchId, created: !existingTemplate })
     })
   }))

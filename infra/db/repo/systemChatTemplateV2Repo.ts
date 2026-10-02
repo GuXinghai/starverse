@@ -98,6 +98,7 @@ export class SystemChatTemplateV2Repo {
     }
     const at = this.safeTime(this.nowMs())
     if (input.resetDraftAttachments) {
+      this.db.prepare('DELETE FROM composer_edit_session_v2 WHERE conversation_id=?').run(input.templateConversationId)
       this.db.prepare('DELETE FROM composer_draft_attachment_v2 WHERE conversation_id=?').run(input.templateConversationId)
       const draft = this.db.prepare('SELECT revision FROM composer_draft_v2 WHERE conversation_id=?')
         .get(input.templateConversationId) as { revision?: unknown } | undefined

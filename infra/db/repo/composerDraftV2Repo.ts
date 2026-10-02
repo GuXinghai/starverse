@@ -4,6 +4,7 @@ import type { AttachmentIntentV2 } from '../../../src/next/generation-v2/domain/
 import { readGenerationV2Digest, readGenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
 import { sha256PreparedBytesV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
+import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 
 export type ComposerDraftManagedFileAttachmentV2 = Readonly<{
   kind: 'managed_file'
@@ -63,6 +64,18 @@ export type ComposerDraftUrlReferenceAttachmentV2 = Readonly<{
 }>
 export type ComposerDraftAttachmentV2 = ComposerDraftManagedFileAttachmentV2 | ComposerDraftUrlReferenceAttachmentV2
 
+export type ComposerEditSessionV2 = Readonly<{
+  schemaVersion: 1
+  conversationId: string
+  branchId: string
+  questionId: string
+  answerRootId: string
+  openedDraftRevision: number
+  previousDraft: Readonly<{ draftText: string; attachments: readonly ComposerDraftAttachmentV2[] }>
+}>
+export type ComposerEditSessionIdentityV2 = Pick<ComposerEditSessionV2,
+  'branchId'|'questionId'|'answerRootId'|'openedDraftRevision'>
+
 export type ComposerDraftV2 = Readonly<{
   conversationId: string
   draftText: string
@@ -71,6 +84,7 @@ export type ComposerDraftV2 = Readonly<{
   revision: number
   updatedAtMs: number
   attachments: readonly ComposerDraftAttachmentV2[]
+  editSession: ComposerEditSessionV2 | null
 }>
 
 export class ComposerDraftV2RepoError extends Error {
@@ -194,11 +208,12 @@ export class ComposerDraftV2Repo {
       WHERE draft.conversation_id=? ORDER BY draft.attachment_order,draft.asset_revision_id,draft.url_reference_revision`).all(conversationId) as AttachmentRow[]
     return Object.freeze({conversationId,draftText:row.draft_text,draftMode:row.draft_mode,
       editingSourceQuestionId:row.editing_source_question_id as string|null,revision:row.revision as number,
-      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(attachments.map((entry,index)=>this.decodeAttachment(entry,index)))})
+      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(attachments.map((entry,index)=>this.decodeAttachment(entry,index))),
+      editSession:this.readEditSession(conversationId,row.draft_mode,row.editing_source_question_id,row.revision as number)})
   }
 
   updateText(value:Readonly<{conversationId:string;expectedRevision:number;draftText:string;
-    draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>):ComposerDraftV2 {
+    draftMode:'compose'|'edit';editingSourceQuestionId:string|null;editSessionIdentity?:ComposerEditSessionIdentityV2|null}>):ComposerDraftV2 {
     const conversationId=id(value.conversationId),expectedRevision=revision(value.expectedRevision),draftText=text(value.draftText)
     if(value.draftMode!=='compose'&&value.draftMode!=='edit'||
       (value.draftMode==='compose'&&value.editingSourceQuestionId!==null)||
@@ -207,6 +222,9 @@ export class ComposerDraftV2Repo {
     }
     const editing=value.editingSourceQuestionId===null?null:id(value.editingSourceQuestionId),now=time(this.nowMs())
     this.immediate(this.db.transaction(()=>{
+      if(value.draftMode==='edit')this.assertEditIdentity(conversationId,value.editSessionIdentity)
+      else if(value.editSessionIdentity!==null&&value.editSessionIdentity!==undefined)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_INPUT_INVALID')
+      this.assertEditMutation(conversationId,value.draftMode,editing)
       const result=this.db.prepare(`UPDATE composer_draft_v2 SET draft_text=?,draft_mode=?,editing_source_question_id=?,
         revision=revision+1,updated_at_ms=? WHERE conversation_id=? AND revision=?`).run(
         draftText,value.draftMode,editing,now,conversationId,expectedRevision)
@@ -285,6 +303,7 @@ export class ComposerDraftV2Repo {
     this.immediate(this.db.transaction(()=>{
       const current=this.db.prepare('SELECT revision FROM composer_draft_v2 WHERE conversation_id=?').get(conversationId) as {revision:unknown}|undefined
       if(current?.revision!==expectedRevision)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
+      this.db.prepare('DELETE FROM composer_edit_session_v2 WHERE conversation_id=?').run(conversationId)
       this.db.prepare('DELETE FROM composer_draft_dfc_selection_v2 WHERE conversation_id=?').run(conversationId)
       this.db.prepare('DELETE FROM composer_draft_attachment_v2 WHERE conversation_id=?').run(conversationId)
       const result=this.db.prepare(`UPDATE composer_draft_v2 SET draft_text='',draft_mode='compose',editing_source_question_id=NULL,
@@ -296,6 +315,12 @@ export class ComposerDraftV2Repo {
 
   replace(value:Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
     editingSourceQuestionId:string|null;attachments:unknown}>):ComposerDraftV2 {
+    if(value.draftMode==='edit')throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    return this.replaceDraft(value,false)
+  }
+
+  private replaceDraft(value:Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
+    editingSourceQuestionId:string|null;attachments:unknown}>,closeEditSession:boolean):ComposerDraftV2 {
     const conversationId=id(value.conversationId),expectedRevision=revision(value.expectedRevision),draftText=text(value.draftText)
     if(value.draftMode!=='compose'&&value.draftMode!=='edit'||value.draftMode==='compose'&&value.editingSourceQuestionId!==null||
       value.draftMode==='edit'&&value.editingSourceQuestionId===null)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_INPUT_INVALID')
@@ -304,6 +329,7 @@ export class ComposerDraftV2Repo {
     this.immediate(this.db.transaction(()=>{
       const current=this.db.prepare('SELECT revision FROM composer_draft_v2 WHERE conversation_id=?').get(conversationId) as {revision:unknown}|undefined
       if(current?.revision!==expectedRevision)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
+      this.assertEditMutation(conversationId,value.draftMode,editing,closeEditSession)
       this.db.prepare('DELETE FROM composer_draft_dfc_selection_v2 WHERE conversation_id=?').run(conversationId)
       this.db.prepare('DELETE FROM composer_draft_attachment_v2 WHERE conversation_id=?').run(conversationId)
       attachments.forEach((attachment,index)=>this.insertAttachment(conversationId,attachment,index,now))
@@ -313,6 +339,136 @@ export class ComposerDraftV2Repo {
       if(result.changes!==1)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
     }))
     return this.read(conversationId)
+  }
+
+  openEdit(value: Readonly<{ conversationId:string;branchId:string;expectedRevision:number;questionId:string;
+    answerRootId:string;draftText:string;attachments:unknown }>): ComposerDraftV2 {
+    const conversationId=id(value.conversationId),branchId=id(value.branchId),questionId=id(value.questionId),
+      answerRootId=id(value.answerRootId),expectedRevision=revision(value.expectedRevision)
+    return this.immediate(this.db.transaction(()=>{
+      const current=this.read(conversationId)
+      if(current.revision!==expectedRevision)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
+      if(current.draftMode!=='compose'||current.editSession)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+      const route=new BranchRouteResolverV2(this.db).resolve(branchId)
+      const answer=this.db.prepare(`SELECT introduced_in_branch_id FROM message_v2
+        WHERE message_id=? AND conversation_id=? AND question_id=? AND role='assistant' AND answer_root_id=message_id`)
+        .get(answerRootId,conversationId,questionId) as {introduced_in_branch_id?:unknown}|undefined
+      if(route.conversationId!==conversationId||route.hiddenQuestionIds.has(questionId)||route.hiddenAnswerIds.has(answerRootId)||
+        !route.messages.some(message=>message.messageId===questionId&&message.role==='user')||
+        !answer||!route.branchAncestry.includes(String(answer.introduced_in_branch_id))) {
+        throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_INPUT_INVALID')
+      }
+      const previousDraft=Object.freeze({draftText:current.draftText,attachments:current.attachments})
+      const snapshotJson=JSON.stringify(previousDraft)
+      if(Buffer.byteLength(snapshotJson,'utf8')>32*1024*1024)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_INPUT_INVALID')
+      this.db.prepare(`INSERT INTO composer_edit_session_v2
+        (conversation_id,branch_id,question_id,answer_root_id,opened_draft_revision,previous_compose_snapshot_json) VALUES(?,?,?,?,?,?)`)
+        .run(conversationId,branchId,questionId,answerRootId,expectedRevision+1,snapshotJson)
+      current.attachments.forEach((attachment,index)=>this.db.prepare(`INSERT INTO composer_edit_session_attachment_v2
+        (conversation_id,attachment_order,source_asset_revision_id,effective_asset_revision_id,url_reference_id,url_reference_revision)
+        VALUES(?,?,?,?,?,?)`).run(conversationId,index,
+          attachment.kind==='managed_file'?attachment.assetRevisionId:null,
+          attachment.kind==='managed_file'?attachment.dfcSelection?.effectiveAssetRevisionId??null:null,
+          attachment.kind==='url_reference'?attachment.referenceId:null,
+          attachment.kind==='url_reference'?attachment.referenceRevision:null))
+      return this.replaceDraft({conversationId,expectedRevision,draftText:value.draftText,draftMode:'edit',
+        editingSourceQuestionId:questionId,attachments:value.attachments},false)
+    }))
+  }
+
+  cancelEdit(value: Readonly<{conversationId:string;expectedRevision:number}> & ComposerEditSessionIdentityV2):ComposerDraftV2 {
+    const conversationId=id(value.conversationId),expectedRevision=revision(value.expectedRevision)
+    return this.immediate(this.db.transaction(()=>{
+      const current=this.read(conversationId),session=current.editSession
+      if(current.revision!==expectedRevision)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
+      this.assertEditIdentity(conversationId,value)
+      if(!session||session.branchId!==id(value.branchId)||session.questionId!==id(value.questionId)||
+        session.answerRootId!==id(value.answerRootId))throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+      const restored=this.replaceDraft({conversationId,expectedRevision,draftText:session.previousDraft.draftText,
+        draftMode:'compose',editingSourceQuestionId:null,attachments:session.previousDraft.attachments.map(attachment=>this.rawAttachmentIntent(attachment))},true)
+      for(const attachment of session.previousDraft.attachments) {
+        if(attachment.kind!=='managed_file'||!attachment.dfcSelection)continue
+        const selection=attachment.dfcSelection
+        this.verifyDfcSelection({sourceAssetRevisionId:attachment.assetRevisionId,...selection})
+        this.db.prepare(`INSERT INTO composer_draft_dfc_selection_v2
+          (conversation_id,source_asset_revision_id,selected_option_id,target_kind,send_strategy,effective_asset_id,effective_asset_revision_id,effective_asset_sha256,selected_at_ms)
+          VALUES(?,?,?,?,?,?,?,?,?)`).run(conversationId,attachment.assetRevisionId,selection.optionId,selection.targetKind,
+            selection.sendStrategy,selection.effectiveAssetId,selection.effectiveAssetRevisionId,selection.effectiveAssetSha256,time(this.nowMs()))
+      }
+      return this.read(restored.conversationId)
+    }))
+  }
+
+  private assertEditIdentity(conversationId:string,value:ComposerEditSessionIdentityV2|null|undefined):void {
+    if(!value||!Number.isSafeInteger(value.openedDraftRevision)||value.openedDraftRevision<1) {
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    }
+    const current=this.db.prepare('SELECT branch_id,question_id,answer_root_id,opened_draft_revision FROM composer_edit_session_v2 WHERE conversation_id=?')
+      .get(conversationId) as Record<string,unknown>|undefined
+    if(!current||current.branch_id!==id(value.branchId)||current.question_id!==id(value.questionId)||
+      current.answer_root_id!==id(value.answerRootId)||current.opened_draft_revision!==value.openedDraftRevision) {
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    }
+  }
+
+  private assertEditMutation(conversationId:string,mode:'compose'|'edit',questionId:string|null,clearComposeSession=false):void {
+    if(mode==='compose') {
+      if(!clearComposeSession&&this.db.prepare('SELECT 1 FROM composer_edit_session_v2 WHERE conversation_id=?').get(conversationId)) {
+        throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+      }
+      this.db.prepare('DELETE FROM composer_edit_session_v2 WHERE conversation_id=?').run(conversationId)
+      return
+    }
+    const session=this.db.prepare('SELECT question_id FROM composer_edit_session_v2 WHERE conversation_id=?').get(conversationId) as {question_id?:unknown}|undefined
+    if(session?.question_id!==questionId)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+  }
+
+  private rawAttachmentIntent(attachment:ComposerDraftAttachmentV2):unknown {
+    return attachment.kind==='managed_file' ? {kind:attachment.kind,assetId:attachment.assetId,assetRevisionId:attachment.assetRevisionId,
+      assetSha256:attachment.assetSha256,include:attachment.include,sendAs:attachment.sendAs,conversion:attachment.conversion}
+      : {kind:attachment.kind,referenceId:attachment.referenceId,referenceRevision:attachment.referenceRevision,originalUrl:attachment.originalUrl,
+        urlDigest:attachment.urlDigest,mediaKind:attachment.mediaKind,...(attachment.declaredMediaType===null?{}:{declaredMediaType:attachment.declaredMediaType}),
+        capturedAtMs:attachment.capturedAtMs,provenance:attachment.provenance,include:attachment.include,sendAs:attachment.sendAs,conversion:attachment.conversion}
+  }
+
+  private readEditSession(conversationId:string,mode:unknown,questionId:unknown,draftRevision:number):ComposerEditSessionV2|null {
+    const row=this.db.prepare(`SELECT branch_id,question_id,answer_root_id,opened_draft_revision,previous_compose_snapshot_json
+      FROM composer_edit_session_v2 WHERE conversation_id=?`).get(conversationId) as Record<string,unknown>|undefined
+    if(!row) {
+      if(mode==='edit')throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+      return null
+    }
+    if(mode!=='edit'||row.question_id!==questionId||typeof row.previous_compose_snapshot_json!=='string'||
+      !Number.isSafeInteger(row.opened_draft_revision)||(row.opened_draft_revision as number)<1||
+      (row.opened_draft_revision as number)>draftRevision) {
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    }
+    const route=new BranchRouteResolverV2(this.db).resolve(id(row.branch_id))
+    if(route.conversationId!==conversationId||route.hiddenQuestionIds.has(id(row.question_id))||
+      route.hiddenAnswerIds.has(id(row.answer_root_id))||!route.messages.some(message=>message.messageId===row.question_id&&message.role==='user')) {
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    }
+    let previousDraft:ComposerEditSessionV2['previousDraft']
+    try {
+      const snapshot=JSON.parse(row.previous_compose_snapshot_json)
+      if(!snapshot||Object.keys(snapshot).sort().join(',')!=='attachments,draftText'||!Array.isArray(snapshot.attachments)||snapshot.attachments.length>65536)throw new Error('invalid')
+      text(snapshot.draftText)
+      decodeGenerationCommandAttachmentsV2(snapshot.attachments.map((attachment:ComposerDraftAttachmentV2)=>this.rawAttachmentIntent(attachment)))
+      const references=this.db.prepare(`SELECT attachment_order,source_asset_revision_id,effective_asset_revision_id,url_reference_id,url_reference_revision
+        FROM composer_edit_session_attachment_v2 WHERE conversation_id=? ORDER BY attachment_order`).all(conversationId) as Record<string,unknown>[]
+      if(references.length!==snapshot.attachments.length)throw new Error('invalid')
+      snapshot.attachments.forEach((attachment:ComposerDraftAttachmentV2,index:number)=>{
+        const reference=references[index]
+        if(reference.attachment_order!==index||reference.source_asset_revision_id!==(attachment.kind==='managed_file'?attachment.assetRevisionId:null)||
+          reference.effective_asset_revision_id!==(attachment.kind==='managed_file'?attachment.dfcSelection?.effectiveAssetRevisionId??null:null)||
+          reference.url_reference_id!==(attachment.kind==='url_reference'?attachment.referenceId:null)||
+          reference.url_reference_revision!==(attachment.kind==='url_reference'?attachment.referenceRevision:null))throw new Error('invalid')
+        if(attachment.kind==='managed_file'&&attachment.dfcSelection)this.verifyDfcSelection({sourceAssetRevisionId:attachment.assetRevisionId,...attachment.dfcSelection})
+      })
+      previousDraft=Object.freeze({draftText:snapshot.draftText,attachments:Object.freeze(snapshot.attachments.map((attachment:ComposerDraftAttachmentV2)=>Object.freeze(attachment)))})
+    }catch{throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')}
+    return Object.freeze({schemaVersion:1,conversationId,branchId:id(row.branch_id),questionId:id(row.question_id),
+      answerRootId:id(row.answer_root_id),openedDraftRevision:row.opened_draft_revision as number,previousDraft})
   }
 
   setDfcSelection(value: Readonly<{

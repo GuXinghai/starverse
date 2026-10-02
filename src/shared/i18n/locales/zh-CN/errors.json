@@ -1,5 +1,12 @@
 {
   "errors": {
+    "draftConflict": {
+      "message": "此草稿未能保存。未保存的文本已保留；重新加载前，发送和草稿修改已暂停。",
+      "retainedText": "未保存的草稿文本（可选择复制）",
+      "reload": "重新加载已保存的草稿",
+      "discardConfirm": "放弃保留的未保存文本，并重新加载当前已保存的草稿？此操作无法撤销。",
+      "discardAndReload": "放弃未保存文本并重新加载"
+    },
     "provider": {
       "apiKeyMissing": "缺少 API Key。",
       "apiKeyInvalid": "API Key 无效或已过期。",
@@ -75,6 +82,7 @@
     },
     "attachment": {
       "importFailed": "附件导入失败。",
+      "actionStale": "附件操作尚未完成时草稿已发生变化，剩余附件已跳过。请在当前草稿中重新添加。",
       "urlRequired": "请输入 URL。",
       "urlImportFailed": "URL 导入失败。",
       "urlAdded": "URL 已添加到草稿。",

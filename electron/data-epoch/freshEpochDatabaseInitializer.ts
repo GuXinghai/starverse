@@ -6,6 +6,7 @@ import { app } from 'electron'
 import {
   installGenerationV2SchemaInActiveTransaction,
   verifyInstalledGenerationV2SchemaInActiveTransaction,
+  upgradeComposerEditSessionSchemaInActiveTransaction,
   GenerationV2SchemaComposerError,
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
@@ -325,6 +326,8 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         if (emptyInsideTransaction !== initiallyEmpty) {
           throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
         }
+        if (!initiallyEmpty) upgradeComposerEditSessionSchemaInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
         const bundle = installGenerationV2SchemaInActiveTransaction(db, schemaRoot)
         emitDatabaseInitializationMilestone('schema_installed')
         if (initiallyEmpty) {

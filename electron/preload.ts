@@ -195,7 +195,8 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
   composer: Object.freeze({
     get: (conversationId: string) => ipcRenderer.invoke('generation-v2:composer:get', { conversationId }),
     updateText: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;
-      draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>) =>
+      draftMode:'compose'|'edit';editingSourceQuestionId:string|null;
+      editSessionIdentity:Readonly<{branchId:string;questionId:string;answerRootId:string;openedDraftRevision:number}>|null}>) =>
       ipcRenderer.invoke('generation-v2:composer:update-text', payload),
     importLocal: (payload: Readonly<{conversationId:string;expectedRevision:number;filePath:string;selectionGrantToken:string}>) =>
       ipcRenderer.invoke('generation-v2:composer:import-local', payload),
@@ -211,8 +212,10 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
       ipcRenderer.invoke('generation-v2:composer:read-preview', payload),
     replace: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
       editingSourceQuestionId:string|null;attachments:readonly unknown[]}>) => ipcRenderer.invoke('generation-v2:composer:replace', payload),
-    replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) =>
+    replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) =>
       ipcRenderer.invoke('generation-v2:composer:replace-from-answer-snapshot', payload),
+    cancelEditSession: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;openedDraftRevision:number}>) =>
+      ipcRenderer.invoke('generation-v2:composer:cancel-edit-session', payload),
     dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-options', payload),
     dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
     dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => ipcRenderer.invoke('generation-v2:composer:dfc-preview', payload),

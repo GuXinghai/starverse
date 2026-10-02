@@ -1063,7 +1063,8 @@ interface Window {
     composer: Readonly<{
       get: (conversationId: string) => Promise<unknown>
       updateText: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;
-        draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>) => Promise<unknown>
+        draftMode:'compose'|'edit';editingSourceQuestionId:string|null;
+        editSessionIdentity:Readonly<{branchId:string;questionId:string;answerRootId:string;openedDraftRevision:number}>|null}>) => Promise<unknown>
       importLocal: (payload: Readonly<{conversationId:string;expectedRevision:number;filePath:string;selectionGrantToken:string}>) => Promise<unknown>
       addUrlReference: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) => Promise<unknown>
       importUrlFile: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) => Promise<unknown>
@@ -1072,7 +1073,8 @@ interface Window {
       readPreview: (payload: Readonly<{assetId:string;assetRevisionId:string}>) => Promise<unknown>
       replace: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
         editingSourceQuestionId:string|null;attachments:readonly unknown[]}>) => Promise<unknown>
-      replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) => Promise<unknown>
+      replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) => Promise<unknown>
+      cancelEditSession: (payload: Readonly<{conversationId:string;branchId:string;expectedRevision:number;questionId:string;answerRootId:string;openedDraftRevision:number}>) => Promise<unknown>
       dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => Promise<unknown>

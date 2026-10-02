@@ -302,7 +302,7 @@ function sanitizeText(value: string, path: string, redactions: ProviderFailureRe
   const hasAuthorization = lowerValue.includes('authorization')
   const hasCookie = lowerValue.includes('cookie')
   const hasUrlShape = value.includes('://')
-  const hasCredentialLabel = !hasUrlShape && /(?:x-goog-api-key|x-api-key|api[_ -]?key)/iu.test(value)
+  const hasCredentialLabel = /(?:x-goog-api-key|x-api-key|api[_ -]?key)/iu.test(value)
   const hasUrlCredentialShape = hasUrlShape && value.includes('@')
   const hasSensitiveQueryShape = hasUrlShape && (value.includes('?') || value.includes('&'))
   const hasWindowsPathShape = /(?:[A-Za-z]:\\|\\\\)/u.test(value)
@@ -321,15 +321,15 @@ function sanitizeText(value: string, path: string, redactions: ProviderFailureRe
     replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/giu, '$1[redacted]', 'authorization_header')
   }
   if (hasCredentialLabel) {
-    replace(/((?:x-goog-api-key|x-api-key|api[_ -]?key)\s*(?::|=)?\s*)[^\s,;"']+/giu,
-      '$1[redacted]', 'credential')
+    replace(/(^|[\s"'([{,;:])((?:x-goog-api-key|x-api-key|api[_ -]?key)["']?(?:\s*[:=]\s*|\s+))(["']?)[^\s,;"'&]+/giu,
+      '$1$2$3[redacted]', 'credential')
   }
   if (hasCookie) replace(/(cookie\s*:\s*)[^\r\n]+/giu, '$1[redacted]', 'cookie')
   if (hasUrlCredentialShape) {
     replace(/([a-z][a-z0-9+.-]*:\/\/)([^/@\s:]+)(?::([^/@\s]+))?@/giu, '$1[redacted]@', 'url_credential')
   }
   if (hasSensitiveQueryShape) {
-    replace(/([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig)=)[^&#\s"']+/giu,
+    replace(/([?&](?:x-api-key|x-goog-api-key|api[_-]?key|key|token|access[_-]?token|signature|sig)=)[^&#\s"']+/giu,
       '$1[redacted]', 'url_credential')
   }
   if (hasWindowsPathShape) {
@@ -353,7 +353,7 @@ function sanitizeJsonValue(
   const output: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(object)) {
     const childPath = `${path}.${key}`
-    if (/^(?:authorization|api[_-]?key|access[_-]?token|cookie|password|proxy[_-]?(?:username|password))$/iu.test(key)) {
+    if (/^(?:authorization|x-api-key|x-goog-api-key|api[_-]?key|access[_-]?token|cookie|password|proxy[_-]?(?:username|password))$/iu.test(key)) {
       output[key] = '[redacted]'
       redactions.push(Object.freeze({ path: childPath, reason: /cookie/iu.test(key) ? 'cookie' : /proxy/iu.test(key) ? 'proxy_credential' : 'credential' }))
     } else {

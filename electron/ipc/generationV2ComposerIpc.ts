@@ -37,6 +37,7 @@ export const GENERATION_V2_COMPOSER_CHANNELS = Object.freeze([
   'generation-v2:composer:dfc-select',
   'generation-v2:composer:dfc-preview',
   'generation-v2:composer:retry-file-type-detection',
+  'generation-v2:composer:cancel-edit-session',
 ] as const)
 
 export function projectAnswerSnapshotAttachmentIntentsV2(
@@ -112,11 +113,14 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
     const raw=object(payload,['conversationId']);return drafts.getOrCreate(text(raw.conversationId))
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[1],safe((_event,payload)=>{
-    const raw=object(payload,['conversationId','expectedRevision','draftText','draftMode','editingSourceQuestionId'])
+    const raw=object(payload,['conversationId','expectedRevision','draftText','draftMode','editingSourceQuestionId','editSessionIdentity'])
     if(typeof raw.draftText!=='string'||(raw.draftMode!=='compose'&&raw.draftMode!=='edit')||
       raw.editingSourceQuestionId!==null&&typeof raw.editingSourceQuestionId!=='string')throw new Error('GENERATION_V2_COMPOSER_INPUT_INVALID')
+    const identity=raw.editSessionIdentity===null?null:object(raw.editSessionIdentity,['branchId','questionId','answerRootId','openedDraftRevision'])
     return drafts.updateText({conversationId:text(raw.conversationId),expectedRevision:revision(raw.expectedRevision),draftText:raw.draftText,
-      draftMode:raw.draftMode,editingSourceQuestionId:raw.editingSourceQuestionId as string|null})
+      draftMode:raw.draftMode,editingSourceQuestionId:raw.editingSourceQuestionId as string|null,
+      editSessionIdentity:identity===null?null:{branchId:text(identity.branchId),questionId:text(identity.questionId),
+        answerRootId:text(identity.answerRootId),openedDraftRevision:revision(identity.openedDraftRevision)}})
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[2],safe(async(event,payload)=>{
     const raw=object(payload,['conversationId','expectedRevision','filePath','selectionGrantToken'])
@@ -230,7 +234,7 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
       attachments:raw.attachments})
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[9],safe((_event,payload)=>{
-    const raw=object(payload,['conversationId','expectedRevision','questionId','answerRootId','draftText'])
+    const raw=object(payload,['conversationId','branchId','expectedRevision','questionId','answerRootId','draftText'])
     const conversationId=text(raw.conversationId),questionId=text(raw.questionId),answerRootId=text(raw.answerRootId)
     if(typeof raw.draftText!=='string')throw new Error('GENERATION_V2_COMPOSER_INPUT_INVALID')
     const row=input.db.prepare(`SELECT snapshot.canonical_json AS canonicalJson FROM assistant_generation_snapshot_v2 AS snapshot
@@ -240,8 +244,8 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
     if(!row||typeof row.canonicalJson!=='string')throw new Error('GENERATION_V2_ANSWER_SNAPSHOT_NOT_FOUND')
     const snapshot=decodeAssistantAnswerGenerationSnapshotJsonV2(row.canonicalJson)
     const attachments=projectAnswerSnapshotAttachmentIntentsV2(snapshot)
-    return drafts.replace({conversationId,expectedRevision:revision(raw.expectedRevision),draftText:raw.draftText,
-      draftMode:'edit',editingSourceQuestionId:questionId,attachments})
+    return drafts.openEdit({conversationId,branchId:text(raw.branchId),expectedRevision:revision(raw.expectedRevision),draftText:raw.draftText,
+      questionId,answerRootId,attachments})
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[10],safe((_event,payload)=>{
     const raw=object(payload,['conversationId','assetId','providerId','operation'])
@@ -261,6 +265,11 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
     const raw=object(payload,['conversationId','assetRevisionId'])
     input.fileTypeDetectionService.retry(text(raw.conversationId),text(raw.assetRevisionId))
     return drafts.read(text(raw.conversationId))
+  }))
+  input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[14],safe((_event,payload)=>{
+    const raw=object(payload,['conversationId','branchId','expectedRevision','questionId','answerRootId','openedDraftRevision'])
+    return drafts.cancelEdit({conversationId:text(raw.conversationId),branchId:text(raw.branchId),expectedRevision:revision(raw.expectedRevision),
+      questionId:text(raw.questionId),answerRootId:text(raw.answerRootId),openedDraftRevision:revision(raw.openedDraftRevision)})
   }))
   return GENERATION_V2_COMPOSER_CHANNELS
 }

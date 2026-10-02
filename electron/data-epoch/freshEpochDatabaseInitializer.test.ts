@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import BetterSqlite3 from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
@@ -127,9 +129,56 @@ function createDivergentSchemaRoot(): string {
     'conversationRoutePreferenceSchema.sql',
     'capabilityRuleSchema.sql',
     'canonicalModelFactSourceSchema.sql',
+    'modelFactsSourcePrioritySchema.sql',
+    'resolvedModelFactsSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
   fs.appendFileSync(path.join(target, 'generationConfigSchema.sql'), '\n-- build advanced fixture\n')
   return root
+}
+
+function createEditSessionSchemaRoot(predecessor:boolean,failUpgrade=false,lineEnding:'lf'|'crlf'='lf'):string {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'starverse-edit-schema-'))
+  roots.push(root)
+  const target=path.join(root,'infra','db','v2')
+  fs.mkdirSync(target,{recursive:true})
+  const files=fs.readdirSync(path.join(repositoryRoot,'infra','db','v2')).filter(file=>file.endsWith('.sql'))
+  const committedBlobs=predecessor?execFileSync('git',['cat-file','--batch'],{cwd:repositoryRoot,
+    input:files.map(file=>`4ac2de5796e2ef75f180c3efc4a67354d351a77a:infra/db/v2/${file}\n`).join('')}):null
+  let blobOffset=0
+  for(const file of files) {
+    if(predecessor) {
+      const headerEnd=committedBlobs!.indexOf(10,blobOffset)
+      const header=committedBlobs!.subarray(blobOffset,headerEnd).toString('utf8')
+      expect(header).toMatch(/^[0-9a-f]+ blob \d+$/u)
+      const length=Number(header.split(' ')[2])
+      const committed=committedBlobs!.subarray(headerEnd+1,headerEnd+1+length)
+      blobOffset=headerEnd+1+length+1
+      const sql=committed.toString('utf8').replace(/\r\n/gu,'\n')
+      fs.writeFileSync(path.join(target,file),lineEnding==='lf'?sql:sql.replace(/\n/gu,'\r\n'))
+    }else fs.copyFileSync(path.join(repositoryRoot,'infra','db','v2',file),path.join(target,file))
+  }
+  const composerPath=path.join(target,'composerDraftSchema.sql')
+  if(failUpgrade) {
+    fs.appendFileSync(composerPath,'\nTHIS IS NOT SQL;\n')
+  }
+  return root
+}
+
+function seedLegacyEdit(db:BetterSqlite3.Database):void {
+  db.pragma('foreign_keys = ON')
+  db.prepare("INSERT INTO project_v2 VALUES('project:legacy','Legacy',1,1)").run()
+  db.prepare("INSERT INTO conversation_v2 VALUES('conversation:legacy','project:legacy','History',1,1)").run()
+  db.prepare("INSERT INTO branch_v2 VALUES('branch:legacy','conversation:legacy',NULL,NULL,1,1,NULL,NULL)").run()
+  db.prepare(`INSERT INTO message_v2(message_id,conversation_id,introduced_in_branch_id,role,status,parent_message_id,
+    question_id,answer_root_id,ordinal,created_at_ms,updated_at_ms)
+    VALUES('question:legacy','conversation:legacy','branch:legacy','user','completed',NULL,NULL,NULL,1,2,2)`).run()
+  db.prepare("UPDATE message_body_v2 SET body_text='preserved history' WHERE message_id='question:legacy'").run()
+  db.prepare(`INSERT INTO composer_draft_v2 VALUES('conversation:legacy','preserved in-progress edit','edit','question:legacy',7,3)`).run()
+  db.prepare(`INSERT INTO url_attachment_reference_v2 VALUES('url:legacy','url-revision:legacy',?,?,'document',NULL,3,'user_supplied',3)`)
+    .run('https://example.test/legacy.pdf',createHash('sha256').update('https://example.test/legacy.pdf').digest('hex'))
+  db.prepare(`INSERT INTO composer_draft_attachment_v2(conversation_id,attachment_kind,asset_id,asset_revision_id,asset_sha256,
+    url_reference_id,url_reference_revision,attachment_order,include_in_next_request,send_as,conversion_kind,created_at_ms,updated_at_ms)
+    VALUES('conversation:legacy','url_reference',NULL,NULL,NULL,'url:legacy','url-revision:legacy',0,1,'url_reference','none',3,3)`).run()
 }
 
 beforeEach(() => {
@@ -147,6 +196,200 @@ afterEach(() => {
 })
 
 describe('fresh epoch-2 database initializer', () => {
+  windowsIt.each(['lf','crlf'] as const)('upgrades only the intact populated committed %s predecessor and preserves legacy edit content on reopen',async(lineEnding)=>{
+    const value=fixture('starverse-edit-upgrade-success')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true,false,lineEnding)
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      expect(predecessor.schemaDigest).toBe(lineEnding==='lf'
+        ? '95267d0affa2648b9ebb568b4ed76da2c8404104f78801dd3b228135b8ff4681'
+        : 'dbc731ea21ed71aacd13963bcb0be554dc4a03fbdbe4d5fc18a2dfa1ae74595d')
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      const oldMeta=db.prepare('SELECT * FROM app_meta_v2').get() as Record<string,unknown>
+      const oldEnvelope=db.prepare('SELECT * FROM epoch_scope_key_envelope_v2').get()
+      db.close()
+      safeStorageMock.appRoot=repositoryRoot
+      const upgraded=await initializeOrVerifyFreshEpoch2Database(value)
+      expect(upgraded.created).toBe(false)
+      expect(upgraded.databaseFileId).toBe(predecessor.databaseFileId)
+      expect(upgraded.schemaDigest).not.toBe(predecessor.schemaDigest)
+      expect(await initializeOrVerifyFreshEpoch2Database(value)).toEqual(upgraded)
+      expect(await verifyExistingFreshEpoch2Database(value)).toMatchObject({schemaDigest:upgraded.schemaDigest})
+      const verified=new BetterSqlite3(value.layout.databasePath)
+      try {
+        expect(verified.prepare('SELECT * FROM app_meta_v2').get()).toEqual({...oldMeta,schema_digest:upgraded.schemaDigest})
+        expect(verified.prepare('SELECT * FROM epoch_scope_key_envelope_v2').get()).toEqual(oldEnvelope)
+        expect(verified.prepare('SELECT draft_text,draft_mode,editing_source_question_id,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'compose',editing_source_question_id:null,revision:8})
+        expect(verified.prepare("SELECT body_text FROM message_body_v2 WHERE message_id='question:legacy'").get())
+          .toEqual({body_text:'preserved history'})
+        expect(verified.prepare('SELECT * FROM composer_edit_session_v2').all()).toEqual([])
+        expect(verified.prepare('SELECT url_reference_id,url_reference_revision,send_as FROM composer_draft_attachment_v2').get())
+          .toEqual({url_reference_id:'url:legacy',url_reference_revision:'url-revision:legacy',send_as:'url_reference'})
+        expect(()=>verified.prepare('UPDATE app_meta_v2 SET schema_digest=?').run('0'.repeat(64)))
+          .toThrow('GENERATION_V2_APP_META_IMMUTABLE')
+      }finally{verified.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('rejects a self-consistent tampered predecessor without adding objects or altering data',async()=>{
+    const value=fixture('starverse-edit-upgrade-tampered')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      db.exec('DROP TRIGGER trg_composer_draft_v2_validate_edit_source_update')
+      // A self-reported manifest projection is insufficient upgrade authority.
+      const ftsShadows=new Set(['generation_v2_search_fts_config','generation_v2_search_fts_content','generation_v2_search_fts_data','generation_v2_search_fts_docsize','generation_v2_search_fts_idx'])
+      const projection=(db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all() as Record<string,unknown>[])
+        .filter(row=>row.name!=='generation_v2_schema_manifest'&&!ftsShadows.has(String(row.name)))
+        .map(row=>({type:row.type,name:row.name,tableName:row.tbl_name,sql:row.sql}))
+      db.prepare('UPDATE generation_v2_schema_manifest SET object_projection_digest=?')
+        .run(createHash('sha256').update(JSON.stringify(projection)).digest('hex'))
+      db.close()
+      safeStorageMock.appRoot=repositoryRoot
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_TRANSACTION_FAILED')
+      const retained=new BetterSqlite3(value.layout.databasePath,{readonly:true})
+      try {
+        expect(retained.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({schema_digest:predecessor.schemaDigest})
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'edit',revision:7})
+        expect(retained.prepare("SELECT 1 FROM sqlite_master WHERE name='composer_edit_session_v2'").get()).toBeUndefined()
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('rejects an unknown predecessor build without upgrading or discarding its populated draft',async()=>{
+    const value=fixture('starverse-edit-upgrade-unknown')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      fs.appendFileSync(path.join(safeStorageMock.appRoot,'infra','db','v2','generationConfigSchema.sql'),'\n-- unknown predecessor build\n')
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      db.close()
+      safeStorageMock.appRoot=repositoryRoot
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_SCHEMA_MISMATCH')
+      const retained=new BetterSqlite3(value.layout.databasePath,{readonly:true})
+      try {
+        expect(retained.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({schema_digest:predecessor.schemaDigest})
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'edit',revision:7})
+        expect(retained.prepare("SELECT 1 FROM sqlite_master WHERE name='composer_edit_session_v2'").get()).toBeUndefined()
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('rejects wrong predecessor root identity before adding edit objects or changing draft state',async()=>{
+    const value=fixture('starverse-edit-upgrade-wrong-root')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      const trigger=db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as {sql:string}
+      db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+      db.prepare('UPDATE app_meta_v2 SET root_id=? WHERE singleton_id=1').run('0'.repeat(64))
+      db.exec(trigger.sql)
+      db.close()
+      safeStorageMock.appRoot=repositoryRoot
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_STATE_INVALID')
+      const retained=new BetterSqlite3(value.layout.databasePath,{readonly:true})
+      try {
+        expect(retained.prepare('SELECT schema_digest,root_id FROM app_meta_v2').get())
+          .toEqual({schema_digest:predecessor.schemaDigest,root_id:'0'.repeat(64)})
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'edit',revision:7})
+        expect(retained.prepare("SELECT 1 FROM sqlite_master WHERE name='composer_edit_session_v2'").get()).toBeUndefined()
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('restores old metadata and its immutable trigger when trigger recreation fails after the digest updates',async()=>{
+    const value=fixture('starverse-edit-upgrade-meta-rollback')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      const metaBefore=db.prepare('SELECT * FROM app_meta_v2').get()
+      const manifestBefore=db.prepare('SELECT * FROM generation_v2_schema_manifest').get()
+      const trigger=db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as {sql:string}
+      db.close()
+      safeStorageMock.appRoot=repositoryRoot
+      const originalExec=BetterSqlite3.prototype.exec
+      const fault=vi.spyOn(BetterSqlite3.prototype,'exec').mockImplementation(function(this:BetterSqlite3.Database,sql:string){
+        if(sql===trigger.sql)throw new Error('TEST_METADATA_TRIGGER_RECREATE_FAILURE')
+        return originalExec.call(this,sql)
+      })
+      try {
+        await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_TRANSACTION_FAILED')
+      }finally{fault.mockRestore()}
+      const retained=new BetterSqlite3(value.layout.databasePath)
+      try {
+        expect(retained.prepare('SELECT * FROM app_meta_v2').get()).toEqual(metaBefore)
+        expect(retained.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual(manifestBefore)
+        expect(retained.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({schema_digest:predecessor.schemaDigest})
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'edit',revision:7})
+        expect(retained.prepare("SELECT 1 FROM sqlite_master WHERE name='composer_edit_session_v2'").get()).toBeUndefined()
+        expect(()=>retained.prepare('UPDATE app_meta_v2 SET schema_digest=?').run('0'.repeat(64)))
+          .toThrow('GENERATION_V2_APP_META_IMMUTABLE')
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('recognizes the pinned mixed digest over intact canonical predecessor SQL when target assets use LF',async()=>{
+    const value=fixture('starverse-edit-upgrade-mixed-pin')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      const trigger=db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as {sql:string}
+      const mixedDigest='f37bcbb510e7b7a20d61fa30601dd36fb8cbe2d58c8131b1c25e14e103aea51f'
+      db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+      db.prepare('UPDATE app_meta_v2 SET schema_digest=?').run(mixedDigest)
+      db.exec(trigger.sql)
+      db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?').run(mixedDigest)
+      db.close()
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(false)
+      for(const file of fs.readdirSync(path.join(safeStorageMock.appRoot,'infra','db','v2')).filter(file=>file.endsWith('.sql'))) {
+        const filePath=path.join(safeStorageMock.appRoot,'infra','db','v2',file)
+        fs.writeFileSync(filePath,fs.readFileSync(filePath,'utf8').replace(/\r\n/gu,'\n'))
+      }
+      const upgraded=await initializeOrVerifyFreshEpoch2Database(value)
+      expect(upgraded.schemaDigest).not.toBe(mixedDigest)
+      const retained=new BetterSqlite3(value.layout.databasePath,{readonly:true})
+      try {
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'compose',revision:8})
+        expect(retained.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({schema_digest:upgraded.schemaDigest})
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
+
+  windowsIt('rolls back an additive upgrade failure without changing legacy rows or schema authority',async()=>{
+    const value=fixture('starverse-edit-upgrade-rollback')
+    try {
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
+      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const db=new BetterSqlite3(value.layout.databasePath)
+      seedLegacyEdit(db)
+      db.close()
+      safeStorageMock.appRoot=createEditSessionSchemaRoot(false,true)
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_TRANSACTION_FAILED')
+      const retained=new BetterSqlite3(value.layout.databasePath,{readonly:true})
+      try {
+        expect(retained.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({schema_digest:predecessor.schemaDigest})
+        expect(retained.prepare('SELECT draft_text,draft_mode,revision FROM composer_draft_v2').get())
+          .toEqual({draft_text:'preserved in-progress edit',draft_mode:'edit',revision:7})
+        expect(retained.prepare("SELECT 1 FROM sqlite_master WHERE name='composer_edit_session_v2'").get()).toBeUndefined()
+      }finally{retained.close()}
+    }finally{value.lease.release()}
+  })
   windowsIt('verify-existing rejects a missing database without creating a file', async () => {
     const value = fixture('starverse-fresh-db-verify-missing')
     try {

@@ -1,0 +1,21 @@
+{
+  "requested_folder_date": "2026-10-02",
+  "audit_date": "2026-10-03",
+  "branch": "models-dev-capability-resolution",
+  "head": "8d928d6d913d61e51052a8c52f2b665cac332c03",
+  "initial_status": [
+    " M .codex/config.toml",
+    "?? pelican-bicycle.html"
+  ],
+  "protected_files": [
+    {
+      "Path": "pelican-bicycle.html",
+      "Hash": "19627F10660AA848FBA112FF40FEC48155098BEBCB23B45ED4B9BDF051DBB3D9"
+    },
+    {
+      "Path": ".codex\\config.toml",
+      "Hash": "D376736F495A6C74A0FE0F588920D162F084FBF2AE319A44985B905554C1683A"
+    }
+  ],
+  "tracked_diff_sha256": "8FB213217932941168E87EE4C94D51224D414137BC438A3187B6FD5A8C41435A"
+}

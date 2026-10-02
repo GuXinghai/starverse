@@ -481,6 +481,44 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
     } finally { db.close() }
   })
 
+  it('round-trips only redacted credential facts through terminal persistence and a fresh repository', () => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const repo = new GenerationExecutionV2Repo(db)
+      const input = commandInput(graph)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.insertOperationAndSnapshot(context, input))
+      insertRequest(db, input.operationId, graph.resultId)
+      const failure = createProviderFailureV2({
+        context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'deepseek' },
+          contractId: 'deepseek-stable-chat-v1', operationId: input.operationId, requestSequence: 1 },
+        httpStatus: 401, httpStatusText: 'Unauthorized',
+        body: { error: { code: 'invalid_api_key', type: 'authentication_error', param: 'model', request_id: 'req-safe',
+          message: 'x-api-key: AUDIT_DUMMY_MESSAGE See https://docs.example.test/api-key/docs',
+          headers: { 'X-API-Key': 'AUDIT_DUMMY_HEADER', nested: [{ 'x-goog-api-key': 'AUDIT_DUMMY_GOOGLE' }] } } },
+        rawFrameExcerpt: 'x-api-key=AUDIT_DUMMY_FRAME https://docs.example.test/help',
+        headers: { 'retry-after': '30' },
+      })
+      db.prepare(`UPDATE generation_request_v2 SET state='failed', updated_at_ms=199, terminal_at_ms=199
+        WHERE operation_id=? AND request_sequence=1`).run(input.operationId)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.terminalizeOperation(context, repo.findOperationInTransaction(context, input.operationId)!, {
+          state: 'failed', errorCode: failure.starverseDiagnosticCode,
+          errorMessage: failure.providerError!.message!, errorFact: failure,
+        }, 200))
+      const persisted = db.prepare(`SELECT error_message, error_fact_json FROM generation_operation_v2
+        WHERE operation_id=?`).get(input.operationId) as { error_message: string, error_fact_json: string }
+      expect(JSON.stringify(persisted)).not.toContain('AUDIT_DUMMY_')
+      expect(persisted.error_message).toBe('x-api-key: [redacted] See https://docs.example.test/api-key/docs')
+      const reopened = new GenerationExecutionV2Repo(db).getOperation(input.operationId).operation.errorFact
+      expect(reopened).toEqual(failure)
+      expect(reopened?.providerError).toMatchObject({ code: 'invalid_api_key', type: 'authentication_error', param: 'model',
+        requestId: 'req-safe', retryAfterMs: 30_000 })
+      expect(JSON.stringify(reopened)).not.toContain('AUDIT_DUMMY_')
+    } finally { db.close() }
+  })
+
   it.each([
     ['operation', { operationId: 'operation:other' }],
     ['provider', { provider: { namespace: 'generation_execution', id: 'openrouter' } }],

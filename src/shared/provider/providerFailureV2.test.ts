@@ -47,6 +47,96 @@ describe('ProviderFailureV2', () => {
     expect(failure.redactions).toContainEqual({ path: 'providerError.rawText', reason: 'size_limit' })
   })
 
+  it.each(['x-api-key:', 'X-Goog-Api-Key=', 'api_key:', 'API key ', 'apiKey="'])
+  ('redacts the %s label with and without an unrelated safe URL', (label) => {
+    for (const suffix of ['', ' See https://docs.example.test/api-key/docs?lang=en']) {
+      const failure = createProviderFailureV2({
+        context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'openai_responses' },
+          contractId: 'openai-responses-v1', operationId: 'op-label', requestSequence: 1 },
+        bodyText: `${label}AUDIT_DUMMY_LABEL${suffix}`,
+      })
+      expect(JSON.stringify(failure)).not.toContain('AUDIT_DUMMY_LABEL')
+      expect(failure.providerError?.rawText).toContain('[redacted]')
+      if (suffix) expect(failure.providerError?.rawText).toContain('https://docs.example.test/api-key/docs?lang=en')
+      expect(failure.redactions).toContainEqual({ path: 'providerError.rawText', reason: 'credential' })
+    }
+  })
+
+  it.each(['body', 'bodyText'] as const)('redacts nested provider headers through the %s factory input', (bodyInput) => {
+    const body = { error: { code: 'invalid_api_key', type: 'authentication_error', param: 'model', request_id: 'req-safe',
+      message: 'Invalid API key. See https://docs.example.test/api-key/docs',
+      headers: { 'X-API-KEY': 'AUDIT_DUMMY_HEADER', nested: [{ 'x-Goog-api-KEY': 'AUDIT_DUMMY_GOOGLE',
+        api_key: 'AUDIT_DUMMY_CONTROL', detail: 'x-api-key: AUDIT_DUMMY_DETAIL https://docs.example.test/help' }] } } }
+    const failure = createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: 'google_ai_studio' },
+        contractId: 'gemini-models-v1beta', operationId: 'op-header', requestSequence: 1 },
+      ...(bodyInput === 'body' ? { body } : { bodyText: JSON.stringify(body) }),
+      httpStatus: 401,
+    })
+    expect(JSON.stringify(failure)).not.toContain('AUDIT_DUMMY_')
+    expect(failure.providerError).toMatchObject({ code: 'invalid_api_key', type: 'authentication_error', param: 'model', requestId: 'req-safe' })
+    expect(failure.providerError?.rawJson).toMatchObject({ error: { headers: {
+      'X-API-KEY': '[redacted]', nested: [{ 'x-Goog-api-KEY': '[redacted]', api_key: '[redacted]' }],
+    } } })
+    const rawPath = bodyInput === 'body' ? 'providerError.rawJson' : 'providerError.rawText'
+    expect(failure.redactions).toContainEqual({ path: `${rawPath}.error.headers.X-API-KEY`, reason: 'credential' })
+    expect(failure.redactions).toContainEqual({ path: `${rawPath}.error.headers.nested[0].x-Goog-api-KEY`, reason: 'credential' })
+  })
+
+  it.each([
+    'failed: "x-api-key": "AUDIT_DUMMY_TOKEN" see https://docs.example.test/api-key/docs',
+    'failed: "x-goog-api-key"=AUDIT_DUMMY_TOKEN see https://docs.example.test/api-key/docs',
+    '{"error":{"x-api-key":"AUDIT_DUMMY_TOKEN","help":"https://docs.example.test/api-key/docs",',
+  ])('redacts quoted header labels in non-JSON response and stream text: %s', (text) => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'response_decoder', phase: 'stream_decode', provider: { namespace: 'generation_execution', id: 'openai_responses' },
+        contractId: 'openai-responses-v1', operationId: 'op-quoted-label', requestSequence: 1 },
+      bodyText: text,
+      rawFrameExcerpt: text,
+    })
+    expect(JSON.stringify(failure)).not.toContain('AUDIT_DUMMY_TOKEN')
+    expect(failure.providerError?.rawText).toContain('https://docs.example.test/api-key/docs')
+    expect(failure.rawFrameExcerpt).toContain('https://docs.example.test/api-key/docs')
+    expect(failure.redactions).toContainEqual({ path: 'providerError.rawText', reason: 'credential' })
+    expect(failure.redactions).toContainEqual({ path: 'rawFrameExcerpt', reason: 'credential' })
+  })
+
+  it('redacts labels in transport and stream facts while preserving authorization, URL and diagnostic controls', () => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'response_decoder', phase: 'stream_decode', provider: { namespace: 'generation_execution', id: 'deepseek' },
+        contractId: 'deepseek-chat-v1', operationId: 'op-controls', requestSequence: 1 },
+      bodyText: 'Authorization: Bearer AUDIT_DUMMY_AUTH\nSee https://docs.example.test/api-key/docs?api_key=AUDIT_DUMMY_QUERY&lang=en\nproxy https://user:AUDIT_DUMMY_PASSWORD@example.test failed',
+      rawFrameExcerpt: 'x-goog-api-key: AUDIT_DUMMY_FRAME https://docs.example.test/help',
+      transportError: new Error('x-api-key= AUDIT_DUMMY_TRANSPORT https://docs.example.test/help'),
+    })
+    expect(JSON.stringify(failure)).not.toContain('AUDIT_DUMMY_')
+    expect(failure.providerError?.rawText).toContain('https://docs.example.test/api-key/docs?api_key=[redacted]&lang=en')
+    expect(failure.redactions.map((item) => item.reason)).toEqual(expect.arrayContaining(['authorization_header', 'url_credential', 'credential']))
+    expect(failure.redactions).toContainEqual({ path: 'rawFrameExcerpt', reason: 'credential' })
+    expect(failure.redactions).toContainEqual({ path: 'transportError.message', reason: 'credential' })
+  })
+
+  it('preserves safe URLs and words that only contain a credential-label substring', () => {
+    const bodyText = 'Invalid API key. See https://docs.example.test/api-key/docs?lang=en; not-an-x-api-key: public; api-keyword=public'
+    const failure = createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'deepseek' },
+        contractId: 'deepseek-chat-v1', operationId: 'op-safe', requestSequence: 1 },
+      bodyText,
+    })
+    expect(failure.providerError?.rawText).toBe(bodyText)
+    expect(failure.redactions).toEqual([])
+  })
+
+  it('redacts provider header names used as URL query credentials without consuming the useful URL', () => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: 'google_ai_studio' },
+        contractId: 'gemini-models-v1beta', operationId: 'op-header-query', requestSequence: 1 },
+      bodyText: 'See https://docs.example.test/api-key/docs?x-api-key=AUDIT_DUMMY_API&X-Goog-Api-Key=AUDIT_DUMMY_GOOGLE&lang=en',
+    })
+    expect(failure.providerError?.rawText).toBe('See https://docs.example.test/api-key/docs?x-api-key=[redacted]&X-Goog-Api-Key=[redacted]&lang=en')
+    expect(failure.redactions).toEqual([{ path: 'providerError.rawText', reason: 'url_credential' }])
+  })
+
   it('preserves compact provider JSON containing a safe URL while redacting only sensitive URL facts', () => {
     const failure = createProviderFailureV2({
       context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: 'google_ai_studio' },

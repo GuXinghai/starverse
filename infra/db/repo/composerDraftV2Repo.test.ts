@@ -15,6 +15,17 @@ function createDb() {
   return db
 }
 
+function seedEditRoute(db:BetterSqlite3.Database) {
+  db.prepare(`INSERT INTO branch_v2 VALUES('branch:1','conversation:1',NULL,NULL,1,1,NULL,NULL)`).run()
+  db.prepare(`INSERT INTO message_v2(message_id,conversation_id,introduced_in_branch_id,role,status,parent_message_id,
+    question_id,answer_root_id,ordinal,created_at_ms,updated_at_ms)
+    VALUES('question:1','conversation:1','branch:1','user','completed',NULL,NULL,NULL,1,2,2)`).run()
+  db.prepare(`INSERT INTO message_v2(message_id,conversation_id,introduced_in_branch_id,role,status,parent_message_id,
+    question_id,answer_root_id,ordinal,created_at_ms,updated_at_ms)
+    VALUES('answer:1','conversation:1','branch:1','assistant','completed','question:1','question:1','answer:1',2,3,3)`).run()
+  db.prepare("UPDATE branch_v2 SET head_message_id='answer:1' WHERE branch_id='branch:1'").run()
+}
+
 describe('ComposerDraftV2Repo DFC selection', () => {
   it('keeps the raw attachment as the draft anchor and clears its selection when removed', () => {
     const db = createDb()
@@ -78,14 +89,156 @@ describe('ComposerDraftV2Repo DFC selection', () => {
         },
       })
 
+      seedEditRoute(db)
+      const withText=drafts.updateText({conversationId:'conversation:1',expectedRevision:selected.revision,
+        draftText:'original unsent compose',draftMode:'compose',editingSourceQuestionId:null})
+      const previous=drafts.addUrlReference({conversationId:'conversation:1',expectedRevision:withText.revision,
+        referenceId:'url:previous',referenceRevision:'url-revision:previous',originalUrl:'https://example.test/previous.pdf',
+        mediaKind:'document',declaredMediaType:'application/pdf'})
+      const editing=drafts.openEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:previous.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edited historical question',attachments:[]})
+      expect(editing.attachments).toEqual([])
+      expect(editing.editSession?.previousDraft).toEqual({draftText:previous.draftText,attachments:previous.attachments})
+      expect(()=>assets.retireAsset(source.assetId.value)).toThrow('GENERATION_V2_DRAFT_EDIT_SNAPSHOT_ASSET_RETAINED')
+      expect(()=>assets.retireAsset(derived.assetId.value)).toThrow('GENERATION_V2_DRAFT_EDIT_SNAPSHOT_ASSET_RETAINED')
+      expect(()=>db.prepare('DELETE FROM asset_revision_v2 WHERE asset_revision_id=?').run(source.assetRevisionId.value)).toThrow()
+      const restarted=new ComposerDraftV2Repo(db,()=>11)
+      expect(restarted.read('conversation:1').editSession).toEqual(editing.editSession)
+      const restored=restarted.cancelEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:editing.revision,
+        questionId:'question:1',answerRootId:'answer:1',openedDraftRevision:editing.editSession!.openedDraftRevision})
+      expect(restored).toMatchObject({draftText:previous.draftText,draftMode:'compose',editingSourceQuestionId:null,editSession:null})
+      expect(restored.attachments).toEqual(previous.attachments)
+      expect(db.prepare('SELECT * FROM composer_edit_session_attachment_v2').all()).toEqual([])
+
       const cleared = drafts.removeAttachment({
-        conversationId: 'conversation:1', expectedRevision: selected.revision,
+        conversationId: 'conversation:1', expectedRevision: restored.revision,
         attachmentRevisionId: source.assetRevisionId.value,
       })
-      expect(cleared.attachments).toEqual([])
+      expect(cleared.attachments).toHaveLength(1)
       expect(db.prepare('SELECT * FROM composer_draft_dfc_selection_v2').all()).toEqual([])
     } finally {
       db.close()
     }
+  })
+})
+
+describe('ComposerDraftV2Repo scoped edit aggregate',()=>{
+  it('assigns distinct server-owned draft revisions when the same edit target is cancelled and reopened',()=>{
+    const db=createDb()
+    try {
+      seedEditRoute(db)
+      const drafts=new ComposerDraftV2Repo(db,()=>10)
+      const initial=drafts.getOrCreate('conversation:1')
+      const target={conversationId:'conversation:1',branchId:'branch:1',questionId:'question:1',answerRootId:'answer:1'}
+      const first=drafts.openEdit({...target,expectedRevision:initial.revision,draftText:'first edit',attachments:[]})
+      expect(first.editSession?.openedDraftRevision).toBe(initial.revision+1)
+      const oldIdentity={branchId:target.branchId,questionId:target.questionId,answerRootId:target.answerRootId,
+        openedDraftRevision:first.editSession!.openedDraftRevision}
+      const cancelled=drafts.cancelEdit({...target,expectedRevision:first.revision,openedDraftRevision:oldIdentity.openedDraftRevision})
+      const reopened=drafts.openEdit({...target,expectedRevision:cancelled.revision,draftText:'second edit',attachments:[]})
+      expect(reopened.editSession?.openedDraftRevision).toBe(cancelled.revision+1)
+      expect(reopened.editSession?.openedDraftRevision).not.toBe(first.editSession?.openedDraftRevision)
+      expect(new ComposerDraftV2Repo(db).read('conversation:1').editSession?.openedDraftRevision)
+        .toBe(reopened.editSession?.openedDraftRevision)
+      expect(()=>drafts.updateText({conversationId:'conversation:1',expectedRevision:reopened.revision,draftText:'late first edit',
+        draftMode:'edit',editingSourceQuestionId:'question:1',editSessionIdentity:oldIdentity}))
+        .toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(()=>drafts.cancelEdit({...target,expectedRevision:reopened.revision,openedDraftRevision:oldIdentity.openedDraftRevision}))
+        .toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(drafts.read('conversation:1')).toEqual(reopened)
+      const currentIdentity={...oldIdentity,openedDraftRevision:reopened.editSession!.openedDraftRevision}
+      expect(()=>drafts.updateText({conversationId:'conversation:1',expectedRevision:reopened.revision,draftText:'wrong answer',
+        draftMode:'edit',editingSourceQuestionId:'question:1',editSessionIdentity:{...currentIdentity,answerRootId:'answer:other'}}))
+        .toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      const updated=drafts.updateText({conversationId:'conversation:1',expectedRevision:reopened.revision,draftText:'current edit update',
+        draftMode:'edit',editingSourceQuestionId:'question:1',editSessionIdentity:currentIdentity})
+      expect(updated.editSession?.openedDraftRevision).toBe(reopened.editSession?.openedDraftRevision)
+    }finally{db.close()}
+  })
+
+  it('keeps a previous-only asset FK alive until the edit aggregate is explicitly cleared',()=>{
+    const db=createDb()
+    try {
+      seedEditRoute(db)
+      const assets=new AttachmentAssetV2Repo(db,()=>10)
+      assets.createAsset({assetId:'asset:previous-only',assetKind:'file',filename:'previous.txt',sourceKind:'user_import'})
+      const source=assets.appendSourceRevision({assetId:'asset:previous-only',assetRevisionId:'revision:previous-only',
+        blob:assets.recordBlobFromBytes(new TextEncoder().encode('previous-only'),'text/plain')})
+      const drafts=new ComposerDraftV2Repo(db,()=>10)
+      const initial=drafts.getOrCreate('conversation:1')
+      const previous=drafts.addAttachment({conversationId:'conversation:1',expectedRevision:initial.revision,
+        attachment:{kind:'managed_file',assetId:source.assetId.value,assetRevisionId:source.assetRevisionId.value,
+          assetSha256:source.blob.sha256.value,include:true,sendAs:'provider_file',conversion:'none'}})
+      const editing=drafts.openEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:previous.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edit',attachments:[]})
+      expect(editing.attachments).toEqual([])
+      expect(()=>assets.retireAsset(source.assetId.value)).toThrow('GENERATION_V2_DRAFT_EDIT_SNAPSHOT_ASSET_RETAINED')
+      // Isolate the new FK from the pre-existing global immutability guard.
+      // FK enforcement stays enabled throughout this isolated database test.
+      const guard=db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_asset_revision_v2_delete_guard'").get() as {sql:string}
+      db.exec('DROP TRIGGER trg_asset_revision_v2_delete_guard')
+      expect(()=>db.prepare('DELETE FROM asset_revision_v2 WHERE asset_revision_id=?').run(source.assetRevisionId.value))
+        .toThrow('FOREIGN KEY constraint failed')
+      drafts.clearCommitted({conversationId:'conversation:1',expectedRevision:editing.revision})
+      expect(db.prepare('DELETE FROM asset_revision_v2 WHERE asset_revision_id=?').run(source.assetRevisionId.value).changes).toBe(1)
+      db.exec(guard.sql)
+      expect(db.pragma('foreign_keys',{simple:true})).toBe(1)
+      expect(db.pragma('foreign_key_check')).toEqual([])
+    }finally{db.close()}
+  })
+
+  it('persists the selected inherited branch and rejects another scope or nested edit',()=>{
+    const db=createDb()
+    try {
+      seedEditRoute(db)
+      db.prepare(`INSERT INTO branch_v2 VALUES('branch:inherited','conversation:1','answer:1',NULL,4,4,NULL,'branch:1')`).run()
+      db.prepare(`INSERT INTO branch_v2 VALUES('branch:empty','conversation:1',NULL,NULL,4,4,NULL,NULL)`).run()
+      const drafts=new ComposerDraftV2Repo(db,()=>10)
+      const initial=drafts.getOrCreate('conversation:1')
+      expect(()=>drafts.openEdit({conversationId:'conversation:1',branchId:'branch:empty',expectedRevision:initial.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edit',attachments:[]})).toThrow('GENERATION_V2_DRAFT_INPUT_INVALID')
+      const editing=drafts.openEdit({conversationId:'conversation:1',branchId:'branch:inherited',expectedRevision:initial.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edit',attachments:[]})
+      expect(editing.editSession?.branchId).toBe('branch:inherited')
+      expect(()=>drafts.openEdit({conversationId:'conversation:1',branchId:'branch:inherited',expectedRevision:editing.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'nested',attachments:[]})).toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(()=>drafts.cancelEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:editing.revision,
+        questionId:'question:1',answerRootId:'answer:1',openedDraftRevision:editing.editSession!.openedDraftRevision})).toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(()=>drafts.updateText({conversationId:'conversation:1',expectedRevision:editing.revision,
+        draftText:'late compose',draftMode:'compose',editingSourceQuestionId:null})).toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(()=>drafts.replace({conversationId:'conversation:1',expectedRevision:editing.revision,
+        draftText:'generic compose replacement',draftMode:'compose',editingSourceQuestionId:null,attachments:[]}))
+        .toThrow('GENERATION_V2_DRAFT_STATE_INVALID')
+      expect(drafts.read('conversation:1')).toEqual(editing)
+      const cleared=drafts.clearCommitted({conversationId:'conversation:1',expectedRevision:editing.revision})
+      expect(cleared).toMatchObject({draftText:'',draftMode:'compose',editSession:null})
+    }finally{db.close()}
+  })
+
+  it('rolls back session capture/replacement and failed cancellation without losing compose or edit state',()=>{
+    const db=createDb()
+    try {
+      seedEditRoute(db)
+      const drafts=new ComposerDraftV2Repo(db,()=>10)
+      const initial=drafts.getOrCreate('conversation:1')
+      const previous=drafts.updateText({conversationId:'conversation:1',expectedRevision:initial.revision,
+        draftText:'compose retained',draftMode:'compose',editingSourceQuestionId:null})
+      db.exec(`CREATE TEMP TRIGGER edit_open_failure BEFORE UPDATE OF draft_mode ON composer_draft_v2
+        WHEN NEW.draft_mode='edit' BEGIN SELECT RAISE(ABORT,'TEST_EDIT_OPEN_FAILURE'); END`)
+      expect(()=>drafts.openEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:previous.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edit',attachments:[]})).toThrow('TEST_EDIT_OPEN_FAILURE')
+      expect(drafts.read('conversation:1')).toEqual(previous)
+      expect(db.prepare('SELECT * FROM composer_edit_session_v2').all()).toEqual([])
+      db.exec('DROP TRIGGER edit_open_failure')
+      const editing=drafts.openEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:previous.revision,
+        questionId:'question:1',answerRootId:'answer:1',draftText:'edit',attachments:[]})
+      db.exec(`CREATE TEMP TRIGGER edit_cancel_failure BEFORE UPDATE OF draft_mode ON composer_draft_v2
+        WHEN NEW.draft_mode='compose' BEGIN SELECT RAISE(ABORT,'TEST_EDIT_CANCEL_FAILURE'); END`)
+      expect(()=>drafts.cancelEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:editing.revision,
+        questionId:'question:1',answerRootId:'answer:1',openedDraftRevision:editing.editSession!.openedDraftRevision})).toThrow('TEST_EDIT_CANCEL_FAILURE')
+      expect(drafts.read('conversation:1')).toEqual(editing)
+      expect(()=>drafts.cancelEdit({conversationId:'conversation:1',branchId:'branch:1',expectedRevision:previous.revision,
+        questionId:'question:1',answerRootId:'answer:1',openedDraftRevision:editing.editSession!.openedDraftRevision})).toThrow('GENERATION_V2_DRAFT_CONFLICT')
+    }finally{db.close()}
   })
 })

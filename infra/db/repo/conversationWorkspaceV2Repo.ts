@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
+import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 
 function title(value: unknown, max: number, allowEmpty: boolean): string {
@@ -30,15 +31,19 @@ export class ConversationWorkspaceV2Repo {
   }
   deleteProject(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ projectId: string }>): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db); const id = ConversationGraphV2Identity.create('project_id', input.projectId)
-    if (this.db.prepare(`SELECT 1 FROM system_chat_template_v2 AS template JOIN conversation_v2 AS conversation
-      ON conversation.conversation_id=template.conversation_id WHERE conversation.project_id=?`).get(id.value)) {
+    const inboxProjectId = new SystemChatTemplateV2Repo(this.db).get().conversation.projectId
+    if (id.value === inboxProjectId) {
       throw new Error('GENERATION_V2_WORKSPACE_SYSTEM_TEMPLATE_MUTATION_FORBIDDEN')
+    }
+    if (!this.db.prepare('SELECT 1 FROM project_v2 WHERE project_id=?').get(id.value)) {
+      throw new Error('GENERATION_V2_WORKSPACE_PROJECT_NOT_FOUND')
     }
     if (this.db.prepare(`SELECT 1 FROM generation_operation_v2 AS operation
       JOIN conversation_v2 AS conversation ON conversation.conversation_id=operation.conversation_id
       WHERE conversation.project_id=? AND operation.state IN ('committed','streaming') LIMIT 1`).get(id.value)) {
       throw new Error('GENERATION_V2_WORKSPACE_PROJECT_HAS_ACTIVE_GENERATION')
     }
+    this.db.prepare('UPDATE conversation_v2 SET project_id=? WHERE project_id=?').run(inboxProjectId, id.value)
     if (this.db.prepare('DELETE FROM project_v2 WHERE project_id=?').run(id.value).changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_PROJECT_NOT_FOUND')
   }
   renameConversation(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ conversationId: string; title: string; updatedAtMs: number }>): void {
@@ -76,6 +81,9 @@ export class ConversationWorkspaceV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db); const id = ConversationGraphV2Identity.create('branch_id', input.branchId); time(input.deletedAtMs)
     const row = this.db.prepare('SELECT conversation_id AS conversationId FROM branch_v2 WHERE branch_id=? AND deleted_at_ms IS NULL').get(id.value) as { conversationId?: unknown } | undefined
     if (!row || typeof row.conversationId !== 'string') throw new Error('GENERATION_V2_WORKSPACE_BRANCH_NOT_FOUND')
+    if (this.db.prepare('SELECT 1 FROM composer_edit_session_v2 WHERE branch_id=?').get(id.value)) {
+      throw new Error('GENERATION_V2_WORKSPACE_BRANCH_HAS_ACTIVE_EDIT')
+    }
     const count = this.db.prepare('SELECT count(*) AS count FROM branch_v2 WHERE conversation_id=? AND deleted_at_ms IS NULL').get(row.conversationId) as { count?: unknown }
     if (count.count === 1) throw new Error('GENERATION_V2_WORKSPACE_LAST_BRANCH_DELETE_FORBIDDEN')
     this.assertBranchHasNoActiveGeneration(id.value)

@@ -14,13 +14,16 @@ export type GenerationV2ComposerUrlReferenceAttachment=Readonly<{kind:'url_refer
   urlDigest:string;mediaKind:'image'|'document'|'audio'|'video'|'other';declaredMediaType:string|null;capturedAtMs:number;
   provenance:'user_supplied';include:boolean;sendAs:'url_reference';conversion:'none';attachmentOrder:number}>
 export type GenerationV2ComposerAttachment=GenerationV2ComposerManagedFileAttachment|GenerationV2ComposerUrlReferenceAttachment
+export type GenerationV2ComposerEditIdentity=Readonly<{branchId:string;questionId:string;answerRootId:string;openedDraftRevision:number}>
+export type GenerationV2ComposerEditSession=Readonly<{schemaVersion:1;conversationId:string;branchId:string;questionId:string;answerRootId:string;openedDraftRevision:number;
+  previousDraft:Readonly<{draftText:string;attachments:readonly GenerationV2ComposerAttachment[]}>}>
 export type GenerationV2ComposerDraft=Readonly<{conversationId:string;draftText:string;draftMode:'compose'|'edit';
-  editingSourceQuestionId:string|null;revision:number;updatedAtMs:number;attachments:readonly GenerationV2ComposerAttachment[]}>
+  editingSourceQuestionId:string|null;editSession:GenerationV2ComposerEditSession|null;revision:number;updatedAtMs:number;attachments:readonly GenerationV2ComposerAttachment[]}>
 function bridge(){const value=window.generationV2?.composer;if(!value)throw new Error('GENERATION_V2_COMPOSER_BRIDGE_UNAVAILABLE');return value}
 function unwrap<T>(raw:unknown):T{const value=raw as Result<T>;if(!value||value.ok!==true)throw new Error(value&&'code'in value?value.code:'GENERATION_V2_COMPOSER_COMMAND_FAILED');return value.value}
 export async function getGenerationV2ComposerDraft(conversationId:string){return unwrap<GenerationV2ComposerDraft>(await bridge().get(conversationId))}
 export async function updateGenerationV2ComposerText(payload:Readonly<{conversationId:string;expectedRevision:number;draftText:string;
-  draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>){return unwrap<GenerationV2ComposerDraft>(await bridge().updateText(payload))}
+  draftMode:'compose'|'edit';editingSourceQuestionId:string|null;editSessionIdentity:GenerationV2ComposerEditIdentity|null}>){return unwrap<GenerationV2ComposerDraft>(await bridge().updateText(payload))}
 export async function importGenerationV2ComposerLocalFile(payload:Readonly<{conversationId:string;expectedRevision:number;
   filePath:string;selectionGrantToken:string}>){return unwrap<GenerationV2ComposerDraft>(await bridge().importLocal(payload))}
 export async function addGenerationV2ComposerUrlReference(payload:Readonly<{conversationId:string;expectedRevision:number;url:string}>){
@@ -43,7 +46,9 @@ export async function replaceGenerationV2ComposerDraft(payload:Readonly<{convers
   return unwrap<GenerationV2ComposerDraft>(await bridge().replace(payload))
 }
 export async function replaceGenerationV2ComposerDraftFromAnswerSnapshot(payload:Readonly<{conversationId:string;expectedRevision:number;
-  questionId:string;answerRootId:string;draftText:string}>){return unwrap<GenerationV2ComposerDraft>(await bridge().replaceFromAnswerSnapshot(payload))}
+  branchId:string;questionId:string;answerRootId:string;draftText:string}>){return unwrap<GenerationV2ComposerDraft>(await bridge().replaceFromAnswerSnapshot(payload))}
+export async function cancelGenerationV2ComposerEditSession(payload:Readonly<{conversationId:string;branchId:string;expectedRevision:number;
+  questionId:string;answerRootId:string;openedDraftRevision:number}>){return unwrap<GenerationV2ComposerDraft>(await bridge().cancelEditSession(payload))}
 export function projectGenerationV2ComposerAttachments(draft:GenerationV2ComposerDraft):readonly Readonly<Record<string,unknown>>[]{
   return Object.freeze(draft.attachments.map(item=>Object.freeze(item.kind==='managed_file'
     ? (()=>{const selection=item.dfcSelection

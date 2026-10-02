@@ -1,0 +1,207 @@
+{
+  "audit_head": "8d928d6d913d61e51052a8c52f2b665cac332c03",
+  "revalidated_head": "4ac2de5796e2ef75f180c3efc4a67354d351a77a",
+  "branch": "models-dev-capability-resolution",
+  "findings": [
+    {
+      "id": "SV-PGA-001",
+      "title": "Project deletion contradicts the promise to preserve conversations",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-002",
+      "title": "Conversation navigation can overwrite the destination draft",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-003",
+      "title": "Edit session crosses conversations and is not restored after restart",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-004",
+      "title": "Credential sanitizer misses labels with URLs and provider header keys",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-005",
+      "title": "The newest project can become a false Inbox",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-006",
+      "title": "Web-search UI emits fields native contracts reject",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-007",
+      "title": "Ready DOCX PDF cannot be selected",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-008",
+      "title": "Active conversation deletion leaves stale IDs and transcript",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-009",
+      "title": "Rules/priority saves leave controls and Inspector stale",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-010",
+      "title": "Search hits outside current transcript cannot be located",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-011",
+      "title": "Initial workspace failure hides the error and recovery entry",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-012",
+      "title": "Cloud check failures look like successful no updates",
+      "status": "CLOSED_BY_EXISTING_4ac2de5",
+      "method": "Existing lifecycle implementation and focused presentation/panel tests verified; no new repair.",
+      "changed_evidence_paths": [
+        "src/ui-app/components/CapabilityRulesOverviewPanel.vue",
+        "electron/services/cloudRulesCandidateRefreshV1.ts",
+        "infra/db/repo/cloudRulesDistributionV1Repo.ts"
+      ]
+    },
+    {
+      "id": "SV-PGA-013",
+      "title": "Enter on an action button invokes model selection",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-014",
+      "title": "Provider catalog override reports Saved but is denied by IPC",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-015",
+      "title": "Preference persistence failure still reports success",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-016",
+      "title": "Exposed legacy settings have no current runtime effect",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-017",
+      "title": "Generic User Rules cannot be authored in the GUI",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-018",
+      "title": "Older async Inspector reads can overwrite newer selection",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "Inspector diff changes claim identity display only; async selection guards remain absent.",
+      "changed_evidence_paths": [
+        "src/ui-app/components/ModelFactsInspectorPanel.vue"
+      ]
+    },
+    {
+      "id": "SV-PGA-019",
+      "title": "HTML/CSV format conversions send unchanged source",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-020",
+      "title": "HTML PDF failure blocks independent original/text choices",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-021",
+      "title": "Branches can be selected but cannot be named or removed",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-022",
+      "title": "Cloud rule semantics and before/after changes are hidden",
+      "status": "CLOSED_BY_EXISTING_4ac2de5",
+      "method": "Existing lifecycle implementation and focused presentation/panel tests verified; no new repair.",
+      "changed_evidence_paths": [
+        "src/ui-app/components/CapabilityRulesOverviewPanel.vue"
+      ]
+    },
+    {
+      "id": "SV-PGA-023",
+      "title": "Enabled attachment send-mode action always rejects",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-024",
+      "title": "Search/picker/attachment dialogs lack consistent focus and modal semantics",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-025",
+      "title": "Search/manual-provider workflows ignore selected language",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-026",
+      "title": "Settings fixtures validate retired/permissive authority instead of production closure",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    },
+    {
+      "id": "SV-PGA-027",
+      "title": "Active maintainer guardrails mandate retired send authority",
+      "status": "CURRENT_BEFORE_FIRST_WAVE",
+      "method": "All cited source blobs unchanged from inspected audit HEAD; committed baseline compared.",
+      "changed_evidence_paths": []
+    }
+  ],
+  "cloud_ui_baseline": "3 UI files / 32 tests PASS (Cloud Overview, App send and regenRetry)",
+  "cloud_presentation_baseline": "3 unit files / 18 tests PASS (Cloud presentation and provider failure)",
+  "limitations": "Source revalidation is committed-baseline evidence, not real-profile runtime acceptance. Workers independently revalidate targeted source immediately before implementation."
+}

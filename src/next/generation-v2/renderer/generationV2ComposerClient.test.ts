@@ -5,7 +5,7 @@ describe('Generation V2 Composer attachment projection', () => {
   it('keeps the source triple or projects the selected immutable DFC triple', () => {
     const draft: GenerationV2ComposerDraft = {
       conversationId: 'conversation:1', draftText: 'send these', draftMode: 'compose',
-      editingSourceQuestionId: null, revision: 3, updatedAtMs: 10,
+      editingSourceQuestionId: null, editSession: null, revision: 3, updatedAtMs: 10,
       attachments: [{
         kind: 'managed_file', assetId: 'asset:source', assetRevisionId: 'revision:source', assetSha256: 'a'.repeat(64),
         include: true, sendAs: 'provider_file', conversion: 'none', attachmentOrder: 0, filename: 'source.txt',

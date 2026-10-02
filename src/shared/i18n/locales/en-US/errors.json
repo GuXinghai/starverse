@@ -1,5 +1,12 @@
 {
   "errors": {
+    "draftConflict": {
+      "message": "This draft could not be saved. Your unsaved text is retained; sending and draft changes are paused until you reload.",
+      "retainedText": "Unsaved draft text (select to copy)",
+      "reload": "Reload saved draft",
+      "discardConfirm": "Discard the retained unsaved text and reload the currently saved draft? This cannot be undone.",
+      "discardAndReload": "Discard unsaved text and reload"
+    },
     "provider": {
       "apiKeyMissing": "API key is missing.",
       "apiKeyInvalid": "API key is invalid or expired.",
@@ -75,6 +82,7 @@
     },
     "attachment": {
       "importFailed": "Attachment import failed.",
+      "actionStale": "The draft changed while this attachment action was pending. Remaining attachments were skipped. Add them again to the current draft.",
       "urlRequired": "URL is required.",
       "urlImportFailed": "URL import failed.",
       "urlAdded": "URL added to draft.",

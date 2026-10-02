@@ -6,6 +6,24 @@ import {
 } from './providerFailureUiProjectionV2'
 
 describe('ProviderFailure UI projection V2', () => {
+  it('projects the factory-redacted envelope without losing useful diagnostic facts or safe URLs', () => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'openai_responses' },
+        contractId: 'openai-responses-v1', operationId: 'projection:privacy', requestSequence: 1 },
+      httpStatus: 401,
+      body: { error: { code: 'invalid_api_key', type: 'authentication_error', param: 'model', request_id: 'req-safe',
+        message: 'x-api-key: AUDIT_DUMMY_MESSAGE See https://docs.example.test/api-key/docs',
+        headers: [{ 'X-Goog-Api-Key': 'AUDIT_DUMMY_HEADER' }] } },
+      headers: { 'retry-after': '30' },
+    })
+    const projection = projectProviderFailureEnvelopeForUiV2(failure)
+    expect(JSON.stringify(projection)).not.toContain('AUDIT_DUMMY_')
+    expect(projection.failure.providerError).toMatchObject({ code: 'invalid_api_key', type: 'authentication_error', param: 'model',
+      requestId: 'req-safe', retryAfterMs: 30_000, message: 'x-api-key: [redacted] See https://docs.example.test/api-key/docs' })
+    expect(projection.failure).toEqual(failure)
+    expect(projection.projectedBytes).toBe(new TextEncoder().encode(JSON.stringify(projection)).byteLength)
+  })
+
   it('limits the complete UI envelope and records the original raw body digest', () => {
     const failure = createProviderFailureV2({
       context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'google_ai_studio' },
