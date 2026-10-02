@@ -4,7 +4,7 @@ import { t } from '@/shared/i18n'
 import {
   modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
   modelFactPresentationState, modelFactPresentationTone, modelFactSelectionReasonKey, modelFactSourceKindKey,
-  modelFactStateExplanationKey, modelFactStateKey, modelFactValueText,
+  modelFactRuleClaimIdentity, modelFactStateExplanationKey, modelFactStateKey, modelFactValueText,
   type ModelFactFilter, type ModelFactPresentationTone, type PresentableResolvedField,
 } from '@/shared/model-facts/modelFactPresentation'
 
@@ -337,7 +337,7 @@ watch(() => [props.initialSubject, props.initialPath] as const, async ([subject]
                       <p v-if="group.claims.length === 0" class="text-gray-400">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
                       <ul v-else class="space-y-0.5">
                         <li v-for="(claim, index) in group.claims" :key="index" class="break-all">
-                          {{ t(modelFactSourceKindKey(claim.sourceKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }} · {{ t(modelFactAssertionKindKey(claim.sourceAssertion?.provenance?.assertionKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.claimValue') }} {{ valueOrNone(claim.sourceAssertion?.value) }}
+                          {{ t(modelFactSourceKindKey(claim.sourceKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }} · {{ t(modelFactAssertionKindKey(claim.sourceAssertion?.provenance?.assertionKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.claimValue') }} {{ valueOrNone(claim.sourceAssertion?.value) }}<span v-if="modelFactRuleClaimIdentity(claim)" data-testid="detail-rule-claim"> · {{ t(modelFactRuleClaimIdentity(claim)!.ownerKey) }} {{ modelFactRuleClaimIdentity(claim)!.packId }} / {{ modelFactRuleClaimIdentity(claim)!.ruleId }}</span>
                         </li>
                       </ul>
                     </div>

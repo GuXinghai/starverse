@@ -415,6 +415,9 @@ export class CloudRulesCandidateRefreshV1 {
         checkedAtMs: attemptedAtMs,
         candidate,
         suppressCandidate: this.applicationRepo.readPolicy().pin !== null,
+        // Same-version repair still goes through the full release/asset/document validation
+        // above and the version ledger binding inside publishSuccessfulCheck.
+        appliedSnapshotInvalid: this.applicationRepo.readAppliedIntegrity() === 'invalid',
       }))
     } catch (error) {
       const code = mapFailureCode(error, controller.signal, timedOut)

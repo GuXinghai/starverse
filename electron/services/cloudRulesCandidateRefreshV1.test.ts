@@ -11,6 +11,11 @@ import {
   CloudRulesCandidateRefreshV1,
   projectCloudRulesRedirectHeadersV1,
 } from './cloudRulesCandidateRefreshV1'
+import { buildAuthoritativeModelSubjectSetV1 } from
+  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
+import { CloudRulesDistributionV1Repo } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
+import { CloudRulesApplicationV1Service } from './cloudRulesApplicationV1Service'
 
 function database(): BetterSqlite3.Database {
   const db = new BetterSqlite3(':memory:')
@@ -313,5 +318,61 @@ describe('CloudRulesCandidateRefreshV1', () => {
       scheduledDb.close()
       vi.useRealTimers()
     }
+  })
+
+  it('re-offers the same verified release to repair a corrupt applied LKG and keeps local overrides', async () => {
+    const db = database()
+    let now = 1_000
+    const subjects = buildAuthoritativeModelSubjectSetV1([{ subject: { providerAuthorityId: 'openai',
+      endpointProfileId: 'openai-default', nativeModelId: 'gpt-test' }, proof: {
+      kind: 'provider_native_catalog' as const, providerKey: 'openai_responses', scopeId: 'scope:a',
+      credentialScopeId: 'credential-scope-v2:test', credentialRevision: 1,
+      endpointProfileId: 'openai-default', operationContractId: 'openai-models-v1', catalogCategory: '',
+      activeSnapshotDigest: 'a'.repeat(64),
+    } }])
+    const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjects }, () => now)
+    const appRepo = new CloudRulesApplicationV1Repo(db)
+    const distributionRepo = new CloudRulesDistributionV1Repo(db)
+    const sameRelease = () => listingFetcher([[release('1.0.0')]], [document('1.0.0')])
+    try {
+      await new CloudRulesCandidateRefreshV1({ db, fetchImpl: sameRelease(), nowMs: () => now }).checkNow()
+      const offered = distributionRepo.readState().candidate!
+      const applied = await service.applyCandidate({ expectedCandidateRecordRevision: offered.candidateRecordRevision,
+        expectedAppliedRecordRevision: null })
+      await service.replaceActivationOverrides({ expectedAppliedRecordRevision: applied.applied.appliedRecordRevision,
+        expectedOverrideRevision: appRepo.readOverrides().revision,
+        overrides: [{ kind: 'rule', ruleId: 'rule.reasoning', configured: 'off' }] })
+
+      // A healthy LKG never re-offers the release it already has.
+      now = 2_000
+      await new CloudRulesCandidateRefreshV1({ db, fetchImpl: sameRelease(), nowMs: () => now }).checkNow()
+      expect(distributionRepo.readState().candidate).toBeNull()
+
+      db.prepare('UPDATE cloud_rules_applied_snapshot_v1 SET document_sha256=? WHERE singleton_id=1')
+        .run('f'.repeat(64))
+      expect(appRepo.readAppliedIntegrity()).toBe('invalid')
+      expect(appRepo.listHistory()).toEqual([])
+
+      // Same version with different content is still rejected by the version ledger.
+      now = 3_000
+      const drift = await new CloudRulesCandidateRefreshV1({ db, nowMs: () => now,
+        fetchImpl: listingFetcher([[release('1.0.0')]], [document('1.0.0', 1)]) }).checkNow()
+      expect(drift).toEqual({ ok: false, status: 'failed', code: 'CLOUD_RULES_RELEASE_VERSION_DRIFT' })
+      expect(distributionRepo.readState().candidate).toBeNull()
+
+      now = 4_000
+      const repair = await new CloudRulesCandidateRefreshV1({ db, fetchImpl: sameRelease(), nowMs: () => now }).checkNow()
+      expect(repair.ok && repair.state.candidate).toMatchObject({ releaseVersion: '1.0.0',
+        contentRevision: offered.contentRevision })
+      await service.applyCandidate({ expectedCandidateRecordRevision: offered.candidateRecordRevision,
+        expectedAppliedRecordRevision: 1 })
+      expect(appRepo.readState()).toMatchObject({ appliedIntegrity: 'valid', appliedRecordRevision: 2,
+        applied: { releaseVersion: '1.0.0', contentRevision: offered.contentRevision } })
+      expect(appRepo.readOverrides().overrides).toEqual([
+        { kind: 'rule', ruleId: 'rule.reasoning', configured: 'off' },
+      ])
+      expect(distributionRepo.readState()).toMatchObject({ candidate: null,
+        appliedContentRevision: offered.contentRevision })
+    } finally { db.close() }
   })
 })

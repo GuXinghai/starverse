@@ -43,7 +43,8 @@ const I18N_PREFIX = 'settings.modelsCapabilities.facts'
 export type PresentableProvenance = Readonly<{
   sourceKind?: string
   sourcePriority?: number
-  sourceAssertion?: Readonly<{ value?: unknown; provenance?: Readonly<{ assertionKind?: string; claimId?: string }> }>
+  sourceAssertion?: Readonly<{ value?: unknown; provenance?: Readonly<{ assertionKind?: string; claimId?: string
+    ruleClaim?: Readonly<{ ownerKind?: string; packId?: string; ruleId?: string }> }> }>
 }>
 export type PresentableDiagnostic = Readonly<{ sourceKind?: string; path?: string; kind?: string; errorCode?: string }>
 export type PresentableCandidate = Readonly<{ value?: unknown; provenance?: readonly PresentableProvenance[] }>
@@ -113,6 +114,16 @@ export function modelFactAssertionKindKey(kind: string | undefined): string {
 export function modelFactValueText(value: unknown): string | null {
   if (value === undefined) return null
   try { return JSON.stringify(value) } catch { return String(value) }
+}
+
+/** Originating Capability Rule of a claim, as carried by its resolver provenance; null for other sources. */
+export function modelFactRuleClaimIdentity(claim: PresentableProvenance):
+  Readonly<{ ownerKey: string; packId: string; ruleId: string }> | null {
+  const ruleClaim = claim.sourceAssertion?.provenance?.ruleClaim
+  if (!ruleClaim?.ruleId || !ruleClaim.packId) return null
+  const owner = ruleClaim.ownerKind === 'cloud' || ruleClaim.ownerKind === 'user' ? ruleClaim.ownerKind : 'cloud'
+  return Object.freeze({ ownerKey: `${I18N_PREFIX}.detail.ruleOwner.${owner}`, packId: ruleClaim.packId,
+    ruleId: ruleClaim.ruleId })
 }
 
 export type ModelFactFilter = 'all' | 'conflict' | 'unknown' | 'diagnostics'

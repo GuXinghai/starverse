@@ -240,6 +240,8 @@ export class CloudRulesDistributionV1Repo {
     checkedAtMs: number
     candidate: PreparedCloudRulesCandidateV1 | null
     suppressCandidate?: boolean
+    /** The applied LKG failed its integrity check: re-offer the same verified content for repair. */
+    appliedSnapshotInvalid?: boolean
   }>): CloudRulesDistributionStateV1 {
     const checkedAtMs = safeTime(input.checkedAtMs)
     return this.runImmediate(() => {
@@ -258,7 +260,7 @@ export class CloudRulesDistributionV1Repo {
           prepared.releaseVersion, prepared.contentRevision, checkedAtMs, checkedAtMs)
       }
       const nextCandidate = input.suppressCandidate || prepared === null ||
-        prepared.contentRevision === current.appliedContentRevision
+        (prepared.contentRevision === current.appliedContentRevision && input.appliedSnapshotInvalid !== true)
         ? null
         : current.candidate?.contentRevision === prepared.contentRevision
           ? current.candidate

@@ -283,7 +283,12 @@
           "openEvidence": "View source evidence",
           "noFieldsMatch": "No fields match this filter.",
           "diagnosticCode": "Error code",
-          "tiedCandidate": "Tied candidate"
+          "tiedCandidate": "Tied candidate",
+          "ruleClaim": "Rule",
+          "ruleOwner": {
+            "cloud": "Cloud Rule",
+            "user": "User Rule"
+          }
         },
         "control": {
           "checking": "Checking model capabilities…",
@@ -296,6 +301,114 @@
           "unavailableSummary": "{count} parameter(s) unavailable for this model. Show advanced to see why.",
           "reasonLine": "{state}: {explanation}"
         }
+      },
+      "cloud": {
+        "diagnostics": "Diagnostics",
+        "diagnosticCode": "Code",
+        "never": "never",
+        "noneObserved": "none found",
+        "appliedAt": "applied",
+        "lastSuccessfulCheck": "Last successful check",
+        "latestRelease": "Latest release",
+        "publishedAt": "Published",
+        "latestWhilePinned": "latest available: {version}",
+        "freshness": {
+          "checking": "Checking for Cloud Rules updates…",
+          "never_checked": "Not checked yet. The first check runs automatically after startup.",
+          "check_failed": "The last update check failed. This is not the same as “no update”.",
+          "install_available": "Cloud Rules are ready to install.",
+          "update_available": "An update is available.",
+          "repair_available": "A verified copy of the release is ready to repair the damaged local snapshot.",
+          "repair_check_needed": "The local Cloud Rules snapshot is damaged. Check for updates to download a verified copy.",
+          "pinned": "Updates are paused at the pinned version.",
+          "no_release": "No Cloud Rules release has been published yet.",
+          "not_installed": "Cloud Rules are not installed.",
+          "up_to_date": "Up to date."
+        },
+        "checkFailure": {
+          "network": "Could not reach GitHub. Check your network connection and try again.",
+          "timeout": "The update check timed out. Try again later.",
+          "aborted": "The update check was interrupted. Try again.",
+          "http": "GitHub returned an unexpected response. Try again later.",
+          "redirect": "The download was redirected to an untrusted location and was blocked.",
+          "listing": "The release list from GitHub could not be read.",
+          "release_invalid": "The latest release failed validation and was not offered.",
+          "version_drift": "The latest release reuses a version number with different content, so it was rejected.",
+          "persistence": "The check result could not be saved locally.",
+          "unknown": "The update check failed for an unknown reason."
+        },
+        "actionError": {
+          "stale": "Cloud Rules changed since this view was loaded, so nothing was changed. The view has been reloaded; review it and try again.",
+          "candidate_not_found": "That release is no longer available. The view has been reloaded.",
+          "subject_set_stale": "The model list changed while this was being applied, so nothing was changed. The view has been reloaded; try again.",
+          "lkg_corrupt": "The local Cloud Rules snapshot is damaged. The view has been reloaded.",
+          "invalid": "The request was rejected as invalid.",
+          "unavailable": "Cloud Rules are not available in this window.",
+          "unknown": "The action could not be completed."
+        },
+        "integrityInvalidTitle": "Cloud Rules are disabled",
+        "integrityInvalidBody": "The installed Cloud Rules snapshot failed its integrity check, so its rules are not used for Model Facts.",
+        "integrityRecoverCandidate": "Use “Repair” below to reinstall the verified release. Local activation choices are kept.",
+        "integrityRecoverHistory": "Roll back to a previous release below, or use “Check for updates” to download a verified copy.",
+        "integrityRecoverCheck": "Use “Check for updates” to download a verified copy of the release and repair it.",
+        "install": "Install Cloud Rules",
+        "installConfirmation": "Install this verified Cloud Rules release? Its rules will be added to Model Facts.",
+        "repairInstall": "Repair",
+        "repairConfirmation": "Reinstall this verified release to replace the damaged local snapshot? Local activation choices are kept.",
+        "emptyChecking": "Cloud Rules are not installed yet. Waiting for the first update check.",
+        "emptyCheckFailed": "Cloud Rules are not installed yet because the update check failed.",
+        "emptyInstallReady": "Cloud Rules are not installed yet. Install the release above to use them.",
+        "emptyNoRelease": "Cloud Rules are not installed because no release has been published yet.",
+        "diffFirstInstall": "Nothing is installed yet, so every Pack and Rule in this release is new.",
+        "diffBetween": "Changes from {current} to {candidate}.",
+        "diffSummary": "Packs: {packsAdded} added, {packsRemoved} removed, {packsChanged} changed. Rules: {rulesAdded} added, {rulesRemoved} removed, {rulesChanged} changed, {rulesUnchanged} unchanged.",
+        "diffNoChanges": "No Pack or Rule content changes.",
+        "diffRulesChanged": "Changed Rules",
+        "diffRules": {
+          "added": "Added Rules",
+          "removed": "Removed Rules"
+        },
+        "diffMore": "…and {count} more",
+        "diffField": {
+          "pack": "Pack",
+          "label": "Label",
+          "description": "Description",
+          "priority": "Priority",
+          "configured": "Configured",
+          "provider": "Provider / profile",
+          "selector": "Models",
+          "assertionPath": "Path",
+          "assertionValue": "Value",
+          "evidence": "Evidence",
+          "displayName": "Name",
+          "mode": "Mode",
+          "target": "Target"
+        },
+        "rawJson": "Show / hide raw release JSON",
+        "configuredValue": {
+          "default": "Default",
+          "on": "On",
+          "off": "Off"
+        },
+        "overriddenBadge": "Local override",
+        "noLocalOverride": "none",
+        "providerProfile": "Provider / endpoint profile",
+        "selectorKind": {
+          "exact": "Exact model IDs",
+          "regex": "Model ID pattern"
+        },
+        "regexMatches": "Matches",
+        "regexExcludes": "Does not match",
+        "assertedValue": "Asserted value",
+        "remoteBaseline": "Remote baseline",
+        "localOverride": "Local override",
+        "effectiveActivation": "Effective activation",
+        "localActivation": "Local activation",
+        "evidence": "Evidence",
+        "evidenceKind": "Kind",
+        "identityEvidence": "Model identity evidence",
+        "verifiedAt": "Verified",
+        "derivation": "Derivation"
       }
     },
     "language": {

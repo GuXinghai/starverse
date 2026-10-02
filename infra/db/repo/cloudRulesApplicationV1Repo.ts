@@ -164,6 +164,18 @@ export class CloudRulesApplicationV1Repo {
   constructor(private readonly db: BetterSqlite3.Database, private readonly nowMs: () => number = Date.now) {}
 
   readState(): CloudRulesApplicationStateV1 {
+    const { applied, appliedIntegrity, appliedRecordRevision } = this.readAppliedSnapshot()
+    return Object.freeze({ applied, appliedIntegrity, appliedRecordRevision, policy: this.readPolicy(),
+      overrides: this.readOverrides() })
+  }
+
+  /** Integrity of the applied LKG row alone; never throws for a corrupt snapshot row. */
+  readAppliedIntegrity(): CloudRulesApplicationStateV1['appliedIntegrity'] {
+    return this.readAppliedSnapshot().appliedIntegrity
+  }
+
+  private readAppliedSnapshot(): Pick<CloudRulesApplicationStateV1,
+    'applied' | 'appliedIntegrity' | 'appliedRecordRevision'> {
     let applied: CloudRulesStoredSnapshotV1 | null = null
     let appliedIntegrity: CloudRulesApplicationStateV1['appliedIntegrity'] = 'missing'
     const row = this.db.prepare(`SELECT applied_record_revision, release_version, content_revision,
@@ -177,8 +189,7 @@ export class CloudRulesApplicationV1Repo {
     }
     const appliedRecordRevision = row && Number.isSafeInteger(row.applied_record_revision) &&
       (row.applied_record_revision as number) >= 1 ? row.applied_record_revision as number : null
-    return Object.freeze({ applied, appliedIntegrity, appliedRecordRevision, policy: this.readPolicy(),
-      overrides: this.readOverrides() })
+    return { applied, appliedIntegrity, appliedRecordRevision }
   }
 
   readAppliedOrThrow(): CloudRulesStoredSnapshotV1 | null {

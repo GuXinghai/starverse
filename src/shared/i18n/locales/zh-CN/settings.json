@@ -283,7 +283,12 @@
           "openEvidence": "查看来源证据",
           "noFieldsMatch": "没有符合筛选条件的字段。",
           "diagnosticCode": "错误码",
-          "tiedCandidate": "并列候选"
+          "tiedCandidate": "并列候选",
+          "ruleClaim": "规则",
+          "ruleOwner": {
+            "cloud": "云端规则",
+            "user": "用户规则"
+          }
         },
         "control": {
           "checking": "正在检查模型能力…",
@@ -296,6 +301,114 @@
           "unavailableSummary": "有 {count} 个参数对该模型不可用。展开高级选项查看原因。",
           "reasonLine": "{state}：{explanation}"
         }
+      },
+      "cloud": {
+        "diagnostics": "诊断信息",
+        "diagnosticCode": "代码",
+        "never": "从未",
+        "noneObserved": "未发现",
+        "appliedAt": "应用于",
+        "lastSuccessfulCheck": "上次成功检查",
+        "latestRelease": "最新发布",
+        "publishedAt": "发布时间",
+        "latestWhilePinned": "最新可用：{version}",
+        "freshness": {
+          "checking": "正在检查云端规则更新…",
+          "never_checked": "尚未检查。启动后会自动进行首次检查。",
+          "check_failed": "上次更新检查失败。这不等于“没有更新”。",
+          "install_available": "云端规则已可安装。",
+          "update_available": "有可用更新。",
+          "repair_available": "已获取经验证的发布副本，可用于修复损坏的本地快照。",
+          "repair_check_needed": "本地云端规则快照已损坏。请检查更新以下载经验证的副本。",
+          "pinned": "更新已暂停在固定版本。",
+          "no_release": "尚未发布任何云端规则版本。",
+          "not_installed": "尚未安装云端规则。",
+          "up_to_date": "已是最新。"
+        },
+        "checkFailure": {
+          "network": "无法连接 GitHub。请检查网络后重试。",
+          "timeout": "更新检查超时，请稍后重试。",
+          "aborted": "更新检查被中断，请重试。",
+          "http": "GitHub 返回了意外的响应，请稍后重试。",
+          "redirect": "下载被重定向到不受信任的位置，已被阻止。",
+          "listing": "无法读取 GitHub 的发布列表。",
+          "release_invalid": "最新发布未通过校验，因此未提供更新。",
+          "version_drift": "最新发布复用了已有版本号但内容不同，已被拒绝。",
+          "persistence": "无法在本地保存检查结果。",
+          "unknown": "更新检查因未知原因失败。"
+        },
+        "actionError": {
+          "stale": "加载此视图后云端规则已发生变化，因此本次操作未生效。视图已重新加载，请检查后重试。",
+          "candidate_not_found": "该发布已不可用。视图已重新加载。",
+          "subject_set_stale": "应用期间模型列表发生了变化，因此本次操作未生效。视图已重新加载，请重试。",
+          "lkg_corrupt": "本地云端规则快照已损坏。视图已重新加载。",
+          "invalid": "请求无效，已被拒绝。",
+          "unavailable": "此窗口中无法使用云端规则。",
+          "unknown": "操作未能完成。"
+        },
+        "integrityInvalidTitle": "云端规则已停用",
+        "integrityInvalidBody": "已安装的云端规则快照未通过完整性校验，因此其规则不会用于模型事实。",
+        "integrityRecoverCandidate": "使用下方的“修复”重新安装经验证的发布。本地启用设置会保留。",
+        "integrityRecoverHistory": "可在下方回滚到之前的发布，或使用“检查更新”下载经验证的副本。",
+        "integrityRecoverCheck": "使用“检查更新”下载经验证的发布副本以进行修复。",
+        "install": "安装云端规则",
+        "installConfirmation": "安装这个已验证的云端规则发布吗？其规则将加入模型事实。",
+        "repairInstall": "修复",
+        "repairConfirmation": "重新安装这个已验证的发布以替换损坏的本地快照吗？本地启用设置会保留。",
+        "emptyChecking": "尚未安装云端规则，正在等待首次更新检查。",
+        "emptyCheckFailed": "由于更新检查失败，尚未安装云端规则。",
+        "emptyInstallReady": "尚未安装云端规则。请安装上方的发布以使用它们。",
+        "emptyNoRelease": "尚未发布任何版本，因此没有安装云端规则。",
+        "diffFirstInstall": "当前尚未安装任何内容，因此此发布中的所有规则包和规则都是新增的。",
+        "diffBetween": "从 {current} 到 {candidate} 的变更。",
+        "diffSummary": "规则包：新增 {packsAdded}，移除 {packsRemoved}，变更 {packsChanged}。规则：新增 {rulesAdded}，移除 {rulesRemoved}，变更 {rulesChanged}，未变 {rulesUnchanged}。",
+        "diffNoChanges": "规则包和规则内容没有变化。",
+        "diffRulesChanged": "变更的规则",
+        "diffRules": {
+          "added": "新增的规则",
+          "removed": "移除的规则"
+        },
+        "diffMore": "……以及另外 {count} 项",
+        "diffField": {
+          "pack": "规则包",
+          "label": "标签",
+          "description": "说明",
+          "priority": "优先级",
+          "configured": "配置",
+          "provider": "提供方 / 配置档",
+          "selector": "模型",
+          "assertionPath": "路径",
+          "assertionValue": "取值",
+          "evidence": "证据",
+          "displayName": "名称",
+          "mode": "模式",
+          "target": "目标"
+        },
+        "rawJson": "显示 / 隐藏原始发布 JSON",
+        "configuredValue": {
+          "default": "默认",
+          "on": "开",
+          "off": "关"
+        },
+        "overriddenBadge": "本地覆盖",
+        "noLocalOverride": "无",
+        "providerProfile": "提供方 / 端点配置档",
+        "selectorKind": {
+          "exact": "精确模型 ID",
+          "regex": "模型 ID 模式"
+        },
+        "regexMatches": "匹配",
+        "regexExcludes": "不匹配",
+        "assertedValue": "断言值",
+        "remoteBaseline": "远端基线",
+        "localOverride": "本地覆盖",
+        "effectiveActivation": "实际启用状态",
+        "localActivation": "本地启用设置",
+        "evidence": "证据",
+        "evidenceKind": "类型",
+        "identityEvidence": "模型身份证据",
+        "verifiedAt": "核验时间",
+        "derivation": "推导"
       }
     },
     "language": {
