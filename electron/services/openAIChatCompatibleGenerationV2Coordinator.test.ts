@@ -214,6 +214,36 @@ describe('OpenAI-compatible V2 coordinator', () => {
     expect(db.prepare('SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id=?').get('branch:1')).toEqual({ chosen: created.preparedRequest.answerRootId })
   })
 
+  it.each([
+    ['exact match', 'model-x'],
+    ['alias / dated model name', 'model-x-2026-01-15'],
+    ['deployment / served-model-name mismatch', 'my-deployment/served-model'],
+  ])('keeps a successful response completed when the reported model differs (%s)', async (_label, reported) => {
+    const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
+    const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+      nowMs: () => 100, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}`,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'chatcmpl-rep', model: reported, choices: [{
+        index: 0, message: { role: 'assistant', content: 'ok answer' }, finish_reason: 'stop',
+      }] }), { status: 200, headers: { 'content-type': 'application/json' } })), streamProjectionSink: { publish: (event) => sink.push(event) } })
+    const created = await runtime.submitInitial({ operationId: 'operation:reported', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', errorCode: null, answerRootId: created.preparedRequest.answerRootId })))
+    expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(created.preparedRequest.answerRootId)).toEqual({ status: 'completed' })
+    expect(created.preparedRequest.modelId).toBe('model-x')
+  })
+
+  it('still fails a genuine provider HTTP failure regardless of reported model', async () => {
+    const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
+    const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+      nowMs: () => 100, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}`,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(JSON.stringify({ model: 'model-x', error: { message: 'boom' } }), { status: 500, headers: { 'content-type': 'application/json' } })),
+      streamProjectionSink: { publish: (event) => sink.push(event) } })
+    const created = await runtime.submitInitial({ operationId: 'operation:http-fail', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'failed',
+      errorCode: 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_HTTP_FAILED', answerRootId: created.preparedRequest.answerRootId })))
+  })
+
   it('fails a non-stream JSON response before buffering a declared body over 16 MiB', async () => {
     const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
     const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,

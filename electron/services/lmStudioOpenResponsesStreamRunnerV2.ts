@@ -145,7 +145,8 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
             answerRootId: command.preparedRequest.answerRootId, detail: Object.freeze({ type: 'thought', text: event.delta }) })
         } } } finally { try { await reader.cancel() } catch { /* release */ }; reader.releaseLock() }
       const result = decoder.finish()
-      if (result.state !== 'completed' || result.model !== command.preparedRequest.modelId) {
+      // result.model is reported provenance; a mismatch with the requested model ID is not a failure
+      if (result.state !== 'completed') {
         throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROVIDER_FAILED')
       }
       checkpoint.flush()

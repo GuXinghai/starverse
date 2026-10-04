@@ -80,7 +80,7 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
         for (const chunk of decoder.push(item.value)) { const delta = assembler.push(chunk); if (delta) { visible += delta; checkpoint.update(visible) } } }
         for (const chunk of decoder.finish()) assembler.push(chunk)
       } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
-      const result = assembler.finish(); if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_PROVIDER_FAILED')
+      const result = assembler.finish() // result.model is reported provenance; a mismatch with the requested model ID is not a failure
       checkpoint.flush()
       return terminal(command, 'completed', result, null, null, 'mid_stream')
     } catch (error) { let failure: unknown = error; try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }

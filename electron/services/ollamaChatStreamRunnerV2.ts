@@ -277,9 +277,8 @@ export function createOllamaChatStreamRunnerV2(
           } catch {}
           reader.releaseLock();
         }
+        // result.model is reported provenance; a mismatch with the requested model ID is not a failure
         const result = assembler.finish();
-        if (result.model !== cmd.preparedRequest.modelId)
-          throw new Error("GENERATION_V2_OLLAMA_RUNNER_PROVIDER_FAILED");
         checkpoint.flush();
         return terminal(cmd, "completed", result, null, null, "mid_stream");
       } catch (e) {

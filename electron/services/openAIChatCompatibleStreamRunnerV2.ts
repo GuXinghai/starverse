@@ -174,7 +174,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
         const bytes = await readOpenAICompatibleJsonResponseBytesV2(response); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint) } finally { bytes.fill(0) }
       } else throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_CONTENT_TYPE_INVALID')
       const result = assembler.finish()
-      if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_MODEL_MISMATCH')
+      // result.model is reported provenance; a mismatch with the requested model ID is not a failure
       if (result.assistantMessage.tool_calls?.length) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_TOOL_CONTINUATION_UNAVAILABLE')
       checkpoint.flush()
       const reasoningState = reasoning?.reasoningStates()[0]?.state
