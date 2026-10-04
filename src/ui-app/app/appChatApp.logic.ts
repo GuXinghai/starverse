@@ -7151,10 +7151,15 @@ export function useAppChatAppLogic() {
     })
   }
 
+  // Saved local mode no longer has an execution path: surfaced to the user, never rewritten or rerouted.
+  function savedLocalModeUnavailableError(message: string): Error {
+    return Object.assign(new Error(message), { savedLocalModeUnavailable: true })
+  }
+
   async function ensureGenerationV2LmStudioProfileFromSavedSettings(modelId: string): Promise<string> {
     if (!lmStudioChatConfig.value.enabled || lmStudioChatConfig.value.chatMode !== 'openai_compatible' ||
         lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses') {
-      throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
+      throw savedLocalModeUnavailableError(t('settings.lmStudio.savedModeUnavailable'))
     }
     const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('lm_studio')
     const baseUrl = canonicalEndpointBase(lmStudioChatConfig.value.endpointUrl.trim())
@@ -7172,7 +7177,7 @@ export function useAppChatAppLogic() {
   async function ensureGenerationV2OllamaProfileFromSavedSettings(modelId: string): Promise<string> {
     if (!ollamaChatConfig.value.enabled || ollamaChatConfig.value.chatMode !== 'native_rest' ||
         ollamaChatConfig.value.nativeRestPreferredEndpoint !== 'chat') {
-      throw new Error('GENERATION_V2_OLLAMA_NATIVE_CHAT_NOT_SELECTED')
+      throw savedLocalModeUnavailableError(t('settings.ollama.savedModeUnavailable'))
     }
     if (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null) {
       throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
@@ -7237,11 +7242,11 @@ export function useAppChatAppLogic() {
     if (route.kind === 'lmstudio_openresponses' &&
         (lmStudioChatConfig.value.chatMode !== 'openai_compatible' ||
          lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses')) {
-      throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
+      throw savedLocalModeUnavailableError(t('settings.lmStudio.savedModeUnavailable'))
     }
     if (route.kind === 'ollama_chat' &&
         (ollamaChatConfig.value.chatMode !== 'native_rest' || ollamaChatConfig.value.nativeRestPreferredEndpoint !== 'chat')) {
-      throw new Error('GENERATION_V2_OLLAMA_NATIVE_CHAT_NOT_SELECTED')
+      throw savedLocalModeUnavailableError(t('settings.ollama.savedModeUnavailable'))
     }
     if (route.kind === 'ollama_chat' &&
         (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null)) {
@@ -7482,6 +7487,9 @@ export function useAppChatAppLogic() {
       if (isCurrent()) {
         activeSessionCapabilityPending.value = false
         activeSessionCapabilityProjection.value = null
+        if (cause instanceof Error && (cause as { savedLocalModeUnavailable?: unknown }).savedLocalModeUnavailable === true) {
+          loadError.value = cause.message
+        }
         // A failed refresh is a data gap, not an endless "checking" state.
         const code = cause && typeof cause === 'object' && typeof (cause as { code?: unknown }).code === 'string'
           ? (cause as { code: string }).code

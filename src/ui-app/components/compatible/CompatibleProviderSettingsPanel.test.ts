@@ -79,6 +79,16 @@ describe('CompatibleProviderSettingsPanel', () => {
     expect((option.closest('select') as HTMLSelectElement).value).toBe('compatibility_first')
   })
 
+  it('shows a persisted strict_ssrf policy as unavailable instead of silently rewriting it', async () => {
+    const saved = details(firstId, 'First', 'https://first.example/v1')
+    saved.endpointRevisions[0]!.securityPolicy = 'strict_ssrf'
+    registry.list.mockResolvedValue([saved])
+    render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+    await fireEvent.click(await screen.findByText('First'))
+    expect(await screen.findByTestId('compatible-strict-ssrf-unavailable')).toHaveAttribute('role', 'alert')
+    expect(registry.updateEndpoint).not.toHaveBeenCalled()
+  })
+
   it('keeps identical catalog model namespaces scoped to the selected provider instance', async () => {
     render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
     await screen.findByText('First')

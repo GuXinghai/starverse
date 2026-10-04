@@ -1801,6 +1801,14 @@ function chipClass(active: boolean): string {
             {{ t('settings.lmStudio.autoUnloadAfterIdleDeferred') }}
           </label>
         </div>
+        <div
+          v-if="lmStudioChat.enabled && (lmStudioChat.chatMode !== 'openai_compatible' || lmStudioChat.openAICompatiblePreferredEndpoint !== 'responses')"
+          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800"
+          role="alert"
+          data-testid="lm-studio-saved-mode-unavailable"
+        >
+          {{ t('settings.lmStudio.savedModeUnavailable') }}
+        </div>
         <div class="rounded border border-indigo-100 bg-white px-2 py-1.5 text-[11px] text-indigo-900" data-testid="lm-studio-selected-status">
           <div>{{ tf('settings.lmStudio.chatStatus', { status: lmStudioChatStatusLabel }) }}</div>
           <div>{{ t('settings.lmStudio.endpoint') }}: {{ lmStudioChat.endpointUrl || t('settings.lmStudio.none') }}</div>
@@ -2086,6 +2094,14 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.ollama.autoUnloadAfterIdleDeferred') }}
           </label>
+        </div>
+        <div
+          v-if="ollamaChat.enabled && (ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat')"
+          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800"
+          role="alert"
+          data-testid="ollama-saved-mode-unavailable"
+        >
+          {{ t('settings.ollama.savedModeUnavailable') }}
         </div>
         <div class="rounded border border-green-100 bg-white px-2 py-1.5 text-[11px] text-green-900" data-testid="ollama-selected-status">
           <div>{{ tf('settings.ollama.chatStatus', { status: ollamaChatStatusLabel }) }}</div>

@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
+import { t } from '@/shared/i18n'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL, OPENROUTER_TEST_MODELS } from '@/next/openrouter/openRouterTestModels'
 import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
@@ -622,6 +623,26 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     })
     await vi.runAllTimersAsync()
     expect('recordRecent' in bridge().modelPreferences).toBe(false)
+  })
+
+  it('blocks Send before any command when the saved Ollama mode is no longer executable', async () => {
+    globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'openai_compatible')
+    selectRuntimeProvider('ollama_local', 'llama3.2:latest')
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+
+    const box = draftBox()
+    await user.click(box)
+    await user.type(box, 'saved unsupported mode')
+    await user.click(sendButton())
+
+    await vi.runAllTimersAsync()
+    expect(sendButton()).toBeDisabled()
+    expect((await screen.findAllByText(t('settings.ollama.savedModeUnavailable'))).length).toBeGreaterThan(0)
+    expect(commandInitialCalls).toHaveLength(0)
+    expect(document.body.textContent).not.toContain('GENERATION_V2_')
   })
 
 })

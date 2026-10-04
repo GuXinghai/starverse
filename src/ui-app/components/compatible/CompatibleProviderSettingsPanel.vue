@@ -595,6 +595,14 @@ onMounted(load);
               </option>
             </select></label
           >
+          <div
+            v-if="securityPolicy === 'strict_ssrf'"
+            class="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+            role="alert"
+            data-testid="compatible-strict-ssrf-unavailable"
+          >
+            {{ t("settings.openAICompatible.strictSsrfSavedUnavailable") }}
+          </div>
           <label class="text-xs"
             >{{ t("settings.openAICompatible.auth")
             }}<select

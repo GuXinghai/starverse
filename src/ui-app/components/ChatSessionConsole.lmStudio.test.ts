@@ -193,6 +193,18 @@ describe('ChatSessionConsole LM Studio controls', () => {
     }))
   })
 
+  it('shows a saved non-executable LM Studio mode as unavailable without rewriting it', () => {
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false, isRunning: false, sessionConfig: lmStudioSessionConfig(), lmStudioChat: lmStudioChat(),
+        reasoningDisplayMode: 'inline', modelCatalog: [], webSearchResolved: null, generationParamsResolved: null,
+      },
+    })
+    expect(screen.getByTestId('lm-studio-saved-mode-unavailable')).toHaveAttribute('role', 'alert')
+    expect(view.emitted('updateLMStudioChatMode')).toBeUndefined()
+    expect(view.emitted('updateLMStudioOpenAICompatiblePreferredEndpoint')).toBeUndefined()
+  })
+
   it('disables diagnostics actions when the diagnostics control is off', async () => {
     const user = userEvent.setup()
     const probe = vi.fn(async () => ({ ok: true }))

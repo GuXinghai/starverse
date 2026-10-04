@@ -86,6 +86,18 @@ describe('ChatSessionConsole Ollama controls', () => {
     ;(globalThis as any).ollamaProvider = originalOllamaProvider
   })
 
+  it('shows a saved non-executable Ollama mode as unavailable without rewriting it', () => {
+    const saved = { ...ollamaChat(), chatMode: 'openai_compatible' as const }
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false, isRunning: false, sessionConfig: ollamaSessionConfig(), ollamaChat: saved,
+        reasoningDisplayMode: 'inline', modelCatalog: [], webSearchResolved: null, generationParamsResolved: null,
+      },
+    })
+    expect(screen.getByTestId('ollama-saved-mode-unavailable')).toHaveAttribute('role', 'alert')
+    expect(view.emitted('updateOllamaChatMode')).toBeUndefined()
+  })
+
   it('exposes Ollama Local configuration, diagnostics, and native REST controls without catalog or pull UI', async () => {
     const user = userEvent.setup()
     const probe = vi.fn(async () => ({
