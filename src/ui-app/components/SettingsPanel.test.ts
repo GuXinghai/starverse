@@ -198,8 +198,6 @@ function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
 
 function createDbBridgeMock() {
   const invoke = vi.fn(async (method: string, _params?: any) => {
-    if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
-    if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
     if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
     if (method === 'settings.setReasoningPrefs') return { ok: true }
     if (method === 'settings.getChatReasoningPanelDefaultExpanded') return { value: true }
@@ -531,10 +529,9 @@ describe('ui-app SettingsPanel', () => {
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
 
-    const checkbox = screen.getByLabelText('强制 OpenRouter 校验 provider 参数') as HTMLInputElement
-    expect(checkbox.checked).toBe(false)
-    await user.click(checkbox)
-    expect(checkbox.checked).toBe(true)
+    // provider.require_parameters is not consumed by the V2 OpenRouter compiler, so no control may exist.
+    expect(screen.queryByLabelText('强制 OpenRouter 校验 provider 参数')).toBeNull()
+    expect(screen.queryByText('provider.require_parameters')).toBeNull()
 
     await user.click(screen.getByTestId('settings-save'))
 
@@ -555,7 +552,7 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('catalogPolicyV2', expect.anything())
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
+    expect(invoke).not.toHaveBeenCalled()
     const credentialUpdate = (globalThis as any).openRouterCredential.update as ReturnType<typeof vi.fn>
     expect(credentialUpdate).not.toHaveBeenCalled()
   })

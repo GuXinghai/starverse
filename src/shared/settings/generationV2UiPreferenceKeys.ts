@@ -4,6 +4,7 @@ export const GENERATION_V2_UI_PREFERENCE_KEYS = new Set([
   'webSearchDefaults',
   'imageGenerationDefault',
   'generationParamsDefaults',
+  'projectDefaults',
   'dfcAttachmentDefaults',
   'userMessageRenderDefault',
   'reasoningPrefs',

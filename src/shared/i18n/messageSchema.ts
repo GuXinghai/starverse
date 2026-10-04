@@ -139,8 +139,6 @@ export interface SettingsMessages {
       readonly endpointNameCustom: string
       readonly endpointCustomBaseUrlInvalid: string
       readonly baseUrlCleared: string
-      readonly requireParameters: string
-      readonly requireParametersDesc: string
       readonly debugEcho: string
       readonly debugEchoDesc: string
     }

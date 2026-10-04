@@ -26,7 +26,7 @@ import {
   listMessageErrorEnvelopes,
   type PersistedProviderNativeContent,
 } from '@/next/message/messageClient'
-import { saveProject, type ProjectSummary } from '@/next/project/projectClient'
+import { listProjectDefaults, setProjectDefaults } from '@/next/settings/projectDefaultsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import {
   ensureGenerationV2DefaultWorkspace,
@@ -332,6 +332,7 @@ export function useAppChatAppLogic() {
   const loadError = ref<string | null>(null)
   const convos = ref<ConvoSummary[]>([])
   const conversationCursorByProjectId = ref<Map<string, GenerationV2ConversationCursor | null>>(new Map())
+  type ProjectSummary = Readonly<{ id: string; name: string; createdAt: number; updatedAt: number; meta?: Record<string, unknown> | null }>
   const projects = ref<ProjectSummary[]>([])
   const projectCounts = ref<Map<string | null, number>>(new Map())
   const activeProjectId = ref<string | null>(null)
@@ -2181,8 +2182,11 @@ export function useAppChatAppLogic() {
     inboxId.value = workspace.projectId
     const listedProjects = await listGenerationV2Projects()
     startupLease?.assertCurrent()
+    const defaultsByProject = await listProjectDefaults()
+    startupLease?.assertCurrent()
     projects.value = listedProjects.map((project) => ({ id: project.projectId, name: project.name,
-      createdAt: project.createdAtMs, updatedAt: project.updatedAtMs }))
+      createdAt: project.createdAtMs, updatedAt: project.updatedAtMs,
+      meta: (defaultsByProject.get(project.projectId) as Record<string, unknown> | undefined) ?? null }))
     await refreshProjectCounts(startupLease)
   }
 
@@ -2802,6 +2806,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     try {
       await deleteGenerationV2Project(projectId)
+      await setProjectDefaults(projectId, null)
       // 如果删除的是当前选中的项目，切换到全部对话
       if (activeProjectId.value === projectId) {
         activeProjectId.value = null
@@ -6215,11 +6220,9 @@ export function useAppChatAppLogic() {
       const nextMeta = mergeProjectWebSearchDefaultsMeta(project.meta ?? null, nextLayer)
       const nextGenerationParamsLayer = normalizeGenerationParamsLayer(projectGenerationParamsDraft.value)
       const nextMetaWithGenerationParams = mergeProjectGenerationParamsDefaultsMeta(nextMeta, nextGenerationParamsLayer)
-      await saveProject({
-        id: project.id,
-        name: project.name,
-        meta: nextMetaWithGenerationParams,
-      })
+      if (!await setProjectDefaults(project.id, nextMetaWithGenerationParams)) {
+        throw new Error('PROJECT_DEFAULTS_SAVE_FAILED')
+      }
       projects.value = projects.value.map((p) => (p.id === project.id ? { ...p, meta: nextMetaWithGenerationParams } : p))
       projectWebSearchSettingsStatus.value = 'Saved.'
     } catch (err: any) {

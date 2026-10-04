@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
@@ -715,7 +714,6 @@ const catalogPolicyControlsDisabled = computed(() =>
   saving.value ||
   (catalogPolicyTarget.value === 'provider_override' && !useSelectedProviderOverride()),
 )
-const requireParameters = ref(false)
 const debugEchoUpstreamBody = ref(false)
 type CredentialOperation = 'status' | 'update' | 'clear'
 const credentialPendingOperations = ref<Partial<Record<ProviderCatalogKnownProviderKey, CredentialOperation>>>({})
@@ -1290,7 +1288,6 @@ async function load() {
     await loadCatalogProviderPolicies(store)
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
-    requireParameters.value = await getOpenRouterProviderRequireParameters()
     const netExp = await getNetExpSettings()
     netExpDisableHttp2.value = netExp.disableHttp2
     netExpDisableQuic.value = netExp.disableQuic
@@ -1385,7 +1382,6 @@ async function save() {
     }
     catalogProviderOverrideTouched.value = {}
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
-    await setOpenRouterProviderRequireParameters(requireParameters.value === true)
     await setNetExpSettings({
       disableHttp2: netExpDisableHttp2.value,
       disableQuic: netExpDisableQuic.value,
@@ -2278,22 +2274,6 @@ onMounted(() => {
         </div>
         <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
           <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-        <div class="mt-4 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-gray-700">provider.require_parameters</div>
-            <div class="text-[11px] text-gray-500">{{ t('settings.openrouter.requireParametersDesc') }}</div>
-          </div>
-          <label class="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              :aria-label="t('settings.openrouter.requireParametersDesc')"
-              :disabled="!canEdit || loading || saving"
-              v-model="requireParameters"
-            />
-            <span class="text-[11px] text-gray-700">{{ requireParameters ? t('common.on') : t('common.off') }}</span>
-          </label>
         </div>
 
         <div v-if="isDev" class="mt-4 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2">

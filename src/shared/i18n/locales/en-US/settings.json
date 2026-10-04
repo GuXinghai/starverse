@@ -489,8 +489,6 @@
       "endpointNameCustom": "OpenRouter custom endpoint",
       "endpointCustomBaseUrlInvalid": "Invalid custom base URL",
       "baseUrlCleared": "Base URL cleared.",
-      "requireParameters": "provider.require_parameters",
-      "requireParametersDesc": "Force OpenRouter provider parameter validation",
       "debugEcho": "debug.echo_upstream_body",
       "debugEchoDesc": "DEV only, stream mode only. Helps diagnose provider parameter mapping."
     },

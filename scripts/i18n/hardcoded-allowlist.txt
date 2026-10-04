@@ -11,7 +11,6 @@ dbBridge 未就绪
 # Technical labels that should stay English
 Model
 OpenRouter
-provider\.require_parameters
 debug\.echo_upstream_body
 stream in main process
 Force HTTP/1\.1

@@ -489,8 +489,6 @@
       "endpointNameCustom": "OpenRouter 自定义 endpoint",
       "endpointCustomBaseUrlInvalid": "自定义 Base URL 无效",
       "baseUrlCleared": "Base URL 已清除。",
-      "requireParameters": "provider.require_parameters",
-      "requireParametersDesc": "强制 OpenRouter 校验 provider 参数",
       "debugEcho": "debug.echo_upstream_body",
       "debugEchoDesc": "仅开发环境，仅 stream 模式。用于诊断 provider 参数映射。"
     },
