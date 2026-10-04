@@ -5,6 +5,8 @@ import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2
 import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReasoningProjectionV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
+import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
@@ -306,6 +308,55 @@ describe('Gemini Interactions image generation V2', () => {
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:2' })
       expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:retry'").get()).toEqual({ status: 'failed' })
+    } finally { db.close() }
+  })
+
+  it('regenerates from the source question attachments, ignoring composer attachments, and retry keeps its frozen snapshot', async () => {
+    const db = database(); let ids = 0; let clock = 100
+    const urlAttachment = (name: string) => { const url = `https://example.com/${name}.png`
+      const urlDigest = sha256PreparedBytesV2(new TextEncoder().encode(url))
+      db.prepare(`INSERT INTO url_attachment_reference_v2 (reference_id, reference_revision, original_url, url_digest, media_kind,
+        declared_media_type, captured_at_ms, provenance, created_at_ms) VALUES (?, ?, ?, ?, 'image', NULL, 1, 'user_supplied', 1)`)
+        .run(`url:${name}`, `revision:${name}`, url, urlDigest)
+      return { kind: 'url_reference', referenceId: `url:${name}`, referenceRevision: `revision:${name}`, originalUrl: url,
+        urlDigest, mediaKind: 'image', capturedAtMs: 1,
+        provenance: 'user_supplied', include: true, sendAs: 'url_reference', conversion: 'none' } }
+    // Gemini image cannot carry attachments, so the frozen source is empty; an included composer attachment would throw if it leaked in.
+    const attachmentRows = () => db.prepare('SELECT * FROM message_v2').all()
+    try {
+      const initial = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db, credentialService: credentialService(), nowMs: () => clock++,
+        createGraphId: (kind) => `${kind}:${++ids}` }).submit({
+        command: { operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null, prompt: 'draw',
+          modelId: 'gemini-3.1-flash-image', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const sourceAttachments = initial.execution.snapshot.semanticIntent.attachments
+      expect(sourceAttachments).toEqual([])
+      const sourceAnswerId = initial.projection.branchProjection.chosenAnswerRootId!.value
+      await createGeminiInteractionsImageStreamRunnerV2({ db, credentialService: credentialService(),
+        attachmentBlobStore: { persist: vi.fn() } as never, fetchImpl: async () => streamResponse(), nowMs: () => clock++ }).run(initial)
+      const before = attachmentRows()
+      let head = sourceAnswerId; let n = 0
+      const actions = createGeminiInteractionsImageActionCoordinatorV2({ db, credentialService: credentialService(),
+        nowMs: () => clock++, createAnswerId: () => `answer:regen:${++n}` })
+      const regenerate = async (commandAttachments: readonly unknown[]) => {
+        const result = await actions.regenerate({ operationId: `operation:regen:${n + 1}`, clientActionId: `operation:regen:${n + 1}`,
+          sourceBranchId: result0Branch(), questionId: 'question:1', sourceAnswerId, expectedHeadMessageId: head,
+          modelId: 'gemini-3.1-flash-image', commandAttachments })
+        return result
+      }
+      const result0Branch = () => 'branch:1'
+      const foreign = await regenerate([urlAttachment('composer-foreign')])
+      expect(foreign.execution.snapshot.semanticIntent.attachments).toEqual(sourceAttachments)
+      head = sourceAnswerId
+      const empty = await regenerate([])
+      expect(empty.execution.snapshot.semanticIntent.attachments).toEqual(sourceAttachments)
+      expect(attachmentRows().slice(0, before.length)).toEqual(before)
+      expect(new GenerationExecutionV2Repo(db).getSnapshotByAnswerRootId(sourceAnswerId)?.semanticIntent.attachments)
+        .toEqual(sourceAttachments)
+      const retry = await actions.retry({ actionKind: 'retry_as_new', operationId: 'operation:retry-frozen',
+        clientActionId: 'operation:retry-frozen', sourceBranchId: 'branch:1', questionId: 'question:1', sourceAnswerId,
+        expectedHeadMessageId: sourceAnswerId })
+      expect(retry.execution.snapshot.semanticIntent.attachments).toEqual(sourceAttachments)
     } finally { db.close() }
   })
 

@@ -7711,10 +7711,8 @@ export function useAppChatAppLogic() {
       const operationId = crypto.randomUUID()
       const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
         sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId }
-      const commandAttachments = route.kind === 'openrouter_images' || route.kind === 'gemini_interactions_image'
-        ? projectGenerationV2ComposerAttachments(generationV2ComposerDraft.value?.conversationId === view.conversationId
-          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId))
-        : [] // Text regenerate reads the source answer's immutable attachments in main.
+      // Regenerate never reads composer attachments; main reads the source question's frozen attachments.
+      const commandAttachments: [] = []
       const commandModelId = modelId
       assertCurrentCapabilityLease(capabilityLease)
       const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,

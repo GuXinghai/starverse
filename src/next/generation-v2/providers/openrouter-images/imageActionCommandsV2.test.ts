@@ -12,14 +12,14 @@ const regenerate = () => ({
 })
 
 describe('OpenRouter Images action commands V2', () => {
-  it('carries the current Composer attachment projection for regenerate', () => {
+  it('decodes the wire-level commandAttachments field for regenerate (main ignores it and reads the source question snapshot)', () => {
     const command = decodeOpenRouterImageRegenerateCommandV2(regenerate())
     expect(isOpenRouterImageRegenerateCommandV2(command)).toBe(true)
     expect(command.commandAttachments).toEqual([])
     expect(command.canonicalJson).toContain('commandAttachments')
   })
 
-  it('does not silently discard renderer-supplied regenerate attachment facts', () => {
+  it('decodes renderer-supplied regenerate attachment facts without discarding them; the coordinator, not the decoder, ignores them', () => {
     const url = 'https://example.com/image.png'
     const command = decodeOpenRouterImageRegenerateCommandV2({
       ...regenerate(), commandAttachments: [{ kind: 'url_reference', referenceId: 'url:1', referenceRevision: 'revision:1',

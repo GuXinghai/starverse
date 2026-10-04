@@ -15,6 +15,7 @@ import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/r
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeOpenRouterImageEditResendCommandV2,
@@ -170,7 +171,11 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       modelEvidence.assertCurrent()
       assertDescriptorCurrent(descriptor)
-      const sourceAttachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
+      // Regenerate keeps the question's frozen attachments; live composer attachments never participate.
+      const sourceAttachments = projectGenerationCommandAttachmentsV2(command.kind === 'openrouter_image_regenerate'
+        ? readRegenerateSourceAttachmentsV2({ db: input.db, context, sourceAnswerId: command.sourceAnswerId.value,
+          questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value })
+        : command.commandAttachments)
       const pending = command.kind === 'openrouter_image_regenerate'
         ? graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value,
           questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,

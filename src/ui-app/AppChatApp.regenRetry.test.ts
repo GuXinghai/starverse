@@ -258,7 +258,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
       expectedCapabilityRevision: 'capability-v2:test',
       command: expect.objectContaining({
         sourceBranchId: 'b1', questionId: 'u1', expectedHeadMessageId: 'a1',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL, commandAttachments: [],
       }),
     }))
     await screen.findByTestId('msg-wrap-a2')

@@ -9,6 +9,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeGeminiInteractionsImageEditResendCommandV2,
@@ -127,7 +128,11 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
             questionId: questionId(), answerRootId: answerId(), userBody: command.prompt, createdAtMs: nowMs() })
         const prompt = command.kind === 'gemini_interactions_image_regenerate'
           ? promptForQuestion(input.db, command.questionId.value) : command.prompt
-        const attachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
+        // Regenerate keeps the question's frozen attachments; live composer attachments never participate.
+        const attachments = projectGenerationCommandAttachmentsV2(command.kind === 'gemini_interactions_image_regenerate'
+          ? readRegenerateSourceAttachmentsV2({ db: input.db, context, sourceAnswerId: command.sourceAnswerId.value,
+            questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value })
+          : command.commandAttachments)
         return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
           pending.conversationId.value, attachments, undefined, (commandFacts) =>
             withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
