@@ -1210,7 +1210,7 @@ async function loadCatalogProviderStatus(providerKey: ProviderCatalogKnownProvid
     catalogRuntimeStore.acceptAuthority({ token, authorityScopeId: first?.scopeId ?? null,
       authorityRevision: first?.authorityRevision,
       displayedSnapshotDigest: first?.catalogRevision ?? null,
-      pendingSnapshotDigest: first?.pendingSnapshotDigest ?? null, items,
+      pendingSnapshotDigest: first?.pendingSnapshotDigest ?? null, pendingEmpty: first?.pendingEmpty === true, items,
       stale: first?.status === 'not_synced', failure: first?.providerFailure ?? null })
   } catch (cause) {
     catalogRuntimeStore.acceptFailure({ token, failure: providerFailureFromUnknownV2(cause, {
@@ -1754,6 +1754,7 @@ async function refreshCatalogProvider(providerKey: ProviderCatalogKnownProviderK
         authorityRevision: typeof result.authorityRevision === 'number' ? result.authorityRevision : undefined,
         displayedSnapshotDigest: current.displayedSnapshotDigest,
         pendingSnapshotDigest: result.pendingSnapshotDigest,
+        pendingEmpty: result.pendingEmpty === true,
         items: current.items,
         stale: current.stale,
         failure: null,
@@ -3021,7 +3022,8 @@ onMounted(() => {
                   class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-blue-700"
                   :data-testid="`settings-catalog-pending-${descriptor.providerKey}`"
                 >
-                  <span>{{ t('settings.catalog.pendingAvailable') }}</span>
+                  <span v-if="catalogRuntimeSnapshot[descriptor.providerKey]?.pendingEmpty" class="text-amber-700" :data-testid="`settings-catalog-pending-empty-${descriptor.providerKey}`">{{ t('settings.catalog.pendingEmptyConfirm') }}</span>
+                  <span v-else>{{ t('settings.catalog.pendingAvailable') }}</span>
                   <button
                     type="button"
                     class="rounded border border-blue-200 bg-white px-2 py-1 font-semibold hover:bg-blue-50 disabled:opacity-50"
@@ -3029,7 +3031,7 @@ onMounted(() => {
                     :data-testid="`settings-catalog-apply-${descriptor.providerKey}`"
                     @click="applyPendingCatalogProvider(descriptor.providerKey)"
                   >
-                    {{ t('settings.catalog.applyPending') }}
+                    {{ catalogRuntimeSnapshot[descriptor.providerKey]?.pendingEmpty ? t('settings.catalog.acceptEmptyCatalog') : t('settings.catalog.applyPending') }}
                   </button>
                   <button
                     type="button"
@@ -3038,7 +3040,7 @@ onMounted(() => {
                     :data-testid="`settings-catalog-discard-${descriptor.providerKey}`"
                     @click="discardPendingCatalogProvider(descriptor.providerKey)"
                   >
-                    {{ t('settings.catalog.discardPending') }}
+                    {{ catalogRuntimeSnapshot[descriptor.providerKey]?.pendingEmpty ? t('settings.catalog.keepCurrentCatalog') : t('settings.catalog.discardPending') }}
                   </button>
                 </div>
                 <ProviderFailureDetailsV2

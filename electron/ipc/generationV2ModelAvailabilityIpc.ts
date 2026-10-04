@@ -193,7 +193,8 @@ function snapshotResult(state: CatalogScopeStateV2, config?: ProviderConfig, sel
     modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, errorCode: status?.errorCode ?? null,
     errorMessage, providerFailure, scopeId: status?.scopeId ?? null,
     authorityRevision: status?.authorityRevision ?? 0,
-    pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null })
+    pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null,
+    pendingEmpty: pending ? pending.modelCount === 0 : false })
   return Object.freeze({ ok: true, ...providerFields, items: active.items,
     status: status?.syncState === 'syncing' ? 'syncing' : status?.syncState === 'error' ? 'failed' : 'synced',
     responseDigest: active.status.activeSnapshotDigest, observedAtMs: active.observedAtMs,
@@ -201,7 +202,8 @@ function snapshotResult(state: CatalogScopeStateV2, config?: ProviderConfig, sel
     hiddenModelCount: active.status.hiddenModelCount, errorCode: active.status.errorCode,
     errorMessage, providerFailure, scopeId: status?.scopeId ?? null,
     authorityRevision: status?.authorityRevision ?? 0,
-    pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null })
+    pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null,
+    pendingEmpty: pending ? pending.modelCount === 0 : false })
 }
 
 export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{

@@ -19,6 +19,7 @@ export type CatalogRuntimeStateV2<TItem extends Readonly<Record<string, unknown>
   authorityRevision: number
   displayedSnapshotDigest: string | null
   pendingSnapshotDigest: string | null
+  pendingEmpty: boolean
   items: readonly TItem[]
   hydrationState: CatalogRuntimeHydrationStateV2
   syncState: CatalogRuntimeSyncStateV2
@@ -79,6 +80,7 @@ function empty<TItem extends Readonly<Record<string, unknown>>>(
     authorityRevision: counters.authorityRevision ?? 0,
     displayedSnapshotDigest: null,
     pendingSnapshotDigest: null,
+    pendingEmpty: false,
     items: Object.freeze([]),
     hydrationState: 'idle',
     syncState: 'idle',
@@ -145,6 +147,7 @@ export class CatalogRuntimeStoreV2<TItem extends Readonly<Record<string, unknown
     authorityRevision?: number
     displayedSnapshotDigest: string | null
     pendingSnapshotDigest: string | null
+    pendingEmpty?: boolean
     items: readonly TItem[]
     stale?: boolean
     failure?: ProviderFailureV2 | null
@@ -160,6 +163,7 @@ export class CatalogRuntimeStoreV2<TItem extends Readonly<Record<string, unknown
       authorityRevision,
       displayedSnapshotDigest: input.displayedSnapshotDigest,
       pendingSnapshotDigest: input.pendingSnapshotDigest,
+      pendingEmpty: input.pendingSnapshotDigest !== null && input.pendingEmpty === true,
       items: Object.freeze([...input.items]),
       hydrationState: 'ready',
       syncState: input.failure ? 'failed' : 'idle',

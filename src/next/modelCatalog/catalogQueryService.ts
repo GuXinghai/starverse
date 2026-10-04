@@ -158,6 +158,7 @@ export type CatalogQueryResult = Readonly<{
   scopeId?: string | null
   authorityRevision?: number
   pendingSnapshotDigest?: string | null
+  pendingEmpty?: boolean
   modelCount?: number
   visibleModelCount?: number
   hiddenModelCount?: number
@@ -601,6 +602,7 @@ async function queryGenerationV2Catalog(input: Readonly<{
     scopeId: typeof response.scopeId === 'string' ? response.scopeId : null,
     authorityRevision: readFiniteNumber(response.authorityRevision) ?? 0,
     pendingSnapshotDigest: typeof response.pendingSnapshotDigest === 'string' ? response.pendingSnapshotDigest : null,
+    pendingEmpty: response.pendingEmpty === true,
     modelCount: authorityModelCount ?? all.length,
     visibleModelCount: authorityVisibleCount ?? all.length,
     hiddenModelCount: authorityHiddenCount ?? 0,

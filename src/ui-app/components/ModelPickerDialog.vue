@@ -455,6 +455,10 @@ const queryFilterSignature = computed(() =>
 )
 
 const selectedSyncSnapshot = computed(() => getProviderSyncSnapshot(selectedSyncProviderKey.value))
+const pendingCatalogUpdateIsEmpty = computed(() => getCatalogRuntimeState(
+  selectedSyncProviderKey.value,
+  categoryForProvider(selectedSyncProviderKey.value),
+).pendingEmpty)
 const pendingCatalogUpdateAvailable = computed(() =>
   Boolean(getCatalogRuntimeState(
     selectedSyncProviderKey.value,
@@ -1556,6 +1560,7 @@ async function fetchPage(options: Readonly<{
           authorityScopeId: result.scopeId ?? null,
           displayedSnapshotDigest: revision,
           pendingSnapshotDigest: result.pendingSnapshotDigest ?? null,
+          pendingEmpty: result.pendingEmpty === true,
           items: result.items,
           stale: failure !== null || result.status === 'not_synced' || isCatalogStatusStale({
             status: revision ? 'synced' : 'not_synced',
@@ -1850,6 +1855,7 @@ async function runSyncProvider(
         authorityScopeId: typeof syncResponse.scopeId === 'string' ? syncResponse.scopeId : current.authorityScopeId,
         displayedSnapshotDigest: revision,
         pendingSnapshotDigest: pendingRevision,
+        pendingEmpty: syncResponse.pendingEmpty === true,
         items: current.items,
         stale: false,
       })
@@ -1923,6 +1929,7 @@ async function fetchProviderSyncStatus(
       ...(category ? { category } : {}) }) as Record<string, unknown>
     if (!catalogRuntimeStore.isCurrent(token)) return
     const policy = getProviderPolicySnapshot(providerKey, category)
+    const pendingEmpty = response.pendingEmpty === true
     const pendingSnapshotDigest = typeof response.pendingSnapshotDigest === 'string'
       ? response.pendingSnapshotDigest
       : null
@@ -1947,6 +1954,7 @@ async function fetchProviderSyncStatus(
       authorityScopeId: typeof response.scopeId === 'string' ? response.scopeId : current.authorityScopeId,
       displayedSnapshotDigest: typeof response.responseDigest === 'string' ? response.responseDigest : null,
       pendingSnapshotDigest,
+      pendingEmpty,
       items: current.items,
       stale: response.status !== 'synced' || isCatalogStatusStale({
         status: response.observedAtMs ? 'synced' : 'not_synced',
@@ -2007,6 +2015,40 @@ function onProviderRowRefresh(providerId: RuntimeProviderId) {
 
 function onApplyCatalogUpdate() {
   void applyLatestCatalogList()
+}
+
+async function keepCurrentCatalogList() {
+  const providerKey = selectedSyncProviderKey.value
+  const category = categoryForProvider(providerKey)
+  const scopeKey = catalogRuntimeScopeKey(providerKey, category)
+  const pendingRevision = getCatalogRuntimeState(providerKey, category).pendingSnapshotDigest
+  if (!pendingRevision) return
+  const token = catalogRuntimeStore.beginMutation(scopeKey)
+  publishCatalogRuntimeStore()
+  const response = await CatalogQueryService.discardPending({
+    sourceProviderKey: providerKey,
+    snapshotDigest: pendingRevision,
+    ...(category ? { category } : {}),
+  }) as Record<string, unknown>
+  if (!catalogRuntimeStore.isCurrent(token)) return
+  if (response.ok !== true) {
+    const providerFailure = response.providerFailure && typeof response.providerFailure === 'object'
+      ? response.providerFailure as ProviderFailureV2
+      : rendererCatalogFailure(providerKey, response.code ?? 'catalog_discard_failed', response.message)
+    catalogRuntimeStore.acceptFailure({ token, failure: providerFailure })
+    publishCatalogRuntimeStore()
+    return
+  }
+  const current = catalogRuntimeStore.read(scopeKey)
+  catalogRuntimeStore.acceptAuthority({
+    token,
+    authorityScopeId: typeof response.scopeId === 'string' ? response.scopeId : current.authorityScopeId,
+    displayedSnapshotDigest: current.displayedSnapshotDigest,
+    pendingSnapshotDigest: null,
+    items: current.items,
+    stale: current.stale,
+  })
+  publishCatalogRuntimeStore()
 }
 
 function restoreFocusAfterClose() {
@@ -3144,9 +3186,22 @@ const selectedModelFilteredOut = computed(() =>
             </option>
           </select>
           <template v-if="pendingCatalogUpdateAvailable">
-            <span class="text-blue-700" data-testid="model-picker-update-available">
+            <span v-if="pendingCatalogUpdateIsEmpty" class="text-amber-700" data-testid="model-picker-empty-update">
+              {{ t('errors.modelCatalog.emptyUpdate') }}
+            </span>
+            <span v-else class="text-blue-700" data-testid="model-picker-update-available">
               {{ t('errors.modelCatalog.updateAvailable') }}
             </span>
+            <button
+              v-if="pendingCatalogUpdateIsEmpty"
+              type="button"
+              class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="props.disabled || loading"
+              data-testid="model-picker-keep-current-catalog"
+              @click="keepCurrentCatalogList"
+            >
+              {{ t('errors.modelCatalog.keepCurrentCatalog') }}
+            </button>
             <button
               type="button"
               class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50"
@@ -3154,7 +3209,7 @@ const selectedModelFilteredOut = computed(() =>
               data-testid="model-picker-apply-update"
               @click="onApplyCatalogUpdate"
             >
-              {{ t('errors.modelCatalog.applyUpdate') }}
+              {{ pendingCatalogUpdateIsEmpty ? t('errors.modelCatalog.acceptEmptyUpdate') : t('errors.modelCatalog.applyUpdate') }}
             </button>
           </template>
           <span v-if="selectedSyncSnapshot.status === 'not_synced'" class="text-gray-400">

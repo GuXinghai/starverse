@@ -51,6 +51,57 @@ describe('CatalogScopeCoordinatorV2', () => {
     } finally { db.close() }
   })
 
+  it('distinguishes sync failure, valid non-empty, and valid empty results against an existing active catalog', async () => {
+    const db = database()
+    let now = 100
+    const coordinator = new CatalogScopeCoordinatorV2(new ModelCatalogV2Repo(db, () => now), () => now)
+    const sync = (execute: Parameters<CatalogScopeCoordinatorV2['sync']>[0]['execute']) => coordinator.sync({
+      scope, applyMode: 'automatic', retentionMs: 'never', failureContext: context, timeoutMs: 1_000, execute })
+    try {
+      // valid non-empty -> applied automatically
+      expect(await sync(async () => ({ ok: true, responseDigest: 'a'.repeat(64), observedAtMs: 90, items: [catalogItem('lkg')] })))
+        .toMatchObject({ ok: true, publication: 'active', state: { active: { items: [{ id: 'lkg' }] } } })
+
+      // sync failure -> LKG preserved, failure surfaced
+      now = 200
+      const failed = await sync(async () => ({ ok: false, providerFailure: createProviderFailureV2({
+        context: { ...context, origin: 'http_response', phase: 'response_body' },
+        httpStatus: 503, body: { error: { code: 'unavailable', message: 'down' } } }) }))
+      expect(failed).toMatchObject({ ok: false, state: { active: { items: [{ id: 'lkg' }] }, pending: null } })
+
+      // valid empty over non-empty active -> held pending, active untouched
+      now = 300
+      const empty = await sync(async () => ({ ok: true, responseDigest: 'd'.repeat(64), observedAtMs: 290, items: [] }))
+      expect(empty).toMatchObject({ ok: true, publication: 'pending', state: {
+        active: { items: [{ id: 'lkg' }] }, pending: { modelCount: 0, items: [] } } })
+
+      // explicit keep -> LKG stays, pending cleared
+      expect(coordinator.discardPending({ scope, expectedSnapshotDigest: 'd'.repeat(64) })).toMatchObject({
+        active: { items: [{ id: 'lkg' }] }, pending: null })
+
+      // explicit accept -> empty catalog becomes active
+      now = 400
+      await sync(async () => ({ ok: true, responseDigest: 'd'.repeat(64), observedAtMs: 390, items: [] }))
+      expect(coordinator.applyPending({ scope, expectedSnapshotDigest: 'd'.repeat(64) })).toMatchObject({
+        active: { items: [], status: { modelCount: 0 } }, pending: null })
+
+      // an empty active catalog accepts a further empty result without confirmation
+      now = 500
+      expect(await sync(async () => ({ ok: true, responseDigest: 'e'.repeat(64), observedAtMs: 490, items: [] })))
+        .toMatchObject({ ok: true, publication: 'active', state: { pending: null } })
+    } finally { db.close() }
+  })
+
+  it('lets a valid empty result become the visible state when there is no previous catalog', async () => {
+    const db = database()
+    const coordinator = new CatalogScopeCoordinatorV2(new ModelCatalogV2Repo(db, () => 100), () => 100)
+    try {
+      expect(await coordinator.sync({ scope, applyMode: 'automatic', retentionMs: 'never', failureContext: context,
+        timeoutMs: 1_000, execute: async () => ({ ok: true, responseDigest: 'f'.repeat(64), observedAtMs: 90, items: [] }) }))
+        .toMatchObject({ ok: true, publication: 'active', state: { active: { items: [] }, pending: null } })
+    } finally { db.close() }
+  })
+
   it('deduplicates concurrent scope sync and preserves active and pending pointers on raw provider failure', async () => {
     const db = database()
     const coordinator = new CatalogScopeCoordinatorV2(new ModelCatalogV2Repo(db, () => 500), () => 500)

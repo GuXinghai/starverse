@@ -387,6 +387,8 @@ describe('ui-app SettingsPanel', () => {
           visibleModelCount: 1, hiddenModelCount: 0, responseDigest: 'settings-openrouter-models-v2', observedAtMs: Date.now() })),
         applyPending: vi.fn(async (payload: any) => ({ ok: true, status: 'synced', modelCount: 1,
           visibleModelCount: 1, hiddenModelCount: 0, responseDigest: payload.snapshotDigest, observedAtMs: Date.now() })),
+        discardPending: vi.fn(async () => ({ ok: true, status: 'synced', modelCount: 1,
+          visibleModelCount: 1, hiddenModelCount: 0, responseDigest: 'settings-openrouter-models-v2', observedAtMs: Date.now() })),
         clearCurrent: vi.fn(async () => ({ ok: true, deletedScopes: 1 })),
         clearAll: vi.fn(async () => ({ ok: true, deletedScopes: 2 })),
       },
@@ -1081,6 +1083,30 @@ describe('ui-app SettingsPanel', () => {
         snapshotDigest: pendingDigest,
       })
     })
+    expect(screen.queryByTestId('settings-catalog-pending-openrouter')).toBeNull()
+  })
+
+  it('asks for explicit confirmation when a refresh yields an empty catalog and keeps the current one on request', async () => {
+    const user = userEvent.setup()
+    const pendingDigest = 'd'.repeat(64)
+    const models = (globalThis as any).generationV2.models
+    models.sync.mockResolvedValueOnce({
+      ok: true, status: 'pending', modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0,
+      pendingSnapshotDigest: pendingDigest, pendingEmpty: true, observedAtMs: Date.now(),
+    })
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+    await screen.findByText('设置')
+    await user.click(screen.getByTestId('settings-category-model-catalog'))
+    await user.click(screen.getByTestId('settings-catalog-refresh-openrouter'))
+
+    expect(await screen.findByTestId('settings-catalog-pending-empty-openrouter')).toBeTruthy()
+    expect(models.applyPending).not.toHaveBeenCalled()
+    await user.click(screen.getByTestId('settings-catalog-discard-openrouter'))
+    await waitFor(() => {
+      expect(models.discardPending).toHaveBeenCalledWith({ providerKey: 'openrouter', snapshotDigest: pendingDigest })
+    })
+    expect(models.applyPending).not.toHaveBeenCalled()
     expect(screen.queryByTestId('settings-catalog-pending-openrouter')).toBeNull()
   })
 

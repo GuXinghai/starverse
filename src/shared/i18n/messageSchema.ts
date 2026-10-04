@@ -608,6 +608,9 @@ export interface ErrorsMessages {
       readonly syncFailedReason: string
       readonly updateAvailable: string
       readonly applyUpdate: string
+      readonly emptyUpdate: string
+      readonly acceptEmptyUpdate: string
+      readonly keepCurrentCatalog: string
       readonly syncFailMissingApiKey: string
       readonly syncFailInvalidApiKey: string
       readonly syncFailInsufficientCredits: string

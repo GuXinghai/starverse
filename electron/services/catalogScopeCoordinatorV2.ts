@@ -201,6 +201,14 @@ export class CatalogScopeCoordinatorV2 {
       const digest = DIGEST_PATTERN.test(result.responseDigest ?? '')
         ? result.responseDigest!
         : responseDigest(result.items)
+      // A valid empty result never silently replaces a non-empty active catalog: hold it as a
+      // pending snapshot so the user explicitly keeps the current catalog or accepts the empty one.
+      let effectiveApplyMode = input.applyMode
+      if (effectiveApplyMode === 'automatic' && result.items.length === 0) {
+        try {
+          if ((this.repo.readActive(input.scope)?.status.modelCount ?? 0) > 0) effectiveApplyMode = 'manual'
+        } catch { effectiveApplyMode = 'manual' }
+      }
       try {
         this.repo.commitSync({
           scope: input.scope,
@@ -212,7 +220,7 @@ export class CatalogScopeCoordinatorV2 {
           items: result.items,
           ...(result.visibleModelCount === undefined ? {} : { visibleModelCount: result.visibleModelCount }),
           ...(result.hiddenModelCount === undefined ? {} : { hiddenModelCount: result.hiddenModelCount }),
-          applyMode: input.applyMode,
+          applyMode: effectiveApplyMode,
           codecVersion: 1,
           completeness: 'complete',
           adapterRevision: input.adapterRevision,
@@ -234,7 +242,7 @@ export class CatalogScopeCoordinatorV2 {
       }
       return Object.freeze({
         ok: true,
-        publication: input.applyMode === 'manual' && state.pending ? 'pending' : 'active',
+        publication: effectiveApplyMode === 'manual' && state.pending ? 'pending' : 'active',
         state,
       })
     } catch (error) {
