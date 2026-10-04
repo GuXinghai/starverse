@@ -1,0 +1,13 @@
+{
+  "artifact_validation": "PASS",
+  "normalized_findings": 27,
+  "counts": {
+    "BLOCKER": 1,
+    "HIGH": 11,
+    "MEDIUM": 15,
+    "LOW": 0
+  },
+  "source_paths_and_line_bounds_checked": true,
+  "markdown_local_links_and_trailing_whitespace_checked": true,
+  "errors": []
+}

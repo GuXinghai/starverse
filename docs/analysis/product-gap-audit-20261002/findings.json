@@ -1,0 +1,1463 @@
+{
+  "schema_version": "1.0",
+  "audit": {
+    "requested_folder_date": "2026-10-02",
+    "inspected_date": "2026-10-03",
+    "timezone": "Asia/Tokyo",
+    "branch": "models-dev-capability-resolution",
+    "head": "8d928d6d913d61e51052a8c52f2b665cac332c03",
+    "ui_lifecycle_commit": "4ac2de5",
+    "mode": "READ_ONLY_APPLICATION_AUDIT_WITH_AUTHORIZED_REPORT_WRITES",
+    "workstreams": 8,
+    "prior_electron_smoke": "User-reported prior PASS; not rerun and not proof of each audited workflow.",
+    "published_cloud_rules": "User-reported v1.0.0 publication; no remote fetch/apply."
+  },
+  "assessment": {
+    "overall": "PARTIAL_WITH_RELEASE_BLOCKING_DESTRUCTIVE_CONSENT_MISMATCH",
+    "retained_findings": 27,
+    "counts": {
+      "BLOCKER": 1,
+      "HIGH": 11,
+      "MEDIUM": 15,
+      "LOW": 0
+    },
+    "next_goal": "G-A: Workspace data safety and scope ownership",
+    "next_goal_reason": "Current ordinary project deletion violates preservation consent; draft navigation/edit ownership can overwrite unsent content. Fix actual Inbox identity before relocation and validate those boundaries together.",
+    "parallel_small_goal": "G-B: Narrow ProviderFailureV2 credential redaction repair"
+  },
+  "findings": [
+    {
+      "id": "SV-PGA-001",
+      "rank": 1,
+      "status": "RETAINED",
+      "severity": "BLOCKER",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "Projects",
+      "title": "Project deletion contradicts the promise to preserve conversations",
+      "user_visible_scenario": "Delete a user project after confirming that its chats will move to Inbox.",
+      "broken_or_incomplete_loop": "UI confirmation promises relocation; V2 IPC/repository directly deletes project; enforced FKs cascade through conversations/messages and generation records.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/ConversationList.vue",
+          "line": 703,
+          "description": "Preservation confirmation"
+        },
+        {
+          "path": "src/shared/i18n/locales/en-US/navigation.json",
+          "line": 9,
+          "description": "Explicit Inbox promise"
+        },
+        {
+          "path": "infra/db/repo/conversationWorkspaceV2Repo.ts",
+          "line": 31,
+          "description": "Protected-template check then direct DELETE"
+        },
+        {
+          "path": "infra/db/v2/coreConversationSchema.sql",
+          "line": 11,
+          "description": "Conversation CASCADE; message CASCADE at 22"
+        },
+        {
+          "path": "electron/data-epoch/epoch2CommittedBootstrap.ts",
+          "line": 118,
+          "description": "Foreign-key enforcement"
+        },
+        {
+          "path": "infra/db/v2/schemaComposerV2.test.ts",
+          "line": 535,
+          "description": "Physical cascade test does not assert UI preservation"
+        }
+      ],
+      "minimal_repair_direction": "Close the current preservation contract with atomic relocation to the actual template-owning project before deletion, followed by refresh; if the owner chooses physical deletion, explicitly change consent/counts and test that product contract. This audit does not choose destructive semantics.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO_PRODUCT_CONTRACT",
+        "assessment": "Schema tests intentionally cover physical cascade; IPC tests verify deletion/drain but never the preservation promise.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Isolated DB+IPC project with chats/messages/drafts; assert preservation and actual Inbox ownership, then matching confirmation and active-scope refresh.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-01"
+      ],
+      "repair_batch": "G-A data safety"
+    },
+    {
+      "id": "SV-PGA-002",
+      "rank": 2,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Composer drafts",
+      "title": "Conversation navigation can overwrite the destination draft",
+      "user_visible_scenario": "Chat A has text and chat B a different saved draft; select B.",
+      "broken_or_incomplete_loop": "Active ID changes before a synchronous watcher calls unscoped flush. Flush captures old visible text against new active scope/revision, writes B, then restores B.",
+      "evidence": [
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 1050,
+          "description": "Previous scope exists but flush has no previous-scope input"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2469,
+          "description": "ID assigned before transcript load"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 4745,
+          "description": "Reads current active scope and visible text"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 4767,
+          "description": "Loads/writes destination revision"
+        },
+        {
+          "path": "electron/ipc/generationV2ComposerIpc.ts",
+          "line": 115,
+          "description": "Updates conversation supplied by renderer"
+        }
+      ],
+      "minimal_repair_direction": "Capture immutable old scope/content and flush before navigation; guard restores by request/scope identity. CAS alone cannot prevent a correct-revision write to the wrong intended chat.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "No two-conversation distinct-draft navigation assertion found in App fixtures.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Hold IPC responses; navigate A→B→A with distinct drafts and attachments, verify both persisted texts and UI identities.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-07"
+      ],
+      "repair_batch": "G-A data safety"
+    },
+    {
+      "id": "SV-PGA-003",
+      "rank": 3,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Composer editing",
+      "title": "Edit session crosses conversations and is not restored after restart",
+      "user_visible_scenario": "Edit A, navigate to B, then cancel/submit; reopen a persisted edit draft after restart.",
+      "broken_or_incomplete_loop": "Global edit session survives navigation; submit uses old question in new branch, cancel assigns old previous draft into current chat; persisted edit mode restores without edit-session reconstruction.",
+      "evidence": [
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 765,
+          "description": "Global questionEditSession"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 689,
+          "description": "Interaction lock only covers attachment confirmation"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2468,
+          "description": "Navigation has no edit guard"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 7061,
+          "description": "Cancel restores prior text into active visible draft"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 4823,
+          "description": "Draft mode restored but session not reconstructed"
+        },
+        {
+          "path": "infra/db/repo/composerDraftV2Repo.ts",
+          "line": 297,
+          "description": "Backend persists edit mode/question"
+        }
+      ],
+      "minimal_repair_direction": "Scope edit state and restore/cancel effects to conversation/branch, guard navigation/late responses, and rehydrate persisted edit semantics. Decide cancel-after-restart prior-snapshot contract explicitly.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Regenerate/retry and composer fixtures do not cover edit→navigate→cancel or restart with edit draft.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Isolated A/B edit navigation/cancel and restart tests; no foreign draft assignment, correct edit controls/question identity.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-06"
+      ],
+      "repair_batch": "G-A data safety"
+    },
+    {
+      "id": "SV-PGA-004",
+      "rank": 4,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "SECURITY_PRIVACY",
+      "product_area": "Failure details",
+      "title": "Credential sanitizer misses labels with URLs and provider header keys",
+      "user_visible_scenario": "A provider failure echoes a credential beside a safe URL or under x-api-key/x-goog-api-key; user opens/copies safe details.",
+      "broken_or_incomplete_loop": "URL presence suppresses credential-label redaction; structured header names are omitted; matched values can survive persisted error facts and safe UI projections.",
+      "evidence": [
+        {
+          "path": "src/shared/provider/providerFailureV2.ts",
+          "line": 305,
+          "description": "!hasUrlShape gates credential labels"
+        },
+        {
+          "path": "src/shared/provider/providerFailureV2.ts",
+          "line": 356,
+          "description": "Structured header names omitted"
+        },
+        {
+          "path": "electron/services/openAIResponsesStreamRunnerV2.ts",
+          "line": 244,
+          "description": "Current Responses body capture"
+        },
+        {
+          "path": "src/ui-app/components/ProviderFailureDetailsV2.vue",
+          "line": 17,
+          "description": "Safe projection serialized/copied"
+        },
+        {
+          "path": "docs/analysis/product-gap-audit-20261002/synthetic-redaction-probe.json",
+          "line": 1,
+          "description": "Current exported function dummy-token results"
+        }
+      ],
+      "minimal_repair_direction": "Run credential-label redaction independently of ordinary URL preservation; cover provider header names recursively and add composition cases. Preserve bounded useful nonsecret facts. No actual historical credential leak was established.",
+      "repair_layer": "BACKEND_ONLY",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Existing Authorization/proxy/query tests miss label+safe URL and nested provider header keys; dummy probe confirms both holes.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Pure-function regressions for label-only, label+URL, nested x-api-key/x-goog-api-key, safe URLs and authorization/query controls; persisted/details projection retains only redacted dummy values.",
+      "evidence_strength": "SYNTHETIC_PROBE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "ER-01"
+      ],
+      "repair_batch": "G-B privacy boundary"
+    },
+    {
+      "id": "SV-PGA-005",
+      "rank": 5,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Inbox identity",
+      "title": "The newest project can become a false Inbox",
+      "user_visible_scenario": "Create/rename another project, refresh projects or restart.",
+      "broken_or_incomplete_loop": "ensure-default returns most recently updated project ID even when existing template belongs elsewhere; UI protection/Inbox and backend/new-chat destination diverge.",
+      "evidence": [
+        {
+          "path": "electron/ipc/generationV2WorkspaceIpc.ts",
+          "line": 87,
+          "description": "Recency selection and returned projectId"
+        },
+        {
+          "path": "infra/db/repo/systemChatTemplateV2Repo.ts",
+          "line": 57,
+          "description": "Existing template returned unchanged"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2129,
+          "description": "inboxId uses returned default projectId"
+        },
+        {
+          "path": "src/ui-app/components/ConversationList.vue",
+          "line": 57,
+          "description": "System filtering/protection"
+        },
+        {
+          "path": "infra/db/repo/conversationWorkspaceV2Repo.ts",
+          "line": 33,
+          "description": "Backend protects actual template owner"
+        }
+      ],
+      "minimal_repair_direction": "Return the stored template's actual project ID and assert consistency with its conversation; consume that authoritative identity in UI.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Current UI fixtures supply a single stable default; no second-project ensure-default identity assertion found.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Create/rename two projects in isolated state; defaultProjectId always equals stored template conversation project; New and delete protection agree.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-04"
+      ],
+      "repair_batch": "G-A data safety"
+    },
+    {
+      "id": "SV-PGA-006",
+      "rank": 6,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "Native web search",
+      "title": "Web-search UI emits fields native contracts reject",
+      "user_visible_scenario": "Enable native web search on Anthropic or Gemini GenerateContent and send using ordinary settings.",
+      "broken_or_incomplete_loop": "Universal search builder adds maxResults/context/optional engine; provider compiler rejects unsupported/unencoded fields although native search exists.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/ChatSessionConsole.vue",
+          "line": 2471,
+          "description": "Provider-independent web controls"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 6334,
+          "description": "Always emits maxResults/searchContextSize except interactions image"
+        },
+        {
+          "path": "electron/services/anthropicGenerationAuthorityV2Service.ts",
+          "line": 131,
+          "description": "Supports native search but not context/engine"
+        },
+        {
+          "path": "electron/services/geminiGenerateContentGenerationAuthorityV2Service.ts",
+          "line": 185,
+          "description": "Extra fields must be absent"
+        },
+        {
+          "path": "src/next/generation-v2/capability/resolvedCapabilityV2.ts",
+          "line": 377,
+          "description": "Strict explicit-field rejection"
+        }
+      ],
+      "minimal_repair_direction": "Make controls/semantic emission provider-aware and omit unsupported fields. Preserve strict backend contracts rather than silently widening them.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_CLOSURE",
+        "assessment": "Editor and OpenRouter send-event mocks miss native UI→compiler/IPC closure; backend validation can reject without exposing the UI defect.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Compile actual UI-built semantics through Anthropic/Gemini/Responses prepared compilers with synthetic capabilities and mocked transport; assert supported-only fields and no paid requests.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "FW-01"
+      ],
+      "repair_batch": "G-C generation closures"
+    },
+    {
+      "id": "SV-PGA-007",
+      "rank": 7,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "DOCX PDF",
+      "title": "Ready DOCX PDF cannot be selected",
+      "user_visible_scenario": "Managed LibreOffice successfully converts DOCX; choose its ready PDF option.",
+      "broken_or_incomplete_loop": "Output is persisted under DOCX contract but every PDF selection queries HTML contract and raises OPTION_UNAVAILABLE.",
+      "evidence": [
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 123,
+          "description": "Ready DOCX option"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 164,
+          "description": "DOCX converter contract persisted"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 79,
+          "description": "PDF selection hardcodes HTML contract"
+        },
+        {
+          "path": "scripts/dfc/office-pdf-libreoffice-packaged-electron-smoke.mjs",
+          "line": 99,
+          "description": "Specialized import/options/select/preview smoke"
+        },
+        {
+          "path": "scripts/dfc/office-pdf-libreoffice-live-installed-state-smoke.mjs",
+          "line": 405,
+          "description": "Installed-state specialized loop"
+        }
+      ],
+      "minimal_repair_direction": "Bind the immutable output using the contract that produced the option; regression test generation→select→effective revision→send.",
+      "repair_layer": "BACKEND_ONLY",
+      "existing_tests": {
+        "catch_status": "YES_SPECIALIZED_NOT_RUN",
+        "assessment": "Packaged/live-installed DOCX Electron smokes would catch selection failure with valid runtime/build prerequisites. Default shell Markdown smoke and service availability/adapter tests do not. No current specialized result claimed.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Isolated DOCX service/IPC selection test plus the existing specialized temporary-profile smoke when its runtime prerequisites are available.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "F03-01"
+      ],
+      "repair_batch": "G-C generation closures"
+    },
+    {
+      "id": "SV-PGA-008",
+      "rank": 8,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "Conversation deletion",
+      "title": "Active conversation deletion leaves stale IDs and transcript",
+      "user_visible_scenario": "Delete the open chat, including through bulk deletion, then continue typing/sending.",
+      "broken_or_incomplete_loop": "Backend deletion/list refresh succeeds; active IDs are not cleared; replacement selection happens only when ID is null; reload fails before replacing old transcript.",
+      "evidence": [
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2565,
+          "description": "Delete leaves active IDs"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2592,
+          "description": "Bulk delete also leaves active IDs"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2103,
+          "description": "Replacement only when no active ID"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2217,
+          "description": "Missing conversation branch throws"
+        }
+      ],
+      "minimal_repair_direction": "After successful active deletion rebind/clear scope, transcript/cache and draft to a valid survivor or New template; coordinate with draft ownership repairs.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Repository/IPC deletion tests cover data mutations, not active renderer scope closure.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Single/bulk active deletion with two chats: valid replacement IDs, no deleted transcript/send target, correct destination draft.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-02"
+      ],
+      "repair_batch": "G-A data safety"
+    },
+    {
+      "id": "SV-PGA-009",
+      "rank": 9,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Rules and Model Facts",
+      "title": "Rules/priority saves leave controls and Inspector stale",
+      "user_visible_scenario": "Resolve a conflict in Rules/Source Priority and return to the unchanged active model/Inspector.",
+      "broken_or_incomplete_loop": "Mutation updates local panel/config but emits no semantic invalidation; active capability watcher only tracks route/model/chat/image mode; Inspector persists old read. Stale-send safety fallback may refresh only after rejection.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/ModelFactsSourcePrioritySettingsPanel.vue",
+          "line": 107,
+          "description": "Local successful save only"
+        },
+        {
+          "path": "src/ui-app/components/CapabilityRulesUserPanel.vue",
+          "line": 266,
+          "description": "Local publish/reload"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 6805,
+          "description": "Refresh key omits Rules/source priority mutation"
+        },
+        {
+          "path": "electron/services/modelFactsInspectorV1Service.ts",
+          "line": 124,
+          "description": "Reads persisted resolved current"
+        },
+        {
+          "path": "src/ui-app/AppChatApp.send.test.ts",
+          "line": 502,
+          "description": "Existing safe stale-send refresh, no automatic resubmit"
+        }
+      ],
+      "minimal_repair_direction": "Connect successful semantic mutations to authoritative current projection/re-resolution and Inspector refresh. Keep frozen retry snapshots and explicit resubmit guard.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "PARTIAL",
+        "assessment": "Existing tests catch stale send and safely refresh without auto-resubmit; they do not catch proactive same-route controls/Inspector refresh after save.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Save rule/priority with same model selected; refreshed winner/revision/control availability before send, Inspector reloads; retry remains frozen and no auto-send.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MC-02"
+      ],
+      "repair_batch": "G-D Rules operational closure"
+    },
+    {
+      "id": "SV-PGA-010",
+      "rank": 10,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "Search navigation",
+      "title": "Search hits outside current transcript cannot be located",
+      "user_visible_scenario": "Click a match older than latest 50 messages or on a different branch.",
+      "broken_or_incomplete_loop": "Search closes, default/latest branch page loads, focus checks loaded messages only and returns false; caller ignores it; hit lacks branch identity.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/SearchModal.vue",
+          "line": 103,
+          "description": "Closes on hit"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2990,
+          "description": "Latest/default conversation navigation"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 2719,
+          "description": "Loaded-only focus result ignored"
+        },
+        {
+          "path": "src/next/generation-v2/renderer/generationV2WorkspaceClient.ts",
+          "line": 75,
+          "description": "Default latest limit 50"
+        },
+        {
+          "path": "infra/db/repo/generationV2SearchRepo.ts",
+          "line": 18,
+          "description": "Result has no branch identity"
+        }
+      ],
+      "minimal_repair_direction": "Resolve eligible branch and load anchored/earlier pages before focus; report unavailable target with recovery. Reuse existing navigation helpers where correct.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Search repo indexing/query/rebuild tests pass without testing hit→branch/page→highlight closure.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Search and open an older-than-50 hit and alternate-branch hit; target is visible/highlighted or a clear recoverable failure appears.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "FW-02"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-011",
+      "rank": 11,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "ERROR_RECOVERY",
+      "product_area": "Workspace startup",
+      "title": "Initial workspace failure hides the error and recovery entry",
+      "user_visible_scenario": "First workspace/bootstrap IPC fails before active conversation assignment.",
+      "broken_or_incomplete_loop": "Startup stores loadError; workspaceMode none hides sole error/settings topbar; list refresh with no projects does not retry full initialization.",
+      "evidence": [
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 7329,
+          "description": "Missing bridge/error startup"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 7413,
+          "description": "Startup catch"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 3270,
+          "description": "No active conversation -> none"
+        },
+        {
+          "path": "src/ui-app/AppChatApp.vue",
+          "line": 458,
+          "description": "Topbar/error/settings gated by non-none workspace"
+        }
+      ],
+      "minimal_repair_direction": "Render root loading/error/retry and settings independently of active conversation; rerun bounded initialization rather than treating failure as empty workspace.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Current nominal startup fixtures and client error propagation tests do not render App under rejected initial reads.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Reject first workspace read/missing bridge in isolated UI fixture; visible error and settings, retry successfully initializes without real profile.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-05"
+      ],
+      "repair_batch": "G-C generation closures"
+    },
+    {
+      "id": "SV-PGA-012",
+      "rank": 12,
+      "status": "RETAINED",
+      "severity": "HIGH",
+      "type": "ERROR_RECOVERY",
+      "product_area": "Cloud Rules",
+      "title": "Cloud check failures look like successful no updates",
+      "user_visible_scenario": "Click Check Updates offline, on server failure or invalid publication.",
+      "broken_or_incomplete_loop": "Backend returns nonthrowing failed result; UI ignores it, reload clears error, persisted last failure/check metadata is omitted.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/CapabilityRulesOverviewPanel.vue",
+          "line": 102,
+          "description": "Failed result ignored"
+        },
+        {
+          "path": "electron/services/cloudRulesCandidateRefreshV1.ts",
+          "line": 419,
+          "description": "Returns failed result"
+        },
+        {
+          "path": "electron/ipc/generationV2CloudCapabilityRulesIpc.ts",
+          "line": 102,
+          "description": "Result returned directly"
+        },
+        {
+          "path": "infra/db/repo/cloudRulesDistributionV1Repo.ts",
+          "line": 28,
+          "description": "Failure/check metadata exists"
+        }
+      ],
+      "minimal_repair_direction": "Handle result.ok and show localized failure/retry with last check and retained-good state; do not change real Cloud state during validation.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_UI_CLOSURE",
+        "assessment": "Backend tests deliberately cover nonthrowing failures; UI success-only mocks miss the discarded result.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "UI fixture returns failed check while prior release exists/no release exists; clear failure feedback, retained state and safe retry, no publication/apply.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MC-01"
+      ],
+      "repair_batch": "G-D Rules operational closure"
+    },
+    {
+      "id": "SV-PGA-013",
+      "rank": 13,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "I18N_A11Y",
+      "product_area": "Model picker",
+      "title": "Enter on an action button invokes model selection",
+      "user_visible_scenario": "Keyboard-focus Close/Favorite/detail/filter while a model is active, then press Enter.",
+      "broken_or_incomplete_loop": "Ancestor handles every non-input Enter, prevents button action and calls persisted model selection instead.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/ModelPickerDialog.vue",
+          "line": 2127,
+          "description": "Only input-like targets excluded"
+        },
+        {
+          "path": "src/ui-app/components/ModelPickerDialog.vue",
+          "line": 2138,
+          "description": "Enter selects active item"
+        },
+        {
+          "path": "src/ui-app/components/ModelPickerDialog.vue",
+          "line": 2365,
+          "description": "Close button bubbles"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 5985,
+          "description": "Selection persists route"
+        }
+      ],
+      "minimal_repair_direction": "Own keyboard model navigation within its list/combobox; let native buttons execute their focused action.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_SCENARIO",
+        "assessment": "One dialog-root Enter test exists, but no focused action-button Enter test.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Keyboard Close/Favorite/filter/detail activation must never invoke selection; Enter on model item selects deliberately.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "I18N-01"
+      ],
+      "repair_batch": "G-F keyboard and language"
+    },
+    {
+      "id": "SV-PGA-014",
+      "rank": 14,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Provider catalog policy",
+      "title": "Provider catalog override reports Saved but is denied by IPC",
+      "user_visible_scenario": "Enable provider override in Settings, save and reopen/restart.",
+      "broken_or_incomplete_loop": "Client uses providerCatalog.<provider>.policyV2 while IPC allows root keys only; read undefined/write false ignored; startup reads same denied key.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/SettingsPanel.vue",
+          "line": 1378,
+          "description": "Dot-key set/delete, touched cleared"
+        },
+        {
+          "path": "src/shared/modelCatalog/catalogPolicyResolverV2.ts",
+          "line": 14,
+          "description": "Provider dot key"
+        },
+        {
+          "path": "electron/ipc/storeIpc.ts",
+          "line": 70,
+          "description": "Exact allowlist"
+        },
+        {
+          "path": "electron/config/configSchema.ts",
+          "line": 111,
+          "description": "Root providerCatalog only"
+        },
+        {
+          "path": "src/ui-app/app/providerCatalogStartupSyncV2.ts",
+          "line": 40,
+          "description": "Startup reads denied provider key"
+        }
+      ],
+      "minimal_repair_direction": "Provide narrow validated catalog-policy authority/known keys and honor mutation ack before success/touched reset; preserve credential boundaries.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO_REAL_BRIDGE",
+        "assessment": "Permissive UI fake store and direct startup fake values bypass exact production key validation.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "05-01"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-015",
+      "rank": 15,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Retained preferences",
+      "title": "Preference persistence failure still reports success",
+      "user_visible_scenario": "A retained settings write is rejected or IPC fails; user sees updated UI/Saved but restart restores old settings.",
+      "broken_or_incomplete_loop": "Shared root preference writer ignores store-set false; Settings ignores boolean errors and emits live updates/success.",
+      "evidence": [
+        {
+          "path": "src/next/generation-v2/renderer/uiPreferenceStoreV2.ts",
+          "line": 40,
+          "description": "Root namespace writer ignores ack"
+        },
+        {
+          "path": "electron/ipc/storeIpc.ts",
+          "line": 100,
+          "description": "Main can reject writes"
+        },
+        {
+          "path": "src/ui-app/components/SettingsPanel.vue",
+          "line": 1404,
+          "description": "Writer booleans ignored"
+        },
+        {
+          "path": "src/ui-app/components/SettingsPanel.vue",
+          "line": 1429,
+          "description": "Events then Saved"
+        }
+      ],
+      "minimal_repair_direction": "Propagate strict persistence ack/errors and stop success events/touched clearing; retain edits with explicit retry. Root preference key is allowed: this is not the provider dot-key issue.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Client tests accept undefined ack; UI mocks do not inject false/rejection across real bridge.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "05-03"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-016",
+      "rank": 16,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "DEAD_OR_LEGACY",
+      "product_area": "Settings",
+      "title": "Exposed legacy settings have no current runtime effect",
+      "user_visible_scenario": "Toggle require_parameters or network experiment switches, save/restart and expect described request/startup changes.",
+      "broken_or_incomplete_loop": "require_parameters uses removed dbBridge and no V2 compiler consumer; experiment flags persist but current Electron transport/startup never reads them and runtime-info bridge is absent.",
+      "evidence": [
+        {
+          "path": "src/next/settings/openRouterProviderSettingsClient.ts",
+          "line": 17,
+          "description": "No bridge read false/save no-op"
+        },
+        {
+          "path": "electron/preload.test.ts",
+          "line": 24,
+          "description": "Legacy bridge intentionally absent"
+        },
+        {
+          "path": "src/next/generation-v2/providers/openrouter/chatRequestV1.ts",
+          "line": 225,
+          "description": "Closed V2 request omits provider option"
+        },
+        {
+          "path": "src/ui-app/components/SettingsPanel.vue",
+          "line": 3182,
+          "description": "Retired experiment switches remain reachable"
+        },
+        {
+          "path": "src/next/netExp/netExpClient.ts",
+          "line": 125,
+          "description": "Runtime info absent"
+        }
+      ],
+      "minimal_repair_direction": "Hide/disable unsupported controls and correct copy within frozen support; do not revive legacy bridge or add new semantics as cleanup.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_PRODUCTION",
+        "assessment": "Settings test installs obsolete dbBridge and asserts its call; no experiment behavior test found.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "05-02",
+        "05-05"
+      ],
+      "repair_batch": "G-G architecture debt"
+    },
+    {
+      "id": "SV-PGA-017",
+      "rank": 17,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "FEATURE_GAP",
+      "product_area": "User Rules",
+      "title": "Generic User Rules cannot be authored in the GUI",
+      "user_visible_scenario": "Correct tools/vision/token facts from Inspector using GUI.",
+      "broken_or_incomplete_loop": "Add creates only reasoning.support with one native model; editor cannot change assertion value/path/selector despite generic backend and JSON import.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/CapabilityRulesUserPanel.vue",
+          "line": 240,
+          "description": "Fixed authoring shape"
+        },
+        {
+          "path": "src/ui-app/components/CapabilityRulesUserPanel.vue",
+          "line": 393,
+          "description": "Assertion/value/selector not editable"
+        },
+        {
+          "path": "src/next/generation-v2/capability-rules/capabilityRuleCoreV1.ts",
+          "line": 30,
+          "description": "Generic canonical assertion/selector core"
+        }
+      ],
+      "minimal_repair_direction": "Typed path/value/subject/selector authoring over existing generic APIs; retain durable drafts and guarded selectors. Import alternative makes this partial GUI scope, not missing backend.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_GUI_COVERAGE",
+        "assessment": "Generic service tests and configured-toggle mocks omit multi-path GUI author/edit.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MC-03"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-018",
+      "rank": 18,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "STATE_PERSISTENCE",
+      "product_area": "Inspector",
+      "title": "Older async Inspector reads can overwrite newer selection",
+      "user_visible_scenario": "Choose A then B quickly or switch subject during evidence/raw read.",
+      "broken_or_incomplete_loop": "No latest-request identity guard; delayed A response overwrites B facts/evidence while B is selected.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/ModelFactsInspectorPanel.vue",
+          "line": 126,
+          "description": "Async subject assignment unguarded"
+        },
+        {
+          "path": "src/ui-app/components/ModelFactsInspectorPanel.vue",
+          "line": 206,
+          "description": "Evidence assignment unguarded"
+        },
+        {
+          "path": "src/ui-app/components/ModelFactsInspectorPanel.vue",
+          "line": 268,
+          "description": "Subject buttons remain usable"
+        },
+        {
+          "path": "infra/db/services/authoritativeModelSubjectSetV1Service.ts",
+          "line": 115,
+          "description": "Real async authority awaits credentials"
+        }
+      ],
+      "minimal_repair_direction": "Guard all subject/evidence/raw/search reads with identity/serial or cancellation and clear stale view at selection change.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_RACE",
+        "assessment": "Immediate mocks do not exercise held/reordered subject and evidence responses.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MC-06"
+      ],
+      "repair_batch": "G-D Rules operational closure"
+    },
+    {
+      "id": "SV-PGA-019",
+      "rank": 19,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "BROKEN_CLOSURE",
+      "product_area": "DFC text formats",
+      "title": "HTML/CSV format conversions send unchanged source",
+      "user_visible_scenario": "Choose Markdown for HTML or table Markdown for CSV/TSV.",
+      "broken_or_incomplete_loop": "All textual targets marked available; transform returns source unchanged except code fences; output is mislabeled text/markdown and used for send.",
+      "evidence": [
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 41,
+          "description": "Identity transform"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 110,
+          "description": "Text targets made available"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 134,
+          "description": "Persisted output bytes"
+        },
+        {
+          "path": "src/next/generation-v2/renderer/generationV2ComposerClient.ts",
+          "line": 47,
+          "description": "Selected bytes become send input"
+        }
+      ],
+      "minimal_repair_direction": "Reviewed format-specific transforms for existing targets or block false semantic choices. Preserve deliberate source/code choices; no office/OCR expansion.",
+      "repair_layer": "BACKEND_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_CONTENT_ASSERTION",
+        "assessment": "Markdown input/mock output tests cannot detect identity conversion; assert HTML stripping and CSV table content.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "F03-02"
+      ],
+      "repair_batch": "G-C generation closures"
+    },
+    {
+      "id": "SV-PGA-020",
+      "rank": 20,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "ERROR_RECOVERY",
+      "product_area": "DFC option loading",
+      "title": "HTML PDF failure blocks independent original/text choices",
+      "user_visible_scenario": "PDF conversion times out while user wants Original or Markdown.",
+      "broken_or_incomplete_loop": "Option enumeration eagerly awaits PDF, whose failure rejects all options; every selection repeats enumeration.",
+      "evidence": [
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 55,
+          "description": "Whole enumeration awaits PDF at 60"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 76,
+          "description": "Every select re-enumerates"
+        },
+        {
+          "path": "electron/services/generationV2DfcService.ts",
+          "line": 179,
+          "description": "HTML failure throws"
+        },
+        {
+          "path": "src/ui-app/components/DraftAttachmentDetailsDialog.vue",
+          "line": 415,
+          "description": "Error branch replaces option cards"
+        }
+      ],
+      "minimal_repair_direction": "Isolate failed option or convert lazily; preserve independently available original/text targets with localized retry for PDF.",
+      "repair_layer": "BACKEND_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_SERVICE_FAILURE_LOOP",
+        "assessment": "Converter adapter tests do not cover enumeration/alternate selection after PDF failure.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "F03-05"
+      ],
+      "repair_batch": "G-C generation closures"
+    },
+    {
+      "id": "SV-PGA-021",
+      "rank": 21,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "BACKEND_WITHOUT_UI",
+      "product_area": "Branch management",
+      "title": "Branches can be selected but cannot be named or removed",
+      "user_visible_scenario": "Create alternate branches through edit/regenerate and manage them.",
+      "broken_or_incomplete_loop": "Fork/rename/delete backend and renderer clients exist; active Vue has selection/load-more only, unused fork/delete exports and short ID labels.",
+      "evidence": [
+        {
+          "path": "src/ui-app/AppChatApp.vue",
+          "line": 475,
+          "description": "Only selection/load-more"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 7747,
+          "description": "Unused management exports"
+        },
+        {
+          "path": "src/next/generation-v2/renderer/generationV2WorkspaceClient.ts",
+          "line": 103,
+          "description": "Existing clients"
+        },
+        {
+          "path": "electron/ipc/generationV2WorkspaceIpc.ts",
+          "line": 187,
+          "description": "Existing durable commands"
+        }
+      ],
+      "minimal_repair_direction": "Small reachable rename/fork/confirmed-delete menu with readable fallback labels, retaining backend safety.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_REACHABILITY",
+        "assessment": "Workspace tests cannot detect absent controls; existing branch tests cover selection/pagination.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MAIN-03",
+        "FW-03"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-022",
+      "rank": 22,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "UI_GAP",
+      "product_area": "Cloud rule inspection",
+      "title": "Cloud rule semantics and before/after changes are hidden",
+      "user_visible_scenario": "Inspect a Cloud rule before toggling it or review a candidate update.",
+      "broken_or_incomplete_loop": "Rule detail omits asserted value/target/selector/evidence; View Changes renders candidate only despite backend current+candidate data.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/CapabilityRulesOverviewPanel.vue",
+          "line": 345,
+          "description": "Incomplete detail semantics"
+        },
+        {
+          "path": "src/ui-app/components/CapabilityRulesOverviewPanel.vue",
+          "line": 275,
+          "description": "Candidate-only JSON"
+        },
+        {
+          "path": "electron/ipc/generationV2CloudCapabilityRulesIpc.ts",
+          "line": 110,
+          "description": "Both snapshots supplied"
+        }
+      ],
+      "minimal_repair_direction": "Complete read-only semantic/evidence display and meaningful before/after rule change list.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_SEMANTICS_ASSERTION",
+        "assessment": "Mocked tests verify calls but not readable assertion/target/evidence or removed/changed rules.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "MC-05"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-023",
+      "rank": 23,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "UI_WITHOUT_BACKEND",
+      "product_area": "Attachment settings",
+      "title": "Enabled attachment send-mode action always rejects",
+      "user_visible_scenario": "Click Default send mode in attachment Details.",
+      "broken_or_incomplete_loop": "UI enables preferredSendMode action, but mutation handler rejects every such update.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/DraftAttachmentDetailsDialog.vue",
+          "line": 601,
+          "description": "Enabled action"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 4161,
+          "description": "Default mode enabled"
+        },
+        {
+          "path": "src/ui-app/app/appChatApp.logic.ts",
+          "line": 5041,
+          "description": "Unconditional not-supported exception"
+        }
+      ],
+      "minimal_repair_direction": "Retire/disable obsolete V2 send-mode action instead of presenting a false setting; avoid adding a new authority without owner scope.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_ACTION_CASE",
+        "assessment": "Attachment tests cover import/select/preview/remove, not send-mode mutation.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "F03-03"
+      ],
+      "repair_batch": "G-E product completeness"
+    },
+    {
+      "id": "SV-PGA-024",
+      "rank": 24,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "I18N_A11Y",
+      "product_area": "Dialogs",
+      "title": "Search/picker/attachment dialogs lack consistent focus and modal semantics",
+      "user_visible_scenario": "Keyboard-open Search/Details or tab past picker controls.",
+      "broken_or_incomplete_loop": "Some surfaces do not place/restore focus; all three omit complete modal semantics/background exclusion and Tab containment. Picker already places/restores initial focus.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/SearchModal.vue",
+          "line": 170,
+          "description": "Plain overlay, no full focus/Escape contract"
+        },
+        {
+          "path": "src/ui-app/components/DraftAttachmentDetailsDialog.vue",
+          "line": 323,
+          "description": "Plain overlay/only bubbling Escape"
+        },
+        {
+          "path": "src/ui-app/components/ModelPickerDialog.vue",
+          "line": 2355,
+          "description": "No modal/Tab contract"
+        },
+        {
+          "path": "src/ui-app/components/SettingsModal.vue",
+          "line": 24,
+          "description": "Existing reusable correct local focus contract"
+        }
+      ],
+      "minimal_repair_direction": "Reuse consistent dialog role/name/aria-modal, focus placement/return, containment, Escape and background exclusion while preserving picker navigation.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_AFFECTED_SURFACE",
+        "assessment": "SettingsModal focus tests apply only there; pointer smoke checks visibility, not these dialog keyboard contracts.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "I18N-02"
+      ],
+      "repair_batch": "G-F keyboard and language"
+    },
+    {
+      "id": "SV-PGA-025",
+      "rank": 25,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "I18N_A11Y",
+      "product_area": "Localization",
+      "title": "Search/manual-provider workflows ignore selected language",
+      "user_visible_scenario": "Use Chinese locale then open Search or manual compatible-provider/profile configuration.",
+      "broken_or_incomplete_loop": "Translated entry opens hardcoded English form/filters/results/loading/empty/rebuild or unlabeled mixed-language fields; scanner permits blanket component exclusions/threshold.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/SearchModal.vue",
+          "line": 173,
+          "description": "Hardcoded workflow"
+        },
+        {
+          "path": "src/ui-app/components/compatible/CompatibleProviderSettingsPanel.vue",
+          "line": 740,
+          "description": "Manual fields/capability labels"
+        },
+        {
+          "path": "src/ui-app/components/compatible/CompatibleProviderSettingsPanel.vue",
+          "line": 869,
+          "description": "Profile labels/explanations"
+        },
+        {
+          "path": "scripts/i18n/hardcoded-allowlist.txt",
+          "line": 32,
+          "description": "Whole Search excluded"
+        },
+        {
+          "path": "scripts/i18n/check-hardcoded-ui-text.mjs",
+          "line": 372,
+          "description": "Threshold permits candidates"
+        }
+      ],
+      "minimal_repair_direction": "Translate full workflows in both locales, associated labels and display choices; keep wire IDs stable, replace broad suppression with narrow valid exceptions.",
+      "repair_layer": "UI_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_WORKFLOW",
+        "assessment": "Existing English-placeholder tests accept state; i18n parity PASS and 46-candidate tolerated scan do not prove translated UI.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Focused isolated UI/IPC regression for the described scenario.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "I18N-03"
+      ],
+      "repair_batch": "G-F keyboard and language"
+    },
+    {
+      "id": "SV-PGA-026",
+      "rank": 26,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "TEST_GAP",
+      "product_area": "Production bridge acceptance",
+      "title": "Settings fixtures validate retired/permissive authority instead of production closure",
+      "user_visible_scenario": "A shipped setting silently fails while nominal UI tests remain green.",
+      "broken_or_incomplete_loop": "Settings fixture supplies retired dbBridge and unrestricted store; main key rejection and UI caller are tested separately, not together.",
+      "evidence": [
+        {
+          "path": "src/ui-app/components/SettingsPanel.test.ts",
+          "line": 199,
+          "description": "Invented retired bridge"
+        },
+        {
+          "path": "src/ui-app/components/SettingsPanel.test.ts",
+          "line": 335,
+          "description": "Bridge installed in test"
+        },
+        {
+          "path": "src/ui-app/components/SettingsPanel.test.ts",
+          "line": 553,
+          "description": "Test asserts retired call"
+        },
+        {
+          "path": "electron/ipc/storeIpc.test.ts",
+          "line": 199,
+          "description": "Independent rejection coverage"
+        },
+        {
+          "path": "scripts/smoke/electron-shell-smoke.mjs",
+          "line": 501,
+          "description": "Default smoke is seeded Markdown rather than Settings"
+        }
+      ],
+      "minimal_repair_direction": "Add targeted acceptance using actual exposed bridge shape and production validation, plus isolated save/read-back/restart. Update only fixtures needed by repaired controls; do not refactor all tests.",
+      "repair_layer": "BOTH",
+      "existing_tests": {
+        "catch_status": "NO",
+        "assessment": "Fixture fidelity hides absent bridge/unauthorized key and false ack; specialized DOCX coverage exists separately.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Settings save using real store IPC validation plus false/rejected ack; isolated preload/read-back acceptance.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "AT-01"
+      ],
+      "repair_batch": "G-G architecture debt",
+      "coordinator_severity_note": "MEDIUM cross-cutting test gap; user-visible HIGH/BLOCKER defects are separately ranked to avoid duplicate impact."
+    },
+    {
+      "id": "SV-PGA-027",
+      "rank": 27,
+      "status": "RETAINED",
+      "severity": "MEDIUM",
+      "type": "DEAD_OR_LEGACY",
+      "product_area": "Maintainer authority",
+      "title": "Active maintainer guardrails mandate retired send authority",
+      "user_visible_scenario": "A contributor repairing attachments follows active SSOT guidance toward an unreachable legacy path.",
+      "broken_or_incomplete_loop": "Mandatory docs name old serializer/sendPlan.buildCurrent authority while current sends use scoped Generation V2 commands and main compiler; legacy client still requires absent dbBridge.",
+      "evidence": [
+        {
+          "path": "docs/maintenance/maintainer-entry.md",
+          "line": 23,
+          "description": "Mandatory old serializer authority"
+        },
+        {
+          "path": "docs/maintenance/maintainer-entry.md",
+          "line": 63,
+          "description": "Mandatory sendPlan.buildCurrent"
+        },
+        {
+          "path": "docs/governance/app-chat-app-logic-boundary.md",
+          "line": 33,
+          "description": "Old preparation/client guidance"
+        },
+        {
+          "path": "docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md",
+          "line": 44,
+          "description": "Legacy dbBridge is historical"
+        },
+        {
+          "path": "electron/services/openRouterChatPreparedRequestCompilerV2.ts",
+          "line": 289,
+          "description": "Actual V2 main-process codec authority"
+        }
+      ],
+      "minimal_repair_direction": "Narrow docs-only correction of active authority and regression pointers; preserve containment/non-goals, mark historical paths after checking consumers. No broad code deletion.",
+      "repair_layer": "DOCS_ONLY",
+      "existing_tests": {
+        "catch_status": "NO_NARRATIVE_CHECK",
+        "assessment": "Current static authority gates pass but do not reconcile these active documentation claims.",
+        "executed_in_audit": false
+      },
+      "recommended_validation": "Cross-document path/symbol consistency against current command→compiler path; docs gate as appropriate after a separate authorized docs repair.",
+      "evidence_strength": "STATIC_CODE_CONFIRMED",
+      "runtime_or_electron_reproduced": false,
+      "source_candidates": [
+        "AT-02"
+      ],
+      "repair_batch": "G-G architecture debt"
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm run i18n:check",
+      "status": "PASS",
+      "scope": "Locale namespace parity; 0 warnings"
+    },
+    {
+      "command": "npm run i18n:scan-hardcoded",
+      "status": "PASS_WITH_LIMITS",
+      "scope": "46 tolerated candidates; whole Search surface excluded; not translation completeness"
+    },
+    {
+      "command": "node scripts/gates/generation-v2-zero-residual.mjs",
+      "status": "PASS",
+      "scope": "Pure current-source architecture gate; no runtime closure assertion"
+    },
+    {
+      "command": "node scripts/gates/generation-v2-goal3-authority.mjs",
+      "status": "PASS",
+      "scope": "Pure current-source architecture gate; no runtime closure assertion"
+    },
+    {
+      "command": "node scripts/gates/generation-v2-capability-rule-authority.mjs",
+      "status": "PASS",
+      "scope": "Pure current-source architecture gate; no runtime closure assertion"
+    },
+    {
+      "command": "node scripts/gates/model-identity-compatibility-purge.mjs",
+      "status": "PASS",
+      "scope": "Pure current-source architecture gate; no runtime closure assertion"
+    },
+    {
+      "command": "In-memory import of current createProviderFailureV2 using native Node TypeScript transformation",
+      "status": "DEFECT_REPRODUCED",
+      "scope": "Dummy token redacted in label-only/api_key control; retained in label+HTTPS and structured x-api-key/x-goog-api-key"
+    },
+    {
+      "command": "Initial esbuild-based probe setup",
+      "status": "ENVIRONMENT_UNAVAILABLE_RECOVERED",
+      "scope": "esbuild package unavailable; native Node probe succeeded; no dependency installation"
+    },
+    {
+      "command": "Vitest unit/UI/integration, DB tests, Electron/runtime/provider requests",
+      "status": "NOT_RUN",
+      "scope": "Static-first read-only audit; no ABI rebuild, real profile access, paid request, destructive operation or Cloud mutation"
+    }
+  ],
+  "excluded_or_deferred_candidates": [
+    {
+      "candidate": "MAIN-03 / FW-03",
+      "disposition": "DEDUPLICATED",
+      "normalized_id": "SV-PGA-021"
+    },
+    {
+      "candidate": "05-02 / 05-05",
+      "disposition": "GROUPED_RELATED_LEGACY_CONTROLS",
+      "normalized_id": "SV-PGA-016"
+    },
+    {
+      "candidate": "F03-04 raw/PDF metadata empty notice; F03-06 partial import failures; MC-04 pack/bulk activation; I18N-04 drag-only favorite order",
+      "disposition": "LOWER_PRIORITY_CONFIRMED_CANDIDATES_IN_WORKSTREAM_REPORTS",
+      "reason": "Kept accessible in dedicated reports; primary normalized shortlist prioritizes data safety, ordinary action failures and broad usability closures. Current published override-pack mode was not fetched."
+    },
+    {
+      "candidate": "05-04 preference namespace concurrent RMW",
+      "disposition": "STATIC_SUSCEPTIBILITY_NOT_PROMOTED",
+      "reason": "No production overlap probe; conversation CAS/queue is a different protected path."
+    },
+    {
+      "candidate": "ER-02 timeout fact loss; ER-03 technical primary diagnostics; ER-04 non-schema startup support copy",
+      "disposition": "FOLLOW_UP_RECOVERY_CANDIDATES_IN_REPORT_06",
+      "reason": "Real bounded UX/capture candidates; prioritized root startup visibility and Cloud failures first. Preserve fail-closed/schema-only reset."
+    },
+    {
+      "candidate": "Tools without ordinary UI, wider office formats/platforms/OCR, old Goal 3/Goal 4 provenance/tie gaps",
+      "disposition": "SCOPE_OR_ALREADY_IMPLEMENTED",
+      "reason": "Internal/owner-gated/deferred scope or implemented current paths; not counted as defects."
+    },
+    {
+      "candidate": "Historical nativeModelId identity-gate failure",
+      "disposition": "NOT_CURRENT",
+      "reason": "Current model-identity gate passes with explicit current subject allowlist."
+    },
+    {
+      "candidate": "FW-04 clipboard rejection, stale project counts, remaining renderer crash/IPC boundary concerns",
+      "disposition": "LOW_PRIORITY_OR_UNKNOWN",
+      "reason": "No full exploit/crash/recovery claim inferred from partial inspection."
+    }
+  ],
+  "limitations": [
+    "Most defects are reachable current-source chains rather than fresh Electron reproductions.",
+    "Synthetic redaction probe exercises the current exported function, not an actual provider echo or full persisted Electron/UI copy.",
+    "No user profile/DB/settings/Cloud state read or mutated; no credentials/paid/provider request, reset, publication, push or commit.",
+    "Native ABI unchanged; current ABI target not inspected. No native load/mismatch/rebuild encountered.",
+    "Coverage CLOSED means inspected nominal scoped wiring, not complete product/release acceptance."
+  ]
+}

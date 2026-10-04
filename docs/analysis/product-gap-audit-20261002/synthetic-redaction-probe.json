@@ -1,0 +1,102 @@
+{
+  "kind": "isolated in-memory synthetic probe against exported current production function using native Node TypeScript transform",
+  "real_credentials": false,
+  "native_or_db_imports": false,
+  "network_requests": false,
+  "note": "Initial esbuild package import was unavailable; no install attempted. Native Node transformation completed the production-function probe.",
+  "results": [
+    {
+      "name": "label_only",
+      "dummy_token_retained": false,
+      "providerError": {
+        "code": null,
+        "type": null,
+        "status": null,
+        "message": "x-api-key: [redacted]",
+        "param": null,
+        "requestId": null,
+        "retryAfterMs": null,
+        "rawJson": {
+          "error": {
+            "message": "x-api-key: [redacted]"
+          }
+        },
+        "rawText": null
+      },
+      "redactions": [
+        {
+          "path": "providerError.rawText.error.message",
+          "reason": "credential"
+        }
+      ]
+    },
+    {
+      "name": "label_and_url",
+      "dummy_token_retained": true,
+      "providerError": {
+        "code": null,
+        "type": null,
+        "status": null,
+        "message": "x-api-key: AUDIT_DUMMY_TOKEN See https://docs.example/help",
+        "param": null,
+        "requestId": null,
+        "retryAfterMs": null,
+        "rawJson": {
+          "error": {
+            "message": "x-api-key: AUDIT_DUMMY_TOKEN See https://docs.example/help"
+          }
+        },
+        "rawText": null
+      },
+      "redactions": []
+    },
+    {
+      "name": "structured_x_api_key",
+      "dummy_token_retained": true,
+      "providerError": {
+        "code": null,
+        "type": null,
+        "status": null,
+        "message": null,
+        "param": null,
+        "requestId": null,
+        "retryAfterMs": null,
+        "rawJson": {
+          "error": {
+            "headers": {
+              "x-api-key": "AUDIT_DUMMY_TOKEN",
+              "x-goog-api-key": "AUDIT_DUMMY_TOKEN"
+            }
+          }
+        },
+        "rawText": null
+      },
+      "redactions": []
+    },
+    {
+      "name": "structured_api_key_control",
+      "dummy_token_retained": false,
+      "providerError": {
+        "code": null,
+        "type": null,
+        "status": null,
+        "message": null,
+        "param": null,
+        "requestId": null,
+        "retryAfterMs": null,
+        "rawJson": {
+          "error": {
+            "api_key": "[redacted]"
+          }
+        },
+        "rawText": null
+      },
+      "redactions": [
+        {
+          "path": "providerError.rawText.error.api_key",
+          "reason": "credential"
+        }
+      ]
+    }
+  ]
+}
