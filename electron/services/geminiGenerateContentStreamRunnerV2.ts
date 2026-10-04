@@ -27,8 +27,8 @@ import {
   providerFailurePrimaryMessageV2,
   type ProviderFailureV2,
 } from '../../src/shared/provider/providerFailureV2'
+import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 export type GeminiGenerateContentStreamRunResultV2 = Readonly<{
   operationId: string
   answerRootId: string
@@ -52,17 +52,6 @@ export class GeminiGenerateContentStreamRunnerV2Error extends Error {
 }
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController()
-  let timedOut = false
-  const abort = () => controller.abort('user_cancelled')
-  if (external?.aborted) abort(); else external?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs)
-  ;(timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut, dispose: () => {
-    clearTimeout(timer); external?.removeEventListener('abort', abort)
-  } })
-}
 async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) throw signal.reason
   return new Promise<T>((resolve, reject) => {
@@ -83,7 +72,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutMs = input.timeoutMs
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
   const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const graphRepo = new ConversationGraphV2Repo(input.db)
@@ -220,7 +209,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
         throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_AUTHORITY_INVALID')
       }
       begin(command)
-      const scope = abortScope(signal, timeoutMs)
+      const scope = createGenerationAbortScope(signal, timeoutMs)
       let started = false
       try {
         const status = await input.credentialService.getStatus('google_ai_studio')

@@ -13,8 +13,8 @@ import { LmStudioOpenResponsesStreamV1Error, LmStudioOpenResponsesTypedSseDecode
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
+import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 export class LmStudioOpenResponsesStreamRunnerV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_LMSTUDIO_RUNNER_AUTHORITY_INVALID'
@@ -27,22 +27,13 @@ export class LmStudioOpenResponsesStreamRunnerV2Error extends Error {
     super(code); this.name = 'LmStudioOpenResponsesStreamRunnerV2Error'
   }
 }
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController(); let timedOut = false
-  const abort = () => controller.abort('user_cancelled')
-  if (external?.aborted) abort(); else external?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs); (timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut, dispose: () => {
-    clearTimeout(timer); external?.removeEventListener('abort', abort)
-  } })
-}
 
 export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database; rawGenerationRequestStore?: RawGenerationRequestStore
   streamProjectionSink?: GenerationStreamProjectionSinkV2
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>; nowMs?: () => number; timeoutMs?: number
 }>) {
-  const nowMs = input.nowMs ?? Date.now; const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const nowMs = input.nowMs ?? Date.now; const timeoutMs = input.timeoutMs
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs); const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const graphRepo = new ConversationGraphV2Repo(input.db); const historyRepo = new LmStudioOpenResponsesNativeHistoryV2Repo(input.db)
@@ -118,7 +109,7 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
         profile.profileRevision !== expectedProfileRevision) {
       throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROFILE_STALE')
     }
-    begin(command); const scope = abortScope(signal, timeoutMs); let started = false; let visible = ''
+    begin(command); const scope = createGenerationAbortScope(signal, timeoutMs); let started = false; let visible = ''
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible,
       streamProjectionSink: input.streamProjectionSink, nowMs,

@@ -15,8 +15,8 @@ import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compil
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { OpenRouterImageInitialSendResultV2 } from './openRouterImageInitialSendCoordinatorV2'
 import type { OpenRouterImageActionResultV2 } from './openRouterImageActionCoordinatorV2'
+import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 type OpenRouterImageGenerationCommandResultV2 = OpenRouterImageInitialSendResultV2 | OpenRouterImageActionResultV2
@@ -35,18 +35,6 @@ export class OpenRouterImageInitialStreamRunnerV2Error extends Error {
   }
 }
 
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController()
-  let timedOut = false
-  const onAbort = () => controller.abort('user_cancelled')
-  if (external?.aborted) controller.abort('user_cancelled')
-  else external?.addEventListener('abort', onAbort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs)
-  ;(timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut, dispose: () => {
-    clearTimeout(timer); external?.removeEventListener('abort', onAbort)
-  } })
-}
 
 async function readResult(response: Response): Promise<OpenRouterImageSingleResultV1> {
   if (!response.ok || !response.body) {
@@ -101,9 +89,9 @@ export function createOpenRouterImageInitialStreamRunnerV2(input: Readonly<{
   rawGenerationRequestStore?: RawGenerationRequestStore
 }>) {
   const nowMs = input.nowMs ?? Date.now
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutMs = input.timeoutMs
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000 || typeof fetchImpl !== 'function') {
+  if (!isValidGenerationTotalTimeoutMsV2(timeoutMs) || typeof fetchImpl !== 'function') {
     throw new OpenRouterImageInitialStreamRunnerV2Error('GENERATION_V2_OPENROUTER_IMAGE_RUNNER_AUTHORITY_INVALID')
   }
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
@@ -182,7 +170,7 @@ export function createOpenRouterImageInitialStreamRunnerV2(input: Readonly<{
       }
       const created = command as Required<Pick<OpenRouterImageGenerationCommandResultV2, 'preparedRequest' | 'execution' | 'request'>>
       begin(created)
-      const scope = abortScope(signal, timeoutMs)
+      const scope = createGenerationAbortScope(signal, timeoutMs)
       try {
         const status = await input.credentialService.getStatus('openrouter')
         if (!status.configured || status.credentialScopeId !== created.preparedRequest.credentialScopeId) {

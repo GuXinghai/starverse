@@ -13,14 +13,8 @@ import { GenericLocalOpenAIChatSseDecoderV1, GenericLocalOpenAIChatStreamAssembl
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
+import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
 
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController(); let timedOut = false; const abort = () => controller.abort('user_cancelled')
-  if (external?.aborted) abort(); else external?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs); (timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut,
-    dispose: () => { clearTimeout(timer); external?.removeEventListener('abort', abort) } })
-}
 
 export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db: BetterSqlite3.Database;
   rawGenerationRequestStore?: RawGenerationRequestStore; streamProjectionSink?: GenerationStreamProjectionSinkV2;
@@ -60,7 +54,7 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
     const profile = profileRepo.get(command.preparedRequest.endpointProfileId); const endpointBinding = command.execution.snapshot.providerBinding.endpointBinding
     const revision = endpointBinding.kind === 'provider_managed_set' ? endpointBinding.endpointSetRevision.value : null
     if (profile.credentialScopeId !== command.preparedRequest.credentialScopeId || profile.profileRevision !== revision) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_PROFILE_STALE')
-    begin(command); const scope = abortScope(signal, input.timeoutMs ?? 5 * 60_000); let started = false; let visible = ''
+    begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); let started = false; let visible = ''
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible,
       streamProjectionSink: input.streamProjectionSink, nowMs,

@@ -23,8 +23,8 @@ import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } f
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { classifyProviderHttpTransportDiagnostic, ProviderHttpTransportError } from '../net/providerHttpTransport'
+import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
 export function formatOpenRouterChatTransportFailureMessage(error: unknown, responseReceived: boolean): string {
   if (error instanceof OpenRouterChatProviderStreamErrorV1) {
@@ -65,16 +65,6 @@ export class OpenRouterChatStreamRunnerV2Error extends Error {
 }
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController(); let timedOut = false
-  const onAbort = () => controller.abort('user_cancelled')
-  if (external?.aborted) controller.abort('user_cancelled'); else external?.addEventListener('abort', onAbort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs)
-  ;(timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut, dispose: () => {
-    clearTimeout(timer); external?.removeEventListener('abort', onAbort)
-  } })
-}
 async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) throw signal.reason
   return new Promise<T>((resolve, reject) => {
@@ -95,8 +85,8 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) {
+  const timeoutMs = input.timeoutMs
+  if (!isValidGenerationTotalTimeoutMsV2(timeoutMs)) {
     throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_AUTHORITY_INVALID')
   }
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
@@ -310,7 +300,7 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
         throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_AUTHORITY_INVALID')
       }
       begin(command)
-      const scope = abortScope(signal, timeoutMs); let responseReceived = false; let started = false
+      const scope = createGenerationAbortScope(signal, timeoutMs); let responseReceived = false; let started = false
       try {
         const status = await input.credentialService.getStatus('openrouter')
         if (!status.configured || !status.credentialScopeId || status.credentialScopeId !== command.preparedRequest.credentialScopeId) {

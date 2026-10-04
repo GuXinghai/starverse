@@ -46,8 +46,8 @@ import {
   ProviderFailureErrorV2,
   type ProviderFailureV2,
 } from '../../src/shared/provider/providerFailureV2'
+import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
 
 export type DeepSeekInitialStreamRunResultV2 = Readonly<{
@@ -75,33 +75,6 @@ export class DeepSeekInitialStreamRunnerV2Error extends Error {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
-function abortScope(external: AbortSignal | undefined, timeoutMs: number): Readonly<{
-  signal: AbortSignal
-  timedOut: () => boolean
-  dispose: () => void
-}> {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) {
-    throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
-  }
-  const controller = new AbortController()
-  let timeout = false
-  const onExternalAbort = () => controller.abort('user_cancelled')
-  if (external?.aborted) controller.abort('user_cancelled')
-  else external?.addEventListener('abort', onExternalAbort, { once: true })
-  const timer = setTimeout(() => {
-    timeout = true
-    controller.abort('timeout')
-  }, timeoutMs)
-  ;(timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({
-    signal: controller.signal,
-    timedOut: () => timeout,
-    dispose: () => {
-      clearTimeout(timer)
-      external?.removeEventListener('abort', onExternalAbort)
-    },
-  })
-}
 
 async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) throw signal.reason
@@ -123,8 +96,8 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000 ||
+  const timeoutMs = input.timeoutMs
+  if (!isValidGenerationTotalTimeoutMsV2(timeoutMs) ||
       typeof fetchImpl !== 'function') {
     throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
   }
@@ -355,7 +328,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
       }
       begin(command)
-      const scope = abortScope(signal, timeoutMs)
+      const scope = createGenerationAbortScope(signal, timeoutMs)
       let responseStarted = false
       try {
         if (scope.signal.aborted) throw scope.signal.reason

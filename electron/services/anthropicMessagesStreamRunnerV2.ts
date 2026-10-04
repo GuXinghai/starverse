@@ -29,8 +29,8 @@ import {
   type GenerationStreamProjectionSinkV2,
 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
+import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1_024 * 1_024
 
 export type AnthropicMessagesStreamRunResultV2 = Readonly<{
@@ -57,23 +57,6 @@ export class AnthropicMessagesStreamRunnerV2Error extends Error {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) {
-    throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_AUTHORITY_INVALID')
-  }
-  const controller = new AbortController()
-  let timeout = false
-  const onExternalAbort = () => controller.abort('user_cancelled')
-  if (external?.aborted) controller.abort('user_cancelled')
-  else external?.addEventListener('abort', onExternalAbort, { once: true })
-  const timer = setTimeout(() => { timeout = true; controller.abort('timeout') }, timeoutMs)
-  ;(timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({
-    signal: controller.signal,
-    timedOut: () => timeout,
-    dispose: () => { clearTimeout(timer); external?.removeEventListener('abort', onExternalAbort) },
-  })
-}
 
 async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) throw signal.reason
@@ -107,9 +90,8 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) ||
-      timeoutMs < 1 || timeoutMs > 30 * 60_000) {
+  const timeoutMs = input.timeoutMs
+  if (typeof fetchImpl !== 'function' || !isValidGenerationTotalTimeoutMsV2(timeoutMs)) {
     throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_AUTHORITY_INVALID')
   }
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
@@ -288,7 +270,7 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
         throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_AUTHORITY_INVALID')
       }
       begin(command)
-      const scope = abortScope(signal, timeoutMs)
+      const scope = createGenerationAbortScope(signal, timeoutMs)
       let responseStarted = false
       try {
         if (scope.signal.aborted) throw scope.signal.reason

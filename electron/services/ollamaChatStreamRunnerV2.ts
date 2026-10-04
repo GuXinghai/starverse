@@ -23,26 +23,7 @@ import {
   type GenerationStreamProjectionSinkV2,
 } from "./generationStreamProjectionV2";
 import { createGenerationTextBodyCheckpointV2 } from "./generationBodyCheckpointV2";
-function scope(external: AbortSignal | undefined, ms: number) {
-  const c = new AbortController();
-  let timeout = false;
-  const abort = () => c.abort("user_cancelled");
-  if (external?.aborted) abort();
-  else external?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(() => {
-    timeout = true;
-    c.abort("timeout");
-  }, ms);
-  (timer as NodeJS.Timeout).unref?.();
-  return {
-    signal: c.signal,
-    timedOut: () => timeout,
-    dispose: () => {
-      clearTimeout(timer);
-      external?.removeEventListener("abort", abort);
-    },
-  };
-}
+import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
 export function createOllamaChatStreamRunnerV2(
   input: Readonly<{
     db: BetterSqlite3.Database;
@@ -190,7 +171,7 @@ export function createOllamaChatStreamRunnerV2(
       )
         throw new Error("GENERATION_V2_OLLAMA_RUNNER_PROFILE_STALE");
       begin(cmd);
-      const s = scope(signal, input.timeoutMs ?? 5 * 60_000);
+      const s = createGenerationAbortScope(signal, input.timeoutMs);
       let started = false,
         visible = "";
       const checkpoint = createGenerationTextBodyCheckpointV2({

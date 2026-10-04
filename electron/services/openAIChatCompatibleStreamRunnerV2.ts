@@ -24,16 +24,10 @@ import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStrea
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { readOpenAICompatibleJsonResponseBytesV2 } from './openAIChatCompatibleResponseBodyV2'
+import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
 
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 
-function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
-  const controller = new AbortController(); let timedOut = false; const abort = () => controller.abort('user_cancelled')
-  if (external?.aborted) abort(); else external?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort('timeout') }, timeoutMs); (timer as NodeJS.Timeout).unref?.()
-  return Object.freeze({ signal: controller.signal, timedOut: () => timedOut,
-    dispose: () => { clearTimeout(timer); external?.removeEventListener('abort', abort) } })
-}
 function errorFromTerminal(event: Extract<CompatibleWireEvent, { kind: 'terminal' }>): string {
   if (event.outcome === 'done') return ''
   return event.error?.network.code ?? `GENERATION_V2_OPENAI_COMPATIBLE_${event.outcome.toUpperCase()}`
@@ -150,7 +144,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
         command.preparedRequest.providerId !== 'openai_compatible' || command.preparedRequest.contractId !== 'openai_chat_compatible') {
       throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_AUTHORITY_INVALID')
     }
-    begin(command); const scope = abortScope(signal, input.timeoutMs ?? 5 * 60_000); const visible = { value: '' }; let started = false
+    begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); const visible = { value: '' }; let started = false
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible.value,
       streamProjectionSink: input.streamProjectionSink, nowMs,
