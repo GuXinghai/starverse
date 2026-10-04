@@ -1,4 +1,6 @@
 import type Store from 'electron-store'
+import { GENERATION_V2_UI_PREFERENCE_NAMESPACE, GENERATION_V2_UI_PREFERENCE_KEYS }
+  from '../../src/shared/settings/generationV2UiPreferenceKeys'
 import {
   ALLOWED_CONFIG_KEYS,
   checkConfigIntegrity,
@@ -95,6 +97,18 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-set', (_event: unknown, key: unknown, value: unknown) => {
     const keyText = String(key ?? '')
+    const prefix = `${GENERATION_V2_UI_PREFERENCE_NAMESPACE}.`
+    if (keyText.startsWith(prefix)) {
+      const leaf = keyText.slice(prefix.length)
+      if (!GENERATION_V2_UI_PREFERENCE_KEYS.has(leaf)) return false
+      const previous = store.get(GENERATION_V2_UI_PREFERENCE_NAMESPACE)
+      const current = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}
+      const next = { ...current, [leaf]: value }
+      if (!checkFieldSize(GENERATION_V2_UI_PREFERENCE_NAMESPACE, next, isDev).ok) return false
+      store.set(GENERATION_V2_UI_PREFERENCE_NAMESPACE, next)
+      if (isDev) performConfigSizeCheck('write')
+      return true
+    }
     if (!isRendererAccessibleConfigKey(keyText)) return false
 
     const sizeCheck = checkFieldSize(keyText, value, isDev)

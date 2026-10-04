@@ -22,12 +22,12 @@ describe('imageGenerationDefaultClient', () => {
 
   it('writes settings.setImageGenerationDefault and decodes ack', async () => {
     const get = vi.fn(async () => ({}))
-    const set = vi.fn(async () => undefined)
+    const set = vi.fn(async () => true)
     ;(globalThis as any).electronStore = { get, set }
 
     await expect(setImageGenerationDefault({ enabled: false, outputMode: 'auto' })).resolves.toBe(true)
-    expect(set).toHaveBeenCalledWith('generationV2UiPreferences', {
-      imageGenerationDefault: { enabled: false, outputMode: 'auto' },
+    expect(set).toHaveBeenCalledWith('generationV2UiPreferences.imageGenerationDefault', {
+      enabled: false, outputMode: 'auto',
     })
   })
 

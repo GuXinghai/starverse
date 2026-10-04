@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
+import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2, OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 } from './openAIChatCompatibleResponseBodyV2'
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }))
@@ -151,6 +153,51 @@ describe('OpenAI-compatible V2 coordinator', () => {
     expect(retry.execution.snapshot.providerConfiguration).toMatchObject({ extraBody: { vendor_flag: true } })
     expect(JSON.parse(retry.preparedRequest.body.copyUtf8Text())).toMatchObject({ vendor_flag: true,
       messages: [{ role: 'user', content: 'hello' }] })
+  })
+
+  it('rejects foreign raw attachments and regenerates the empty source using current provider configuration', async () => {
+    const db = database(); databases.push(db); let id = 0
+    const foreignUrl = 'https://example.test/composer.png'
+    const foreignComposerAttachment = { kind: 'url_reference', referenceId: 'reference:composer', referenceRevision: 'reference-revision:composer',
+      originalUrl: foreignUrl, urlDigest: sha256PreparedBytesV2(new TextEncoder().encode(foreignUrl)),
+      mediaKind: 'image', declaredMediaType: 'image/png', capturedAtMs: 10, provenance: 'user_supplied',
+      include: false, sendAs: 'url_reference', conversion: 'none' }
+    const credential = { getStatus: async () => ({ configured: false, revision: 0 }) } as never
+    const sourceCoordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 100,
+      createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
+    const source = await sourceCoordinator.submitInitial({ operationId: 'operation:source-attachment', branchId: 'branch:1',
+      expectedHeadMessageId: null, providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x',
+      userBody: 'frozen source question', commandAttachments: [] })
+    expect(recoverGenerationOrphansV2(db, 200)).toMatchObject({ recovered: 1,
+      operationIds: ['operation:source-attachment'], unrecoveredOperationIds: [] })
+
+    new OpenAICompatibleV2Repo(db, () => 150).reviseConfiguration({
+      providerInstanceId: 'ocp_provider_12345678', endpointRevisionId: 'ocp_endpoint_87654321',
+      configuration: configuration({ vendorFlag: false, version: 2 }),
+    })
+    const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 300,
+      createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
+    await expect(coordinator.regenerate({ operationId: 'operation:regenerate-foreign-composer-attachment',
+      clientActionId: 'operation:regenerate-foreign-composer-attachment', sourceBranchId: 'branch:1', questionId: 'question:1',
+      sourceAnswerId: source.preparedRequest.answerRootId, expectedHeadMessageId: source.preparedRequest.answerRootId,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', commandAttachments: [foreignComposerAttachment] }))
+      .rejects.toThrow('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_INPUT_INVALID')
+    expect(db.prepare('SELECT 1 AS found FROM generation_operation_v2 WHERE operation_id=?')
+      .get('operation:regenerate-foreign-composer-attachment')).toBeUndefined()
+    expect(db.prepare('SELECT head_message_id AS head FROM branch_v2 WHERE branch_id=?').get('branch:1'))
+      .toEqual({ head: source.preparedRequest.answerRootId })
+
+    const regenerated = await coordinator.regenerate({ operationId: 'operation:regenerate-source-attachment',
+      clientActionId: 'operation:regenerate-source-attachment', sourceBranchId: 'branch:1', questionId: 'question:1',
+      sourceAnswerId: source.preparedRequest.answerRootId, expectedHeadMessageId: source.preparedRequest.answerRootId,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', commandAttachments: [] })
+
+    expect(regenerated.execution.snapshot.semanticIntent.attachments).toEqual([])
+    expect(regenerated.execution.snapshot.providerConfiguration).toMatchObject({
+      endpointRevisionId: { value: 'ocp_endpoint_87654321' }, extraBody: { vendor_flag: false },
+    })
+    expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({ vendor_flag: false,
+      messages: [{ role: 'user', content: 'frozen source question' }] })
   })
 
   it('terminalizes the documented non-stream JSON response form without changing chosen/head', async () => {

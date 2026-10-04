@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 // Approved Generation V2 main-process boundary fixture imports.
@@ -24,8 +25,123 @@ import {
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GenerationOperationRuntimeRegistryV2 } from './generationOperationRuntimeRegistryV2'
+import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 
 const HASH = 'a'.repeat(64)
+
+function seedOrphanRequest(db: BetterSqlite3.Database, suffix: string, streaming: boolean) {
+  const bundle = seedOperation(db, suffix)
+  const emptyLedger = createSemanticConsumptionLedgerV2([{ kind: 'consumed', path: 'reasoning.mode',
+    disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence: 'orphan fixture' }])
+  db.prepare(`INSERT INTO generation_request_v2(operation_id,request_sequence,answer_root_id,snapshot_hash,
+    provider_id,endpoint_profile_id,credential_scope_id,contract_id,model_id,effective_endpoint_id,
+    capability_revision,compiler_ledger_json,compiler_ledger_hash,prepared_body_sha256,prepared_body_byte_length,
+    continuation_command_fingerprint,state,created_at_ms,updated_at_ms,terminal_at_ms)
+    VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,2,NULL,'prepared',20,20,NULL)`).run(
+    bundle.operation.operationId.value, bundle.operation.targetAnswerId.value, bundle.snapshot.snapshotHash.value,
+    'deepseek', 'profile:deepseek', 'credential-scope:1', bundle.snapshot.providerBinding.protocolContractId.value,
+    'deepseek-chat', 'endpoint:deepseek', capability.revision.value,
+    emptyLedger.canonicalJson, emptyLedger.sha256, HASH,
+  )
+  db.prepare('UPDATE message_v2 SET updated_at_ms=30 WHERE message_id=?').run(`answer:${suffix}`)
+  if (streaming) {
+    db.prepare(`INSERT INTO generation_attempt_v2 VALUES(?,1,1,'open',NULL,NULL,60,NULL)`).run(`operation:${suffix}`)
+    db.prepare("UPDATE generation_request_v2 SET state='streaming',updated_at_ms=50 WHERE operation_id=?").run(`operation:${suffix}`)
+    db.prepare("UPDATE generation_operation_v2 SET state='streaming',updated_at_ms=40 WHERE operation_id=?").run(`operation:${suffix}`)
+  }
+}
+
+describe('orphan recovery isolation and clock rollback', () => {
+  it.each([false, true])('recovers an interrupted request without decreasing any persisted timestamp (streaming=%s)', streaming => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'clock', streaming)
+      expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+        operationIds: ['operation:clock'], unrecoveredOperationIds: [] })
+      const at = streaming ? 60 : 30
+      for (const table of ['generation_operation_v2', 'generation_request_v2']) {
+        expect(db.prepare(`SELECT state,terminal_at_ms AS at FROM ${table} WHERE operation_id=?`)
+          .get('operation:clock')).toEqual({ state: 'failed', at })
+      }
+      expect(db.prepare('SELECT status,updated_at_ms AS at FROM message_v2 WHERE message_id=?')
+        .get('answer:clock')).toEqual({ status: 'failed', at })
+      if (streaming) expect(db.prepare('SELECT state,terminal_at_ms AS at FROM generation_attempt_v2')
+        .get()).toEqual({ state: 'terminal', at })
+    } finally { db.close() }
+  })
+
+  it('preserves an incoherent operation while recovering an unrelated valid operation', () => {
+    const db = createDb()
+    try {
+      seedOperation(db, 'broken')
+      seedOrphanRequest(db, 'valid', false)
+      expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+      expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?')
+        .get('operation:broken')).toEqual({ state: 'committed' })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?')
+        .get('answer:broken')).toEqual({ status: 'streaming' })
+    } finally { db.close() }
+  })
+
+  it('isolates an undecodable frozen snapshot without rewriting it or aborting unrelated recovery', () => {
+    const db = createDb()
+    try {
+      seedOperation(db, 'corrupt')
+      seedOrphanRequest(db, 'valid', false)
+      db.exec('DROP TRIGGER trg_assistant_generation_snapshot_v2_immutable')
+      db.prepare("UPDATE assistant_generation_snapshot_v2 SET canonical_json='{}' WHERE operation_id=?").run('operation:corrupt')
+      expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:corrupt'] })
+      expect(db.prepare('SELECT canonical_json AS json FROM assistant_generation_snapshot_v2 WHERE operation_id=?')
+        .get('operation:corrupt')).toEqual({ json: '{}' })
+    } finally { db.close() }
+  })
+
+  it('does not hide database failures as isolated malformed operations', () => {
+    const db = createDb()
+    db.close()
+    expect(() => recoverGenerationOrphansV2(db, 1)).toThrow()
+  })
+
+  it('isolates a mismatched request binding while preserving that row', () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'broken', false)
+      seedOrphanRequest(db, 'valid', false)
+      db.exec('DROP TRIGGER trg_generation_request_v2_structure_immutable')
+      db.prepare("UPDATE generation_request_v2 SET model_id='corrupted-model' WHERE operation_id=?").run('operation:broken')
+      expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+      expect(db.prepare('SELECT model_id AS model,state FROM generation_request_v2 WHERE operation_id=?')
+        .get('operation:broken')).toEqual({ model: 'corrupted-model', state: 'prepared' })
+    } finally { db.close() }
+  })
+
+  it.each(['gemini_generate_content_native_history_v1', 'lmstudio_openresponses_native_items'])(
+    'isolates malformed awaiting-tool history %s without rewriting its evidence', artifactKind => {
+      const db = createDb()
+      try {
+        seedOrphanRequest(db, 'broken', true)
+        seedOrphanRequest(db, 'valid', false)
+        db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',
+          terminal_fingerprint=?,terminal_at_ms=70 WHERE operation_id=?`).run(HASH, 'operation:broken')
+        db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=70,terminal_at_ms=70 WHERE operation_id=?")
+          .run('operation:broken')
+        const malformedJson = JSON.stringify({ artifactKind, artifactCodecVersion: 1, artifactHash: HASH })
+        db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES(?,1,?,?,1,?,?,70,'request_terminal')`)
+          .run('answer:broken', 'operation:broken', artifactKind, malformedJson, HASH)
+        expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+          operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+        expect(db.prepare('SELECT artifact_json AS json FROM generation_native_artifact_v2 WHERE operation_id=?')
+          .get('operation:broken')).toEqual({ json: malformedJson })
+        expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?')
+          .get('operation:broken')).toEqual({ state: 'streaming' })
+      } finally { db.close() }
+    })
+})
 
 function providerBinding() {
   const contract = readReviewedDeepSeekStableChatDefinitionV2()
@@ -89,7 +205,7 @@ function createDb() {
   return db
 }
 
-function snapshotJson(operationId: string, answerId: string, conversationId: string) {
+function snapshotJson(operationId: string, answerId: string, conversationId: string, attachments: readonly unknown[] = []) {
   return decodeAssistantAnswerGenerationSnapshotV2(
     canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
       schemaVersion: 2,
@@ -102,7 +218,7 @@ function snapshotJson(operationId: string, answerId: string, conversationId: str
         web: { mode: 'disabled' },
         image: { mode: 'disabled' },
         tools: { mode: 'disabled' },
-        attachments: [],
+        attachments,
         providerExtension: { kind: 'none' },
       },
       resolvedConfigRevisions: [
@@ -123,7 +239,7 @@ function snapshotJson(operationId: string, answerId: string, conversationId: str
   ).canonicalJson
 }
 
-function seedOperation(db: BetterSqlite3.Database, suffix: string): GenerationExecutionOperationBundleV2 {
+function seedOperation(db: BetterSqlite3.Database, suffix: string, attachments: readonly unknown[] = []): GenerationExecutionOperationBundleV2 {
   const graph = new ConversationGraphV2Repo(db)
   const execution = new GenerationExecutionV2Repo(db)
   const conversationId = `conversation:${suffix}`
@@ -158,7 +274,7 @@ function seedOperation(db: BetterSqlite3.Database, suffix: string): GenerationEx
       questionId,
       sourceAnswerId: null,
       targetAnswerId: answerId,
-      snapshot: snapshotJson(operationId, answerId, conversationId),
+      snapshot: snapshotJson(operationId, answerId, conversationId, attachments),
       commandFingerprint: HASH,
       createdAtMs: 3,
     }).bundle
@@ -202,6 +318,25 @@ async function terminalizeOnAbort(input: Readonly<{
 }
 
 describe('GenerationOperationRuntimeRegistryV2', () => {
+  it('sources regenerate attachments from the immutable question snapshot, preserving full URL identity', () => {
+    const db = createDb()
+    try {
+      const url = 'https://example.test/question.pdf'
+      const attachment = { kind: 'url_reference', referenceId: 'url:question', referenceRevision: 'url-revision:question',
+        originalUrl: url, urlDigest: createHash('sha256').update(url).digest('hex'), mediaKind: 'document',
+        capturedAtMs: 1, provenance: 'user_supplied', include: true, sendAs: 'url_reference', conversion: 'none' }
+      seedOperation(db, 'source', [attachment])
+      seedOperation(db, 'other')
+      const read = (branchId = 'branch:source', questionId = 'question:source') =>
+        readRegenerateSourceAttachmentsV2({ db, sourceAnswerId: 'answer:source', sourceBranchId: branchId, questionId })
+      expect(read()[0]).toMatchObject({ originalUrl: url, referenceId: { value: 'url:question' } })
+      expect(read()).toHaveLength(1)
+      expect(() => read('branch:other')).toThrow('GENERATION_V2_REGENERATE_SOURCE_INVALID')
+      expect(() => read('branch:source', 'question:other')).toThrow('GENERATION_V2_REGENERATE_SOURCE_INVALID')
+      expect(new GenerationExecutionV2Repo(db).getSnapshotByAnswerRootId('answer:source')?.semanticIntent.attachments)
+        .toEqual(read())
+    } finally { db.close() }
+  })
   it('keeps interleaved operations bound to their persisted target answers with per-operation sequences', () => {
     const db = createDb()
     try {

@@ -1,3 +1,4 @@
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -93,7 +94,7 @@ export function createOpenAIResponsesPlainTextRegenerateCoordinatorV2(input: Rea
         const attachmentDescriptors = await preflightOpenAIResponsesAttachmentDescriptorsV2({
           db: input.db, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore, descriptorRepo,
           credentialService: input.credentialService, fetchImpl: input.fetchImpl,
-          commandAttachments: command.commandAttachments,
+          commandAttachments: readRegenerateSourceAttachmentsV2({ db: input.db, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }),
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
         })
@@ -128,7 +129,7 @@ export function createOpenAIResponsesPlainTextRegenerateCoordinatorV2(input: Rea
             })
             return withSynchronousGenerationCommandFactsAuthorityV2(
               context, configRepo, attachmentRepo, pending.conversationId.value,
-              projectOpenAIResponsesCommandAttachmentsV2(command.commandAttachments), undefined,
+              projectOpenAIResponsesCommandAttachmentsV2(readRegenerateSourceAttachmentsV2({ db: input.db, context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value })), undefined,
               (commandFacts) => {
                 const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
                 return withVerifiedOpenAIResponsesGenerationAuthoritiesV2({

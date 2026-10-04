@@ -231,6 +231,37 @@ describe('registerStoreIpc', () => {
     expect(store.set).not.toHaveBeenCalledWith('generationV2UiPreferences', expect.anything())
   })
 
+  it('merges concurrent UI preference leaf writes into one retained namespace', async () => {
+    const { handlers, store } = registerHandlers()
+    const set = handlers.get('store-set')!
+
+    const results = await Promise.all([
+      set({}, 'generationV2UiPreferences.webSearchDefaults', { searchMode: 'enable' }),
+      set({}, 'generationV2UiPreferences.imageGenerationDefault', { enabled: true }),
+    ])
+
+    expect(results).toEqual([true, true])
+    expect(store.get('generationV2UiPreferences')).toEqual({
+      webSearchDefaults: { searchMode: 'enable' },
+      imageGenerationDefault: { enabled: true },
+    })
+    expect(store.set).toHaveBeenCalledTimes(2)
+    expect(store.set).toHaveBeenNthCalledWith(1, 'generationV2UiPreferences', expect.objectContaining({
+      webSearchDefaults: { searchMode: 'enable' },
+    }))
+    expect(store.set).toHaveBeenNthCalledWith(2, 'generationV2UiPreferences', {
+      webSearchDefaults: { searchMode: 'enable' },
+      imageGenerationDefault: { enabled: true },
+    })
+  })
+
+  it('rejects unsupported nested paths inside the UI preference namespace', async () => {
+    const { handlers, store } = registerHandlers()
+
+    expect(await handlers.get('store-set')?.({}, 'generationV2UiPreferences.webSearchDefaults.unapproved', true)).toBe(false)
+    expect(store.set).not.toHaveBeenCalled()
+  })
+
   it('does not preserve renderer-supplied unknown keys during safe clear', async () => {
     vi.mocked(safeClearConfig).mockClear()
     const { handlers } = registerHandlers()

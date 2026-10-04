@@ -5,6 +5,8 @@ import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { AttachmentAssetV2Repo } from './attachmentAssetV2Repo'
 import { ComposerDraftV2Repo } from './composerDraftV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
+import { detectBasicFileTypeV2 } from '../../../src/next/file-type/basicFileTypeDetectionV2'
+import { FileTypeDetectionV2Repo } from './fileTypeDetectionV2Repo'
 
 function createDb() {
   const db = new BetterSqlite3(':memory:')
@@ -27,6 +29,38 @@ function seedEditRoute(db:BetterSqlite3.Database) {
 }
 
 describe('ComposerDraftV2Repo DFC selection', () => {
+  it('uses the original detection authority when editing a frozen converted attachment', () => {
+    const db = createDb()
+    try {
+      const assets = new AttachmentAssetV2Repo(db, () => 10)
+      const drafts = new ComposerDraftV2Repo(db, () => 10)
+      const bytes = new TextEncoder().encode('# source')
+      const sourceBlob = assets.recordBlobFromBytes(bytes, 'text/markdown')
+      assets.createAsset({ assetId: 'asset:source', assetKind: 'file', filename: 'source.md', sourceKind: 'user_import' })
+      const source = assets.appendSourceRevision({ assetId: 'asset:source', assetRevisionId: 'revision:source', blob: sourceBlob })
+      const detections = new FileTypeDetectionV2Repo(db, () => 11)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context => {
+        detections.createPendingInAuthorityTransaction(context, { assetRevisionId: source.assetRevisionId.value,
+          assetSha256: source.blob.sha256.value, attemptId: 'attempt:source' })
+      })
+      const detected = detectBasicFileTypeV2({ bytes, filename: 'source.md', declaredMime: 'text/markdown', detectionTrigger: 'upload' })
+      expect(detections.completeReady({ assetRevisionId: source.assetRevisionId.value, attemptId: 'attempt:source',
+        revision: 1, verdict: detected.verdict, staticPolicy: detected.staticPolicy })).toBe(true)
+      const derivedBlob = assets.recordBlobFromBytes(new TextEncoder().encode('source'), 'text/plain')
+      const derived = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context =>
+        assets.createDerivedAssetRevisionInAuthorityTransaction(context, { assetId: 'asset:derived', assetRevisionId: 'revision:derived',
+          assetKind: 'file', filename: 'source.txt', parentAssetRevisionId: source.assetRevisionId.value,
+          conversionKind: 'plain_text', conversionContractId: 'starverse-dfc-text-v1', conversionRevision: '1', blob: derivedBlob }))
+      seedEditRoute(db)
+      const initial = drafts.getOrCreate('conversation:1')
+      const editing = drafts.openEdit({ conversationId: 'conversation:1', branchId: 'branch:1', expectedRevision: initial.revision,
+        questionId: 'question:1', answerRootId: 'answer:1', draftText: 'edited question', attachments: [{ kind: 'managed_file',
+          assetId: derived.assetId.value, assetRevisionId: derived.assetRevisionId.value, assetSha256: derived.blob.sha256.value,
+          include: true, sendAs: 'inline_text', conversion: 'plain_text' }] })
+      expect(editing.attachments[0]).toMatchObject({ fileTypeDetection: { status: 'ready', revision: 2, blocked: false } })
+      expect(db.prepare('SELECT 1 FROM file_type_detection_v2 WHERE asset_revision_id=?').get('revision:derived')).toBeUndefined()
+    } finally { db.close() }
+  })
   it('keeps the raw attachment as the draft anchor and clears its selection when removed', () => {
     const db = createDb()
     try {

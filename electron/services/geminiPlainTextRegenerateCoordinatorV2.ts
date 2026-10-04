@@ -1,3 +1,4 @@
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -92,7 +93,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
             sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
             answerRootId: createAnswerId(), createdAtMs: nowMs() })
           return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
-            pending.conversationId.value, projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined,
+            pending.conversationId.value, projectGenerationCommandAttachmentsV2(readRegenerateSourceAttachmentsV2({ db: input.db, context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value })), undefined,
             (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedGeminiGenerateContentGenerationAuthoritiesV2({

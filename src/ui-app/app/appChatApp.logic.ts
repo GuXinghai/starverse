@@ -95,6 +95,8 @@ import {
 } from '@/next/generation-v2/renderer/branchRuntimeCacheV2'
 import { projectProviderFailureForUiV2 } from '@/shared/provider/providerFailureUiProjectionV2'
 import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
+import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
+import { resolveCatalogPolicyV2 } from '@/shared/modelCatalog/catalogPolicyV2'
 import {
   providerFailureFromUnknownV2,
   providerFailurePrimaryMessageV2,
@@ -2753,9 +2755,11 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     try {
       if (!projectId) throw new Error('GENERATION_V2_PROJECT_REQUIRED')
-      await Promise.all(convoIds.map((id) => moveGenerationV2Conversation(id, projectId)))
+      const results = await Promise.allSettled(convoIds.map((id) => moveGenerationV2Conversation(id, projectId)))
       await refreshConvos()
       applyImageGenerationStateForActiveConvo()
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+      if (failed) throw failed.reason
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     }
@@ -3593,7 +3597,14 @@ export function useAppChatAppLogic() {
     if (current.syncState === 'syncing') return
     const token = catalogRuntimeStore.beginMutation(providerKey)
     try {
-      const raw = await CatalogQueryService.sync({ sourceProviderKey: providerKey, timeoutMs: 30_000 })
+      const store = (globalThis as any).electronStore
+      const [providerOverride, globalPolicy] = await Promise.all([
+        store?.get?.(providerCatalogPolicyV2StoreKey(providerKey)),
+        store?.get?.(GLOBAL_CATALOG_POLICY_V2_STORE_KEY),
+      ])
+      const policy = resolveCatalogPolicyV2({ providerOverride, globalPolicy }).policy
+      const raw = await CatalogQueryService.sync({ sourceProviderKey: providerKey, timeoutMs: 30_000,
+        applyMode: policy?.listApplyMode ?? 'manual', retentionMs: policy?.retentionMs ?? 'never' })
       const result = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null
       if (!result || result.ok !== true) {
         const failure = result?.providerFailure && typeof result.providerFailure === 'object'
@@ -7376,6 +7387,20 @@ export function useAppChatAppLogic() {
   let capabilityRefreshSerial = 0
   let capabilityRefreshDisposed = false
   let unsubscribeSemanticInvalidated: (() => void) | null = null
+  function handleProviderCredentialUpdated(event: Event): void {
+    const providerKey = (event as CustomEvent<{ providerKey?: unknown }>).detail?.providerKey
+    if (typeof providerKey !== 'string' || !FIRST_PARTY_CATALOG_PROVIDER_KEYS.some(key => key === providerKey)) return
+    CatalogQueryService.invalidateProviderRuntimeCache(providerKey)
+    if (canonicalSendSelection()?.providerId === providerKey) void refreshActiveSessionCapabilityProjection()
+  }
+  watch(() => {
+    const providerKey = canonicalSendSelection()?.providerId
+    return JSON.stringify(Object.values(catalogRuntimeSnapshot.value)
+      .filter(state => state.routeKey === providerKey || state.routeKey.startsWith(`${providerKey}::`))
+      .map(state => [state.routeKey, state.authorityScopeId, state.displayedSnapshotDigest]))
+  }, (current, previous) => {
+    if (isReady.value && current !== previous) void refreshActiveSessionCapabilityProjection()
+  })
   function captureCurrentCapabilityLease() {
     const lease = { projection: activeSessionCapabilityProjection.value, serial: capabilityRefreshSerial }
     assertCurrentCapabilityLease(lease)
@@ -7686,9 +7711,10 @@ export function useAppChatAppLogic() {
       const operationId = crypto.randomUUID()
       const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
         sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId }
-      const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
-        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
-      const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
+      const commandAttachments = route.kind === 'openrouter_images' || route.kind === 'gemini_interactions_image'
+        ? projectGenerationV2ComposerAttachments(generationV2ComposerDraft.value?.conversationId === view.conversationId
+          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId))
+        : [] // Text regenerate reads the source answer's immutable attachments in main.
       const commandModelId = modelId
       assertCurrentCapabilityLease(capabilityLease)
       const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,
@@ -8164,6 +8190,7 @@ export function useAppChatAppLogic() {
   })
 
   onMounted(() => {
+    window.addEventListener('settings:providerCredentialUpdated', handleProviderCredentialUpdated)
     window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.addEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.addEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
@@ -8353,6 +8380,7 @@ export function useAppChatAppLogic() {
     branchProjectionRefreshCoordinator.invalidate()
     transcriptRefreshToken.value += 1
     void flushDraftPersistence()
+    window.removeEventListener('settings:providerCredentialUpdated', handleProviderCredentialUpdated)
     window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.removeEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.removeEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)

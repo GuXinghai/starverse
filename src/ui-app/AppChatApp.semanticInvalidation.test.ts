@@ -1,6 +1,7 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, getCurrentInstance, h } from 'vue'
 import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { registerGenerationV2WorkspaceIpc } from '../../electron/ipc/generationV2WorkspaceIpc'
@@ -19,6 +20,8 @@ import { readReviewedOpenRouterChatDefinitionV2 } from '@/next/generation-v2/con
 import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2, decodeRuntimeCapabilitySnapshotV2 } from '@/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
 import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '@/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { CatalogQueryService } from '@/next/modelCatalog/catalogQueryService'
+import { catalogRuntimeStoreV2ForApp, type CatalogRuntimeStoreV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import { resetI18nForTests } from '@/shared/i18n'
 import AppChatApp from './AppChatApp.vue'
 
@@ -29,6 +32,31 @@ const deferred = <T>() => {
   let resolve!: (value: T) => void
   return { promise: new Promise<T>(done => { resolve = done }), resolve }
 }
+
+function renderAppWithCatalogRuntime(): { view: ReturnType<typeof render>; catalogStore: CatalogRuntimeStoreV2<any> } {
+  let catalogStore: CatalogRuntimeStoreV2<any> | null = null
+  const Harness = defineComponent({
+    setup() {
+      const appIdentity = getCurrentInstance()?.appContext.app
+      if (!appIdentity) throw new Error('TEST_APP_CONTEXT_UNAVAILABLE')
+      catalogStore = catalogRuntimeStoreV2ForApp(appIdentity)
+      return () => h(AppChatApp)
+    },
+  })
+  const view = render(Harness)
+  if (!catalogStore) throw new Error('TEST_CATALOG_RUNTIME_UNAVAILABLE')
+  return { view, catalogStore }
+}
+
+function publishCatalogAuthority(store: CatalogRuntimeStoreV2<any>, input: Readonly<{
+  authorityScopeId: string
+  authorityRevision: number
+  displayedSnapshotDigest: string
+}>): void {
+  const token = store.beginQuery('openrouter')
+  expect(store.acceptAuthority({ token, ...input, pendingSnapshotDigest: null, items: [], stale: false, failure: null })).toBe(true)
+}
+
 const credentialScope = `credential-scope-v2:${'b'.repeat(64)}`
 const modelA = 'synthetic/model-A'
 const modelB = 'synthetic/model-B'
@@ -216,6 +244,100 @@ describe('actual App current semantic invalidation', () => {
     expect(bridge.openRouter.chat.initial.mock.calls[0][0].expectedCapabilityRevision).toBe(held.value.controlsProjection.capabilityRevision)
     view.unmount()
     expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes unchanged selection after a valid credential event, blocks send while pending, and removes its listener', async () => {
+    const view = render(AppChatApp)
+    await readyDraft()
+    const invalidate = vi.spyOn(CatalogQueryService, 'invalidateProviderRuntimeCache').mockImplementation(() => undefined)
+    const baselineResolveCount = bridge.capabilities.resolve.mock.calls.length
+    window.dispatchEvent(new CustomEvent('settings:providerCredentialUpdated', { detail: { providerKey: 'not-a-provider' } }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(invalidate).not.toHaveBeenCalled()
+    expect(bridge.capabilities.resolve).toHaveBeenCalledTimes(baselineResolveCount)
+
+    const gate = deferred<void>()
+    let held: any
+    bridge.capabilities.resolve.mockImplementationOnce(async (packet: any) => {
+      held = await resolveCurrent(packet)
+      await gate.promise
+      return held
+    })
+    window.dispatchEvent(new CustomEvent('settings:providerCredentialUpdated', { detail: { providerKey: 'openrouter' } }))
+    await waitFor(() => expect(held?.ok).toBe(true))
+    expect(invalidate).toHaveBeenCalledWith('openrouter')
+    expect(invalidate).toHaveBeenCalledWith('openrouter')
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    await fireEvent.click(screen.getByTestId('composer-send'))
+    expect(bridge.openRouter.chat.initial).not.toHaveBeenCalled()
+
+    gate.resolve()
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+    view.unmount()
+    invalidate.mockClear()
+    const unmountedResolveCount = bridge.capabilities.resolve.mock.calls.length
+    window.dispatchEvent(new CustomEvent('settings:providerCredentialUpdated', { detail: { providerKey: 'openrouter' } }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(invalidate).not.toHaveBeenCalled()
+    expect(bridge.capabilities.resolve).toHaveBeenCalledTimes(unmountedResolveCount)
+    invalidate.mockRestore()
+  })
+
+  it('blocks send while the selected catalog authority changes and current capability is pending', async () => {
+    const { catalogStore } = renderAppWithCatalogRuntime()
+    await readyDraft()
+    const baselineCount = bridge.capabilities.resolve.mock.calls.length
+    publishCatalogAuthority(catalogStore, {
+      authorityScopeId: 'catalog-authority:baseline', authorityRevision: 10, displayedSnapshotDigest: 'a'.repeat(64),
+    })
+    await waitFor(() => expect(bridge.capabilities.resolve.mock.calls.length).toBeGreaterThan(baselineCount))
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+
+    const gate = deferred<void>()
+    let held: any
+    bridge.capabilities.resolve.mockImplementationOnce(async (packet: any) => {
+      held = await resolveCurrent(packet)
+      await gate.promise
+      return held
+    })
+    publishCatalogAuthority(catalogStore, {
+      authorityScopeId: 'catalog-authority:current', authorityRevision: 11, displayedSnapshotDigest: 'b'.repeat(64),
+    })
+    await waitFor(() => expect(held?.ok).toBe(true))
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    await fireEvent.click(screen.getByTestId('composer-send'))
+    expect(bridge.openRouter.chat.initial).not.toHaveBeenCalled()
+
+    gate.resolve()
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+  })
+
+  it('ignores catalog sync, query-token, and policy-only changes for capability refresh', async () => {
+    const { catalogStore } = renderAppWithCatalogRuntime()
+    await readyDraft()
+    const baselineCount = bridge.capabilities.resolve.mock.calls.length
+    publishCatalogAuthority(catalogStore, {
+      authorityScopeId: 'catalog-authority:baseline', authorityRevision: 20, displayedSnapshotDigest: 'c'.repeat(64),
+    })
+    await waitFor(() => expect(bridge.capabilities.resolve.mock.calls.length).toBeGreaterThan(baselineCount))
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+
+    const resolveCount = bridge.capabilities.resolve.mock.calls.length
+    catalogStore.beginQuery('openrouter')
+    catalogStore.beginMutation('openrouter')
+    catalogStore.setPolicy({
+      routeKey: 'openrouter',
+      effectivePolicy: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual',
+        freshnessMs: null, retentionMs: 'never' },
+      policySource: 'global',
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(catalogStore.read('openrouter').syncState).toBe('syncing')
+    expect(catalogStore.read('openrouter').queryRequestToken).toBeGreaterThan(0)
+    expect(catalogStore.read('openrouter').policySource).toBe('global')
+    expect(bridge.capabilities.resolve).toHaveBeenCalledTimes(resolveCount)
+    expect(screen.getByTestId('composer-send')).toBeEnabled()
   })
 
   it('fences an older response and finally when two committed revisions arrive out of order', async () => {

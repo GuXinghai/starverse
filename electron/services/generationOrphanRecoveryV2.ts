@@ -3,11 +3,12 @@ import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2
 import {
   GenerationExecutionV2Repo,
   GenerationExecutionV2RepoError,
+  type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
-import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
+import { GenerationRequestV2Repo, GenerationRequestV2RepoError } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import { GeminiGenerateContentNativeHistoryV2Repo } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
-import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
+import { GeminiGenerateContentNativeHistoryV2Repo, GeminiGenerateContentNativeHistoryV2RepoError } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
+import { LmStudioOpenResponsesNativeHistoryV2Repo, LmStudioOpenResponsesNativeHistoryV2RepoError } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
 import {
   decodeOpenRouterNativeHistoryArtifactV1,
   hasCompleteOpenRouterAssistantToolCallsV1,
@@ -44,6 +45,7 @@ type ActiveRow = Readonly<{
 export type GenerationOrphanRecoveryResultV2 = Readonly<{
   recovered: number
   operationIds: readonly string[]
+  unrecoveredOperationIds: readonly string[]
 }>
 
 export class GenerationOrphanRecoveryV2Error extends Error {
@@ -126,7 +128,7 @@ export function recoverGenerationOrphansV2(
   const geminiHistoryRepo = new GeminiGenerateContentNativeHistoryV2Repo(db)
   const lmStudioHistoryRepo = new LmStudioOpenResponsesNativeHistoryV2Repo(db)
   const recovered: string[] = []
-  runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+  const unrecovered: string[] = []
     const operationIds = (db.prepare(`SELECT operation_id AS operationId
       FROM generation_operation_v2
       WHERE state IN ('committed', 'streaming')
@@ -135,7 +137,16 @@ export function recoverGenerationOrphansV2(
         return row.operationId
       })
     for (const operationId of operationIds) {
-      const operation = executionRepo.findOperationInTransaction(context, operationId)
+      try {
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+      let operation: GenerationExecutionOperationBundleV2 | null
+      try {
+        operation = executionRepo.findOperationInTransaction(context, operationId)
+      } catch (error) {
+        if (error instanceof GenerationExecutionV2RepoError &&
+            (error.code === 'GENERATION_V2_EXECUTION_STATE_INVALID' || error.code === 'GENERATION_V2_EXECUTION_NOT_FOUND')) invalid()
+        throw error
+      }
       if (!operation || (operation.operation.state !== 'committed' && operation.operation.state !== 'streaming')) invalid()
       const rows = db.prepare(`SELECT operation.operation_id AS operationId,
         operation.state AS operationState, request.request_sequence AS requestSequence,
@@ -172,7 +183,7 @@ export function recoverGenerationOrphansV2(
           `).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (awaiting && hasPersistedDeepSeekAwaitingToolStateV2(awaiting)) continue
+        if (awaiting && hasPersistedDeepSeekAwaitingToolStateV2(awaiting)) return
         const openRouterAwaiting = db.prepare(`SELECT request.state AS requestState,
           answer.status AS answerStatus, terminal.artifact_json AS terminalJson,
           terminal.artifact_hash AS terminalHash, history.artifact_json AS artifactJson,
@@ -190,7 +201,7 @@ export function recoverGenerationOrphansV2(
           )`).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (openRouterAwaiting && hasPersistedOpenRouterAwaitingToolStateV2(openRouterAwaiting)) continue
+        if (openRouterAwaiting && hasPersistedOpenRouterAwaitingToolStateV2(openRouterAwaiting)) return
         const anthropicAwaiting = db.prepare(`SELECT request.state AS requestState, answer.status AS answerStatus,
           terminal.artifact_json AS artifactJson, terminal.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
@@ -201,7 +212,7 @@ export function recoverGenerationOrphansV2(
           WHERE request.operation_id=? AND request.request_sequence=(
             SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
           )`).get(operationId, operationId) as Readonly<Record<string, unknown>> | undefined
-        if (anthropicAwaiting && hasPersistedAnthropicAwaitingToolStateV2(anthropicAwaiting)) continue
+        if (anthropicAwaiting && hasPersistedAnthropicAwaitingToolStateV2(anthropicAwaiting)) return
         const openAIResponsesAwaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
           request.state AS requestState, answer.status AS answerStatus,
           terminal.artifact_json AS terminalJson, terminal.artifact_hash AS terminalHash,
@@ -221,9 +232,21 @@ export function recoverGenerationOrphansV2(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
         if (openAIResponsesAwaiting &&
-            hasPersistedOpenAIResponsesAwaitingToolStateV2(openAIResponsesAwaiting)) continue
-        if (geminiHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) continue
-        if (lmStudioHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) continue
+            hasPersistedOpenAIResponsesAwaitingToolStateV2(openAIResponsesAwaiting)) return
+        try {
+          if (geminiHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) return
+        } catch (error) {
+          if (error instanceof GeminiGenerateContentNativeHistoryV2RepoError &&
+              error.code === 'GENERATION_V2_GEMINI_HISTORY_STATE_INVALID') invalid()
+          throw error
+        }
+        try {
+          if (lmStudioHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) return
+        } catch (error) {
+          if (error instanceof LmStudioOpenResponsesNativeHistoryV2RepoError &&
+              error.code === 'GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID') invalid()
+          throw error
+        }
         invalid()
       }
       if (rows.length !== 1) invalid()
@@ -240,7 +263,22 @@ export function recoverGenerationOrphansV2(
       const coherentStreaming = operation.operation.state === 'streaming' && requestState === 'streaming' &&
         openAttemptCount === 1
       if (!coherentPrepared && !coherentContinuationPrepared && !coherentStreaming) invalid()
-      const request = requestRepo.loadExistingForOperation(context, operation, row.requestSequence as number)
+      const request = (() => {
+        try { return requestRepo.loadExistingForOperation(context, operation, row.requestSequence as number) }
+        catch (error) {
+          if (error instanceof GenerationRequestV2RepoError &&
+              (error.code === 'GENERATION_V2_REQUEST_STATE_INVALID' || error.code === 'GENERATION_V2_REQUEST_NOT_FOUND')) invalid()
+          throw error
+        }
+      })()
+      const persistedTime = db.prepare(`SELECT max(at_ms) AS atMs FROM (
+        SELECT updated_at_ms AS at_ms FROM generation_operation_v2 WHERE operation_id=?
+        UNION ALL SELECT updated_at_ms FROM generation_request_v2 WHERE operation_id=?
+        UNION ALL SELECT started_at_ms FROM generation_attempt_v2 WHERE operation_id=?
+        UNION ALL SELECT updated_at_ms FROM message_v2 WHERE message_id=?
+      )`).get(operationId, operationId, operationId, operation.operation.targetAnswerId.value) as { atMs: unknown }
+      if (!Number.isSafeInteger(persistedTime.atMs) || (persistedTime.atMs as number) < 0) invalid()
+      const recoveryAtMs = Math.max(atMs, persistedTime.atMs as number)
       if (coherentStreaming) {
         const attempt = db.prepare(`SELECT attempt FROM generation_attempt_v2
           WHERE operation_id=? AND request_sequence=? AND state='open'`).get(
@@ -250,20 +288,27 @@ export function recoverGenerationOrphansV2(
         const transition = executionRepo.terminalizeAttempt(context, {
           key: { operationId, requestSequence: row.requestSequence, attempt: attempt.attempt },
           outcome: { kind: 'process_interrupted', phase: 'mid_stream' },
-        }, atMs)
+        }, recoveryAtMs)
         if (transition.kind === 'conflict') {
           throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_ATTEMPT_TERMINAL_CONFLICT')
         }
       }
-      requestRepo.terminalize(context, request, 'failed', atMs)
+      requestRepo.terminalize(context, request, 'failed', recoveryAtMs)
       graphRepo.terminalizeAssistantMessage(
-        context, operation.operation.targetAnswerId.value, 'failed', null, atMs,
+        context, operation.operation.targetAnswerId.value, 'failed', null, recoveryAtMs,
       )
       executionRepo.terminalizeOperation(context, operation, {
         state: 'failed', errorCode: ERROR_CODE, errorMessage: ERROR_MESSAGE,
-      }, atMs)
+      }, recoveryAtMs)
       recovered.push(operationId)
+      })
+      } catch (error) {
+        // Preserve incoherent rows and their branch locks. Only a classified
+        // local-state failure is isolated; database/I/O failures remain fatal.
+        if (!(error instanceof GenerationOrphanRecoveryV2Error)) throw error
+        unrecovered.push(operationId)
+      }
     }
-  })
-  return Object.freeze({ recovered: recovered.length, operationIds: Object.freeze(recovered) })
+  return Object.freeze({ recovered: recovered.length, operationIds: Object.freeze(recovered),
+    unrecoveredOperationIds: Object.freeze(unrecovered) })
 }

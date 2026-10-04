@@ -1,3 +1,4 @@
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -68,7 +69,7 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
           sourceQuestionId: command.sourceQuestionId.value, sourceAnswerRootId: command.sourceAnswerRootId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
-      projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
+      projectGenerationCommandAttachmentsV2(command.kind === 'generic_local_openai_chat_regenerate' ? readRegenerateSourceAttachmentsV2({ db: input.db, context: context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }) : command.commandAttachments), undefined, (facts) => {
         const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
         const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding,
           resolvedAt: new Date(at).toISOString() })

@@ -1,3 +1,5 @@
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
+import { projectAnthropicCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/anthropic/commandAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
@@ -79,7 +81,7 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
         const attachmentDescriptors = await preflightAnthropicMessagesAttachmentDescriptorsV2({
           db: input.db, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore, descriptorRepo,
           credentialService: input.credentialService, fetchImpl: input.fetchImpl,
-          commandAttachments: command.commandAttachments,
+          commandAttachments: readRegenerateSourceAttachmentsV2({ db: input.db, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }),
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
         })
@@ -105,7 +107,9 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
               questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
               expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs(),
             })
-            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, command.commandAttachments, undefined, (commandFacts) => {
+            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
+              projectAnthropicCommandAttachmentsV2(readRegenerateSourceAttachmentsV2({ db: input.db, context,
+                sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value })), undefined, (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedAnthropicGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry, operation: 'text',
                 use: ({ binding, capability }) => {

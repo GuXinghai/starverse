@@ -10,6 +10,7 @@ const props = defineProps<{
   inboxId: string | null
   projects: readonly ProjectListItem[]
   disabled?: boolean
+  mutationDisabled?: boolean
   hasMore?: boolean
 }>()
 
@@ -45,6 +46,8 @@ const projectCreateName = ref('')
 const projectRenameDialog = ref<{ id: string; name: string } | null>(null)
 const projectDeleteDialog = ref<{ id: string; name: string } | null>(null)
 const projectErrorMessage = ref<string | null>(null)
+
+const mutationsDisabled = computed(() => props.disabled || props.mutationDisabled)
 
 const selectedCount = computed(() => selectedIds.value.size)
 const selectedIdsArray = computed(() => Array.from(selectedIds.value))
@@ -116,16 +119,17 @@ function onRowClick(id: string) {
 }
 
 function toggleConvoMenu(id: string) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   openConvoMenuId.value = openConvoMenuId.value === id ? null : id
 }
 
 function openRename(id: string, currentTitle: string) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   renameDialog.value = { id, title: currentTitle }
 }
 
 function confirmRename() {
+  if (mutationsDisabled.value) return
   const dlg = renameDialog.value
   if (!dlg) return
   const title = dlg.title.trim()
@@ -135,13 +139,14 @@ function confirmRename() {
 }
 
 function openDelete(ids: string[]) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   const cleaned = ids.map((x) => String(x ?? '').trim()).filter(Boolean)
   if (cleaned.length === 0) return
   deleteDialog.value = { ids: cleaned }
 }
 
 function confirmDelete() {
+  if (mutationsDisabled.value) return
   const dlg = deleteDialog.value
   if (!dlg) return
   if (dlg.ids.length === 1) emit('delete', dlg.ids[0])
@@ -151,13 +156,14 @@ function confirmDelete() {
 }
 
 function openMove(ids: string[]) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   const cleaned = ids.map((x) => String(x ?? '').trim()).filter(Boolean)
   if (cleaned.length === 0) return
   moveDialog.value = { ids: cleaned, projectId: props.inboxId ?? null }
 }
 
 function confirmMove() {
+  if (mutationsDisabled.value) return
   const dlg = moveDialog.value
   if (!dlg) return
   if (dlg.ids.length === 1) emit('moveToProject', dlg.ids[0], dlg.projectId)
@@ -172,12 +178,13 @@ function onSelectProject(projectId: string | null) {
 }
 
 function openProjectCreate() {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   projectCreateName.value = ''
   projectCreateDialogOpen.value = true
 }
 
 function confirmProjectCreate() {
+  if (mutationsDisabled.value) return
   const name = projectCreateName.value.trim()
   if (!name) return
   
@@ -188,7 +195,7 @@ function confirmProjectCreate() {
 }
 
 function openProjectRename(project: ProjectListItem) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   if (isSystemProject(project)) {
     projectErrorMessage.value = t('navigation.project.systemProjectNoRename')
     setTimeout(() => {
@@ -200,6 +207,7 @@ function openProjectRename(project: ProjectListItem) {
 }
 
 function confirmProjectRename() {
+  if (mutationsDisabled.value) return
   const dlg = projectRenameDialog.value
   if (!dlg) return
   const name = dlg.name.trim()
@@ -209,7 +217,7 @@ function confirmProjectRename() {
 }
 
 function openProjectDelete(project: ProjectListItem) {
-  if (props.disabled) return
+  if (mutationsDisabled.value) return
   if (isSystemProject(project)) {
     projectErrorMessage.value = t('navigation.project.systemProjectNoDelete')
     setTimeout(() => {
@@ -227,6 +235,7 @@ function openProjectSettings(project: ProjectListItem) {
 }
 
 function confirmProjectDelete() {
+  if (mutationsDisabled.value) return
   const dlg = projectDeleteDialog.value
   if (!dlg) return
   emit('deleteProject', dlg.id)
@@ -271,7 +280,7 @@ function cancelProjectDialog() {
           <button
             type="button"
             class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-            :disabled="props.disabled"
+            :disabled="mutationsDisabled"
             :aria-label="t('navigation.project.newProject')"
             @click="openProjectCreate"
           >
@@ -348,7 +357,7 @@ function cancelProjectDialog() {
             <button
               type="button"
               class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
-              :disabled="props.disabled"
+              :disabled="mutationsDisabled"
               @click.stop="openProjectRename(project)"
               :aria-label="t('navigation.project.renameProject')"
             >
@@ -357,7 +366,7 @@ function cancelProjectDialog() {
             <button
               type="button"
               class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
-              :disabled="props.disabled"
+              :disabled="mutationsDisabled"
               @click.stop="openProjectDelete(project)"
               :aria-label="t('navigation.project.deleteProject')"
             >
@@ -419,7 +428,7 @@ function cancelProjectDialog() {
         <button
           type="button"
           class="rounded-md border border-gray-200 bg-white px-2 py-1 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-          :disabled="props.disabled || selectedCount === 0"
+          :disabled="mutationsDisabled || selectedCount === 0"
           :aria-label="t('navigation.actions.bulkMove')"
           @click="openMove(selectedIdsArray)"
         >
@@ -428,7 +437,7 @@ function cancelProjectDialog() {
         <button
           type="button"
           class="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-50"
-          :disabled="props.disabled || selectedCount === 0"
+          :disabled="mutationsDisabled || selectedCount === 0"
           :aria-label="t('navigation.actions.bulkDelete')"
           @click="openDelete(selectedIdsArray)"
         >
@@ -476,7 +485,7 @@ function cancelProjectDialog() {
             <button
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="props.disabled"
+              :disabled="mutationsDisabled"
               :data-testid="`convo-menu-${c.id}`"
               :aria-label="t('navigation.actions.moreActions')"
               @click.stop="toggleConvoMenu(c.id)"
@@ -490,7 +499,7 @@ function cancelProjectDialog() {
               <button
                 type="button"
                 class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
-                :disabled="props.disabled"
+                :disabled="mutationsDisabled"
                 @click.stop="openRename(c.id, c.title); openConvoMenuId = null"
               >
                 {{ t('common.rename') }}
@@ -498,7 +507,7 @@ function cancelProjectDialog() {
               <button
                 type="button"
                 class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
-                :disabled="props.disabled"
+                :disabled="mutationsDisabled"
                 @click.stop="openMove([c.id]); openConvoMenuId = null"
               >
                 {{ t('common.move') }}
@@ -506,7 +515,7 @@ function cancelProjectDialog() {
               <button
                 type="button"
                 class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-red-700 hover:bg-red-50"
-                :disabled="props.disabled"
+                :disabled="mutationsDisabled"
                 @click.stop="openDelete([c.id]); openConvoMenuId = null"
               >
                 {{ t('common.delete') }}
@@ -549,7 +558,7 @@ function cancelProjectDialog() {
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-            :disabled="props.disabled || renameDialog.title.trim().length === 0"
+            :disabled="mutationsDisabled || renameDialog.title.trim().length === 0"
             @click="confirmRename"
           >
             {{ t('common.save') }}
@@ -576,7 +585,7 @@ function cancelProjectDialog() {
           <button
             type="button"
             class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
-            :disabled="props.disabled"
+            :disabled="mutationsDisabled"
             @click="confirmDelete"
           >
             {{ t('common.delete') }}
@@ -612,7 +621,7 @@ function cancelProjectDialog() {
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            :disabled="props.disabled"
+            :disabled="mutationsDisabled"
             @click="confirmMove"
           >
             {{ t('common.move') }}
@@ -648,7 +657,7 @@ function cancelProjectDialog() {
             {{ t('common.cancel') }}
           </button>
           <button
-            type="button"
+            type="button" :disabled="mutationsDisabled"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmProjectCreate"
           >
@@ -682,7 +691,7 @@ function cancelProjectDialog() {
             {{ t('common.cancel') }}
           </button>
           <button
-            type="button"
+            type="button" :disabled="mutationsDisabled"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmProjectRename"
           >
@@ -711,7 +720,7 @@ function cancelProjectDialog() {
             {{ t('common.cancel') }}
           </button>
           <button
-            type="button"
+            type="button" :disabled="mutationsDisabled"
             class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
             @click="confirmProjectDelete"
           >

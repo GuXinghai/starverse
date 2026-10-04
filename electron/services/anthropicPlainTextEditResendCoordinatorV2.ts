@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { projectAnthropicCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/anthropic/commandAttachmentsV2'
 import type BetterSqlite3 from 'better-sqlite3'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -104,7 +105,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
               expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(),
               answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: nowMs(),
             })
-            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, command.commandAttachments, undefined, (commandFacts) => {
+            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, projectAnthropicCommandAttachmentsV2(command.commandAttachments), undefined, (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedAnthropicGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry, operation: 'text',
                 use: ({ binding, capability }) => {

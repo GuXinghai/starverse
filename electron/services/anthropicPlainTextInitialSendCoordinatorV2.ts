@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { projectAnthropicCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/anthropic/commandAttachmentsV2'
 import type BetterSqlite3 from 'better-sqlite3'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -166,7 +167,7 @@ export function createAnthropicPlainTextInitialSendCoordinatorV2(input: Readonly
                 configRepo,
                 attachmentRepo,
                 pending.conversationId.value,
-                command.commandAttachments,
+                projectAnthropicCommandAttachmentsV2(command.commandAttachments),
                 undefined,
                 (commandFacts) => {
                   const toolRegistry = resolveGenerationToolRegistryAuthorityV2(

@@ -441,6 +441,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           :activeProjectId="activeProjectId"
           :inboxId="inboxId"
           :projects="projectListItems"
+          :mutationDisabled="isRunning"
           :disabled="!isReady || isDraftInteractionLocked"
           :hasMore="hasMoreConversations"
           @openSearch="openSearchModal"

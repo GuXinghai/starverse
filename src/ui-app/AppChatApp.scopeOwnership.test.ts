@@ -238,6 +238,31 @@ describe('workspace composer scope ownership', () => {
     expect(bridge.composer.importLocal).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: before.revision + 1 }))
   })
 
+  it('keeps an unrelated composer attachment while text regeneration uses the source question snapshot', async () => {
+    await mountLogic()
+    ;(globalThis as any).electronAPI = { selectLocalFiles: vi.fn(async () => selectedFiles()) }
+    await logic.onAttachFilesRequested()
+    const before = await readDraft('A')
+    expect(before.attachments).toHaveLength(1)
+
+    const regenerate = bridge.openRouter.chat.regenerate
+    regenerate.mockResolvedValueOnce({ ok: false, code: 'EXPECTED_TEST_STOP' })
+    await logic.onRegenerateFromQuestion('question:A')
+
+    expect(regenerate).toHaveBeenCalledWith(expect.objectContaining({
+      command: expect.objectContaining({
+        sourceBranchId: branchFor('A'),
+        questionId: 'question:A',
+        sourceAnswerId: 'answer:A',
+        commandAttachments: [],
+      }),
+    }))
+    expect(regenerate.mock.calls[0]?.[0].command).not.toHaveProperty('draftText')
+    const after = await readDraft('A')
+    expect(after.attachments).toEqual(before.attachments)
+    expect(after.draftText).toBe(before.draftText)
+  })
+
   it('keeps normal T2 autosave scheduled when T1 makes attachment preparation stale', async () => {
     await mountLogic()
     const gate = deferred<void>()
@@ -604,6 +629,30 @@ describe('workspace composer scope ownership', () => {
     expect(logic.activeConvoId.value).toBe('template')
     expect(logic.activeBranchId.value).toBe(branchFor('template'))
     expect(logic.draft.value).toBe('draft template')
+  })
+
+  it('waits for every bulk move outcome and refreshes after an early rejection', async () => {
+    await mountLogic()
+    const gate = deferred<void>()
+    bridge.workspace.listConversations.mockClear()
+    bridge.workspace.moveConversation.mockImplementation(async (id: string) => {
+      if (id === 'A') throw new Error('SYNTHETIC_MOVE_FAILURE')
+      await gate.promise
+      return ok({})
+    })
+
+    let settled = false
+    const moving = logic.onBulkMoveConvosToProject(['A', 'B'], 'project:target').finally(() => { settled = true })
+    await waitFor(() => expect(bridge.workspace.moveConversation).toHaveBeenCalledTimes(2))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(settled).toBe(false)
+    expect(bridge.workspace.listConversations).not.toHaveBeenCalled()
+    gate.resolve()
+    await moving
+
+    expect(bridge.workspace.listConversations).toHaveBeenCalled()
+    expect(logic.loadError.value).toBe('SYNTHETIC_MOVE_FAILURE')
   })
 
   it('does not steal navigation when deleting A finishes after B was selected', async () => {

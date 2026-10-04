@@ -222,7 +222,7 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
     createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.actionKind !== input.actionKind ||
-      execution.bundle.operation.sourceAnswerId !== null ||
+      (execution.bundle.operation.sourceAnswerId?.value ?? null) !== (pendingSourceAnswerIdV2(input.pending)?.value ?? null) ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson ||
       execution.bundle.snapshot.providerBinding.providerId.value !== 'anthropic' ||
       execution.bundle.snapshot.capabilityBinding.snapshotHash.value !== goal3Snapshot.snapshotHash.value) {

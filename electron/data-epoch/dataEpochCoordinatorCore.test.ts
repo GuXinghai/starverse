@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runEpoch2ResetThroughConfigReplacement } from './dataEpochCoordinatorCore'
 import { readEpoch2ResetJournal } from './resetJournalStore'
 import { resolveEpoch2WorkspaceLayout } from './rootManifest'
-import { acquireWin32EpochRootLease } from './win32EpochRootLease'
+import { acquireEpochRootLease, acquireWin32EpochRootLease } from './win32EpochRootLease'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
 const roots: string[] = []
@@ -31,6 +31,39 @@ afterEach(() => {
 })
 
 describe('epoch-2 reset coordinator core through config replacement', () => {
+  it.each(['root-manifest.json', 'starverse.db'])('preserves live POSIX data with a missing journal and %s', async fileName => {
+    const appDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-reset-live-'))
+    roots.push(appDataRoot)
+    const layout = resolveEpoch2WorkspaceLayout({ appDataRoot, homeRoot: os.homedir(), repositoryRoot: process.cwd() })
+    const lease = acquireEpochRootLease(layout, 'linux')
+    fs.mkdirSync(layout.epochRoot, { recursive: true })
+    const liveFile = path.join(layout.epochRoot, fileName)
+    fs.writeFileSync(liveFile, 'preserve live data')
+    fs.writeFileSync(configPath(layout), '{"language":"en-US"}')
+    const clearDefaultSessionData = vi.fn(async () => {})
+    try {
+      await expect(runEpoch2ResetThroughConfigReplacement({ layout, lease, clearDefaultSessionData }))
+        .rejects.toThrow('EPOCH2_RESET_LIVE_WORKSPACE_PROTECTED')
+      expect(fs.readFileSync(liveFile, 'utf8')).toBe('preserve live data')
+      expect(fs.readFileSync(configPath(layout), 'utf8')).toBe('{"language":"en-US"}')
+      expect(fs.existsSync(layout.journalPath)).toBe(false)
+      expect(fs.existsSync(layout.transitionManifestPath)).toBe(false)
+      expect(clearDefaultSessionData).not.toHaveBeenCalled()
+    } finally { lease.release() }
+  })
+
+  it('allows a fresh POSIX reset when no Epoch-2 root exists', async () => {
+    const appDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-reset-fresh-'))
+    roots.push(appDataRoot)
+    const layout = resolveEpoch2WorkspaceLayout({ appDataRoot, homeRoot: os.homedir(), repositoryRoot: process.cwd() })
+    const lease = acquireEpochRootLease(layout, 'linux')
+    const clearDefaultSessionData = vi.fn(async () => {})
+    try {
+      await expect(runEpoch2ResetThroughConfigReplacement({ layout, lease, clearDefaultSessionData }))
+        .resolves.toMatchObject({ journal: { phase: 'config_replaced' } })
+      expect(clearDefaultSessionData).toHaveBeenCalledOnce()
+    } finally { lease.release() }
+  })
   windowsIt('deletes legacy credentials without decrypting before completing the reset', async () => {
     const { layout, lease } = fixture('starverse-coordinator-legacy-credential-delete')
     const legacyDb = path.join(layout.productRoot, 'chat.db')

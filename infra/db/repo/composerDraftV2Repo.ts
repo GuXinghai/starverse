@@ -204,7 +204,9 @@ export class ComposerDraftV2Repo {
         ON managed_provenance.asset_revision_id=draft.asset_revision_id
       LEFT JOIN composer_draft_dfc_selection_v2 AS selection
         ON selection.conversation_id=draft.conversation_id AND selection.source_asset_revision_id=draft.asset_revision_id
-      LEFT JOIN file_type_detection_v2 AS detection ON detection.asset_revision_id=draft.asset_revision_id
+      LEFT JOIN file_type_detection_v2 AS detection ON detection.asset_revision_id=
+        CASE WHEN asset_revision.revision_kind='derived' THEN asset_revision.parent_asset_revision_id
+          ELSE draft.asset_revision_id END
       WHERE draft.conversation_id=? ORDER BY draft.attachment_order,draft.asset_revision_id,draft.url_reference_revision`).all(conversationId) as AttachmentRow[]
     const decodedAttachments=attachments.map((entry,index)=>this.decodeAttachment(entry,index))
     for(const attachment of decodedAttachments) {

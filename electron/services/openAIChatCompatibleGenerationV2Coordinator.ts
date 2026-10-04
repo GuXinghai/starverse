@@ -1,3 +1,4 @@
+import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { createHash, randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -128,7 +129,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
             request: requests.replayPrepared(context, raced, preparedRequest) }) }
         const pending = pendingForCurrent(context, command, nowMs())
         return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
-          projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
+          projectGenerationCommandAttachmentsV2(command.kind === 'openai_chat_compatible_regenerate' ? readRegenerateSourceAttachmentsV2({ db: input.db, context: context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }) : command.commandAttachments), undefined, (facts) => {
             const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
               credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
             const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding,

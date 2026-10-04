@@ -193,7 +193,7 @@ describe('epoch-2 root marker authority and coordinator phase', () => {
         layout,
         lease,
         clearDefaultSessionData: async () => {},
-      })).rejects.toThrow('EPOCH2_CONFIG_COORDINATOR_PHASE_INVALID')
+      })).rejects.toThrow('EPOCH2_RESET_LIVE_WORKSPACE_PROTECTED')
       expect(fs.readFileSync(path.join(layout.productRoot, 'chat.db'), 'utf8'))
         .toBe('must-remain-for-router')
     } finally {

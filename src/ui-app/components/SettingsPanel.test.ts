@@ -536,14 +536,17 @@ describe('ui-app SettingsPanel', () => {
 
     await user.click(screen.getByTestId('settings-save'))
 
-    await waitFor(() => expect((globalThis as any).electronStore.set)
-      .toHaveBeenCalledWith('generationV2UiPreferences', expect.objectContaining({
+    await waitFor(() => {
+      const storeSet = (globalThis as any).electronStore.set
+      for (const [key, value] of Object.entries({
         reasoningPrefs: { mode: 'auto', effort: 'auto', exclude: false },
         chatReasoningPanelDefaultExpanded: true,
         userMessageRenderDefault: false,
         webSearchDefaults: null,
         generationParamsDefaults: null,
-      })))
+      })) expect(storeSet).toHaveBeenCalledWith(`generationV2UiPreferences.${key}`, value)
+      expect(storeSet).not.toHaveBeenCalledWith('generationV2UiPreferences', expect.anything())
+    })
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())

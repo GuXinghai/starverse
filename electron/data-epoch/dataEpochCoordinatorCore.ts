@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import {
   cleanupEpoch2TransitionTemps,
   deleteEpoch2OwnedTarget,
@@ -75,6 +76,22 @@ function sweepLegacyOwnedTargets(input: Readonly<{
 }
 
 export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  clearDefaultSessionData: Epoch2DefaultSessionReset
+}>): Promise<Epoch2ResetThroughConfigResult> {
+  // The reset inventory includes workspace itself. A lost or stale transition
+  // journal must never turn an existing Epoch-2 root into legacy reset data.
+  try {
+    fs.lstatSync(input.layout.epochRoot)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    return runResetForAbsentEpochRoot(input)
+  }
+  throw new Error('EPOCH2_RESET_LIVE_WORKSPACE_PROTECTED')
+}
+
+async function runResetForAbsentEpochRoot(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
   clearDefaultSessionData: Epoch2DefaultSessionReset

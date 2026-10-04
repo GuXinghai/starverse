@@ -22,11 +22,11 @@ describe('webSearchDefaultsClient', () => {
 
   it('writes settings.setWebSearchDefaults and decodes ack', async () => {
     const get = vi.fn(async () => ({}))
-    const set = vi.fn(async () => undefined)
+    const set = vi.fn(async () => true)
     ;(globalThis as any).electronStore = { get, set }
 
     await expect(setWebSearchDefaults({ searchMode: 'default' })).resolves.toBe(true)
-    expect(set).toHaveBeenCalledWith('generationV2UiPreferences', { webSearchDefaults: { searchMode: 'default' } })
+    expect(set).toHaveBeenCalledWith('generationV2UiPreferences.webSearchDefaults', { searchMode: 'default' })
   })
 
   it('returns safe defaults when the retained preference store is unavailable', async () => {

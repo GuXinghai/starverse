@@ -181,7 +181,11 @@ export async function startMainV2(): Promise<void> {
   },
 })
 
-  recoverGenerationOrphansV2(runtime.epoch2.database)
+  const orphanRecovery = recoverGenerationOrphansV2(runtime.epoch2.database)
+  if (orphanRecovery.unrecoveredOperationIds.length > 0) {
+    console.error('[generation-recovery] GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID',
+      { count: orphanRecovery.unrecoveredOperationIds.length })
+  }
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
   notifyModelFactsSemanticInvalidated })

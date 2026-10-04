@@ -3,7 +3,8 @@
  * not in the retired chat database.  This bridge deliberately has no access
  * to provider credentials, conversation data, or generation snapshots.
  */
-const UI_PREFERENCE_NAMESPACE = 'generationV2UiPreferences'
+import { GENERATION_V2_UI_PREFERENCE_NAMESPACE as UI_PREFERENCE_NAMESPACE,
+  GENERATION_V2_UI_PREFERENCE_KEYS } from '../../../shared/settings/generationV2UiPreferenceKeys'
 
 type ElectronStoreBridgeV2 = Readonly<{
   get: (key: string) => Promise<unknown>
@@ -35,10 +36,8 @@ export async function getGenerationV2UiPreference(key: string): Promise<unknown>
 
 export async function setGenerationV2UiPreference(key: string, value: unknown): Promise<boolean> {
   const store = bridge()
-  if (!store) return false
+  if (!store || !GENERATION_V2_UI_PREFERENCE_KEYS.has(key)) return false
   try {
-    const previous = record(await store.get(UI_PREFERENCE_NAMESPACE))
-    await store.set(UI_PREFERENCE_NAMESPACE, Object.freeze({ ...previous, [key]: value }))
-    return true
+    return await store.set(`${UI_PREFERENCE_NAMESPACE}.${key}`, value) === true
   } catch { return false }
 }
