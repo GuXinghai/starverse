@@ -16,15 +16,6 @@ import {
   normalizeNetworkProxySettings,
   type NetworkProxyMode,
 } from '@/shared/plugin-distribution/networkProxyShared'
-import {
-  DEFAULT_NETEXP_SETTINGS,
-  getNetExpRuntimeInfo,
-  getNetExpSettings,
-  setNetExpSettings,
-  type NetExpSettings,
-  type NetExpRuntimeInfo,
-} from '@/next/netExp/netExpClient'
-import { formatNetExpRunReport, getLastNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
@@ -749,14 +740,6 @@ const userMessageRenderDefault = ref(false)
 const maxRecentModelsDraft = ref('8')
 const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
 const generationParamsDefaults = ref<GenerationParamsLayer | null>(null)
-const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
-const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
-const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
-const netExpForceHttp1 = ref(DEFAULT_NETEXP_SETTINGS.forceHttp1)
-const netExpKeepAliveEnable = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveEnable)
-const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
-const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
-const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
 const networkProxyMode = ref<NetworkProxyMode>(DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode)
 const networkProxyManualUrl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.manualProxyUrl)
 const networkProxyNoProxy = ref(DEFAULT_NETWORK_PROXY_SETTINGS.noProxy)
@@ -1288,15 +1271,6 @@ async function load() {
     await loadCatalogProviderPolicies(store)
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
-    const netExp = await getNetExpSettings()
-    netExpDisableHttp2.value = netExp.disableHttp2
-    netExpDisableQuic.value = netExp.disableQuic
-    netExpStreamInMainProcess.value = netExp.streamInMainProcess
-    netExpForceHttp1.value = netExp.forceHttp1
-    netExpKeepAliveEnable.value = netExp.tcpKeepAliveEnable
-    netExpKeepAliveIdleMs.value = netExp.tcpKeepAliveIdleMs
-    netExpInitial.value = netExp
-    netExpRuntime.value = await getNetExpRuntimeInfo()
     const proxySettings = await getNetworkProxySettings()
     networkProxyMode.value = proxySettings.proxyMode
     networkProxyManualUrl.value = proxySettings.manualProxyUrl
@@ -1382,14 +1356,6 @@ async function save() {
     }
     catalogProviderOverrideTouched.value = {}
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
-    await setNetExpSettings({
-      disableHttp2: netExpDisableHttp2.value,
-      disableQuic: netExpDisableQuic.value,
-      streamInMainProcess: netExpStreamInMainProcess.value,
-      forceHttp1: netExpForceHttp1.value,
-      tcpKeepAliveEnable: netExpKeepAliveEnable.value,
-      tcpKeepAliveIdleMs: netExpKeepAliveIdleMs.value,
-    })
     await setNetworkProxySettings(normalizeNetworkProxySettings({
       proxyMode: networkProxyMode.value,
       manualProxyUrl: networkProxyManualUrl.value,
@@ -1436,19 +1402,6 @@ async function save() {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
-  }
-}
-
-async function copyRunReport() {
-  error.value = null
-  savedMessage.value = null
-  try {
-    netExpRuntime.value = await getNetExpRuntimeInfo()
-    const report = formatNetExpRunReport(getLastNetExpRunReport(), netExpRuntime.value)
-    await navigator.clipboard.writeText(report)
-    savedMessage.value = t('settings.network.runReportCopied')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : t('common.error')
   }
 }
 
@@ -3162,113 +3115,6 @@ onMounted(() => {
               <div>{{ t('settings.network.rangeLabel') }} {{ passedFailedText(networkProxyProbeResult.rangePassed) }}</div>
               <div>{{ t('settings.network.diagnosticLabel') }} {{ networkProxyProbeResult.terminalDiagnostic }}</div>
             </div>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.disableHttp2') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.disableHttp2Desc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.network.disableHttp2')"
-                :disabled="!canEdit || loading || saving"
-                v-model="netExpDisableHttp2"
-              />
-              <span class="text-[11px] text-gray-700">{{ netExpDisableHttp2 ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.disableQuic') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.disableQuicDesc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.network.disableQuic')"
-                :disabled="!canEdit || loading || saving"
-                v-model="netExpDisableQuic"
-              />
-              <span class="text-[11px] text-gray-700">{{ netExpDisableQuic ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.streamInMain') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.streamInMainDesc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.network.streamInMain')"
-                :disabled="!canEdit || loading || saving"
-                v-model="netExpStreamInMainProcess"
-              />
-              <span class="text-[11px] text-gray-700">{{ netExpStreamInMainProcess ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.forceHttp1') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.forceHttp1Desc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.network.forceHttp1')"
-                :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
-                v-model="netExpForceHttp1"
-              />
-              <span class="text-[11px] text-gray-700">{{ netExpForceHttp1 ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.tcpKeepalive') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.tcpKeepaliveDesc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.network.tcpKeepalive')"
-                :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
-                v-model="netExpKeepAliveEnable"
-              />
-              <span class="text-[11px] text-gray-700">{{ netExpKeepAliveEnable ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.tcpKeepaliveIdle') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.network.tcpKeepaliveIdleDesc') }}</div>
-            </div>
-            <input
-              type="number"
-              min="0"
-              step="1000"
-              class="w-32 rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
-              :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess || !netExpKeepAliveEnable"
-              v-model.number="netExpKeepAliveIdleMs"
-            />
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="text-[11px] text-gray-500">{{ t('settings.network.copyRunReportDesc') }}</div>
-            <button
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-              :disabled="props.disabled || loading || saving"
-              @click="copyRunReport"
-            >
-              {{ t('settings.network.copyRunReport') }}
-            </button>
           </div>
         </div>
       </div>

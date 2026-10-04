@@ -225,6 +225,7 @@ export interface SettingsMessages {
       readonly chatMode: string
       readonly openAICompatible: string
       readonly nativeRest: string
+      readonly modeUnavailable: string
       readonly nativeRestDiagnostics: string
       readonly manualLoadUnload: string
       readonly autoLoadBeforeSend: string
@@ -291,21 +292,6 @@ export interface SettingsMessages {
       readonly failed: string
       readonly reachable: string
       readonly unreachable: string
-      readonly disableHttp2: string
-      readonly disableHttp2Desc: string
-      readonly disableQuic: string
-      readonly disableQuicDesc: string
-      readonly streamInMain: string
-      readonly streamInMainDesc: string
-      readonly forceHttp1: string
-      readonly forceHttp1Desc: string
-      readonly tcpKeepalive: string
-      readonly tcpKeepaliveDesc: string
-      readonly tcpKeepaliveIdle: string
-      readonly tcpKeepaliveIdleDesc: string
-      readonly copyRunReport: string
-      readonly copyRunReportDesc: string
-      readonly runReportCopied: string
     }
     readonly reasoning: {
       readonly title: string

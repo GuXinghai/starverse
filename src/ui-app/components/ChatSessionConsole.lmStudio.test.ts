@@ -138,7 +138,11 @@ describe('ChatSessionConsole LM Studio controls', () => {
     expect(screen.queryByText(/ModelPicker/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('lm-studio-model')).not.toBeInTheDocument()
 
-    await user.click(screen.getByTestId('lm-studio-chat-mode-native'))
+    for (const unavailable of ['lm-studio-chat-mode-native', 'lm-studio-openai-endpoint-chat-completions']) {
+      expect(screen.getByTestId(unavailable)).toBeDisabled()
+      expect(screen.getByTestId(unavailable)).toHaveAttribute('title', expect.stringMatching(/./u))
+      await user.click(screen.getByTestId(unavailable))
+    }
     await user.click(screen.getByTestId('lm-studio-openai-endpoint-responses'))
     await user.click(screen.getByTestId('lm-studio-auto-load-enabled'))
     await user.click(screen.getByTestId('lm-studio-auto-unload-after-send-enabled'))
@@ -158,7 +162,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
     await user.click(screen.getByTestId('lm-studio-chat-disable'))
     await user.click(screen.getByTestId('lm-studio-chat-clear'))
 
-    expect(view.emitted('updateLMStudioChatMode')?.[0]).toEqual(['native_rest'])
+    expect(view.emitted('updateLMStudioChatMode')).toBeUndefined()
     expect(view.emitted('updateLMStudioOpenAICompatiblePreferredEndpoint')?.[0]).toEqual(['responses'])
     expect(view.emitted('updateLMStudioNativeRestControl')).toEqual([
       ['autoLoadBeforeSendEnabled', true],

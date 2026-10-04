@@ -446,6 +446,17 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-pane-models-capabilities')).toBeVisible()
   })
 
+  it('renders no network-experiment toggle or run report that has no runtime consumer', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+    await screen.findByText('设置')
+    await user.click(screen.getByTestId('settings-category-network'))
+    const pane = screen.getByTestId('settings-pane-network')
+    expect(pane.querySelectorAll('input[type="checkbox"]')).toHaveLength(1)
+    expect(pane.querySelector('input[type="number"]')).toBeNull()
+    expect(pane.textContent).not.toMatch(/HTTP\/2|QUIC|keepalive|HTTP\/1\.1|运行报告/i)
+  })
+
   it('keeps unsaved drafts mounted while switching categories', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })

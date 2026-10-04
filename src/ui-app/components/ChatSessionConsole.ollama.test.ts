@@ -152,8 +152,11 @@ describe('ChatSessionConsole Ollama controls', () => {
     expect(screen.queryByRole('button', { name: /pull|download/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('ollama-model')).not.toBeInTheDocument()
 
-    await user.click(screen.getByTestId('ollama-native-endpoint-generate'))
-    await user.click(screen.getByTestId('ollama-chat-mode-openai'))
+    for (const unavailable of ['ollama-native-endpoint-generate', 'ollama-chat-mode-openai']) {
+      expect(screen.getByTestId(unavailable)).toBeDisabled()
+      expect(screen.getByTestId(unavailable)).toHaveAttribute('title', expect.stringMatching(/./u))
+      await user.click(screen.getByTestId(unavailable))
+    }
     const openAIChat = {
       ...ollamaChat(),
       chatMode: 'openai_compatible' as const,
@@ -174,7 +177,10 @@ describe('ChatSessionConsole Ollama controls', () => {
       webSearchResolved: null,
       generationParamsResolved: null,
     })
-    await user.click(screen.getByTestId('ollama-openai-endpoint-responses'))
+    for (const unavailable of ['ollama-openai-endpoint-responses', 'ollama-openai-endpoint-chat-completions']) {
+      expect(screen.getByTestId(unavailable)).toBeDisabled()
+      await user.click(screen.getByTestId(unavailable))
+    }
     await user.click(screen.getByTestId('ollama-auto-load-enabled'))
     await user.click(screen.getByTestId('ollama-auto-unload-after-send-enabled'))
     await user.click(screen.getByTestId('ollama-auto-unload-after-idle-enabled'))
@@ -193,9 +199,9 @@ describe('ChatSessionConsole Ollama controls', () => {
     await user.click(screen.getByTestId('ollama-chat-disable'))
     await user.click(screen.getByTestId('ollama-chat-clear'))
 
-    expect(view.emitted('updateOllamaNativeRestPreferredEndpoint')?.[0]).toEqual(['generate'])
-    expect(view.emitted('updateOllamaChatMode')?.[0]).toEqual(['openai_compatible'])
-    expect(view.emitted('updateOllamaOpenAICompatiblePreferredEndpoint')?.[0]).toEqual(['responses'])
+    expect(view.emitted('updateOllamaNativeRestPreferredEndpoint')).toBeUndefined()
+    expect(view.emitted('updateOllamaChatMode')).toBeUndefined()
+    expect(view.emitted('updateOllamaOpenAICompatiblePreferredEndpoint')).toBeUndefined()
     expect(view.emitted('updateOllamaNativeControl')).toEqual([
       ['autoLoadBeforeSendEnabled', true],
       ['autoUnloadAfterSendEnabled', true],

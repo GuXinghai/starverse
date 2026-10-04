@@ -396,34 +396,15 @@ if (packagedTestDocxFixtureAuthorityEnabled) {
   }))
 }
 
-// Expose file dialog API for image selection
+// Expose retained shell/file-dialog APIs (every member must have a main-process handler)
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
-  /**
-   * 选择图片文件并返回 base64 data URI
-   * @returns {Promise<string | null>} base64 data URI 或 null（如果用户取消）
-   */
-  selectImage: () => ipcRenderer.invoke('dialog:select-image'),
   selectFile: (options?: { filters?: Array<{ name: string; extensions: string[] }>; defaultMimeType?: string }) =>
     ipcRenderer.invoke('dialog:select-file', options),
   selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) =>
     ipcRenderer.invoke('dialog:select-local-files', options),
   importLibreOfficeSvpkg: () => ipcRenderer.invoke('dialog:import-libreoffice-svpkg'),
   quarantineLibreOfficeRuntime: () => ipcRenderer.invoke('dialog:quarantine-libreoffice-runtime'),
-
-  /**
-   * 使用系统默认应用打开图片
-   * 支持 data URI (base64)、HTTP(S) URL 和本地文件路径
-   * @param imageUrl - 图片的 URL 或 data URI
-   * @returns {Promise<{success: boolean, path?: string, url?: string, error?: string}>}
-   */
-  openImage: (imageUrl: string) => ipcRenderer.invoke('shell:open-image', imageUrl),
-  copyImageToClipboard: (imageUrl: string) =>
-    ipcRenderer.invoke('clipboard:write-image', { imageUrl }),
-  resolveImagePath: (imageUrl: string) =>
-    ipcRenderer.invoke('shell:resolve-image-path', { imageUrl }),
-  exportImage: (imageUrl: string, options?: { suggestedName?: string }) =>
-    ipcRenderer.invoke('dialog:export-image', { imageUrl, ...(options ?? {}) }),
 
   /**
    * 在新的 BrowserWindow 中打开外部链接（类似消息应用中的链接预览窗口）

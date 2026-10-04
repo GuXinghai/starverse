@@ -71,6 +71,14 @@ describe('CompatibleProviderSettingsPanel', () => {
       }))
   })
 
+  it('does not offer strict_ssrf as a selectable policy because the transport always rejects it', async () => {
+    render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+    await screen.findByText('First')
+    const option = screen.getByRole('option', { name: /strict_ssrf/ }) as HTMLOptionElement
+    expect(option.disabled).toBe(true)
+    expect((option.closest('select') as HTMLSelectElement).value).toBe('compatibility_first')
+  })
+
   it('keeps identical catalog model namespaces scoped to the selected provider instance', async () => {
     render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
     await screen.findByText('First')

@@ -1715,7 +1715,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(lmStudioChat.chatMode === 'native_rest')"
-              :disabled="disabled || !lmStudioChat.enabled"
+              disabled
+              :title="t('settings.lmStudio.modeUnavailable')"
+              aria-disabled="true"
               data-testid="lm-studio-chat-mode-native"
               @click="emit('updateLMStudioChatMode', 'native_rest')"
             >
@@ -1727,7 +1729,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(lmStudioChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
-              :disabled="disabled || !lmStudioChat.enabled || lmStudioChat.chatMode !== 'openai_compatible'"
+              disabled
+              :title="t('settings.lmStudio.modeUnavailable')"
+              aria-disabled="true"
               data-testid="lm-studio-openai-endpoint-chat-completions"
               @click="emit('updateLMStudioOpenAICompatiblePreferredEndpoint', 'chat_completions')"
             >
@@ -1941,7 +1945,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(ollamaChat.chatMode === 'openai_compatible')"
-              :disabled="disabled || !ollamaChat.enabled"
+              disabled
+              :title="t('settings.ollama.modeUnavailable')"
+              aria-disabled="true"
               data-testid="ollama-chat-mode-openai"
               @click="emit('updateOllamaChatMode', 'openai_compatible')"
             >
@@ -1963,7 +1969,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(ollamaChat.nativeRestPreferredEndpoint === 'generate')"
-              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest'"
+              disabled
+              :title="t('settings.ollama.modeUnavailable')"
+              aria-disabled="true"
               data-testid="ollama-native-endpoint-generate"
               @click="emit('updateOllamaNativeRestPreferredEndpoint', 'generate')"
             >
@@ -1975,7 +1983,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
-              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'openai_compatible'"
+              disabled
+              :title="t('settings.ollama.modeUnavailable')"
+              aria-disabled="true"
               data-testid="ollama-openai-endpoint-chat-completions"
               @click="emit('updateOllamaOpenAICompatiblePreferredEndpoint', 'chat_completions')"
             >
@@ -1985,7 +1995,9 @@ function chipClass(active: boolean): string {
               type="button"
               class="rounded-md border px-2 py-1.5 text-[11px]"
               :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'responses')"
-              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'openai_compatible'"
+              disabled
+              :title="t('settings.ollama.modeUnavailable')"
+              aria-disabled="true"
               data-testid="ollama-openai-endpoint-responses"
               @click="emit('updateOllamaOpenAICompatiblePreferredEndpoint', 'responses')"
             >

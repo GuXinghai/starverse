@@ -97,14 +97,6 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'maxRecentModels',      // Model Picker 最近使用模型数量上限（正整数）
   'generationV2UiPreferences', // Epoch-2 retained UI-only preference namespace
 
-  // ========== Network Experiments ==========
-  'netExp',               // 网络实验开关（HTTP2/QUIC/KeepAlive 等）
-  'netExp.disableHttp2',
-  'netExp.disableQuic',
-  'netExp.streamInMainProcess',
-  'netExp.forceHttp1',
-  'netExp.tcpKeepAliveEnable',
-  'netExp.tcpKeepAliveIdleMs',
   'networkProxyPolicy',   // Legacy Electron policy; removed with the legacy main path in Goal 2 Round 5.
   'networkProxySettingsV2', // Epoch-2 product modes: environment/manual/direct/system.
   'catalogPolicyV2', // Provider-neutral user-selected model catalog policy.

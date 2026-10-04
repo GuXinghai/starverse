@@ -586,7 +586,13 @@ onMounted(load);
               class="mt-1 w-full rounded border px-2 py-1"
             >
               <option value="compatibility_first">compatibility_first</option>
-              <option value="strict_ssrf">strict_ssrf</option>
+              <option
+                value="strict_ssrf"
+                disabled
+                :title="t('settings.openAICompatible.strictSsrfUnavailable')"
+              >
+                strict_ssrf · {{ t("settings.openAICompatible.strictSsrfUnavailable") }}
+              </option>
             </select></label
           >
           <label class="text-xs"

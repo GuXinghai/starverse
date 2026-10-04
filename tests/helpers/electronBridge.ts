@@ -8,7 +8,6 @@ export function installElectronBridgeMocks(target: any = globalThis) {
     delete: vi.fn(async () => true),
   }
   const electronAPI = {
-    selectImage: vi.fn(async () => null),
     selectFile: vi.fn(async () => null),
     openExternal: vi.fn(async () => ({ success: true })),
     openInAppLink: vi.fn(async () => ({ tabId: undefined, windowId: undefined })),

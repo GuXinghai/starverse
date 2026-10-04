@@ -285,16 +285,30 @@ describe('ChatMessageBubble', () => {
     })
   })
 
-  it('disables copy/path/export actions for transient data URLs before persistence', async () => {
-    const copyImageToClipboard = vi.fn(async () => ({ success: true }))
-    const resolveImagePath = vi.fn(async () => ({ success: true, path: 'C:\\assets\\image.png' }))
-    const exportImage = vi.fn(async () => ({ success: true }))
-    ;(globalThis as any).electronAPI = {
-      copyImageToClipboard,
-      resolveImagePath,
-      exportImage,
-    }
+  it('renders no image action without a main-process handler, even when an electronAPI shim offers one', async () => {
+    const shim = { copyImageToClipboard: vi.fn(), resolveImagePath: vi.fn(), exportImage: vi.fn() }
+    ;(globalThis as any).electronAPI = shim
 
+    render(ChatMessageBubble, {
+      props: {
+        message: msg({
+          messageId: 'a_img_actions',
+          role: 'assistant',
+          contentBlocks: [{ type: 'image', url: 'asset://asset_1' }],
+        }),
+      },
+    })
+
+    expect(screen.getByTestId('message-image-preview-open-0')).toBeInTheDocument()
+    for (const action of ['copy', 'copy-path', 'export']) {
+      expect(screen.queryByTestId(`message-image-${action}-0`)).toBeNull()
+    }
+    expect(shim.copyImageToClipboard).not.toHaveBeenCalled()
+    expect(shim.resolveImagePath).not.toHaveBeenCalled()
+    expect(shim.exportImage).not.toHaveBeenCalled()
+  })
+
+  it('still marks transient data URLs as persisting', () => {
     render(ChatMessageBubble, {
       props: {
         message: msg({
@@ -304,71 +318,6 @@ describe('ChatMessageBubble', () => {
         }),
       },
     })
-
-    const copyBtn = screen.getByTestId('message-image-copy-0') as HTMLButtonElement
-    const copyPathBtn = screen.getByTestId('message-image-copy-path-0') as HTMLButtonElement
-    const exportBtn = screen.getByTestId('message-image-export-0') as HTMLButtonElement
-    expect(copyBtn).toBeDisabled()
-    expect(copyPathBtn).toBeDisabled()
-    expect(exportBtn).toBeDisabled()
     expect(screen.getByTestId('message-image-persisting-0')).toBeInTheDocument()
-
-    await fireEvent.click(copyBtn)
-    await fireEvent.click(copyPathBtn)
-    await fireEvent.click(exportBtn)
-    expect(copyImageToClipboard).not.toHaveBeenCalled()
-    expect(resolveImagePath).not.toHaveBeenCalled()
-    expect(exportImage).not.toHaveBeenCalled()
-  })
-
-  it('copies resolved local path for asset images', async () => {
-    const writeText = vi.fn(async () => {})
-    Object.defineProperty(globalThis.navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    ;(globalThis as any).electronAPI = {
-      resolveImagePath: vi.fn(async () => ({ success: true, path: 'C:\\assets\\image-1.png' })),
-    }
-
-    render(ChatMessageBubble, {
-      props: {
-        message: msg({
-          messageId: 'a_img_2',
-          role: 'assistant',
-          contentBlocks: [{ type: 'image', url: 'asset://asset_1' }],
-        }),
-      },
-    })
-
-    await fireEvent.click(screen.getByTestId('message-image-copy-path-0'))
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('C:\\assets\\image-1.png')
-    })
-  })
-
-  it('exports image through ipc when export action is clicked', async () => {
-    const exportImage = vi.fn(async () => ({ success: true }))
-    ;(globalThis as any).electronAPI = {
-      exportImage,
-    }
-
-    render(ChatMessageBubble, {
-      props: {
-        message: msg({
-          messageId: 'a_img_3',
-          role: 'assistant',
-          contentBlocks: [{ type: 'image', url: 'asset://asset_2' }],
-        }),
-      },
-    })
-
-    await fireEvent.click(screen.getByTestId('message-image-export-0'))
-    await waitFor(() => {
-      expect(exportImage).toHaveBeenCalledWith(
-        'asset://asset_2',
-        expect.objectContaining({ suggestedName: 'assistant-image-1.png' }),
-      )
-    })
   })
 })

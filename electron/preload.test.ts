@@ -44,7 +44,6 @@ describe('Generation V2 preload boundary', () => {
     expect(electronApi).toEqual(expect.objectContaining({
       selectLocalFiles: expect.any(Function),
       importLibreOfficeSvpkg: expect.any(Function),
-      openImage: expect.any(Function),
       openExternal: expect.any(Function),
       openInAppLink: expect.any(Function),
     }))
@@ -53,6 +52,9 @@ describe('Generation V2 preload boundary', () => {
       modelCatalogSyncNow: expect.any(Function),
       getNetExpRuntimeInfo: expect.any(Function),
     }))
+    for (const removed of ['selectImage', 'openImage', 'copyImageToClipboard', 'resolveImagePath', 'exportImage']) {
+      expect(electronApi).not.toHaveProperty(removed)
+    }
   })
 
   it('exposes the fixture grant bridge only when the explicit smoke authority flag is set', async () => {
