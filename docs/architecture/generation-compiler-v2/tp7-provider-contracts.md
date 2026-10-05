@@ -150,8 +150,10 @@ projection in front of them. The projection re-decodes a complete resolved
 intent and emits only `encoded`, `accepted_no_wire`, or `rejected` dispositions;
 its classification is `deepseek_stable_intent_projection_non_executable` and it
 has no execution authority. Official Chat/Thinking fields and constraints were
-rechecked: low/medium/high effort maps to `high`, xhigh maps to `max`, and
-`minimal` rejects; thinking no-effect sampling, deprecated penalties, invalid
+rechecked (CORRECTED 2026-10-05, see
+`evidence/deepseek-thinking-effort-contract-20261005.json`: wire values are
+low/high/max; the server maps minimal->low, medium->high, xhigh->high, ultra->max;
+the earlier low->high / xhigh->max / minimal-rejects claim was wrong); thinking no-effect sampling, deprecated penalties, invalid
 temperature/stop values, web/image, enabled tools without definition authority,
 and included attachments without encoding authority all reject before request
 compilation. Attachment semantic paths use array indices and are globally unique.

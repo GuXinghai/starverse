@@ -48,6 +48,35 @@ describe('DeepSeek stable Chat request V1', () => {
       .toBe(new TextEncoder().encode(result.preparedBody.copyUtf8Text()).byteLength)
   })
 
+  it.each(['low', 'high', 'max'] as const)('encodes canonical reasoning_effort %s verbatim', (effort) => {
+    const result = compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-model', priorArtifact: null, clientEntries: [user('hi')],
+      thinking: { type: 'enabled', reasoningEffort: effort },
+    })
+    expect(result.nativeRequest.thinking).toEqual({ type: 'enabled' })
+    expect(result.nativeRequest.reasoning_effort).toBe(effort)
+  })
+
+  it.each(['minimal', 'medium', 'xhigh', 'ultra'])('leaves documented server-side alias %s unmapped', (alias) => {
+    const result = compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-model', priorArtifact: null, clientEntries: [user('hi')],
+      thinking: { type: 'enabled', reasoningEffort: alias },
+    })
+    expect(result.nativeRequest.reasoning_effort).toBe(alias)
+  })
+
+  it('disables thinking through thinking.type only and never carries an effort', () => {
+    const result = compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-model', priorArtifact: null, clientEntries: [user('hi')], thinking: { type: 'disabled' },
+    })
+    expect(result.nativeRequest.thinking).toEqual({ type: 'disabled' })
+    expect('reasoning_effort' in result.nativeRequest).toBe(false)
+    expect(() => compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-model', priorArtifact: null, clientEntries: [user('hi')],
+      thinking: { type: 'disabled', reasoningEffort: 'none' },
+    })).toThrow('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
+  })
+
   it.each(['high', 'max'] as const)('encodes official thinking effort %s and JSON Output without dropping either field', (effort) => {
     const result = compileDeepSeekStableChatRequestV1({
       model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('Return JSON.')],

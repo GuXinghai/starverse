@@ -1,0 +1,40 @@
+{
+  "capturedAt": "2026-10-05",
+  "provider": "deepseek",
+  "classification": "reviewed_provider_thinking_effort_wire_facts",
+  "supersedes": {
+    "artifactId": "deepseek-stable-api-contract-20260715",
+    "fields": [
+      "reviewedWireFacts.semanticProjection.reasoningEffortValues",
+      "reviewedWireFacts.semanticProjection.documentedCompatibilityMapping",
+      "reviewedWireFacts.semanticProjection.unsupportedCommonEffort"
+    ],
+    "note": "The superseded artifact is hash-pinned and left immutable. Its effort facts (high/max only; low->high; xhigh->max; minimal unsupported) conflict with the current official thinking-mode guide and must not be used."
+  },
+  "officialEvidence": {
+    "thinkingMode": "https://api-docs.deepseek.com/guides/thinking_mode",
+    "chatCreate": "https://api-docs.deepseek.com/api/create-chat-completion"
+  },
+  "wire": {
+    "thinkingToggle": { "field": "thinking.type", "values": ["enabled", "disabled"], "default": "enabled" },
+    "effortField": "reasoning_effort",
+    "canonicalEffortValues": ["low", "high", "max"],
+    "defaultEffort": "high",
+    "serverSideCompatibilityAliases": {
+      "minimal": "low",
+      "low": "low",
+      "medium": "high",
+      "high": "high",
+      "xhigh": "high",
+      "max": "max",
+      "ultra": "max"
+    },
+    "aliasOwner": "provider_server",
+    "noneEffort": "Only part of the Anthropic-format control (reasoning.effort). In the OpenAI-format chat contract thinking is disabled with thinking.type=disabled; none is not a documented reasoning_effort value.",
+    "samplingFieldsIgnoredInThinking": ["temperature", "presence_penalty", "frequency_penalty"]
+  },
+  "starversePolicy": [
+    "Starverse encodes thinking.type and reasoning_effort verbatim; it does not remap aliases client-side.",
+    "Which efforts a given model offers is a model capability fact, not part of this protocol artifact."
+  ]
+}

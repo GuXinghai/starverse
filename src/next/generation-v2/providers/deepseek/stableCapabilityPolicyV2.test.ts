@@ -64,14 +64,14 @@ describe('DeepSeek stable family capability policy V2', () => {
       wireKey: 'top_p',
       domain: { kind: 'range', min: 0, max: 1, integer: false },
     })
+    // Reasoning mode/effort availability is a model-owned capability fact. The
+    // family policy only publishes the safe baseline and never enumerates efforts;
+    // wire encoding of thinking.type/reasoning_effort lives in the request codec.
     expect(rules.get('reasoning.mode')).toMatchObject({
-      kind: 'supported_static',
-      domain: { kind: 'enum', values: ['disabled', 'enabled'] },
+      kind: 'accepted_no_wire',
+      domain: { kind: 'enum', values: ['disabled'] },
     })
-    expect(rules.get('reasoning.effort')).toMatchObject({
-      kind: 'supported_when_reasoning_enabled',
-      domain: { kind: 'enum', values: ['high', 'max'] },
-    })
+    expect(rules.get('reasoning.effort')).toEqual({ path: 'reasoning.effort', kind: 'unavailable_pending_authority' })
     expect(rules.get('reasoning.summary')).toMatchObject({ kind: 'unsupported' })
     expect(rules.get('web.mode')).toMatchObject({
       kind: 'accepted_no_wire', domain: { kind: 'enum', values: ['disabled'] },
