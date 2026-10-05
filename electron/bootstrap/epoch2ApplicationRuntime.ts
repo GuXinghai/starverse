@@ -3,6 +3,11 @@ import path from 'node:path'
 import os from 'node:os'
 import Store from 'electron-store'
 import { bootstrapEpoch2ToCommitted, type Epoch2CommittedRuntime } from '../data-epoch/epoch2CommittedBootstrap'
+import {
+  assertEpoch2ConfigFileUsable,
+  EPOCH2_CONFIG_FILE_NAME,
+  Epoch2ConfigRecoveryError,
+} from '../data-epoch/corruptConfigRecovery'
 import { resolveEpoch2WorkspaceLayout, type Epoch2WorkspaceLayout } from '../data-epoch/rootManifest'
 
 export type Epoch2ApplicationRuntime = Readonly<{
@@ -44,7 +49,14 @@ export async function bootstrapEpoch2ApplicationRuntime(): Promise<Epoch2Applica
     },
     openCredentialStore: () => {
       if (configStore) throw new Error('EPOCH2_CONFIG_STORE_OPENED_MORE_THAN_ONCE')
-      configStore = new Store({ name: 'config', cwd: layout.productRoot, clearInvalidConfig: false })
+      // Classify a corrupt config so startup can offer recovery instead of an unclassified failure.
+      assertEpoch2ConfigFileUsable(path.join(layout.productRoot, EPOCH2_CONFIG_FILE_NAME))
+      try {
+        configStore = new Store({ name: 'config', cwd: layout.productRoot, clearInvalidConfig: false })
+      } catch (error) {
+        if (error instanceof SyntaxError) throw new Epoch2ConfigRecoveryError('EPOCH2_CONFIG_CORRUPT')
+        throw error
+      }
       return configStore
     },
   })

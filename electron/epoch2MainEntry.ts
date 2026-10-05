@@ -6,7 +6,14 @@ import {
   resolveEpoch2BootstrapLayout,
 } from './bootstrap/epoch2ApplicationRuntime'
 import { recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
-import { formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
+import { createFreshEpoch2Config, repairCorruptEpoch2Config } from './data-epoch/corruptConfigRecovery'
+import {
+  confirmFreshConfigCreation,
+  CONFIG_CORRUPT_RECOVERY_AUTHORITY,
+  notifyConfigRepaired,
+  notifyFreshConfigCreated,
+} from './data-epoch/corruptConfigRecoveryPrompt'
+import { formatEpoch2ConfigRecoverySuccess, formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
 import {
   confirmSchemaMismatchRecovery,
   SCHEMA_MISMATCH_RECOVERY_AUTHORITY,
@@ -75,6 +82,58 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
   }
 }
 
+async function startWithConfigRecovery(): Promise<void> {
+  process.stderr.write(`[epoch2-startup] EPOCH2_CONFIG_CORRUPT: config.json is not a valid JSON object; ` +
+    `attempting non-destructive repair; fresh-config authority: ${CONFIG_CORRUPT_RECOVERY_AUTHORITY}=1
+`)
+  let notice: (() => void) | null = null
+  try {
+    const layout = resolveEpoch2BootstrapLayout()
+    let repaired
+    const repairLease = acquireEpochRootLease(layout)
+    try {
+      repaired = repairCorruptEpoch2Config({ layout, lease: repairLease })
+    } finally {
+      repairLease.release()
+    }
+    if (repaired.outcome === 'repaired') {
+      process.stderr.write(formatEpoch2ConfigRecoverySuccess('repaired'))
+      notice = () => notifyConfigRepaired(repaired.backupDirectory)
+    } else {
+      // Unrecoverable: the corrupt file is untouched until the user consents to a fresh config.
+      if (!await confirmFreshConfigCreation()) {
+        app.quit()
+        return
+      }
+      const freshLease = acquireEpochRootLease(layout)
+      try {
+        const fresh = createFreshEpoch2Config({ layout, lease: freshLease })
+        process.stderr.write(formatEpoch2ConfigRecoverySuccess('fresh'))
+        notice = () => notifyFreshConfigCreated(fresh.backupDirectory)
+      } finally {
+        freshLease.release()
+      }
+    }
+  } catch (recoveryError) {
+    const recoveryCode = startupFailureCode(recoveryError)
+    process.stderr.write(`[epoch2-startup] ${recoveryCode}
+`)
+    dialog.showErrorBox('Starverse startup failed', recoveryCode)
+    app.quit()
+    return
+  }
+  try {
+    await startup()
+    notice?.()
+  } catch (error) {
+    const retryCode = startupFailureCode(error)
+    process.stderr.write(`[epoch2-startup] ${retryCode}
+`)
+    dialog.showErrorBox('Starverse startup failed', retryCode)
+    app.quit()
+  }
+}
+
 if (isPrimaryInstance) void app.whenReady().then(async () => {
   try {
     await startup()
@@ -82,6 +141,10 @@ if (isPrimaryInstance) void app.whenReady().then(async () => {
     const code = startupFailureCode(error)
     if (code === 'EPOCH2_DATABASE_SCHEMA_MISMATCH') {
       await startWithSchemaMismatchRecovery()
+      return
+    }
+    if (code === 'EPOCH2_CONFIG_CORRUPT') {
+      await startWithConfigRecovery()
       return
     }
     // Keep startup diagnostics useful for packaged/automation launchers without
