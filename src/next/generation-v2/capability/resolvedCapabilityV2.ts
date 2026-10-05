@@ -338,7 +338,13 @@ function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): 
   return false
 }
 
-function explicitValues(intent: GenerationIntentLayerV2): ReadonlyMap<ModelCapabilitySemanticPathV2, unknown> {
+type ExplicitValuesV2 = Readonly<{
+  values: ReadonlyMap<ModelCapabilitySemanticPathV2, unknown>
+  /** One map per included attachment, so repeated attachment paths are validated independently of order. */
+  attachments: readonly ReadonlyMap<ModelCapabilitySemanticPathV2, unknown>[]
+}>
+
+function explicitValues(intent: GenerationIntentLayerV2): ExplicitValuesV2 {
   const projected = projectGenerationIntentLayerV2({ schemaVersion: 2, generation: intent.generation,
     reasoning: intent.reasoning, web: intent.web, image: intent.image, tools: intent.tools,
     // Excluded attachments stay in the snapshot but never reach the wire, so they cannot block transport validation.
@@ -359,13 +365,16 @@ function explicitValues(intent: GenerationIntentLayerV2): ReadonlyMap<ModelCapab
   if (intent.image) values.set('image.mode', intent.image.mode)
   if (intent.tools) values.set('tools.mode', intent.tools.mode)
   if (intent.providerExtension) values.set('providerExtension.kind', intent.providerExtension.kind)
+  const attachments: Map<ModelCapabilitySemanticPathV2, unknown>[] = []
   for (const attachment of (projected.attachments as readonly unknown[] | undefined) ?? []) {
     if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) continue
+    const own = new Map<ModelCapabilitySemanticPathV2, unknown>()
     for (const [key, value] of Object.entries(attachment)) {
-      if (value !== undefined) values.set(`attachments[].${key}` as ModelCapabilitySemanticPathV2, value)
+      if (value !== undefined) own.set(`attachments[].${key}` as ModelCapabilitySemanticPathV2, value)
     }
+    attachments.push(own)
   }
-  return values
+  return { values, attachments }
 }
 
 /** Unknown remains unknown and is allowed to attempt when the encoder covers the path. */
@@ -375,26 +384,31 @@ export function validateSemanticIntentAgainstResolvedCapabilityV2(
 ): void {
   const fields = new Map(capability.modelFacts.fields.map((field) => [field.path, field]))
   const covered = new Set(capability.executionContext.encodingCoverage.semanticPaths)
-  const values = explicitValues(intent)
-  for (const [path, value] of values) {
-    const field = fields.get(path)
-    if (!field || field.state === 'unsupported' || field.state === 'conflict' || field.state === 'missing') {
-      throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
-    }
-    if (!covered.has(path)) throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
-    if (field.state === 'unknown') continue
-    if (field.domain !== undefined && !contains(field.domain, value)) {
-      throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
-    }
-    for (const constraint of field.constraints) {
-      const target = values.get(constraint.path)
-      const matched = constraint.values.includes(target as never)
-      if ((constraint.kind === 'requires_value' && !matched) ||
-          (constraint.kind === 'forbids_value' && matched)) {
+  const explicit = explicitValues(intent)
+  const check = (entries: ReadonlyMap<ModelCapabilitySemanticPathV2, unknown>,
+    lookup: (path: ModelCapabilitySemanticPathV2) => unknown) => {
+    for (const [path, value] of entries) {
+      const field = fields.get(path)
+      if (!field || field.state === 'unsupported' || field.state === 'conflict' || field.state === 'missing') {
+        throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
+      }
+      if (!covered.has(path)) throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+      if (field.state === 'unknown') continue
+      if (field.domain !== undefined && !contains(field.domain, value)) {
         throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+      }
+      for (const constraint of field.constraints) {
+        const target = lookup(constraint.path)
+        const matched = constraint.values.includes(target as never)
+        if ((constraint.kind === 'requires_value' && !matched) ||
+            (constraint.kind === 'forbids_value' && matched)) {
+          throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+        }
       }
     }
   }
+  check(explicit.values, (path) => explicit.values.get(path))
+  for (const own of explicit.attachments) check(own, (path) => own.get(path) ?? explicit.values.get(path))
 }
 
 export function assertCapabilityRevisionV2(expected: string, actual: string): void {

@@ -91,6 +91,11 @@ describe('Gemini GenerateContent attachment encoding coverage', () => {
   it('still rejects included URL references and unencoded conversion values loudly', () => {
     expect(() => validate([urlRef()])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
     expect(() => validate([urlRef({ include: false }), urlRef({ referenceId: 'url:2' })])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
+    // Order must not matter: an unsupported included attachment is caught first or last.
+    const bad = managed({ assetId: 'asset:bad', conversion: 'images' })
+    expect(() => validate([bad, managed()])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+    expect(() => validate([managed(), bad])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+    expect(() => validate([urlRef(), managed()])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
     expect(() => validate([managed({ conversion: 'images' })])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
   })
 })
