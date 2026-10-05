@@ -53,6 +53,8 @@ jobs:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: npm run lint:changed
+      - name: Typecheck (zero errors)
+        run: npm run typecheck
       - name: Run verify:ssot
         run: bash -lc "npm run verify:ssot | tee verify.log"
       - name: Build renderer artifacts

@@ -154,6 +154,8 @@ npx vitest run infra/db/repo/messageRepo.reasoningSegments.test.ts
 node scripts/gates/tc19-reasoning-stress.mjs
 ```
 
+> **Testing debt（2026-10）**：`tc19-reasoning-stress.mjs` 已不再是正式门禁（不在 `verify:ssot` / CI，已从 `b_gate` 移除）。它是自带 schema 的独立模拟，并不调用仓库代码；需要针对当前 Epoch-2 实现重写后才能恢复为门禁。上述契约仍然有效，但目前缺少对应的自动化覆盖（上面引用的 `messageRepo.reasoningSegments.test.ts` 当前也不存在）。
+
 ## 6. 相关文档
 
 - [REASONING_IDEMPOTENCY_CONTRACT.md](./REASONING_IDEMPOTENCY_CONTRACT.md) - 幂等策略

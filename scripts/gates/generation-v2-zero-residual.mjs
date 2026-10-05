@@ -37,6 +37,7 @@ const deletedLegacyFiles = [
   'src/next/generation-v2/capability/credentialRevisionEvidenceV2.ts',
   'src/next/generation-v2/providers/openai-responses/modelCapabilityManifestV2.ts',
   'src/next/modelCatalog/modelCapabilityResolverV2.ts',
+  'electron/types/openrouter-service.d.ts',
 ]
 for (const file of deletedLegacyFiles) if (existsSync(path.resolve(root, file))) fail(`deleted legacy file remains: ${file}`)
 

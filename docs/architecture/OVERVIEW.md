@@ -357,7 +357,7 @@ const cleanHtml = DOMPurify.sanitize(userGeneratedHtml, {
 
 - `src/**/*.test.ts` — UI 组件与应用逻辑测试
 - `infra/**/*.test.ts` — Repository、Send Plan、文件管道测试
-- `scripts/gates/` — 治理门禁测试（b_gate, tc 系列）
+- `scripts/gates/` — 治理门禁测试（tc 系列、generation-v2-* 系列）
 
 ### 组件文档 (Storybook)
 

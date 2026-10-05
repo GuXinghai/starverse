@@ -49,7 +49,7 @@
 | `infra/db/` | Epoch-2 SQLite schema manifest (`v2/*.sql`) and repositories, owned by the main process (the Worker is retired) |
 | `infra/files/` | Send Plan and derived-task services |
 | `electron/` | Main process: windows, IPC modules, model catalog, and background tasks |
-| `scripts/gates/` | Repository governance gates (`b_gate.mjs` and `tc*` scripts) |
+| `scripts/gates/` | Repository governance gates (`tc*` and `generation-v2-*` scripts) |
 
 ---
 
@@ -74,10 +74,8 @@ Understand these constraints before editing code:
 
 | Gate | Trigger | Location |
 |---|---|---|
-| B_GATE | Detects blacklisted symbols (old types and endpoints) | `scripts/b_gate.mjs` |
 | TC17 | UI guardrails — component isolation and responsibility checks | `scripts/gates/tc17-ui-guardrails.mjs` |
 | TC18 | UI isolation checks | `scripts/gates/tc18-ui-isolation.mjs` |
-| TC19 | Reasoning Stress regression (100 scenarios) | `scripts/gates/tc19-reasoning-stress.mjs` |
 | TC14 | Live smoke; requires an OpenRouter key | `scripts/gates/tc14-ui-live-smoke.mjs` |
 | ADR | Architecture decision triggers (six hard constraints) | `docs/adr/README.md` |
 | Boundary | `appChatApp.logic.ts` responsibility boundary | `docs/governance/app-chat-app-logic-boundary.md` |
@@ -91,7 +89,7 @@ Understand these constraints before editing code:
 | Run the nearest relevant tests | Test the code path most relevant to the change |
 | `npm run verify:ssot` | Baseline validation (tests and SSOT gates) |
 | `npm run verify:live` | Live smoke tests; requires an OpenRouter key |
-| `node scripts/b_gate.mjs` | Cross-platform blacklist gate |
+| `npm run typecheck` | `vue-tsc --noEmit`; must report zero errors (also run in CI) |
 | `npm run lint` | ESLint checks |
 | `npm run rebuild:node` | Rebuild better-sqlite3 for Node tests and scripts |
 | `npm run rebuild:electron` | Rebuild better-sqlite3 for Electron |
