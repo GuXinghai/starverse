@@ -656,6 +656,8 @@ export function useAppChatAppLogic() {
   let historyAttachmentRefreshSeq = 0
   let draftAttachmentRefreshSeq = 0
   let draftAttachmentDfcOptionsSeq = 0
+  const draftAttachmentDfcOptionsSeqByAssetId = new Map<string, number>()
+  const draftAttachmentDfcOptionsContextByAssetId = ref<Record<string, string>>({})
   let draftAttachmentDfcPreviewSeq = 0
   const selectedDraftAttachmentDetails = computed(() =>
     buildDraftAttachmentDetailsViewModel(selectedDraftAttachmentAssetId.value)
@@ -718,7 +720,29 @@ export function useAppChatAppLogic() {
     if (detection.status === 'failed') return [detection.errorCode, detection.errorDetail].filter(Boolean).join(': ') || 'GENERATION_V2_FILE_DETECTION_FAILED'
     return detection.blockingReasonCodes.join(', ') || 'GENERATION_V2_FILE_DETECTION_BLOCKED'
   })
-  const composerSendGateBlockedReason = computed(() => fileDetectionBlockingReason.value ?? composerSendPlanBlockingSummary.value)
+  // Backend DFC options are computed per provider/operation; this key stamps which route a cached DTO was computed for.
+  const dfcExecutionContextKey = computed(() => {
+    const providerId = executionProviderId() ?? 'unset'
+    return `${providerId}\0${dfcOperationForRoute(providerId)}`
+  })
+  // Selected converted option whose backend verdict is stale (other route) or no longer ready on the current route.
+  const dfcSelectedOptionBlockingReason = computed(() => {
+    for (const attachment of generationV2ComposerDraft.value?.attachments ?? []) {
+      if (attachment.kind !== 'managed_file' || !attachment.include || !attachment.dfcSelection ||
+          attachment.dfcSelection.targetKind === 'original_file') continue
+      const dto = draftAttachmentDfcOptionsByAssetId.value[attachment.assetId] ?? null
+      if (!dto) continue
+      if (draftAttachmentDfcOptionsContextByAssetId.value[attachment.assetId] !== dfcExecutionContextKey.value) {
+        return 'GENERATION_V2_DFC_ROUTE_REVALIDATION_PENDING'
+      }
+      if (dto.decision.status === 'ready') continue
+      const selected = dto.options.find((option) => option.optionId === dto.selectedOptionId)
+      return selected?.diagnostics[0]?.code ?? dto.decision.reasonCode ?? 'GENERATION_V2_DFC_OPTION_UNAVAILABLE'
+    }
+    return null
+  })
+  const composerSendGateBlockedReason = computed(() => fileDetectionBlockingReason.value ?? dfcSelectedOptionBlockingReason.value ??
+    composerSendPlanBlockingSummary.value)
   const composerSendGateWarningReason = computed(() => composerSendPlanWarningSummary.value)
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
@@ -738,6 +762,7 @@ export function useAppChatAppLogic() {
     if (composerSendPlanLoading.value) return false
     if (draft.value.trim().length === 0 && !hasSendableDraftAttachment.value) return false
     if (fileDetectionBlockingReason.value !== null) return false
+    if (dfcSelectedOptionBlockingReason.value !== null) return false
     return composerSendPlanCanProceed.value
   })
 
@@ -5508,7 +5533,10 @@ export function useAppChatAppLogic() {
     const id = String(assetId ?? '').trim()
     const scope = getActiveDraftScope()
     if (!id || !scope) return
-    const seq = ++draftAttachmentDfcOptionsSeq
+    const epoch = draftAttachmentDfcOptionsSeq
+    const assetSeq = (draftAttachmentDfcOptionsSeqByAssetId.get(id) ?? 0) + 1
+    draftAttachmentDfcOptionsSeqByAssetId.set(id, assetSeq)
+    const isCurrent = () => epoch === draftAttachmentDfcOptionsSeq && assetSeq === draftAttachmentDfcOptionsSeqByAssetId.get(id)
     draftAttachmentDfcOptionsLoadingByAssetId.value = {
       ...draftAttachmentDfcOptionsLoadingByAssetId.value,
       [id]: true,
@@ -5518,33 +5546,50 @@ export function useAppChatAppLogic() {
       [id]: null,
     }
     try {
+      const contextKey = dfcExecutionContextKey.value
+      const providerId = executionProviderId() ?? 'unset'
       const input = {
         conversationId: scope.convoId,
         assetId: id,
-        providerId: executionProviderId() ?? 'unset',
-        operation: executionProviderId() === 'openai_responses' ? 'responses' as const
-          : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
+        providerId,
+        operation: dfcOperationForRoute(providerId),
       }
       const dto = await getGenerationV2ComposerDfcOptions(input)
-      if (seq !== draftAttachmentDfcOptionsSeq) return
+      if (!isCurrent()) return
+      draftAttachmentDfcOptionsContextByAssetId.value = {
+        ...draftAttachmentDfcOptionsContextByAssetId.value,
+        [id]: contextKey,
+      }
       draftAttachmentDfcOptionsByAssetId.value = {
         ...draftAttachmentDfcOptionsByAssetId.value,
         [id]: dto,
       }
     } catch (error) {
-      if (seq !== draftAttachmentDfcOptionsSeq) return
+      if (!isCurrent()) return
       draftAttachmentDfcOptionsErrorByAssetId.value = {
         ...draftAttachmentDfcOptionsErrorByAssetId.value,
         [id]: error instanceof Error ? error.message : t('filePipeline.dfc.feedback.loadOptionsFailed'),
       }
     } finally {
-      if (seq === draftAttachmentDfcOptionsSeq) {
+      if (isCurrent()) {
         draftAttachmentDfcOptionsLoadingByAssetId.value = {
           ...draftAttachmentDfcOptionsLoadingByAssetId.value,
           [id]: false,
         }
       }
     }
+  }
+
+  function dfcOperationForRoute(providerId: string) {
+    return providerId === 'openai_responses' ? 'responses' as const
+      : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const
+  }
+
+  async function refreshRouteDependentDfcOptions() {
+    const attachments = generationV2ComposerDraft.value?.attachments ?? []
+    await Promise.all(attachments.filter((attachment) => attachment.kind === 'managed_file' && attachment.include &&
+      attachment.dfcSelection && attachment.dfcSelection.targetKind !== 'original_file')
+      .map((attachment) => refreshDraftAttachmentDfcOptions((attachment as GenerationV2ComposerManagedFileAttachment).assetId)))
   }
 
   async function refreshDraftAttachmentDfcPreview(assetId: string) {
@@ -6341,6 +6386,10 @@ export function useAppChatAppLogic() {
     scheduleHistoryIncompatibleRefresh()
     scheduleHistoryAttachmentRefresh()
   }, { immediate: true })
+
+  watch(dfcExecutionContextKey, (next, previous) => {
+    if (next !== previous) void refreshRouteDependentDfcOptions()
+  })
 
   const imageGenerationFollowDefault = computed(() => imageGenerationConvoMode.value === 'default')
 

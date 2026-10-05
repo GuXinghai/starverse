@@ -214,6 +214,64 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
     expect(g.composer.dfcSelect).toHaveBeenCalledTimes(1)
   })
 
+  it('re-evaluates a selected converted DFC option on route change without altering the selection or regenerating it', async () => {
+    const user = userEvent.setup()
+    const g = (globalThis as any).generationV2
+    const responsesModelId = 'gemini-3.1-flash-lite'
+    ;(globalThis as any).electronStore = { get: vi.fn(async (key: string) => /olicy/.test(key) ? undefined : 'redacted-test-key') }
+    const emptyFact = { presence: 'missing', value: null, providerPath: null }
+    const flatCatalog = (items: any[]) => ({ ok: true, status: 'synced', responseDigest: 'a'.repeat(64), modelCount: items.length,
+      visibleModelCount: items.length, hiddenModelCount: 0, items, nextCursor: null })
+    g.models.listOpenRouter = vi.fn(async () => flatCatalog([model]))
+    g.models.listGoogleAIStudio = vi.fn(async () => flatCatalog([{ providerKey: 'google_ai_studio', modelId: responsesModelId,
+      modelKey: `google_ai_studio::${responsesModelId}`, canonicalSlug: responsesModelId, displayName: 'Gemini Route Model', status: 'active',
+      visibility: 'visible', inputModalities: ['text'], outputModalities: ['text'],
+      raw: { buckets: [{ payload: { observation: { schemaVersion: 2, providerKey: 'google_ai_studio', nativeModelId: responsesModelId, observedAtMs: 1,
+        rawProviderRecord: { thinking: true, supportedGenerationMethods: ['generateContent', 'streamGenerateContent'] },
+        facts: { textChat: emptyFact, reasoning: emptyFact, tools: emptyFact, structuredOutputs: emptyFact, vision: emptyFact }, provenance: {} } } }] } }]))
+    let routeSelection: any = { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL }
+    g.workspace.getConversationRoutePreference = vi.fn(async () => ok({ conversationId: 'c1', revision: 1, selection: routeSelection }))
+    g.workspace.updateConversationRoutePreference = vi.fn(async (input: any) => {
+      routeSelection = input.selection
+      return ok({ conversationId: 'c1', revision: 1, selection: routeSelection })
+    })
+    const selectedOptionId = 'dfc:asset-text:markdown'
+    const dfcSelection = { optionId: selectedOptionId, targetKind: 'markdown', sendStrategy: 'text_in_prompt', effectiveAssetId: 'derived-markdown',
+      effectiveAssetRevisionId: 'revision:derived-markdown', effectiveAssetSha256: 'sha:derived-markdown' }
+    draft = nextDraft({ draftText: 'send this', attachments: [managedFile('asset-text', { dfcSelection })] })
+    g.composer.dfcOptions.mockImplementation(async (input: any) => {
+      const compatible = input.providerId === 'openrouter'
+      return ok({
+        attachmentId: 'revision:asset-text', conversationId: 'c1', rawFileId: 'asset-text', filename: 'notes.txt', sizeBytes: 12, dfcManaged: true,
+        selectedOptionId, selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-markdown' }],
+        decision: compatible
+          ? { status: 'ready', reasonCode: null, selectedOptionId, targetKind: 'markdown', sendStrategy: 'text_in_prompt', sendAssetRefs: [], needsUserAction: false }
+          : { status: 'blocked', reasonCode: 'selected_option_unavailable', selectedOptionId, targetKind: 'markdown', sendStrategy: 'text_in_prompt', sendAssetRefs: [], needsUserAction: true },
+        options: [{ optionId: selectedOptionId, targetKind: 'markdown', sendStrategy: 'text_in_prompt',
+          status: compatible ? 'ready' : 'blocked', isAvailable: compatible, compatibilityStatus: compatible ? 'compatible' : 'blocked',
+          selectionBinding: compatible ? observedDfcBinding : null, sendAssetRefs: compatible ? [{ kind: 'derived_asset', assetId: 'derived-markdown' }] : [],
+          warnings: [], diagnostics: compatible ? [] : [{ code: 'GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED' }] }],
+      })
+    })
+    const pickModel = async (modelId: string) => {
+      await user.click(await screen.findByTestId('current-model-pill'))
+      await user.click((await screen.findAllByTestId((modelId === DEFAULT_OPENROUTER_TEST_MODEL ? `model-picker-item-${modelId}` : `model-picker-item-google_ai_studio-${modelId}`)))[0]!)
+    }
+    render(AppChatApp)
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-text'))
+    await waitFor(() => expect(g.composer.dfcOptions).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'openrouter' })))
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+
+    await pickModel(responsesModelId)
+    await waitFor(() => expect(g.composer.dfcOptions).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'google_ai_studio' })))
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeDisabled())
+
+    await pickModel(DEFAULT_OPENROUTER_TEST_MODEL)
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+    expect(g.composer.dfcSelect).not.toHaveBeenCalled()
+    expect(draft.attachments[0].dfcSelection).toEqual(dfcSelection)
+  })
+
   it('removes the draft attachment through the Generation V2 revision authority', async () => {
     const user = userEvent.setup()
     draft = nextDraft({ attachments: [managedFile('asset-text')] })

@@ -330,6 +330,7 @@ Each item lists its locations, behaviour, confidence and repair boundary.
   - After switching to Anthropic, the send fails because Anthropic requires `text/plain` (`anthropicMessagesPreparedRequestCompilerV2.ts:223,234`).
   - After switching to OpenAI Responses, the send fails because it rejects `inline_text` and local `image_reference` (`openAIResponsesAttachmentPreflightV2.ts:58-61`).
   - The send gate is reset on model switch rather than rechecked (`logic.ts:~4630`). The failure is loud, not silent. *High.*
+  - **Closed (P2-11).** A provider/operation change now re-fetches backend DFC options for included converted selections, and Send is gated on the backend `decision`/option diagnostics for the current route (stale DTOs block until revalidated). The selected option and derived asset are untouched. Authority: `generationV2DfcService.ensureOptions` via `dfcSelectedOptionBlockingReason` in `appChatApp.logic.ts`.
 
 - **P2-12 — Bulk delete or move is not atomic, and partial failure leaves the list stale.** `Promise.all` is used at `appChatApp.logic.ts:2597, 2611`. If one call rejects, the refresh and reload are skipped while the other items are already deleted or moved. *High.* Repair: use `allSettled`, always refresh, and report the failures.
 
