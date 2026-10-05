@@ -90,6 +90,8 @@ const ANTHROPIC_PATHS = Object.freeze([
 ] as RuntimeCapabilitySemanticPathV2[])
 
 const GEMINI_GENERATE_CONTENT_PATHS = Object.freeze([
+  'attachments[].kind', 'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
+  'attachments[].include', 'attachments[].sendAs', 'attachments[].conversion',
   'generation.maxOutputTokens', 'generation.temperature', 'generation.topP', 'generation.topK', 'generation.stop',
   'reasoning.mode', 'reasoning.effort', 'web.mode', 'web.types', 'image.mode', 'tools.mode',
   'tools.allowedToolIds', 'tools.toolChoice', 'tools.sideEffectConfirmation',
@@ -172,8 +174,8 @@ const ENCODER_IMPLEMENTATION_REVISION_BY_KEY: Readonly<Record<string, string>> =
   'openrouter-images-v1\0image_generate': 'wire-adapter-20260817-openrouter-images-1',
   'openrouter-chat-completions-v1\0text': 'wire-adapter-20260817-openrouter-chat-text-1',
   'openrouter-chat-completions-v1\0tool_continue': 'wire-adapter-20260817-openrouter-chat-tool-1',
-  'gemini-generate-content-v1beta\0text': 'wire-adapter-20260817-gemini-content-text-1',
-  'gemini-generate-content-v1beta\0tool_continue': 'wire-adapter-20260817-gemini-content-tool-1',
+  'gemini-generate-content-v1beta\0text': 'wire-adapter-20260817-gemini-content-text-2',
+  'gemini-generate-content-v1beta\0tool_continue': 'wire-adapter-20260817-gemini-content-tool-2',
   'gemini-interactions-v1beta\0image_generate': 'wire-adapter-20260817-gemini-interactions-image-1',
   'anthropic-messages-2023-06-01\0text': 'wire-adapter-20260817-anthropic-text-2',
   'anthropic-messages-2023-06-01\0tool_continue': 'wire-adapter-20260817-anthropic-tool-2',

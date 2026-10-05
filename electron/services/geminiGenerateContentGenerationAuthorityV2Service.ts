@@ -115,9 +115,24 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
   return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
+/** Managed-file shapes the Gemini compiler encodes; URL references stay missing and fail loudly. */
+export function geminiAttachmentCapabilityFieldsV2(evidenceId: string = SUPPORTS): readonly PersistedRuntimeCapabilityFieldV2[] {
+  return Object.freeze([
+    supported('attachments[].kind', { kind: 'enum', values: Object.freeze(['managed_file']) }, evidenceId),
+    supported('attachments[].assetId', { kind: 'identity' }, evidenceId),
+    supported('attachments[].assetRevisionId', { kind: 'identity' }, evidenceId),
+    supported('attachments[].assetSha256', { kind: 'identity' }, evidenceId),
+    supported('attachments[].include', { kind: 'boolean' }, evidenceId),
+    supported('attachments[].sendAs', { kind: 'enum',
+      values: Object.freeze(['inline_text', 'image_reference', 'provider_file', 'converted_document']) }, evidenceId),
+    supported('attachments[].conversion', { kind: 'enum', values: Object.freeze(['none', 'plain_text', 'pdf']) }, evidenceId),
+  ])
+}
+
 function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly PersistedRuntimeCapabilityFieldV2[] {
   const values = new Map<RuntimeCapabilitySemanticPathV2, PersistedRuntimeCapabilityFieldV2>()
   for (const path of RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2) values.set(path, unavailable(path))
+  for (const field of geminiAttachmentCapabilityFieldsV2()) values.set(field.path, field)
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', {
     kind: 'range', min: 1, max: evidence.model.outputTokenLimit, integer: true,
   }))

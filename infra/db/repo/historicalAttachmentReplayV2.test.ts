@@ -28,15 +28,7 @@ import { GeminiGenerateContentNativeHistoryV2Repo } from './geminiGenerateConten
 import { compileAnthropicMessagesPreparedRequestV2 } from '../../../electron/services/anthropicMessagesPreparedRequestCompilerV2'
 import { geminiFunctionCallAssociationKeyV2 } from '../../../src/next/generation-v2/providers/gemini/toolContinuationCommandV2'
 import { compileGeminiGenerateContentPreparedRequestV2 } from '../../../electron/services/geminiGenerateContentPreparedRequestCompilerV2'
-
-// The Gemini GenerateContent coverage registry declares no attachment paths yet (a separate finding), so
-// current-turn attachments cannot pass the shared capability validator. The continuation tests below bypass
-// only that validator, via this flag, to exercise the compiler's history/attachment placement.
-vi.mock('../../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2')>()
-  return { ...actual, validateGenerationExecutionCapabilityV2: (...args: Parameters<typeof actual.validateGenerationExecutionCapabilityV2>) =>
-    (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation ? undefined : actual.validateGenerationExecutionCapabilityV2(...args) }
-})
+import { geminiAttachmentCapabilityFieldsV2 } from '../../../electron/services/geminiGenerateContentGenerationAuthorityV2Service'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
@@ -104,6 +96,8 @@ function capabilityFor(kind: Kind) {
     evidence: [{ evidenceId: 'test.ev', kind: 'official_documentation', effect: 'supports',
       sourceRef: 'https://example.test/docs', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: HASH_A }],
     fields: PATHS.map((field) => {
+      const real = kind === 'gemini' ? geminiAttachmentCapabilityFieldsV2('test.ev').find((entry) => entry.path === field) : undefined
+      if (real) return real
       const values: readonly (string | number | boolean)[] | undefined = ({
         'reasoning.mode': ['disabled', 'enabled'], 'web.mode': ['disabled'], 'image.mode': ['disabled'],
         'tools.mode': ['disabled'], ...cfg.enums,
@@ -473,13 +467,12 @@ describe('Gemini prior-turn attachment replay', () => {
 })
 
 describe('Gemini tool continuation with an attachment-bearing originating turn', () => {
-  useFakeAuthority({ 'revision:i': 'image/png' })
-  beforeEach(() => { (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation = true })
-  afterEach(() => { (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation = false })
+  useFakeAuthority({ 'revision:i': 'image/png', 'revision:p': 'application/pdf' })
   const textBytes = enc('continuation file text')
   const pngBytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3])
   const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64')
-  const store = () => blobStoreFor({ 'revision:t': textBytes, 'revision:i': pngBytes, 'revision:x': enc('excluded') })
+  const pdfBytes = new Uint8Array([37, 80, 68, 70, 1])
+  const store = () => blobStoreFor({ 'revision:t': textBytes, 'revision:i': pngBytes, 'revision:x': enc('excluded'), 'revision:p': pdfBytes })
   const revisionsRead = () => authoritySpy!.mock.calls.map((c) => (c[1] as unknown as { assetRevisionId: { value: string } }).assetRevisionId.value)
 
   /** Completes requests 1..rounds-1 of the last turn as function-call rounds, leaving request `rounds` pending. */
@@ -595,10 +588,22 @@ describe('Gemini tool continuation with an attachment-bearing originating turn',
     } finally { db.close() }
   })
 
+  it('encodes PDF forms (provider_file and converted_document) through production validation', () => {
+    const pdf = pdfBytes
+    const { db, op } = toolConversation([{ text: 'one', attachments: [
+      textAttachment('asset:p', 'revision:p', sha(pdf), true, 'provider_file', 'none'),
+      textAttachment('asset:p2', 'revision:p', sha(pdf), true, 'converted_document', 'pdf')] }], 2)
+    try {
+      const inline = { inlineData: { mimeType: 'application/pdf', data: Buffer.from(pdf).toString('base64') } }
+      expect((compileRound(db, op, 2).body.contents[0] as { parts: unknown[] }).parts)
+        .toEqual([{ text: 'question 1' }, inline, inline])
+    } finally { db.close() }
+  })
+
   it('still fails loudly for an unsupported attachment on the originating turn', () => {
     const { db, op } = toolConversation([{ text: 'one', attachments: [urlAttachment('image', 'https://example.test/p.png')] }], 2)
     try {
-      expect(() => compileRound(db, op, 2)).toThrow('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
+      expect(() => compileRound(db, op, 2)).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
     } finally { db.close() }
   })
 })
