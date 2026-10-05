@@ -265,7 +265,7 @@ import type {
 import type { SearchHit } from '@/next/search/searchTypes'
 import { collectNameMatchIds, cycleMatchIndex, matchNavLabel } from '@/next/search/searchUiState'
 import { runGenerationV2SearchQuery } from '@/next/generation-v2/renderer/generationV2SearchClient'
-import type { SearchSelectionContext } from '../components/SearchModal.types'
+import type { SearchSelectionContext } from '@/ui-app/components/SearchModal.types'
 import type { NormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
 import type { CompletionClass, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { createEventScheduler } from '@/next/state/eventScheduler'
@@ -280,8 +280,8 @@ import {
 import { useDiagnostics } from './useDiagnostics'
 import { useSettingsBindings } from './useSettingsBindings'
 import { nextTriState, resolveUserMessageRenderPolicy, type UserMessageRenderMode } from '../prefs/userMessageRenderPolicy'
-import type { SearchConvoOption, SearchProjectOption } from '../components/SearchModal.types'
-import type { ConversationListItem, ProjectListItem } from '../components/ConversationList.types'
+import type { SearchConvoOption, SearchProjectOption } from '@/ui-app/components/SearchModal.types'
+import type { ConversationListItem, ProjectListItem } from '@/ui-app/components/ConversationList.types'
 import {
   deserializeChatSessionConfigFromConvoMeta,
   mergeChatSessionConfig,

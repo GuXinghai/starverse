@@ -26,8 +26,8 @@ const scope = ref<SearchScope>({ ...DEFAULT_SEARCH_SCOPE })
 const defaultStatus = ref<'saved' | 'failed' | null>(null)
 const scopeSelected = computed(() => hasSearchScope(scope.value))
 let submittedContext: Omit<SearchSelectionContext, 'hits'> | null = null
-const projectId = ref<string | null>(null)
-const convoId = ref<string | null>(null)
+const projectId = ref<string>('')
+const convoId = ref<string>('')
 const timeFrom = ref('')
 const timeTo = ref('')
 const mode = ref<'exact' | 'fuzzy'>('fuzzy')
@@ -59,12 +59,10 @@ watch(
     void getSearchScopeDefault().then((saved) => {
       if (operationAtOpen === modalOperation && props.open) scope.value = { ...saved }
     })
-    if (projectId.value == null && props.activeProjectId !== undefined) {
-      projectId.value = props.activeProjectId
-    }
-    if (convoId.value == null && props.activeConvoId !== undefined) {
-      convoId.value = props.activeConvoId
-    }
+    // Project/conversation filters apply only when the user picks them in this open; the active (possibly hidden
+    // New Chat) conversation is never an implicit filter and no choice persists across opens.
+    projectId.value = ''
+    convoId.value = ''
   }, { flush: 'sync' },
 )
 

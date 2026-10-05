@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onBeforeUnmount, useSlots } from 'vue'
-import { useFloatingDropdown } from '../composables/useFloatingDropdown'
+import { useFloatingDropdown } from '@/ui-app/composables/useFloatingDropdown'
 import { t } from '@/shared/i18n'
 
 const props = defineProps<{

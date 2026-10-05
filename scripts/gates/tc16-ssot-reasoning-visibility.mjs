@@ -3,7 +3,7 @@ import path from 'node:path'
 
 const REPO_ROOT = process.cwd()
 
-const SSOT_FILE = path.join(REPO_ROOT, 'docs', 'open_router_流式回复与推理_ssot（v_2_）.md')
+const SSOT_FILE = path.join(REPO_ROOT, 'docs', 'openrouter-streaming-reasoning-ssot-v2.md')
 const GUIDES_DIR = path.join(REPO_ROOT, 'docs', 'guides')
 const SRC_DIR = path.join(REPO_ROOT, 'src')
 

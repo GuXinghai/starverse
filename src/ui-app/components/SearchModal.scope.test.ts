@@ -63,6 +63,26 @@ describe('SearchModal scope selection', () => {
     expect(screen.getByTestId('search-scope-save-default')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled()
   })
+
+  it('does not filter by the active conversation or project unless the user selects one', async () => {
+    const active = { ...props, activeProjectId: 'p-active', activeConvoId: 'hidden-new-chat',
+      convos: [{ id: 'hidden-new-chat', title: 'New Chat' }, { id: 'c2', title: 'Other' }] }
+    const view = render(SearchModal, { props: { ...active, open: false } })
+    await view.rerender({ ...active, open: true })
+    const first = await submit('nebula')
+    expect(first.convoId ?? null).toBeNull()
+    expect(first.projectId ?? null).toBeNull()
+
+    await fireEvent.click(screen.getByText('Show filters'))
+    const convoSelect = screen.getAllByRole('combobox').find((el) => el.textContent?.includes('Other'))!
+    await fireEvent.update(convoSelect, 'c2')
+    expect((await submit('nebula')).convoId).toBe('c2')
+
+    await view.rerender({ ...active, open: false })
+    await view.rerender({ ...active, open: true })
+    query.mockClear()
+    expect((await submit('nebula')).convoId ?? null).toBeNull()
+  })
 })
 
 describe('ConversationList search highlighting', () => {

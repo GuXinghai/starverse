@@ -74,8 +74,9 @@ Understand these constraints before editing code:
 
 | Gate | Trigger | Location |
 |---|---|---|
-| TC17 | UI guardrails — component isolation and responsibility checks | `scripts/gates/tc17-ui-guardrails.mjs` |
-| TC18 | UI isolation checks | `scripts/gates/tc18-ui-isolation.mjs` |
+| TC16 | Reasoning visibility/panelState contract in the SSOT (`docs/openrouter-streaming-reasoning-ssot-v2.md`), `src/` and `docs/guides/` | `scripts/gates/tc16-ssot-reasoning-visibility.mjs` |
+| TC17 | ui-app `JSON.parse` confinement: only reviewed local-data sites (exact per-file counts in the gate); legacy-import layering moved to TC18 | `scripts/gates/tc17-ui-guardrails.mjs` |
+| TC18 | UI isolation: ui-app/next layering and legacy-surface imports (use `@/ui-app/...` rather than `../components`/`../composables` relative hops) | `scripts/gates/tc18-ui-isolation.mjs` |
 | TC14 | Live smoke; requires an OpenRouter key | `scripts/gates/tc14-ui-live-smoke.mjs` |
 | ADR | Architecture decision triggers (six hard constraints) | `docs/adr/README.md` |
 | Boundary | `appChatApp.logic.ts` responsibility boundary | `docs/governance/app-chat-app-logic-boundary.md` |

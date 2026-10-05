@@ -176,3 +176,17 @@ ABI report:
 - No native artifacts committed: confirmed by the exact allowlist.
 
 Static risk review found no unresolved P0/P1 in the patch boundary. It does not clear the remaining audit P1s. Malformed recovery state remains fail-closed and locked for explicit follow-up; included managed-file preflight, live credentials, provider-side file lifetime, actual Linux reset behavior and Electron shutdown/crash behavior need their own acceptance. This deterministic pass ends here; no speculative second repair pass was started.
+
+## Final reconciliation (basic-function closure milestone)
+
+This section supersedes the earlier ledger counts above, which predate the later repair commits (`9af21ca1` through `491eeee6` and the closure commit below).
+
+- P1-3 `9af21ca1`; P1-2 image and P1-8 `0a9e1f74`, `816ea330`; P2-1 `b9389e59`; P2-2 `a299a886`; P2-4/P2-5 `8fb882cb`, `374ef55d`, `11f04085`; P2-6 `5d74675f`; P2-8 `491eeee6`; P2-10 `72db5fce`; P2-11 `549c6019`; P2-14 `62a5e2c5`; P2-15 `2de36df5`; P2-17 `550c767d`; P2-R1..R4 closed. (Status taken from the repair commits and their regressions; not independently re-audited in this pass.)
+- **P2-7 closed in the closure commit.** Scope defaults come from the saved search-scope preference; the modal no longer pre-fills the active (possibly hidden New Chat) conversation or project, and filters reset on every open and apply only when explicitly chosen. Title/content scope semantics and cyclic navigation are unchanged. Regression in `SearchModal.scope.test.ts`.
+- **TC18** regression fixed by importing via `@/ui-app/...` (type-only imports preserved); the rule was not weakened. This also fixed one older violation in `ComposerCapabilityChip.vue`.
+- **TC16** was still valid; only its SSOT path was stale (`docs/openrouter-streaming-reasoning-ssot-v2.md`). Repointed; contract unchanged.
+- **TC17**: the regex import bans were superseded by TC18 (and misfired on legitimate sibling imports) and are retired. The blanket `JSON.parse` ban is narrowed to exact per-file counts at reviewed local-data sites (user-edited JSON fields, rules import, diagnostic pretty-print, local deep clone); tests are excluded; new or stale sites fail the gate.
+
+Remaining: **P0 0; P1 0; P2 0; P2-R 0.** Needs Verification: **16, unchanged** (unconfirmed observations, not findings; not promoted or closed). Known pre-existing failure: integration `openAIChatCompatibleGenerationV2Coordinator.test.ts` "applies the exact materialized rule claim before creating the runtime snapshot" (stale capability-domain assertion).
+
+Validation: unit 331 files / 2788 tests PASS; UI 85 / 659 PASS; integration 183 of 184 files, 1424 passed, 1 failed (the known one above), 3 skipped; `tsc` and `vue-tsc` PASS; TC16/17/18, goal3, network-egress, privacy PASS. All confirmed audit findings are closed; the basic-function closure milestone is complete, with the 16 Needs Verification items and live-provider acceptance outside it.
