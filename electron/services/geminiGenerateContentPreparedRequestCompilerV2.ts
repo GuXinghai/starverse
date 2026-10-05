@@ -232,7 +232,10 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo) || !input.attachmentBlobStore) {
       throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
     }
-    const reverseUserIndex = [...replayContents].reverse().findIndex((content: GeminiGenerateContentNativeContentV1) => content.role === 'user')
+    // Current-turn attachments belong to the originating question. In a tool continuation the trailing user
+    // content is a functionResponse turn (no text part), so target the last user content that carries text.
+    const reverseUserIndex = [...replayContents].reverse().findIndex((content: GeminiGenerateContentNativeContentV1) =>
+      content.role === 'user' && content.parts.some((part) => 'text' in part))
     const userIndex = reverseUserIndex < 0 ? -1 : replayContents.length - 1 - reverseUserIndex
     const user = userIndex < 0 ? undefined : replayContents[userIndex]
     if (!user || !user.parts.some((part) => 'text' in part)) {

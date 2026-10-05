@@ -26,7 +26,17 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './genera
 import { AnthropicNativeHistoryV2Repo } from './anthropicNativeHistoryV2Repo'
 import { GeminiGenerateContentNativeHistoryV2Repo } from './geminiGenerateContentNativeHistoryV2Repo'
 import { compileAnthropicMessagesPreparedRequestV2 } from '../../../electron/services/anthropicMessagesPreparedRequestCompilerV2'
+import { geminiFunctionCallAssociationKeyV2 } from '../../../src/next/generation-v2/providers/gemini/toolContinuationCommandV2'
 import { compileGeminiGenerateContentPreparedRequestV2 } from '../../../electron/services/geminiGenerateContentPreparedRequestCompilerV2'
+
+// The Gemini GenerateContent coverage registry declares no attachment paths yet (a separate finding), so
+// current-turn attachments cannot pass the shared capability validator. The continuation tests below bypass
+// only that validator, via this flag, to exercise the compiler's history/attachment placement.
+vi.mock('../../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2')>()
+  return { ...actual, validateGenerationExecutionCapabilityV2: (...args: Parameters<typeof actual.validateGenerationExecutionCapabilityV2>) =>
+    (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation ? undefined : actual.validateGenerationExecutionCapabilityV2(...args) }
+})
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
@@ -458,6 +468,137 @@ describe('Gemini prior-turn attachment replay', () => {
       expect(persistedState(db)).toBe(before)
       expect(second.prepared.body.copyUtf8Text()).toBe(first.prepared.body.copyUtf8Text())
       expect(first.history.historicalTurnAttachments.every((turn) => turn.answerRootId !== 'answer:2')).toBe(true)
+    } finally { db.close() }
+  })
+})
+
+describe('Gemini tool continuation with an attachment-bearing originating turn', () => {
+  useFakeAuthority({ 'revision:i': 'image/png' })
+  beforeEach(() => { (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation = true })
+  afterEach(() => { (globalThis as { __bypassCapabilityValidation?: boolean }).__bypassCapabilityValidation = false })
+  const textBytes = enc('continuation file text')
+  const pngBytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3])
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64')
+  const store = () => blobStoreFor({ 'revision:t': textBytes, 'revision:i': pngBytes, 'revision:x': enc('excluded') })
+  const revisionsRead = () => authoritySpy!.mock.calls.map((c) => (c[1] as unknown as { assetRevisionId: { value: string } }).assetRevisionId.value)
+
+  /** Completes requests 1..rounds-1 of the last turn as function-call rounds, leaving request `rounds` pending. */
+  function toolConversation(turns: readonly Turn[], rounds: number) {
+    const db = createConversation('gemini', turns)
+    const op = `operation:${turns.length}`; const answer = `answer:${turns.length}`
+    const cfg = config('gemini'); const capability = capabilityFor('gemini')
+    const snapshotHash = (db.prepare('SELECT snapshot_hash AS hash FROM assistant_generation_snapshot_v2 WHERE operation_id=?').get(op) as { hash: string }).hash
+    for (let seq = 1; seq <= rounds; seq++) {
+      const at = 1_000 + seq * 10
+      db.prepare(`INSERT INTO generation_request_v2 (operation_id, request_sequence, answer_root_id,
+        snapshot_hash, provider_id, endpoint_profile_id, credential_scope_id, contract_id, model_id,
+        effective_endpoint_id, capability_revision, continuation_command_fingerprint, compiler_ledger_json,
+        compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length, state, created_at_ms, updated_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?, 'credential-scope:p', ?, ?, 'endpoint:x', ?, ?, ?, ?, ?, 2, 'prepared', ?, ?)`).run(
+        op, seq, answer, snapshotHash, cfg.providerId, cfg.binding.endpointProfileId, cfg.contractId, cfg.modelId,
+        capability.revision.value, seq === 1 ? null : HASH_A, ledger.canonicalJson, ledger.sha256, HASH_A, at, at)
+      if (seq > 1) seedToolOutput(db, op, seq)
+      if (seq === rounds) break
+      db.prepare(`INSERT INTO generation_attempt_v2 VALUES (?, ?, 1, 'open', NULL, NULL, ?, NULL)`).run(op, seq, at + 1)
+      db.prepare(`UPDATE generation_request_v2 SET state='streaming', updated_at_ms=? WHERE operation_id=? AND request_sequence=?`).run(at + 2, op, seq)
+      if (seq === 1) db.prepare(`UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=? WHERE operation_id=?`).run(at + 2, op)
+      db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json='{"kind":"provider_completed"}',
+        terminal_fingerprint=?, terminal_at_ms=? WHERE operation_id=? AND request_sequence=?`).run(HASH_A, at + 3, op, seq)
+      db.prepare(`UPDATE generation_request_v2 SET state='completed', updated_at_ms=?, terminal_at_ms=? WHERE operation_id=? AND request_sequence=?`).run(at + 4, at + 4, op, seq)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const execution = new GenerationExecutionV2Repo(db).findOperationInTransaction(context, op)!
+        const request = new GenerationRequestV2Repo(db).loadExistingForOperation(context, execution, seq)
+        new GeminiGenerateContentNativeHistoryV2Repo(db).persistTerminalArtifact(context, execution, request,
+          { role: 'model', parts: [{ functionCall: { name: 'lookup', args: { round: seq } } }] }, at + 5)
+      })
+    }
+    return { db, op }
+  }
+
+  function seedToolOutput(db: BetterSqlite3.Database, op: string, seq: number) {
+    db.prepare(`INSERT INTO generation_tool_output_v2 (operation_id, request_sequence, answer_root_id, output_index,
+      tool_call_id, tool_id, content, is_error, side_effect_policy, confirmation_state, confirmed_at_ms, created_at_ms)
+      VALUES (?, ?, ?, 0, ?, 'tool:lookup', ?, 0, 'none', 'not_required', NULL, 2000)`).run(
+      op, seq, op.replace('operation', 'answer'), geminiFunctionCallAssociationKeyV2(seq - 1, 0, 'lookup'),
+      JSON.stringify({ result: `r${seq - 1}` }))
+  }
+
+  function compileRound(db: BetterSqlite3.Database, op: string, seq: number) {
+    return compileSeeded(db, op, seq)
+  }
+  function compileSeeded(db: BetterSqlite3.Database, op: string, seq: number) {
+    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+      const execution = new GenerationExecutionV2Repo(db).findOperationInTransaction(context, op)!
+      const history = new GeminiGenerateContentNativeHistoryV2Repo(db).loadPersistedRequestHistory(context, op, seq)
+      const prepared = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history,
+        attachmentRepo: new AttachmentAssetV2Repo(db, () => 10), attachmentBlobStore: store() })
+      return { prepared, body: JSON.parse(prepared.body.copyUtf8Text()) as { contents: unknown[] } }
+    })
+  }
+  const bothIncluded = () => [textAttachment('asset:t', 'revision:t', sha(textBytes)),
+    textAttachment('asset:i', 'revision:i', sha(pngBytes), true, 'image_reference', 'none')]
+  const question = { role: 'user', parts: [{ text: 'question 1' }, { text: 'continuation file text' },
+    { inlineData: { mimeType: 'image/png', data: b64(pngBytes) } }] }
+  const call = (round: number) => ({ role: 'model', parts: [{ functionCall: { name: 'lookup', args: { round } } }] })
+  const response = (round: number) => ({ role: 'user', parts: [{ functionResponse: { name: 'lookup', response: { result: `r${round}` } } }] })
+
+  it('keeps attachments on the originating question and functionResponse as its own content', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: bothIncluded() }], 2)
+    try {
+      expect(compileRound(db, op, 2).body.contents).toEqual([question, call(1), response(1)])
+    } finally { db.close() }
+  })
+
+  it('does not duplicate or move attachments across multiple continuation rounds', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: bothIncluded() }], 3)
+    try {
+      const { body } = compileRound(db, op, 3)
+      expect(body.contents).toEqual([question, call(1), response(1), call(2), response(2)])
+      expect(JSON.stringify(body).split('continuation file text')).toHaveLength(2)
+    } finally { db.close() }
+  })
+
+  it('sends included attachments only; excluded ones stay excluded through a continuation', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: [
+      textAttachment('asset:x', 'revision:x', sha(enc('excluded')), false),
+      textAttachment('asset:t', 'revision:t', sha(textBytes))] }], 2)
+    try {
+      const { body } = compileRound(db, op, 2)
+      expect(JSON.stringify(body)).not.toContain('excluded')
+      expect(body.contents[0]).toEqual({ role: 'user', parts: [{ text: 'question 1' }, { text: 'continuation file text' }] })
+      expect(revisionsRead()).toEqual(['revision:t'])
+    } finally { db.close() }
+  })
+
+  it('keeps prior-turn attachments on their own turn and the current turn on its question', () => {
+    const { db, op } = toolConversation([
+      { text: 'one', attachments: [textAttachment('asset:t', 'revision:t', sha(textBytes))] },
+      { text: 'two', attachments: [textAttachment('asset:i', 'revision:i', sha(pngBytes), true, 'image_reference', 'none')] }], 2)
+    try {
+      expect(compileRound(db, op, 2).body.contents).toEqual([
+        { role: 'user', parts: [{ text: 'question 1' }, { text: 'continuation file text' }] },
+        { role: 'model', parts: [{ text: 'answer 1' }] },
+        { role: 'user', parts: [{ text: 'question 2' }, { inlineData: { mimeType: 'image/png', data: b64(pngBytes) } }] },
+        call(1), response(1)])
+    } finally { db.close() }
+  })
+
+  it('is immutable, deterministic and resolves only frozen snapshot attachments', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: bothIncluded() }], 2)
+    try {
+      const before = persistedState(db)
+      const first = compileSeeded(db, op, 2)
+      const second = compileSeeded(db, op, 2)
+      expect(persistedState(db)).toBe(before)
+      expect(second.prepared.body.copyUtf8Text()).toBe(first.prepared.body.copyUtf8Text())
+      expect(new Set(revisionsRead())).toEqual(new Set(['revision:t', 'revision:i']))
+    } finally { db.close() }
+  })
+
+  it('still fails loudly for an unsupported attachment on the originating turn', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: [urlAttachment('image', 'https://example.test/p.png')] }], 2)
+    try {
+      expect(() => compileRound(db, op, 2)).toThrow('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
     } finally { db.close() }
   })
 })
