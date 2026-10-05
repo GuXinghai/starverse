@@ -54,6 +54,40 @@ function accepted(path: string): SemanticConsumptionLedgerEntryV2 {
   return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence })
 }
 
+type GeminiPartV2 = GeminiGenerateContentNativeContentV1['parts'][number]
+
+function encodeGeminiAttachmentPartV2(
+  context: GenerationV2AuthorityTransactionContextV2,
+  attachmentRepo: AttachmentAssetV2Repo,
+  attachmentBlobStore: Epoch2AttachmentBlobStoreV2,
+  attachment: GenerationExecutionOperationBundleV2['snapshot']['semanticIntent']['attachments'][number],
+): GeminiPartV2 {
+  if (attachment.kind !== 'managed_file') {
+    throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
+  }
+  return attachmentRepo.withSynchronousSnapshotReferenceAuthority(context, attachment, (authority) => {
+    const bytes = attachmentBlobStore.readRevisionBytes(authority.revision)
+    try {
+      if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && authority.revision.blob.mime.startsWith('text/')) {
+        return Object.freeze({ text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) })
+      }
+      if (attachment.sendAs === 'image_reference' && attachment.conversion === 'none' &&
+          authority.revision.assetKind === 'image' && authority.revision.blob.mime.startsWith('image/')) {
+        return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
+      }
+      if (attachment.sendAs === 'provider_file' && attachment.conversion === 'none' &&
+          authority.revision.blob.sizeBytes <= GEMINI_INLINE_DATA_MAX_BYTES_V2 &&
+          (/^(?:image|audio|video)\//u.test(authority.revision.blob.mime) || authority.revision.blob.mime === 'application/pdf')) {
+        return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
+      }
+      if (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' && authority.revision.blob.mime === 'application/pdf') {
+        return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
+      }
+      throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
+    } finally { bytes.fill(0) }
+  })
+}
+
 export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
@@ -175,6 +209,24 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
   const attachmentRequirements = createPreparedAttachmentRequirementsV2(intent.attachments)
   const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = []
   let replayContents = input.history.replayContents
+  // Prior turns replay their own snapshot attachments (included only) after the turn's text, like the current turn.
+  if (input.history.historicalTurnAttachments.length > 0) {
+    if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo) || !input.attachmentBlobStore) {
+      throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
+    }
+    const replaced = new Map<number, GeminiGenerateContentNativeContentV1>()
+    for (const turn of input.history.historicalTurnAttachments) {
+      const user = replayContents[turn.replayIndex]
+      if (user?.role !== 'user' || !user.parts.some((part) => 'text' in part)) {
+        throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
+      }
+      replaced.set(turn.replayIndex, Object.freeze({ ...user, parts: Object.freeze([
+        ...user.parts,
+        ...turn.attachments.map((attachment) => encodeGeminiAttachmentPartV2(input.context, input.attachmentRepo!, input.attachmentBlobStore!, attachment)),
+      ]) }))
+    }
+    replayContents = Object.freeze(replayContents.map((content, index) => replaced.get(index) ?? content))
+  }
   const included = intent.attachments.filter((attachment) => attachment.include)
   if (included.length > 0) {
     if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo) || !input.attachmentBlobStore) {
@@ -193,27 +245,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
       if (!requirement || attachment.kind !== 'managed_file') {
         throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
       }
-      const part = input.attachmentRepo.withSynchronousSnapshotReferenceAuthority(input.context, attachment, (authority) => {
-        const bytes = input.attachmentBlobStore!.readRevisionBytes(authority.revision)
-        try {
-          if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && authority.revision.blob.mime.startsWith('text/')) {
-            return Object.freeze({ text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) })
-          }
-          if (attachment.sendAs === 'image_reference' && attachment.conversion === 'none' &&
-              authority.revision.assetKind === 'image' && authority.revision.blob.mime.startsWith('image/')) {
-            return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
-          }
-          if (attachment.sendAs === 'provider_file' && attachment.conversion === 'none' &&
-              authority.revision.blob.sizeBytes <= GEMINI_INLINE_DATA_MAX_BYTES_V2 &&
-              (/^(?:image|audio|video)\//u.test(authority.revision.blob.mime) || authority.revision.blob.mime === 'application/pdf')) {
-            return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
-          }
-          if (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' && authority.revision.blob.mime === 'application/pdf') {
-            return Object.freeze({ inlineData: Object.freeze({ mimeType: authority.revision.blob.mime, data: Buffer.from(bytes).toString('base64') }) })
-          }
-          throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
-        } finally { bytes.fill(0) }
-      })
+      const part = encodeGeminiAttachmentPartV2(input.context, input.attachmentRepo, input.attachmentBlobStore, attachment)
       parts.push(part)
       attachmentEncodingProofs.push(Object.freeze({ semanticPath: requirement.semanticPath, requirement, wireFragment: part }))
       for (const field of ['assetId', 'assetRevisionId', 'assetSha256', 'include', 'sendAs', 'conversion']) {

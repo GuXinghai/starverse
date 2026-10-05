@@ -25,6 +25,7 @@ import {
   type GenerationRequestRepositoryFactV2,
 } from './generationRequestV2Repo'
 import { GenerationContextProjectionV2Repo } from './generationContextProjectionV2Repo'
+import { loadHistoricalTurnAttachmentReplayV2, type HistoricalTurnAttachmentReplayV2 } from './historicalTurnAttachmentReplayV2'
 import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
@@ -44,6 +45,8 @@ export type GeminiGenerateContentHistoryRepositoryFactV2 = Readonly<{
   answerRootId: GraphIdentity<'answer_root_id'>
   systemInstruction: string | null
   replayContents: readonly GeminiGenerateContentNativeContentV1[]
+  /** Prior-turn attachments from each turn's immutable snapshot; replayIndex is the turn's user content in `replayContents`. */
+  historicalTurnAttachments: readonly HistoricalTurnAttachmentReplayV2[]
   requestSequence: number
   toolOutputRecords: readonly Readonly<{
     outputIndex: number
@@ -136,23 +139,39 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
   #completeTurnContents(
     context: GenerationV2AuthorityTransactionContextV2,
     answerRootId: string,
-  ): readonly GeminiGenerateContentNativeContentV1[] {
+    replayIndex: number,
+  ): Readonly<{
+    contents: readonly GeminiGenerateContentNativeContentV1[]
+    attachments: HistoricalTurnAttachmentReplayV2 | null
+  }> {
     const artifact = this.loadLatestCompletedArtifact(answerRootId)
+    // The stored artifact is cumulative (it carries every earlier included turn); this turn
+    // starts at its last text-bearing user content (function responses carry no text part).
+    let turnStart = -1
+    artifact.orderedContents.forEach((content, index) => {
+      if (content.role === 'user' && content.parts.some((part) => 'text' in part)) turnStart = index
+    })
+    const contents = turnStart < 0 ? [] : artifact.orderedContents.slice(turnStart)
     const operation = this.db.prepare(`SELECT operation.question_id AS questionId, operation.target_answer_id AS answerRootId
       FROM generation_operation_v2 AS operation WHERE operation.operation_id=?`).get(artifact.operationId) as
       Readonly<Record<string, unknown>> | undefined
     if (operation?.answerRootId !== answerRootId || typeof operation.questionId !== 'string' ||
-        artifact.orderedContents.length < 2) invalid()
+        contents.length < 2) invalid()
     const question = this.db.prepare(`SELECT body_text AS body FROM message_body_v2 WHERE message_id=?`).get(operation.questionId) as
       { body?: unknown } | undefined
     const ownProjection = new GenerationContextProjectionV2Repo(this.db).load(context, artifact.operationId)
     const current = ownProjection.turns.at(-1)
-    const user = artifact.orderedContents.at(0)
-    const assistant = artifact.orderedContents.at(-1)
+    const user = contents.at(0)
+    const assistant = contents.at(-1)
     if (current?.questionId !== operation.questionId || current.answerRootId !== null || current.mode !== 'included' ||
         typeof question?.body !== 'string' || user?.role !== 'user' || assistant?.role !== 'model' ||
         user.parts.length !== 1 || !('text' in user.parts[0]) || user.parts[0].text !== question.body) invalid()
-    return artifact.orderedContents
+    return Object.freeze({
+      contents: Object.freeze(contents),
+      attachments: loadHistoricalTurnAttachmentReplayV2(this.db, {
+        answerRootId, operationId: artifact.operationId, providerId: 'google_ai_studio', replayIndex,
+      }, invalid),
+    })
   }
 
   loadRequestHistory(context: GenerationV2AuthorityTransactionContextV2,
@@ -170,13 +189,16 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationIdValue)
     if (projection.branchId !== row.branchId) invalid()
     const replayContents: GeminiGenerateContentNativeContentV1[] = []
+    const historicalTurnAttachments: HistoricalTurnAttachmentReplayV2[] = []
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') invalid()
         replayContents.push(Object.freeze({ role: 'user' as const,
           parts: Object.freeze([Object.freeze({ text: row.questionBody })]) }))
       } else if (turn.mode === 'included') {
-        replayContents.push(...this.#completeTurnContents(context, turn.answerRootId))
+        const completed = this.#completeTurnContents(context, turn.answerRootId, replayContents.length)
+        if (completed.attachments) historicalTurnAttachments.push(completed.attachments)
+        replayContents.push(...completed.contents)
       }
     }
     if (replayContents.length === 0 || replayContents.at(-1)?.role !== 'user') invalid()
@@ -189,6 +211,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       answerRootId: ConversationGraphV2Identity.create('answer_root_id', row.answerRootId),
       systemInstruction: this.#systemForQuestion(row.conversationId, row.questionId),
       replayContents: Object.freeze(replayContents),
+      historicalTurnAttachments: Object.freeze(historicalTurnAttachments),
       requestSequence: 1 as const,
       toolOutputRecords: Object.freeze([]),
     })
@@ -266,7 +289,8 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       conversationId: execution.operation.conversationId, questionId: execution.operation.questionId,
       answerRootId: execution.operation.targetAnswerId,
       systemInstruction: this.#systemForQuestion(execution.operation.conversationId.value, execution.operation.questionId.value),
-      replayContents, requestSequence, toolOutputRecords: Object.freeze(records),
+      replayContents, historicalTurnAttachments: this.#continuationAttachments(context, execution.operation.operationId.value, replayContents),
+      requestSequence, toolOutputRecords: Object.freeze(records),
     }))
   }
 
@@ -318,7 +342,21 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       questionId: ConversationGraphV2Identity.create('question_id', operation.questionId),
       answerRootId: ConversationGraphV2Identity.create('answer_root_id', operation.answerRootId),
       systemInstruction: this.#systemForQuestion(operation.conversationId, operation.questionId),
-      replayContents, requestSequence, toolOutputRecords: Object.freeze(records) }))
+      replayContents, historicalTurnAttachments: this.#continuationAttachments(context, operationIdValue, replayContents),
+      requestSequence, toolOutputRecords: Object.freeze(records) }))
+  }
+
+  /**
+   * A continuation request replays the prior request's cumulative artifact, whose prefix is the
+   * initial request history. Carry that history's prior-turn attachments and fail if the prefix drifted.
+   */
+  #continuationAttachments(context: GenerationV2AuthorityTransactionContextV2, operationId: string,
+    replayContents: readonly GeminiGenerateContentNativeContentV1[]): readonly HistoricalTurnAttachmentReplayV2[] {
+    const base = this.loadRequestHistory(context, operationId)
+    if (base.historicalTurnAttachments.length === 0) return base.historicalTurnAttachments
+    if (stableSerializeProviderRequestV2(replayContents.slice(0, base.replayContents.length)) !==
+        stableSerializeProviderRequestV2(base.replayContents)) invalid()
+    return base.historicalTurnAttachments
   }
 
   persistToolContinuationOutputs(context: GenerationV2AuthorityTransactionContextV2,

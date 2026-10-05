@@ -88,11 +88,11 @@ function appendAttachmentBlocks(
   throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
 }
 
-function providerFileIdFor(
-  snapshot: GenerationExecutionOperationBundleV2['snapshot'],
-  revisionId: string,
-): string | null {
-  const binding = snapshot.attachmentProviderFileBindings.find((candidate) =>
+type ProviderFileBindingsV2 = GenerationExecutionOperationBundleV2['snapshot']['attachmentProviderFileBindings']
+type AttachmentIntentsV2 = GenerationExecutionOperationBundleV2['snapshot']['semanticIntent']['attachments']
+
+function providerFileIdFor(bindings: ProviderFileBindingsV2, revisionId: string): string | null {
+  const binding = bindings.find((candidate) =>
     candidate.assetRevisionId.value === revisionId)
   const fileId = binding?.providerFileDescriptor.providerFileId
   return typeof fileId === 'string' && fileId.length > 0 ? fileId : null
@@ -112,6 +112,76 @@ function webSearchTool(intent: GenerationExecutionOperationBundleV2['snapshot'][
       user_location: Object.freeze({ type: 'approximate' as const, ...intent.web.userLocation }),
     }),
   })
+}
+
+function encodeAnthropicAttachmentBlockV2(input: Readonly<{
+  context: GenerationV2AuthorityTransactionContextV2
+  attachment: AttachmentIntentsV2[number]
+  bindings: ProviderFileBindingsV2
+  attachmentRepo?: AttachmentAssetV2Repo
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
+}>): AnthropicMessagesUserContentBlockV1 {
+  const { attachment } = input
+  if (attachment.kind === 'url_reference') {
+    if (attachment.mediaKind === 'image') return Object.freeze({ type: 'image' as const, source: Object.freeze({ type: 'url' as const, url: attachment.originalUrl }) })
+    if (attachment.mediaKind === 'document') return Object.freeze({ type: 'document' as const, source: Object.freeze({ type: 'url' as const, url: attachment.originalUrl }) })
+    throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
+  }
+  if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo)) {
+    throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
+  }
+  return input.attachmentRepo.withSynchronousSnapshotReferenceAuthority(input.context, attachment, (authority) => {
+    const revision = authority.revision
+    const providerFileId = providerFileIdFor(input.bindings, attachment.assetRevisionId.value)
+    if (attachment.sendAs === 'provider_file' || (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) {
+      if (!providerFileId) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
+      return Object.freeze({
+        type: revision.assetKind === 'image' ? 'image' as const : 'document' as const,
+        source: Object.freeze({ type: 'file' as const, file_id: providerFileId }),
+      })
+    }
+    if (!input.attachmentBlobStore) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
+    const bytes = input.attachmentBlobStore.readRevisionBytes(revision)
+    try {
+      if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
+        return Object.freeze({ type: 'document' as const, source: Object.freeze({
+          type: 'text' as const, media_type: 'text/plain' as const,
+          data: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+        }) })
+      }
+      if (attachment.sendAs === 'image_reference' && attachment.conversion === 'none' && revision.assetKind === 'image' && revision.blob.mime.startsWith('image/')) {
+        return Object.freeze({ type: 'image' as const, source: Object.freeze({
+          type: 'base64' as const, media_type: revision.blob.mime, data: Buffer.from(bytes).toString('base64'),
+        }) })
+      }
+      if (attachment.sendAs === 'converted_document' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
+        return Object.freeze({ type: 'document' as const, source: Object.freeze({ type: 'content' as const,
+          content: Object.freeze([{ type: 'text' as const, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }]),
+        }) })
+      }
+      throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
+    } finally { bytes.fill(0) }
+  })
+}
+
+/** Rebuilds prior user turns with the attachments recorded in their own immutable snapshots. */
+function replayHistoricalAttachmentBlocks(
+  messages: readonly AnthropicRequestHistoryRepositoryFactV2['messages'][number][],
+  history: AnthropicRequestHistoryRepositoryFactV2,
+  encode: (turn: AnthropicRequestHistoryRepositoryFactV2['historicalTurnAttachments'][number]) =>
+    readonly AnthropicMessagesUserContentBlockV1[],
+): AnthropicRequestHistoryRepositoryFactV2['messages'] {
+  const replaced = new Map<number, AnthropicMessagesRequestMessageV1>()
+  for (const turn of history.historicalTurnAttachments) {
+    const message = messages[turn.replayIndex]
+    if (message?.role !== 'user' || typeof message.content !== 'string') {
+      throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
+    }
+    replaced.set(turn.replayIndex, Object.freeze({ role: 'user' as const, content: Object.freeze([
+      Object.freeze({ type: 'text' as const, text: message.content }), ...encode(turn),
+    ]) }))
+  }
+  return replaced.size === 0 ? messages : Object.freeze(messages.map((message, index) => replaced.get(index) ?? message))
 }
 
 export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
@@ -204,54 +274,21 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     if (!attachment.include) continue
     const requirement = attachmentRequirements.find((candidate) => candidate.semanticPath === `attachments[${index}]`)
     if (!requirement) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
-    let block: AnthropicMessagesUserContentBlockV1
-    if (attachment.kind === 'url_reference') {
-      if (attachment.mediaKind === 'image') block = Object.freeze({ type: 'image' as const, source: Object.freeze({ type: 'url' as const, url: attachment.originalUrl }) })
-      else if (attachment.mediaKind === 'document') block = Object.freeze({ type: 'document' as const, source: Object.freeze({ type: 'url' as const, url: attachment.originalUrl }) })
-      else throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
-    } else {
-      if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo)) {
-        throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
-      }
-      block = input.attachmentRepo.withSynchronousSnapshotReferenceAuthority(input.context, attachment, (authority) => {
-        const revision = authority.revision
-        const providerFileId = providerFileIdFor(snapshot, attachment.assetRevisionId.value)
-        if (attachment.sendAs === 'provider_file' || (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) {
-          if (!providerFileId) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
-          return Object.freeze({
-            type: revision.assetKind === 'image' ? 'image' as const : 'document' as const,
-            source: Object.freeze({ type: 'file' as const, file_id: providerFileId }),
-          })
-        }
-        if (!input.attachmentBlobStore) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
-        const bytes = input.attachmentBlobStore.readRevisionBytes(revision)
-        try {
-          if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
-            return Object.freeze({ type: 'document' as const, source: Object.freeze({
-              type: 'text' as const, media_type: 'text/plain' as const,
-              data: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-            }) })
-          }
-          if (attachment.sendAs === 'image_reference' && attachment.conversion === 'none' && revision.assetKind === 'image' && revision.blob.mime.startsWith('image/')) {
-            return Object.freeze({ type: 'image' as const, source: Object.freeze({
-              type: 'base64' as const, media_type: revision.blob.mime, data: Buffer.from(bytes).toString('base64'),
-            }) })
-          }
-          if (attachment.sendAs === 'converted_document' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
-            return Object.freeze({ type: 'document' as const, source: Object.freeze({ type: 'content' as const,
-              content: Object.freeze([{ type: 'text' as const, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }]),
-            }) })
-          }
-          throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
-        } finally { bytes.fill(0) }
-      })
-    }
+    const block = encodeAnthropicAttachmentBlockV2({
+      context: input.context, attachment, bindings: snapshot.attachmentProviderFileBindings,
+      attachmentRepo: input.attachmentRepo, attachmentBlobStore: input.attachmentBlobStore,
+    })
     attachmentBlocks.push(block)
     attachmentEncodingProofs.push(Object.freeze({ semanticPath: requirement.semanticPath, requirement, wireFragment: block }))
   }
+  const historicalMessages = replayHistoricalAttachmentBlocks(input.history.messages, input.history, (turn) =>
+    Object.freeze(turn.attachments.map((attachment) => encodeAnthropicAttachmentBlockV2({
+      context: input.context, attachment, bindings: turn.providerFileBindings,
+      attachmentRepo: input.attachmentRepo, attachmentBlobStore: input.attachmentBlobStore,
+    }))))
   const messages = attachmentBlocks.length === 0
-    ? input.history.messages
-    : appendAttachmentBlocks(input.history.messages, attachmentBlocks)
+    ? historicalMessages
+    : appendAttachmentBlocks(historicalMessages, attachmentBlocks)
   const compilation = compileAnthropicMessagesRequestV1({
     modelId: binding.modelId.value,
     intent: snapshot.semanticIntent,
@@ -298,7 +335,8 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     effectiveEndpointId: binding.endpointBinding.descriptors[0].endpointId.value,
     endpoint: endpoint.url,
     headersPlan: createAnthropicMessagesNonSecretHeaderPlanV2(
-      snapshot.attachmentProviderFileBindings.some((candidate) => typeof candidate.providerFileDescriptor.providerFileId === 'string')
+      [snapshot.attachmentProviderFileBindings, ...input.history.historicalTurnAttachments.map((turn) => turn.providerFileBindings)]
+        .some((bindings) => bindings.some((candidate) => typeof candidate.providerFileDescriptor.providerFileId === 'string'))
         ? [{ name: 'anthropic-beta', value: 'files-api-2025-04-14' }] : [],
     ),
     body: compilation.preparedBody,

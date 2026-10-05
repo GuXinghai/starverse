@@ -40,6 +40,7 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from './toolRegistryV2Repo'
 import { GenerationContextProjectionV2Repo } from './generationContextProjectionV2Repo'
+import { loadHistoricalTurnAttachmentReplayV2, type HistoricalTurnAttachmentReplayV2 } from './historicalTurnAttachmentReplayV2'
 
 export class AnthropicNativeHistoryV2RepoError extends Error {
   constructor(readonly code:
@@ -70,6 +71,8 @@ export type AnthropicRequestHistoryRepositoryFactV2 = Readonly<{
   answerRootId: GraphIdentity<'answer_root_id'>
   system: string | null
   messages: readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[]
+  /** Prior-turn attachments from each turn's immutable snapshot; replayIndex is the turn's user message in `messages`. */
+  historicalTurnAttachments: readonly HistoricalTurnAttachmentReplayV2[]
   requestSequence: number
   toolOutputRecords: readonly Readonly<{
     outputIndex: number
@@ -167,7 +170,11 @@ export class AnthropicNativeHistoryV2Repo {
   #completeTurnMessages(
     context: GenerationV2AuthorityTransactionContextV2,
     answerRootId: string,
-  ): readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[] {
+    replayIndex: number,
+  ): Readonly<{
+    messages: readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[]
+    attachments: HistoricalTurnAttachmentReplayV2 | null
+  }> {
     const final = this.loadCompletedAnswerArtifact(context, answerRootId)
     const operation = this.#loadOperationIdentity(final.operationId.value)
     if (operation.answerRootId !== answerRootId || operation.questionId !== final.questionId.value) {
@@ -189,7 +196,10 @@ export class AnthropicNativeHistoryV2Repo {
         fail('GENERATION_V2_ANTHROPIC_HISTORY_INTEGRITY_INVALID')
       }
     }
-    return Object.freeze(messages)
+    const attachments = loadHistoricalTurnAttachmentReplayV2(this.#db, {
+      answerRootId, operationId: final.operationId.value, providerId: 'anthropic', replayIndex,
+    }, () => fail('GENERATION_V2_ANTHROPIC_HISTORY_INTEGRITY_INVALID'))
+    return Object.freeze({ messages: Object.freeze(messages), attachments })
   }
 
   loadRequestHistory(
@@ -226,6 +236,7 @@ export class AnthropicNativeHistoryV2Repo {
 
     const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
     const messages: (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[] = []
+    const historicalTurnAttachments: HistoricalTurnAttachmentReplayV2[] = []
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== operation.questionId || turn.mode !== 'included') {
@@ -233,7 +244,9 @@ export class AnthropicNativeHistoryV2Repo {
         }
         messages.push(Object.freeze({ role: 'user' as const, content: operation.questionBody }))
       } else if (turn.mode === 'included') {
-        messages.push(...this.#completeTurnMessages(context, turn.answerRootId))
+        const completed = this.#completeTurnMessages(context, turn.answerRootId, messages.length)
+        if (completed.attachments) historicalTurnAttachments.push(completed.attachments)
+        messages.push(...completed.messages)
       }
     }
     if (messages.length === 0 || (messages.at(-1) as { role?: unknown } | undefined)?.role !== 'user') {
@@ -249,6 +262,7 @@ export class AnthropicNativeHistoryV2Repo {
       answerRootId: ConversationGraphV2Identity.create('answer_root_id', operation.answerRootId),
       system,
       messages: Object.freeze(messages),
+      historicalTurnAttachments: Object.freeze(historicalTurnAttachments),
       requestSequence: 1,
       toolOutputRecords: Object.freeze([]),
     })
@@ -350,6 +364,7 @@ export class AnthropicNativeHistoryV2Repo {
       system: base.system,
       messages: Object.freeze([...base.messages, Object.freeze({ role: 'assistant' as const, content: prior.artifact.assistantMessage.content }),
         createAnthropicToolResultMessageV1(records)]),
+      historicalTurnAttachments: base.historicalTurnAttachments,
       requestSequence,
       toolOutputRecords: Object.freeze(records),
     })
@@ -379,6 +394,7 @@ export class AnthropicNativeHistoryV2Repo {
       system: base.system,
       messages: Object.freeze([...base.messages, Object.freeze({ role: 'assistant' as const, content: prior.artifact.assistantMessage.content }),
         createAnthropicToolResultMessageV1(records)]),
+      historicalTurnAttachments: base.historicalTurnAttachments,
       requestSequence,
       toolOutputRecords: Object.freeze(records),
     })
@@ -664,6 +680,7 @@ export class AnthropicNativeHistoryV2Repo {
   ): Readonly<{
     system: string | null
     messages: readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[]
+    historicalTurnAttachments: readonly HistoricalTurnAttachmentReplayV2[]
   }> {
     if (!Number.isSafeInteger(throughRequestSequence) || throughRequestSequence < 1) {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
@@ -677,7 +694,10 @@ export class AnthropicNativeHistoryV2Repo {
       messages.push(Object.freeze({ role: 'assistant' as const, content: artifact.assistantMessage.content }))
       messages.push(createAnthropicToolResultMessageV1(this.#loadToolOutputRecords(operationId, sequence + 1, artifact)))
     }
-    return Object.freeze({ system: initial.system, messages: Object.freeze(messages) })
+    return Object.freeze({
+      system: initial.system, messages: Object.freeze(messages),
+      historicalTurnAttachments: initial.historicalTurnAttachments,
+    })
   }
 
   #loadToolOutputRecords(
