@@ -450,6 +450,15 @@ export interface DialogsMessages {
       readonly devStartupError: string
       readonly viteDevServerMissing: string
     }
+    readonly rendererRecovery: {
+      readonly title: string
+      readonly crashed: string
+      readonly loadFailed: string
+      readonly reload: string
+      readonly restart: string
+      readonly close: string
+      readonly loopWarning: string
+    }
   }
 }
 

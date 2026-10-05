@@ -4,6 +4,12 @@ import { pathToFileURL } from 'node:url'
 import { CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX } from '../../src/shared/ui/chatWorkspaceLayout'
 import { t } from '../i18n/mainI18n'
 import { urlOriginForLog } from '../ipc/logSanitizer'
+import {
+  classifyDidFailLoad,
+  classifyRenderProcessGone,
+  createRendererRecovery,
+  type RecoveryChoiceId,
+} from './rendererRecovery'
 
 export type CreateMainWindowInput = Readonly<{
   isDev: boolean
@@ -59,6 +65,54 @@ export function createMainWindowNavigationPolicy(
   return Object.freeze({ isTrustedAppUrl, externalHttpUrl })
 }
 
+function attachRendererRecovery(win: BrowserWindow): void {
+  const recovery = createRendererRecovery({
+    log: (event, details) => console.error(`[main] ${event}`, details),
+    reloadRenderer: () => {
+      if (!win.isDestroyed()) win.webContents.reload()
+    },
+    restartApp: () => {
+      app.relaunch()
+      app.quit()
+    },
+    closeApp: () => app.quit(),
+    promptUser: async ({ failure, reloadAllowed }) => {
+      if (win.isDestroyed()) return null
+      const ids: RecoveryChoiceId[] = reloadAllowed ? ['reload', 'restart', 'close'] : ['restart', 'close']
+      const message = t(
+        failure.kind === 'renderer-crashed'
+          ? 'dialogs.rendererRecovery.crashed'
+          : 'dialogs.rendererRecovery.loadFailed',
+      )
+      const result = await dialog.showMessageBox(win, {
+        type: 'error',
+        title: t('dialogs.rendererRecovery.title'),
+        message,
+        detail: reloadAllowed ? undefined : t('dialogs.rendererRecovery.loopWarning'),
+        buttons: ids.map((id) => t(`dialogs.rendererRecovery.${id}`)),
+        defaultId: 0,
+        cancelId: ids.indexOf('close'),
+        noLink: true,
+      })
+      return ids[result.response] ?? null
+    },
+  })
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    const failure = classifyRenderProcessGone(details)
+    if (failure) void recovery.handleFailure(failure)
+  })
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    const failure = classifyDidFailLoad({
+      errorCode,
+      errorDescription,
+      isMainFrame,
+      target: urlOriginForLog(validatedURL),
+    })
+    if (failure) void recovery.handleFailure(failure)
+  })
+}
+
 export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | null {
   const win = new BrowserWindow({
     icon: path.join(input.publicPath, 'electron-vite.svg'),
@@ -109,6 +163,8 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     console.warn('[main] MAIN_WINDOW_DID_FINISH_LOAD', { target: urlOriginForLog(win.webContents.getURL()) })
     input.onMainProcessMessage?.(win)
   })
+
+  attachRendererRecovery(win)
 
   if (input.isDev) {
     win.loadURL(input.viteDevServerUrl!)

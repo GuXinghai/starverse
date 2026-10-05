@@ -40,6 +40,15 @@
       "fixProd": "修复方法（生产环境）：\n- 重新安装应用（原生依赖按 Electron 版本打包）",
       "devStartupError": "开发启动错误",
       "viteDevServerMissing": "开发模式下缺少 VITE_DEV_SERVER_URL。拒绝加载 dist/index.html。"
+    },
+    "rendererRecovery": {
+      "title": "Starverse 窗口异常",
+      "crashed": "应用窗口意外停止工作。故障已记录到日志。",
+      "loadFailed": "应用窗口加载失败。故障已记录到日志。",
+      "reload": "重新加载窗口",
+      "restart": "重启应用",
+      "close": "关闭应用",
+      "loopWarning": "窗口已反复失败，已禁用重新加载；请重启或关闭应用。"
     }
   }
 }

@@ -40,6 +40,15 @@
       "fixProd": "Fix (prod):\n- Reinstall the app (native dependencies are bundled per Electron version)",
       "devStartupError": "Dev startup error",
       "viteDevServerMissing": "VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html."
+    },
+    "rendererRecovery": {
+      "title": "Starverse window problem",
+      "crashed": "The app window stopped working unexpectedly. The failure has been logged.",
+      "loadFailed": "The app window failed to load. The failure has been logged.",
+      "reload": "Reload window",
+      "restart": "Restart app",
+      "close": "Close app",
+      "loopWarning": "The window has failed repeatedly. Reloading is disabled; restart or close the app."
     }
   }
 }
