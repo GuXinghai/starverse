@@ -461,6 +461,97 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
     }
   })
 
+  describe('admission vs quiesce after commit (P2-8)', () => {
+    const stateOf = (db: BetterSqlite3.Database, suffix: string) =>
+      new GenerationExecutionV2Repo(db).getOperation(`operation:${suffix}`).operation.state
+
+    it('runs a normally admitted operation and leaves no quiesce state behind', async () => {
+      const db = createDb()
+      try {
+        const bundle = seedOperation(db, 'p28-normal')
+        const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+        let ran = false
+        expect(registry.start({ kind: 'created', execution: bundle }, async () => { ran = true })).toBe(true)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(ran).toBe(true)
+        expect(stateOf(db, 'p28-normal')).toBe('committed')
+        expect(registry.getSnapshot('operation:p28-normal')).not.toBeNull()
+        await registry.runWithConversationQuiesced('conversation:p28-normal', () => undefined, 1_000)
+      } finally { db.close() }
+    })
+
+    it('terminalizes a committed operation when quiesce began before registration, and releases the lock', async () => {
+      const db = createDb()
+      try {
+        const bundle = seedOperation(db, 'p28-quiesce')
+        const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+        const run = vi.fn(async () => undefined)
+        await registry.runWithConversationQuiesced('conversation:p28-quiesce', () => {
+          // commit happened; quiesce is in force when registration is attempted
+          expect(() => registry.start({ kind: 'created', execution: bundle }, run))
+            .toThrow('GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING')
+        })
+        await Promise.resolve()
+        expect(run).not.toHaveBeenCalled()
+        expect(stateOf(db, 'p28-quiesce')).toBe('failed')
+        expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?')
+          .get('answer:p28-quiesce')).toEqual({ status: 'failed' })
+        expect(registry.countActive()).toBe(0)
+        // quiesce state released: a fresh operation is admitted
+        const next = seedOperation(db, 'p28-after')
+        expect(registry.start({ kind: 'created', execution: next }, async () => undefined)).toBe(true)
+      } finally { db.close() }
+    })
+
+    it('terminalizes when quiesce begins between commit and registration (branch and shutdown scopes)', async () => {
+      const db = createDb()
+      try {
+        const branch = seedOperation(db, 'p28-branch')
+        const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+        const committed = Promise.resolve(branch) // commit resolved; start runs on a later tick
+        const quiescing = registry.runWithBranchQuiesced('branch:p28-branch', async () => {
+          await committed.then((execution) => {
+            expect(() => registry.start({ kind: 'created', execution }, async () => undefined))
+              .toThrow('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+          })
+        })
+        await quiescing
+        expect(stateOf(db, 'p28-branch')).toBe('failed')
+
+        const quit = seedOperation(db, 'p28-quit')
+        await registry.quiesceForShutdown(100)
+        expect(() => registry.start({ kind: 'created', execution: quit }, async () => undefined))
+          .toThrow('GENERATION_V2_RUNTIME_SHUTTING_DOWN')
+        expect(stateOf(db, 'p28-quit')).toBe('failed')
+      } finally { db.close() }
+    })
+
+    it('leaves an idempotent replay untouched when admission is rejected', async () => {
+      const db = createDb()
+      try {
+        const bundle = seedOperation(db, 'p28-replay')
+        const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+        await registry.runWithConversationQuiesced('conversation:p28-replay', () => {
+          expect(() => registry.start({ kind: 'idempotent_replay', execution: bundle }, async () => undefined))
+            .toThrow('GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING')
+        })
+        expect(stateOf(db, 'p28-replay')).toBe('committed')
+      } finally { db.close() }
+    })
+
+    it('does not touch the database after seal when registration fails', () => {
+      const db = createDb()
+      try {
+        const bundle = seedOperation(db, 'p28-sealed')
+        const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+        registry.seal()
+        expect(() => registry.start({ kind: 'created', execution: bundle }, async () => undefined))
+          .toThrow('GENERATION_V2_RUNTIME_SHUTTING_DOWN')
+        expect(stateOf(db, 'p28-sealed')).toBe('committed')
+      } finally { db.close() }
+    })
+  })
+
   it('aborts and drains active operations before running a conversation-scoped action', async () => {
     const db = createDb()
     try {

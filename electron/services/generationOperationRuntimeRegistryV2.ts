@@ -172,7 +172,17 @@ export class GenerationOperationRuntimeRegistryV2 {
     result: StartableGenerationResultV2,
     run: (signal: AbortSignal) => Promise<unknown>,
   ): boolean {
-    const snapshot = this.register(result)
+    let snapshot: GenerationOperationRuntimeSnapshotV2
+    try {
+      snapshot = this.register(result)
+    } catch (error) {
+      // The operation is already committed as streaming; with no runner it would stay orphaned
+      // (quiesce can begin between commit and registration), so terminalize it before rejecting.
+      if (result.kind === 'created' && !this.#sealed) {
+        try { this.#terminalizeUnhandledRunFailure(result, error) } catch { /* startup orphan recovery remains the backstop */ }
+      }
+      throw error
+    }
     if (result.kind !== 'created') return false
     const entry = this.#entries.get(snapshot.binding.operationId)
     if (!entry) throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_OPERATION_UNKNOWN')
