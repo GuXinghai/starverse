@@ -76,6 +76,9 @@ const {
   activeBranchId,
   activeBranch,
   onSelectBranch,
+  onForkFromHead,
+  onDeleteActiveBranch,
+  onRenameActiveBranch,
   loadMoreBranches,
   getBranchRuntimeStatus,
   reasoningDisplayMode,
@@ -307,6 +310,33 @@ function onComposerSend() {
   void onSend()
 }
 
+const branchRenameOpen = ref(false)
+const branchRenameText = ref('')
+const branchDeleteConfirmOpen = ref(false)
+const branchActionBusy = ref(false)
+const canDeleteBranch = computed(() => isReady.value && !isRunning.value && !branchActionBusy.value &&
+  (branches.value.length > 1 || hasMoreBranches.value))
+const canForkBranch = computed(() => isReady.value && !isRunning.value && !branchActionBusy.value &&
+  !!activeBranch.value?.headMessageId)
+watch(activeBranchId, () => { branchRenameOpen.value = false; branchDeleteConfirmOpen.value = false })
+function openBranchRename() {
+  branchDeleteConfirmOpen.value = false
+  branchRenameText.value = activeBranch.value?.name ?? ''
+  branchRenameOpen.value = true
+}
+async function runBranchAction(action: () => Promise<unknown>) {
+  if (branchActionBusy.value) return
+  branchActionBusy.value = true
+  try { await action() } finally { branchActionBusy.value = false }
+}
+async function submitBranchRename() {
+  await runBranchAction(async () => { if (await onRenameActiveBranch(branchRenameText.value)) branchRenameOpen.value = false })
+}
+async function confirmBranchDelete() {
+  branchDeleteConfirmOpen.value = false
+  await runBranchAction(onDeleteActiveBranch)
+}
+
 const branchSummary = computed(() => {
   if (!activeBranch.value) return 'Branch unavailable'
   return activeBranch.value.name?.trim()
@@ -495,11 +525,12 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @toggleConsolePanel="toggleConsolePanel"
         />
         <div
-          v-if="workspaceMode !== 'none' && (branches.length > 1 || hasMoreBranches)"
+          v-if="workspaceMode === 'conversation'"
           class="border-b border-gray-100 px-3 pb-2"
+          data-testid="branch-bar"
         >
           <div class="flex items-center gap-2">
-          <label class="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
+          <label v-if="branches.length > 1 || hasMoreBranches" class="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
             <span>{{ t('chat.topBar.branch') }}</span>
             <select
               :value="activeBranchId ?? ''"
@@ -524,6 +555,25 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           >
             {{ t('chat.pagination.loadMore') }}
           </button>
+          <span v-if="!(branches.length > 1 || hasMoreBranches)" class="min-w-0 flex-1 truncate text-xs text-gray-600">{{ branchSummary }}</span>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canForkBranch" data-testid="branch-fork" @click="runBranchAction(onForkFromHead)">{{ t('chat.branchActions.fork') }}</button>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!isReady || !activeBranch || branchActionBusy" data-testid="branch-rename" @click="openBranchRename">{{ t('chat.branchActions.rename') }}</button>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canDeleteBranch" :title="canDeleteBranch ? undefined : t('chat.branchActions.lastBranch')" data-testid="branch-delete"
+            @click="branchRenameOpen = false; branchDeleteConfirmOpen = true">{{ t('chat.branchActions.delete') }}</button>
+          </div>
+          <form v-if="branchRenameOpen" class="mt-2 flex items-center gap-2 text-xs" data-testid="branch-rename-form" @submit.prevent="submitBranchRename">
+            <input v-model="branchRenameText" type="text" maxlength="4096" class="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1"
+              :aria-label="t('chat.branchActions.renameLabel')" :placeholder="t('chat.branchActions.renamePlaceholder')" data-testid="branch-rename-input" />
+            <button type="submit" class="rounded border bg-white px-2 py-1" :disabled="branchActionBusy" data-testid="branch-rename-save">{{ t('chat.branchActions.save') }}</button>
+            <button type="button" class="rounded border bg-white px-2 py-1" data-testid="branch-rename-cancel" @click="branchRenameOpen = false">{{ t('chat.branchActions.cancel') }}</button>
+          </form>
+          <div v-if="branchDeleteConfirmOpen" role="alertdialog" :aria-label="t('chat.branchActions.delete')" class="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs" data-testid="branch-delete-confirmation">
+            <p>{{ t('chat.branchActions.deleteConfirm') }}</p>
+            <button type="button" class="mt-2 rounded border bg-white px-2 py-1" data-testid="branch-delete-cancel" @click="branchDeleteConfirmOpen = false">{{ t('chat.branchActions.cancel') }}</button>
+            <button type="button" class="ml-2 mt-2 rounded border bg-white px-2 py-1 text-red-700" data-testid="branch-delete-confirm" @click="confirmBranchDelete">{{ t('chat.branchActions.confirmDelete') }}</button>
           </div>
         </div>
         <div

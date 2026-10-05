@@ -11,6 +11,18 @@
     "rightRail": {
       "closePanel": "关闭面板"
     },
+    "branchActions": {
+      "fork": "派生",
+      "rename": "重命名",
+      "delete": "删除",
+      "renameLabel": "分支名称",
+      "renamePlaceholder": "留空则清除名称",
+      "save": "保存",
+      "cancel": "取消",
+      "deleteConfirm": "删除此分支？此操作无法撤销。",
+      "confirmDelete": "删除分支",
+      "lastBranch": "无法删除对话的最后一个分支。"
+    },
     "pagination": {
       "loadMore": "加载更多",
       "loadEarlier": "加载更早消息"

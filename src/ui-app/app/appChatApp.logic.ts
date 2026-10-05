@@ -43,6 +43,7 @@ import {
   moveGenerationV2Conversation,
   readGenerationV2Branch,
   readGenerationV2SearchTarget,
+  renameGenerationV2Branch,
   renameGenerationV2Conversation,
   renameGenerationV2Project,
   getGenerationV2MessageCandidateNavigation,
@@ -7684,6 +7685,7 @@ export function useAppChatAppLogic() {
     if (!convoId || !branch?.id || !branch.headMessageId) return
 
     try {
+      loadError.value = null
       const created = await forkGenerationV2Branch(branch.id, branch.headMessageId, null)
       await refreshBranchesForActiveConvo()
       if (activeConvoId.value !== convoId || !await transitionToBranch(created.branchId)) return
@@ -7704,10 +7706,13 @@ export function useAppChatAppLogic() {
     if (branches.value.length <= 1) return
 
     try {
+      loadError.value = null
       const scope = getActiveDraftScope()
       if (scope && questionEditSession.value) await cancelEditForScope(scope, questionEditSession.value)
       await deleteGenerationV2Branch(bid)
       if (activeConvoId.value !== convoId || activeBranchId.value !== bid) return
+      // The refresh re-pins the active branch when it is outside the first page; drop the deleted one first.
+      branches.value = branches.value.filter((branch) => branch.id !== bid)
       await refreshBranchesForActiveConvo()
       const next = branches.value[0] ?? (await ensureGenerationV2BranchForConversation(convoId))
       if (!await transitionToBranch(next.id)) return
@@ -7715,6 +7720,23 @@ export function useAppChatAppLogic() {
       await refreshRenderableBranchView(next.id)
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
+    }
+  }
+
+  async function onRenameActiveBranch(name: string): Promise<boolean> {
+    if (!isReady.value) return false
+    const convoId = activeConvoId.value
+    const bid = activeBranchId.value
+    if (!convoId || !bid) return false
+    try {
+      loadError.value = null
+      await renameGenerationV2Branch(bid, name.trim() === '' ? null : name.trim())
+      if (activeConvoId.value !== convoId) return true
+      await refreshBranchesForActiveConvo()
+      return true
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+      return false
     }
   }
 
@@ -8587,6 +8609,7 @@ export function useAppChatAppLogic() {
     activeBranch,
     onForkFromHead,
     onDeleteActiveBranch,
+    onRenameActiveBranch,
     openSessionWebSearchSettings,
     sessionWebSearchToolbarLabel,
     openSettings,

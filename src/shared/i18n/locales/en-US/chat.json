@@ -11,6 +11,18 @@
     "rightRail": {
       "closePanel": "Close panel"
     },
+    "branchActions": {
+      "fork": "Fork",
+      "rename": "Rename",
+      "delete": "Delete",
+      "renameLabel": "Branch name",
+      "renamePlaceholder": "Leave empty to clear the name",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deleteConfirm": "Delete this branch? This cannot be undone.",
+      "confirmDelete": "Delete branch",
+      "lastBranch": "The last branch of a conversation cannot be deleted."
+    },
     "pagination": {
       "loadMore": "Load more",
       "loadEarlier": "Load earlier messages"
