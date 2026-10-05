@@ -76,7 +76,10 @@ const OPENAI_RESPONSES_PATHS = Object.freeze([
 ] as RuntimeCapabilitySemanticPathV2[])
 
 const ANTHROPIC_PATHS = Object.freeze([
-  'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
+  'attachments[].kind', 'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
+  'attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].originalUrl',
+  'attachments[].urlDigest', 'attachments[].mediaKind', 'attachments[].declaredMediaType',
+  'attachments[].capturedAtMs', 'attachments[].provenance',
   'attachments[].include', 'attachments[].sendAs', 'attachments[].conversion',
   'generation.maxOutputTokens', 'generation.temperature', 'generation.topP', 'generation.topK', 'generation.stop',
   'reasoning.mode', 'reasoning.effort', 'reasoning.summary', 'reasoning.exclude',
@@ -172,8 +175,8 @@ const ENCODER_IMPLEMENTATION_REVISION_BY_KEY: Readonly<Record<string, string>> =
   'gemini-generate-content-v1beta\0text': 'wire-adapter-20260817-gemini-content-text-1',
   'gemini-generate-content-v1beta\0tool_continue': 'wire-adapter-20260817-gemini-content-tool-1',
   'gemini-interactions-v1beta\0image_generate': 'wire-adapter-20260817-gemini-interactions-image-1',
-  'anthropic-messages-2023-06-01\0text': 'wire-adapter-20260817-anthropic-text-1',
-  'anthropic-messages-2023-06-01\0tool_continue': 'wire-adapter-20260817-anthropic-tool-1',
+  'anthropic-messages-2023-06-01\0text': 'wire-adapter-20260817-anthropic-text-2',
+  'anthropic-messages-2023-06-01\0tool_continue': 'wire-adapter-20260817-anthropic-tool-2',
   'deepseek-stable-chat-v1\0text': 'wire-adapter-20260817-deepseek-text-1',
   'deepseek-stable-chat-v1\0tool_continue': 'wire-adapter-20260817-deepseek-tool-1',
   'openai-responses-v1\0text': 'wire-adapter-20260817-openai-responses-text-1',

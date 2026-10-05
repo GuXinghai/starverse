@@ -107,6 +107,7 @@ function evidenceDigest(value: string) {
 const SUPPORTS = 'anthropic.messages.v2.supports'
 const REJECTS = 'anthropic.messages.v2.rejects'
 const TOOL_CONFIRMATION = 'anthropic.messages.v2.tool_confirmation'
+const URL_METADATA_UNKNOWN = 'anthropic.messages.v2.url_metadata_unknown'
 
 function supported(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabilityDomainV2): PersistedRuntimeCapabilityFieldV2 {
   return Object.freeze({ path, state: 'supported', domain, constraints: Object.freeze([]), evidenceIds: Object.freeze([SUPPORTS]) })
@@ -119,6 +120,40 @@ function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
   return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
+
+/**
+ * Attachment shapes the Anthropic prepared-request compiler already encodes: managed files, plus
+ * URL references whose media kind is image or document. Other media kinds stay outside the domain.
+ * The two free-form URL metadata fields have no canonical domain kind, so they are `unknown`
+ * (attempt allowed because the encoder covers them) and are bounded by the intent decoder.
+ */
+export function anthropicAttachmentCapabilityFieldsV2(): readonly PersistedRuntimeCapabilityFieldV2[] {
+  const unknown = (path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 =>
+    Object.freeze({ path, state: 'unknown', constraints: Object.freeze([]), evidenceIds: Object.freeze([URL_METADATA_UNKNOWN]) })
+  return Object.freeze([
+    supported('attachments[].kind', { kind: 'enum', values: Object.freeze(['managed_file', 'url_reference']) }),
+    supported('attachments[].assetId', { kind: 'identity' }),
+    supported('attachments[].assetRevisionId', { kind: 'identity' }),
+    supported('attachments[].assetSha256', { kind: 'identity' }),
+    supported('attachments[].referenceId', { kind: 'identity' }),
+    supported('attachments[].referenceRevision', { kind: 'identity' }),
+    supported('attachments[].urlDigest', { kind: 'identity' }),
+    unknown('attachments[].originalUrl'),
+    unknown('attachments[].declaredMediaType'),
+    supported('attachments[].mediaKind', { kind: 'enum', values: Object.freeze(['image', 'document']) }),
+    supported('attachments[].capturedAtMs', { kind: 'range', min: 0, max: Number.MAX_SAFE_INTEGER, integer: true }),
+    supported('attachments[].provenance', { kind: 'enum', values: Object.freeze(['user_supplied']) }),
+    supported('attachments[].include', { kind: 'boolean' }),
+    supported('attachments[].sendAs', { kind: 'enum', values: Object.freeze(['provider_file', 'inline_text', 'image_reference', 'converted_document', 'url_reference']) }),
+    supported('attachments[].conversion', { kind: 'enum', values: Object.freeze(['none', 'pdf', 'plain_text', 'images']) }),
+  ])
+}
+
+export const ANTHROPIC_URL_METADATA_UNKNOWN_EVIDENCE_V2 = Object.freeze({
+  evidenceId: URL_METADATA_UNKNOWN, kind: 'contract_invariant' as const, effect: 'unknown' as const,
+  sourceRef: 'generation-compiler-v2-anthropic-url-reference-metadata', verifiedAt: '2026-07-18T00:00:00.000Z',
+  contentDigest: evidenceDigest(URL_METADATA_UNKNOWN),
+})
 
 function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly PersistedRuntimeCapabilityFieldV2[] {
   const webProtocol=resolveWebSearchProtocolParametersV2({providerId:'anthropic',protocolContractId:'anthropic-messages-2023-06-01',operation:'text'})
@@ -142,12 +177,7 @@ function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly Persisted
   values.set('web.maxTotalResults', unsupported('web.maxTotalResults'))
   values.set('web.searchContextSize', unsupported('web.searchContextSize'))
   values.set('web.maxCharacters', unsupported('web.maxCharacters'))
-  values.set('attachments[].assetId', supported('attachments[].assetId', { kind: 'identity' }))
-  values.set('attachments[].assetRevisionId', supported('attachments[].assetRevisionId', { kind: 'identity' }))
-  values.set('attachments[].assetSha256', supported('attachments[].assetSha256', { kind: 'identity' }))
-  values.set('attachments[].include', supported('attachments[].include', { kind: 'boolean' }))
-  values.set('attachments[].sendAs', supported('attachments[].sendAs', { kind: 'enum', values: Object.freeze(['provider_file', 'inline_text', 'image_reference', 'converted_document']) }))
-  values.set('attachments[].conversion', supported('attachments[].conversion', { kind: 'enum', values: Object.freeze(['none', 'pdf', 'plain_text', 'images']) }))
+  for (const field of anthropicAttachmentCapabilityFieldsV2()) values.set(field.path, field)
   values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }))
   values.set('tools.allowedToolIds', supported('tools.allowedToolIds', { kind: 'identity_list', maxItems: 128 }))
@@ -246,6 +276,7 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
   const baseEvidence = [
       { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const, sourceRef: 'https://platform.claude.com/docs/en/api/messages/create', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const, sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
+      ANTHROPIC_URL_METADATA_UNKNOWN_EVIDENCE_V2,
       { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant' as const, effect: 'requires_confirmation' as const, sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
       { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const, sourceRef: modelEvidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(modelEvidence.modelResponseDigest, 'evidence_digest') },
     ]

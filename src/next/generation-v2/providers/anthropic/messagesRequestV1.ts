@@ -470,7 +470,14 @@ function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, mod
     accepted('tools.sideEffectConfirmation')
   }
   for (const [index, attachment] of intent.attachments.entries()) {
-    const base = `attachments[${index}]`; accepted(`${base}.assetId`); accepted(`${base}.assetRevisionId`); accepted(`${base}.assetSha256`)
+    const base = `attachments[${index}]`; accepted(`${base}.kind`)
+    if (attachment.kind === 'managed_file') { accepted(`${base}.assetId`); accepted(`${base}.assetRevisionId`); accepted(`${base}.assetSha256`) }
+    else {
+      for (const field of ['referenceId', 'referenceRevision', 'urlDigest', 'capturedAtMs', 'provenance'] as const) accepted(`${base}.${field}`)
+      if (attachment.declaredMediaType !== undefined) accepted(`${base}.declaredMediaType`)
+      if (attachment.include) { encoded(`${base}.originalUrl`, 'messages[].content', attachment.originalUrl, 'structural'); encoded(`${base}.mediaKind`, 'messages[].content', attachment.mediaKind, 'structural') }
+      else { accepted(`${base}.originalUrl`); accepted(`${base}.mediaKind`) }
+    }
     if (attachment.include) { encoded(`${base}.include`, 'messages[].content', true, 'structural'); encoded(`${base}.sendAs`, 'messages[].content', attachment.sendAs, 'structural'); encoded(`${base}.conversion`, 'messages[].content', attachment.conversion, 'structural') }
     else { accepted(`${base}.include`); accepted(`${base}.sendAs`); accepted(`${base}.conversion`) }
   }
