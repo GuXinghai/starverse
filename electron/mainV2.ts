@@ -6,6 +6,7 @@ import { RawGenerationRequestStore } from './debug/rawGenerationRequestStore'
 import { initMainI18n } from './i18n/mainI18n'
 import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
 import { registerDialogIpc } from './ipc/dialogIpc'
+import { createStoreBackedGenerationTotalTimeoutSourceV2, setGenerationTotalTimeoutSourceV2 } from './services/generationTimeoutPolicyV2'
 import { registerGenerationV2Ipc } from './ipc/generationV2IpcRegistration'
 import { registerGenerationV2ComposerIpc } from './ipc/generationV2ComposerIpc'
 import { registerGenerationV2SearchIpc } from './ipc/generationV2SearchIpc'
@@ -186,6 +187,7 @@ export async function startMainV2(): Promise<void> {
     console.error('[generation-recovery] GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID',
       { count: orphanRecovery.unrecoveredOperationIds.length })
   }
+  setGenerationTotalTimeoutSourceV2(createStoreBackedGenerationTotalTimeoutSourceV2(store))
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
   notifyModelFactsSemanticInvalidated })

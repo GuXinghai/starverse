@@ -9,6 +9,7 @@ export const GENERATION_V2_UI_PREFERENCE_KEYS = new Set([
   'dfcAttachmentDefaults',
   'userMessageRenderDefault',
   'reasoningPrefs',
+  'generationTotalTimeoutMs',
   'chatReasoningDisplayMode',
   'chatReasoningPanelDefaultExpanded',
   'chatReasoningPanelAutoCollapseAfterReasoning',

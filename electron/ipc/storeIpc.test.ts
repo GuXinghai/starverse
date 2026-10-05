@@ -231,6 +231,19 @@ describe('registerStoreIpc', () => {
     expect(store.set).not.toHaveBeenCalledWith('generationV2UiPreferences', expect.anything())
   })
 
+  it('accepts only Unlimited (null) or a bounded integer for the total generation timeout preference', async () => {
+    const { handlers, store } = registerHandlers()
+    const set = handlers.get('store-set')!
+    const key = 'generationV2UiPreferences.generationTotalTimeoutMs'
+    for (const bad of [0, -1, 59_999, 1.5, Number.NaN, 24 * 60 * 60_000 + 1, '600000', {}, undefined]) {
+      expect(await set({}, key, bad), String(bad)).toBe(false)
+    }
+    expect(store.get('generationV2UiPreferences')).toBeUndefined()
+    expect(await set({}, key, 600_000)).toBe(true)
+    expect(await set({}, key, null)).toBe(true)
+    expect(store.get('generationV2UiPreferences')).toEqual({ generationTotalTimeoutMs: null })
+  })
+
   it('merges concurrent UI preference leaf writes into one retained namespace', async () => {
     const { handlers, store } = registerHandlers()
     const set = handlers.get('store-set')!

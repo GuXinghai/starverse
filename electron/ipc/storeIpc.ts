@@ -1,4 +1,6 @@
 import type Store from 'electron-store'
+import { GENERATION_TOTAL_TIMEOUT_PREFERENCE_KEY, isValidGenerationTotalTimeoutPreferenceMs }
+  from '../../src/shared/settings/generationTotalTimeoutPreference'
 import { GENERATION_V2_UI_PREFERENCE_NAMESPACE, GENERATION_V2_UI_PREFERENCE_KEYS }
   from '../../src/shared/settings/generationV2UiPreferenceKeys'
 import {
@@ -101,6 +103,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
     if (keyText.startsWith(prefix)) {
       const leaf = keyText.slice(prefix.length)
       if (!GENERATION_V2_UI_PREFERENCE_KEYS.has(leaf)) return false
+      if (leaf === GENERATION_TOTAL_TIMEOUT_PREFERENCE_KEY && !isValidGenerationTotalTimeoutPreferenceMs(value)) return false
       const previous = store.get(GENERATION_V2_UI_PREFERENCE_NAMESPACE)
       const current = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}
       const next = { ...current, [leaf]: value }

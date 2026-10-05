@@ -712,6 +712,13 @@
       "recentModelsLimit": "最近模型数量限制",
       "recentModelsLimitDesc": "控制模型选择器中的最近使用列表。"
     },
+    "generationTimeout": {
+      "title": "生成超时",
+      "unlimited": "总生成超时：不限时",
+      "minutes": "分钟",
+      "help": "单次生成允许的最长总时长，默认不限时。这不是空闲或首字超时：静默推理的模型会正常运行，除非达到此总时长上限。停止与工具等待不受影响。",
+      "invalid": "请输入 1 到 1440 之间的整数分钟数。"
+    },
     "search": {
       "title": "全局搜索默认值",
       "hintDefault": "全局 mode=default 继承你的 OpenRouter 账户插件默认值。",

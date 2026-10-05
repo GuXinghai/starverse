@@ -568,6 +568,70 @@ describe('ui-app SettingsPanel', () => {
     expect(credentialUpdate).not.toHaveBeenCalled()
   })
 
+  describe('total generation timeout', () => {
+    const KEY = 'generationV2UiPreferences.generationTotalTimeoutMs'
+    const timeoutWrites = () => ((globalThis as any).electronStore.set as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([key]) => key === KEY).map(([, value]) => value)
+
+    it('defaults to Unlimited, persists null and shows the help text', async () => {
+      const user = userEvent.setup()
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      const toggle = await screen.findByTestId('settings-generation-timeout-unlimited') as HTMLInputElement
+      await waitFor(() => expect(toggle).not.toBeDisabled())
+      expect(toggle.checked).toBe(true)
+      expect(screen.queryByTestId('settings-generation-timeout-minutes')).toBeNull()
+      expect(screen.getByTestId('settings-generation-timeout')).toHaveTextContent(t('settings.generationTimeout.help'))
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(timeoutWrites()).toEqual([null]))
+    })
+
+    it('enabling a finite timeout persists milliseconds; disabling returns to null', async () => {
+      const user = userEvent.setup()
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      const toggle = await screen.findByTestId('settings-generation-timeout-unlimited') as HTMLInputElement
+      await waitFor(() => expect(toggle).not.toBeDisabled())
+      await user.click(toggle)
+      const minutes = await screen.findByTestId('settings-generation-timeout-minutes')
+      await user.clear(minutes)
+      await user.type(minutes, '45')
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(timeoutWrites()).toEqual([2_700_000]))
+      await user.click(toggle)
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(timeoutWrites()).toEqual([2_700_000, null]))
+    })
+
+    it('rejects invalid input with a visible error and writes nothing', async () => {
+      const user = userEvent.setup()
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      const toggle = await screen.findByTestId('settings-generation-timeout-unlimited') as HTMLInputElement
+      await waitFor(() => expect(toggle).not.toBeDisabled())
+      await user.click(toggle)
+      const minutes = await screen.findByTestId('settings-generation-timeout-minutes')
+      for (const bad of ['0', '1441', '1.5', '']) {
+        await user.clear(minutes)
+        if (bad) await user.type(minutes, bad)
+        expect(await screen.findByTestId('settings-generation-timeout-error')).toBeInTheDocument()
+        await user.click(screen.getByTestId('settings-save'))
+      }
+      expect(timeoutWrites()).toEqual([])
+    })
+
+    it('loads a stored finite value into the control', async () => {
+      ;(globalThis as any).electronStore = createElectronStoreMockWith({
+        generationV2UiPreferences: { generationTotalTimeoutMs: 900_000 },
+      })
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      const minutes = await screen.findByTestId('settings-generation-timeout-minutes') as HTMLInputElement
+      expect(minutes.value).toBe('15')
+      expect((screen.getByTestId('settings-generation-timeout-unlimited') as HTMLInputElement).checked).toBe(false)
+    })
+  })
+
   it('uses safe OpenRouter credential metadata and one-way update instead of generic store credentials', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })

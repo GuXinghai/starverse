@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  createGenerationAbortScope, createStoreBackedGenerationTotalTimeoutSourceV2, isValidGenerationTotalTimeoutMsV2,
+  setGenerationTotalTimeoutSourceV2,
+} from './generationTimeoutPolicyV2'
 
 describe('generation total-timeout boundary', () => {
   beforeEach(() => { vi.useFakeTimers() })
@@ -70,5 +73,65 @@ describe('generation total-timeout boundary', () => {
       expect(src, f).not.toMatch(/setTimeout\(\(\) => \{[^}]*abort\('timeout'\)/)
       expect(src, f).toContain('createGenerationAbortScope')
     }
+  })
+
+  describe('configured Settings value handoff', () => {
+    const prefs: Record<string, unknown> = {}
+    const store = { get: (key: string) => (key === 'generationV2UiPreferences' ? prefs : undefined) }
+    beforeEach(() => {
+      for (const k of Object.keys(prefs)) delete prefs[k]
+      setGenerationTotalTimeoutSourceV2(createStoreBackedGenerationTotalTimeoutSourceV2(store))
+    })
+    afterEach(() => { setGenerationTotalTimeoutSourceV2(null) })
+
+    it('defaults to Unlimited when nothing is persisted', () => {
+      expect(createStoreBackedGenerationTotalTimeoutSourceV2(store)()).toBeNull()
+      const scope = createGenerationAbortScope(undefined) // what every runner passes when no explicit value is injected
+      vi.advanceTimersByTime(3 * 60 * 60_000)
+      expect(scope.signal.aborted).toBe(false)
+      scope.dispose()
+    })
+
+    it('applies a persisted finite value to the next scope, with timeout (not cancel) semantics', () => {
+      prefs.generationTotalTimeoutMs = 120_000
+      const scope = createGenerationAbortScope(undefined)
+      vi.advanceTimersByTime(119_999)
+      expect(scope.signal.aborted).toBe(false)
+      vi.advanceTimersByTime(1)
+      expect(scope.signal.reason).toBe('timeout')
+      expect(scope.timedOut()).toBe(true)
+      scope.dispose()
+    })
+
+    it('reads the setting per generation: disabling back to Unlimited takes effect without restart', () => {
+      prefs.generationTotalTimeoutMs = 60_000
+      const limited = createGenerationAbortScope(undefined)
+      prefs.generationTotalTimeoutMs = null
+      const unlimited = createGenerationAbortScope(undefined)
+      vi.advanceTimersByTime(10 * 60_000)
+      expect(limited.signal.aborted).toBe(true)
+      expect(unlimited.signal.aborted).toBe(false)
+      limited.dispose(); unlimited.dispose()
+    })
+
+    it('invalid persisted values fall back to Unlimited instead of throwing or timing out', () => {
+      for (const bad of [0, -5, 1.5, '600000', Number.MAX_SAFE_INTEGER, {}]) {
+        prefs.generationTotalTimeoutMs = bad
+        expect(createStoreBackedGenerationTotalTimeoutSourceV2(store)(), String(bad)).toBeNull()
+      }
+    })
+
+    it('an explicit runner value or Stop still wins over the configured value', () => {
+      prefs.generationTotalTimeoutMs = 60_000
+      const explicitUnlimited = createGenerationAbortScope(undefined, null)
+      const external = new AbortController()
+      const stopped = createGenerationAbortScope(external.signal)
+      external.abort()
+      vi.advanceTimersByTime(5 * 60_000)
+      expect(explicitUnlimited.signal.aborted).toBe(false)
+      expect(stopped.signal.reason).toBe('user_cancelled')
+      expect(stopped.timedOut()).toBe(false)
+      explicitUnlimited.dispose(); stopped.dispose()
+    })
   })
 })

@@ -712,6 +712,13 @@
       "recentModelsLimit": "Recent models limit",
       "recentModelsLimitDesc": "Controls the Model Picker Rec list."
     },
+    "generationTimeout": {
+      "title": "Generation Timeout",
+      "unlimited": "Total generation timeout: Unlimited",
+      "minutes": "minutes",
+      "help": "Maximum total time for one generation. Off (Unlimited) by default. This is not an idle or first-token timeout: models that reason silently keep running normally unless this total limit is reached. Stop and tool waits are unaffected.",
+      "invalid": "Enter a whole number of minutes from 1 to 1440."
+    },
     "search": {
       "title": "Global Web Search Defaults",
       "hintDefault": "Global mode=default inherits your OpenRouter account plugin default.",
