@@ -82,7 +82,7 @@ describe('Anthropic plain-text regenerate coordinator V2', () => {
   afterEach(() => { while (databases.length) databases.pop()!.close(); anthropicCompiler.compile.mockReset() })
 
   it('projects the frozen excluded source file into command facts and ignores a different composer file at the compiler boundary', async () => {
-    // The real Anthropic encoding registry rejects attachments[].kind today. This test stubs only final request compilation
+    // This test stubs only final request compilation (attachment coverage itself is covered in anthropicAttachmentEncodingCoverageV2.test.ts)
     // so it can exercise the coordinator's real source lookup, command projection, and persisted semantic snapshot.
     anthropicCompiler.compile.mockImplementation(({ execution, history }: any) => {
       const binding = execution.snapshot.providerBinding
