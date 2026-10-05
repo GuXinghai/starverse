@@ -2,18 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { decodeGeminiInteractionsImageInitialCommandV2, decodeGeminiInteractionsImageRetryCommandV2 } from './interactionsImageCommandsV2'
 
 describe('Gemini Interactions image commands V2', () => {
-  it.each(['gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
-  ('brands the reviewed %s image model and rejects aliases', (modelId) => {
-    const command = decodeGeminiInteractionsImageInitialCommandV2({ operationId: `operation:${modelId}`, branchId: 'branch:1',
-      expectedHeadMessageId: null, prompt: 'draw', modelId, commandAttachments: [] })
+  const base = { operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null, prompt: 'draw', commandAttachments: [] }
+  // Structural validation only: model availability, image capability and preview policy belong to Model Facts / the compiler.
+  it.each(['gemini-2.5-flash-image', 'models/gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-9-future-image', 'not-a-gemini-model'])
+  ('preserves the structurally valid model id %s without judging it', (modelId) => {
+    const command = decodeGeminiInteractionsImageInitialCommandV2({ ...base, modelId })
     expect(command.modelId.value).toBe(modelId)
-    expect(() => decodeGeminiInteractionsImageInitialCommandV2({ operationId: 'operation:2', branchId: 'branch:1',
-      expectedHeadMessageId: null, prompt: 'draw', modelId: 'models/gemini-3.1-flash-image', commandAttachments: [] })).toThrow()
+    expect(JSON.parse(command.canonicalJson).modelId).toBe(modelId)
   })
-  it('rejects preview aliases that have not passed the Interactions operation contract', () => {
-    expect(() => decodeGeminiInteractionsImageInitialCommandV2({ operationId: 'operation:preview', branchId: 'branch:1',
-      expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3.1-flash-image-preview', commandAttachments: [] }))
-      .toThrow()
+  it.each([
+    ['empty model id', { modelId: '' }],
+    ['non-string model id', { modelId: 7 }],
+    ['model id with surrounding whitespace', { modelId: ' gemini-3.1-flash-image' }],
+    ['missing model id', {}],
+    ['unknown extra field', { modelId: 'gemini-3.1-flash-image', extra: true }],
+    ['empty prompt', { modelId: 'gemini-3.1-flash-image', prompt: '' }],
+  ])('rejects malformed structure: %s', (_name, patch) => {
+    const rest: Record<string, unknown> = { ...base }
+    const input = { ...rest, ...(patch as Record<string, unknown>) }
+    expect(() => decodeGeminiInteractionsImageInitialCommandV2(input)).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_IMAGE_INITIAL_COMMAND_INVALID')
   })
   it('requires retry to name the current head answer exactly', () => {
     expect(() => decodeGeminiInteractionsImageRetryCommandV2({ actionKind: 'retry_as_new', operationId: 'operation:2',

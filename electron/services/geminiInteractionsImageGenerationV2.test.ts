@@ -196,6 +196,19 @@ describe('Gemini Interactions image generation V2', () => {
     } finally { db.close() }
   })
 
+  it('rejects a model whose exact capability marks image generation unsupported before preparing a request', async () => {
+    const modelId = 'gemini-3.1-flash-image-preview'
+    const db = database(modelId, [{ ruleId: `${modelId}.image.support`, path: 'image.generation.support',
+      value: { kind: 'support', value: 'unsupported' } }])
+    try {
+      const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 100, createGraphId: (kind) => `${kind}:unsupported` })
+      await expect(coordinator.submit({ command: { operationId: 'operation:unsupported-image', branchId: 'branch:1',
+        expectedHeadMessageId: null, prompt: 'draw', modelId, commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope })).rejects.toThrow(/^GENERATION_V2_/)
+    } finally { db.close() }
+  })
+
   it('rejects an image resolution outside the exact model capability before preparing a request', async () => {
     const db = database('gemini-3.1-flash-lite-image')
     try {
