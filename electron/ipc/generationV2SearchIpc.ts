@@ -42,10 +42,11 @@ function nonNegativeInteger(value: unknown, min: number, max: number): number {
 }
 
 function decodeQuery(value: unknown) {
-  const raw = closedObject(value, ['q', 'scope', 'projectId', 'convoId', 'timeFromSec', 'timeToSec', 'limit', 'offset', 'mode'])
-  const scope = closedObject(raw.scope, ['projectName', 'convoName', 'convoContent'])
-  if (typeof scope.projectName !== 'boolean' || typeof scope.convoName !== 'boolean' || typeof scope.convoContent !== 'boolean' ||
-      (raw.mode !== 'exact' && raw.mode !== 'fuzzy')) {
+  const raw = closedObject(value, ['q', 'scope', 'projectId', 'convoId', 'timeFromSec', 'timeToSec', 'limit', 'offset', 'mode', 'order'])
+  const scope = closedObject(raw.scope, ['projectName', 'convoName', 'userMessages', 'assistantMessages'])
+  if (typeof scope.projectName !== 'boolean' || typeof scope.convoName !== 'boolean' || typeof scope.userMessages !== 'boolean' ||
+      typeof scope.assistantMessages !== 'boolean' || (raw.mode !== 'exact' && raw.mode !== 'fuzzy') ||
+      (raw.order !== 'relevance' && raw.order !== 'chronological')) {
     throw new Error('GENERATION_V2_SEARCH_INPUT_INVALID')
   }
   const timeFromSec = raw.timeFromSec === undefined ? undefined : nonNegativeInteger(raw.timeFromSec, 0, Number.MAX_SAFE_INTEGER)
@@ -55,7 +56,7 @@ function decodeQuery(value: unknown) {
   }
   return Object.freeze({
     q: text(raw.q, 4_096),
-    scope: Object.freeze({ projectName: scope.projectName, convoName: scope.convoName, convoContent: scope.convoContent }),
+    scope: Object.freeze({ projectName: scope.projectName, convoName: scope.convoName, userMessages: scope.userMessages, assistantMessages: scope.assistantMessages }),
     projectId: optionalId(raw.projectId),
     convoId: optionalId(raw.convoId),
     ...(timeFromSec === undefined ? {} : { timeFromSec }),
@@ -63,6 +64,7 @@ function decodeQuery(value: unknown) {
     limit: nonNegativeInteger(raw.limit, 1, 200),
     offset: nonNegativeInteger(raw.offset, 0, 10_000),
     mode: raw.mode,
+    order: raw.order,
   })
 }
 

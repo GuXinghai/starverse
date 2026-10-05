@@ -3,7 +3,8 @@ export type SearchEntityType = 'project' | 'convo' | 'message'
 export type SearchScope = {
   projectName: boolean
   convoName: boolean
-  convoContent: boolean
+  userMessages: boolean
+  assistantMessages: boolean
 }
 
 export type SearchQueryParams = {
@@ -16,6 +17,7 @@ export type SearchQueryParams = {
   limit?: number
   offset?: number
   mode?: 'exact' | 'fuzzy'
+  order?: 'relevance' | 'chronological'
 }
 
 export type SearchHit = {

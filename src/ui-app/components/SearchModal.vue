@@ -2,7 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { rebuildGenerationV2SearchIndex, runGenerationV2SearchQuery } from '@/next/generation-v2/renderer/generationV2SearchClient'
 import type { SearchHit, SearchQueryParams, SearchScope } from '@/next/search/searchTypes'
-import type { SearchConvoOption, SearchProjectOption } from './SearchModal.types'
+import type { SearchConvoOption, SearchProjectOption, SearchSelectionContext } from './SearchModal.types'
+import { getSearchScopeDefault, setSearchScopeDefault } from '@/next/search/searchScopeDefaultClient'
+import { DEFAULT_SEARCH_SCOPE, hasSearchScope } from '@/next/search/searchUiState'
 import { t } from '@/shared/i18n'
 
 const props = defineProps<{
@@ -12,7 +14,7 @@ const props = defineProps<{
   activeProjectId: string | null
   activeConvoId: string | null
   disabled?: boolean
-  selectHit: (hit: SearchHit) => Promise<boolean>
+  selectHit: (hit: SearchHit, context: SearchSelectionContext) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +22,10 @@ const emit = defineEmits<{
 }>()
 
 const query = ref('')
-const scope = ref<SearchScope>({ projectName: true, convoName: true, convoContent: true })
+const scope = ref<SearchScope>({ ...DEFAULT_SEARCH_SCOPE })
+const defaultStatus = ref<'saved' | 'failed' | null>(null)
+const scopeSelected = computed(() => hasSearchScope(scope.value))
+let submittedContext: Omit<SearchSelectionContext, 'hits'> | null = null
 const projectId = ref<string | null>(null)
 const convoId = ref<string | null>(null)
 const timeFrom = ref('')
@@ -42,12 +47,18 @@ watch(
   () => props.open,
   (next) => {
     modalOperation += 1
+    const operationAtOpen = modalOperation
     selecting.value = false
     loading.value = false
     if (!next) return
     error.value = null
     results.value = []
     hasSearched.value = false
+    defaultStatus.value = null
+    // Every open starts from the persisted default; checkbox edits are per-search overrides only.
+    void getSearchScopeDefault().then((saved) => {
+      if (operationAtOpen === modalOperation && props.open) scope.value = { ...saved }
+    })
     if (projectId.value == null && props.activeProjectId !== undefined) {
       projectId.value = props.activeProjectId
     }
@@ -67,7 +78,7 @@ function toEpochSec(value: string): number | undefined {
 async function runSearch() {
   if (props.disabled || !props.open || selecting.value) return
   const q = query.value.trim()
-  if (!q) return
+  if (!q || !hasSearchScope(scope.value)) return
   const operation = ++modalOperation
   error.value = null
   loading.value = true
@@ -75,7 +86,7 @@ async function runSearch() {
 
   const params: SearchQueryParams = {
     q,
-    scope: scope.value,
+    scope: { ...scope.value },
     projectId: projectId.value || null,
     convoId: convoId.value || null,
     timeFromSec: toEpochSec(timeFrom.value),
@@ -83,12 +94,14 @@ async function runSearch() {
     limit: 50,
     offset: 0,
     mode: mode.value,
+    order: 'relevance',
   }
 
   try {
     const next = await runGenerationV2SearchQuery(params)
     if (operation !== modalOperation || !props.open) return
     results.value = next
+    submittedContext = { query: q, scope: { ...scope.value }, mode: mode.value }
   } catch (err: any) {
     if (operation !== modalOperation || !props.open) return
     error.value = err?.message ? String(err.message) : 'Search failed'
@@ -96,6 +109,12 @@ async function runSearch() {
   } finally {
     if (operation === modalOperation) loading.value = false
   }
+}
+
+async function onSaveDefaultScope() {
+  if (!scopeSelected.value) return
+  const saved = await setSearchScopeDefault({ ...scope.value })
+  defaultStatus.value = saved ? 'saved' : 'failed'
 }
 
 async function onRebuildIndex() {
@@ -120,7 +139,8 @@ async function onSelect(hit: SearchHit) {
   loading.value = false
   error.value = null
   try {
-    const success = await props.selectHit(hit)
+    const context = submittedContext ?? { query: query.value.trim(), scope: { ...scope.value }, mode: mode.value }
+    const success = await props.selectHit(hit, { ...context, hits: results.value })
     if (operation !== modalOperation || !props.open) return
     if (success) emit('close')
     else error.value = t('sendPlan.targetMessageUnavailable')
@@ -219,18 +239,22 @@ function splitSnippet(value: string): SnippetPart[] {
           />
         </div>
 
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="search-scope">
           <label class="flex items-center gap-2 text-sm text-gray-700">
-            <input v-model="scope.projectName" type="checkbox" class="h-4 w-4" :disabled="props.disabled" />
+            <input v-model="scope.projectName" type="checkbox" class="h-4 w-4" data-testid="search-scope-project" :disabled="props.disabled" />
             Project name
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700">
-            <input v-model="scope.convoName" type="checkbox" class="h-4 w-4" :disabled="props.disabled" />
-            Conversation name
+            <input v-model="scope.convoName" type="checkbox" class="h-4 w-4" data-testid="search-scope-convo" :disabled="props.disabled" />
+            Conversation title
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700">
-            <input v-model="scope.convoContent" type="checkbox" class="h-4 w-4" :disabled="props.disabled" />
-            Conversation content
+            <input v-model="scope.userMessages" type="checkbox" class="h-4 w-4" data-testid="search-scope-user" :disabled="props.disabled" />
+            User messages
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input v-model="scope.assistantMessages" type="checkbox" class="h-4 w-4" data-testid="search-scope-assistant" :disabled="props.disabled" />
+            Assistant messages
           </label>
         </div>
 
@@ -242,6 +266,19 @@ function splitSnippet(value: string): SnippetPart[] {
           >
             {{ advancedOpen ? 'Hide filters' : 'Show filters' }}
           </button>
+
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            data-testid="search-scope-save-default"
+            :disabled="props.disabled || !scopeSelected"
+            @click="onSaveDefaultScope"
+          >
+            Save scope as default
+          </button>
+          <span v-if="defaultStatus" class="text-xs text-gray-500" data-testid="search-scope-default-status">
+            {{ defaultStatus === 'saved' ? 'Default saved' : 'Could not save default' }}
+          </span>
 
           <div class="ml-auto flex items-center gap-2">
             <select
@@ -255,7 +292,7 @@ function splitSnippet(value: string): SnippetPart[] {
             <button
               type="submit"
               class="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-              :disabled="props.disabled || selecting || query.trim().length === 0"
+              :disabled="props.disabled || selecting || query.trim().length === 0 || !scopeSelected"
             >
               Search
             </button>

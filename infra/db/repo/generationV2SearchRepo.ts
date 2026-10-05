@@ -2,9 +2,20 @@ import type BetterSqlite3 from 'better-sqlite3'
 
 export type GenerationV2SearchEntityType = 'project' | 'convo' | 'message'
 
+export type GenerationV2SearchScope = Readonly<{
+  projectName: boolean
+  convoName: boolean
+  userMessages: boolean
+  assistantMessages: boolean
+}>
+
 export type GenerationV2SearchQueryInput = Readonly<{
   q: string
-  scope: Readonly<{ projectName: boolean; convoName: boolean; convoContent: boolean }>
+  /**
+   * Explicit, non-overlapping scopes. Message scopes match message bodies only;
+   * conversation titles are matched solely through `convoName`.
+   */
+  scope: GenerationV2SearchScope
   projectId?: string | null
   convoId?: string | null
   timeFromSec?: number
@@ -12,6 +23,8 @@ export type GenerationV2SearchQueryInput = Readonly<{
   limit?: number
   offset?: number
   mode?: 'exact' | 'fuzzy'
+  /** `chronological` is oldest-first by creation time and index insertion order. */
+  order?: 'relevance' | 'chronological'
 }>
 
 export type GenerationV2SearchHit = Readonly<{
@@ -48,12 +61,11 @@ function buildFallbackFtsQuery(raw: string): string {
   return tokens.map((token) => `${token.replace(/"/gu, '""')}*`).join(' AND ')
 }
 
-function typesFor(scope: GenerationV2SearchQueryInput['scope']): GenerationV2SearchEntityType[] {
-  const types: GenerationV2SearchEntityType[] = []
-  if (scope.projectName) types.push('project')
-  if (scope.convoName) types.push('convo')
-  if (scope.convoContent) types.push('message')
-  return types
+function messageRoles(scope: GenerationV2SearchScope): string[] {
+  const roles: string[] = []
+  if (scope.userMessages) roles.push('user')
+  if (scope.assistantMessages) roles.push('assistant')
+  return roles
 }
 
 function asString(value: unknown): string {
@@ -100,13 +112,12 @@ export class GenerationV2SearchRepo {
   }
 
   query(input: GenerationV2SearchQueryInput): readonly GenerationV2SearchHit[] {
-    const types = typesFor(input.scope)
     const query = buildFtsQuery(input.q, input.mode ?? 'fuzzy')
-    if (types.length === 0 || !query) return Object.freeze([])
+    const roles = messageRoles(input.scope)
+    if (!query || (!input.scope.projectName && !input.scope.convoName && roles.length === 0)) return Object.freeze([])
     const limit = clamp(input.limit ?? 50, 1, 200)
     const offset = Math.max(0, input.offset ?? 0)
     const bind: Record<string, unknown> = {
-      query,
       projectId: input.projectId ?? null,
       convoId: input.convoId ?? null,
       timeFromMs: input.timeFromSec == null ? null : clamp(input.timeFromSec, 0, MAX_SAFE_SECONDS) * 1000,
@@ -114,30 +125,52 @@ export class GenerationV2SearchRepo {
       limit,
       offset,
     }
-    const placeholders = types.map((type, index) => {
-      bind[`type${index}`] = type
-      return `@type${index}`
-    }).join(', ')
-    const select = `SELECT entity_type AS entityType, entity_id AS entityId, project_id AS projectId,
-      conversation_id AS convoId, created_at_ms AS createdAtMs, bm25(generation_v2_search_fts) AS score,
-      CASE WHEN length(body) > 0 THEN snippet(generation_v2_search_fts, 6, '${HIGHLIGHT_START}', '${HIGHLIGHT_END}', '…', 12)
-        ELSE snippet(generation_v2_search_fts, 5, '${HIGHLIGHT_START}', '${HIGHLIGHT_END}', '…', 12) END AS snippet
-      FROM generation_v2_search_fts
-      WHERE generation_v2_search_fts MATCH @query
-        AND entity_type IN (${placeholders})
-        AND (@projectId IS NULL OR project_id = @projectId)
-        AND (@convoId IS NULL OR conversation_id = @convoId)
-        AND (@timeFromMs IS NULL OR created_at_ms >= @timeFromMs)
-        AND (@timeToMs IS NULL OR created_at_ms < @timeToMs)
-      ORDER BY score ASC, created_at_ms DESC, entity_id ASC LIMIT @limit OFFSET @offset`
+    // Each branch matches exactly one FTS column so a message row can never match through its
+    // denormalised conversation title, and carries a literal entity type for the scope it serves.
+    const branch = (entityType: GenerationV2SearchEntityType, column: 'title' | 'body', extraWhere = '') => {
+      const snippetColumn = column === 'title' ? 5 : 6
+      return `SELECT entity_type AS entityType, entity_id AS entityId, project_id AS projectId,
+        conversation_id AS convoId, created_at_ms AS createdAtMs, rowid AS ord, bm25(generation_v2_search_fts) AS score,
+        snippet(generation_v2_search_fts, ${snippetColumn}, '${HIGHLIGHT_START}', '${HIGHLIGHT_END}', '…', 12) AS snippet
+        FROM generation_v2_search_fts
+        WHERE generation_v2_search_fts MATCH @query_${column}
+          AND entity_type = '${entityType}'${extraWhere}
+          AND (@projectId IS NULL OR project_id = @projectId)
+          AND (@convoId IS NULL OR conversation_id = @convoId)
+          AND (@timeFromMs IS NULL OR created_at_ms >= @timeFromMs)
+          AND (@timeToMs IS NULL OR created_at_ms < @timeToMs)`
+    }
+    const branches: string[] = []
+    if (input.scope.projectName) branches.push(branch('project', 'title'))
+    if (input.scope.convoName) branches.push(branch('convo', 'title'))
+    if (roles.length > 0) {
+      const roleBinds = roles.map((role, index) => {
+        bind[`role${index}`] = role
+        return `@role${index}`
+      }).join(', ')
+      branches.push(branch('message', 'body', ` AND EXISTS (SELECT 1 FROM message_v2 AS m
+        WHERE m.message_id = generation_v2_search_fts.entity_id AND m.role IN (${roleBinds}))`))
+    }
+    const orderBy = input.order === 'chronological'
+      ? 'createdAtMs ASC, ord ASC'
+      : 'score ASC, createdAtMs DESC, entityId ASC'
+    const select = `SELECT * FROM (${branches.join(' UNION ALL ')}) ORDER BY ${orderBy} LIMIT @limit OFFSET @offset`
+    const run = (ftsQuery: string) => {
+      bind.query_title = `title : (${ftsQuery})`
+      bind.query_body = `body : (${ftsQuery})`
+      // better-sqlite3 rejects unused named parameters, so bind only what the branches reference.
+      const used: Record<string, unknown> = { ...bind }
+      if (!branches.some((entry) => entry.includes('@query_title'))) delete used.query_title
+      if (!branches.some((entry) => entry.includes('@query_body'))) delete used.query_body
+      return this.readHits(this.db.prepare(select).all(used) as Row[])
+    }
     try {
-      return this.readHits(this.db.prepare(select).all(bind) as Row[])
+      return run(query)
     } catch {
       const fallback = buildFallbackFtsQuery(input.q)
       if (!fallback) return Object.freeze([])
-      bind.query = fallback
       try {
-        return this.readHits(this.db.prepare(select).all(bind) as Row[])
+        return run(fallback)
       } catch {
         return Object.freeze([])
       }

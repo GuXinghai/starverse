@@ -262,6 +262,9 @@ import type {
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
 import type { SearchHit } from '@/next/search/searchTypes'
+import { collectNameMatchIds, cycleMatchIndex, matchNavLabel } from '@/next/search/searchUiState'
+import { runGenerationV2SearchQuery } from '@/next/generation-v2/renderer/generationV2SearchClient'
+import type { SearchSelectionContext } from '../components/SearchModal.types'
 import type { NormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
 import type { CompletionClass, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { createEventScheduler } from '@/next/state/eventScheduler'
@@ -396,6 +399,8 @@ export function useAppChatAppLogic() {
   const isDev = import.meta.env.DEV
   const searchModalOpen = ref(false)
   let searchNavigationOperation = 0
+  const searchNameHighlight = ref<{ projectIds: readonly string[]; convoIds: readonly string[] }>({ projectIds: [], convoIds: [] })
+  const searchMessageNav = ref<{ conversationId: string; messageIds: readonly string[]; index: number } | null>(null)
   const draftSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftSendPlanRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -3149,11 +3154,77 @@ export function useAppChatAppLogic() {
     }))
   }
 
-  async function onSelectSearchHit(hit: SearchHit): Promise<boolean> {
+  async function openSearchMessageTarget(messageId: string, isCurrent: () => boolean): Promise<boolean> {
+    try {
+    const sourceScope = getActiveDraftScope()
+    const target = await readGenerationV2SearchTarget(messageId, activeBranchId.value)
+    if (!isCurrent() || sourceScope && !isDraftScopeCurrent(sourceScope) || target.status !== 'ready') return false
+    await flushDraftPersistence({ failOnError: true })
+    if (!isCurrent() || sourceScope && !isDraftScopeCurrent(sourceScope) || isDraftInteractionLocked.value) return false
+    if (activeConvoId.value !== target.conversationId) {
+      activeBranchId.value = null
+      activeConvoId.value = target.conversationId
+      const unboundScope = getActiveDraftScope()
+      await reloadGenerationV2ConversationAuthorities(target.conversationId)
+      await refreshBranchesForActiveConvo()
+      if (!isCurrent() || !unboundScope || !isDraftScopeCurrent(unboundScope)) return false
+      const suspendedDraft = await readScopedComposerDraft(unboundScope)
+      if (!isCurrent() || !isDraftScopeCurrent(unboundScope)) return false
+      activeBranchId.value = suspendedDraft.editSession?.branchId ?? target.branchId
+      const restoredScope = getActiveDraftScope()
+      await restoreDraftForActiveScope(restoredScope)
+      if (!isCurrent() || !restoredScope || !isDraftScopeCurrent(restoredScope)) return false
+    }
+    if (!await transitionToBranch(target.branchId, false, isCurrent)) return false
+    const targetScope = getActiveDraftScope()
+    if (!targetScope || !isCurrent()) return false
+    activeProjectId.value = target.projectId
+    await refreshConvos(false)
+    if (!isCurrent() || !isDraftScopeCurrent(targetScope) || isDraftInteractionLocked.value) return false
+    const currentTarget = await readGenerationV2SearchTarget(messageId, target.branchId)
+    if (!isCurrent() || !isDraftScopeCurrent(targetScope) || isDraftInteractionLocked.value || currentTarget.status !== 'ready' ||
+        currentTarget.conversationId !== target.conversationId || currentTarget.branchId !== target.branchId ||
+        currentTarget.projectId !== target.projectId || activeProjectId.value !== currentTarget.projectId) return false
+    const exactTargetCurrent = () => isCurrent() && isDraftScopeCurrent(targetScope) && !isDraftInteractionLocked.value && activeProjectId.value === currentTarget.projectId
+    if (!exactTargetCurrent()) return false
+    if (!branches.value.some(branch => branch.id === currentTarget.branchId)) {
+      const now = Date.now()
+      branches.value = [...branches.value, { id: currentTarget.branchId, convoId: currentTarget.conversationId,
+        headMessageId: currentTarget.view.headMessageId, name: currentTarget.view.branchName,
+        createdAt: now, updatedAt: now, deletedAt: null }]
+    }
+    await loadTranscriptForBranch(currentTarget.branchId, null, false, undefined, currentTarget.view, exactTargetCurrent)
+    if (!await focusMessageAfterSearch(currentTarget.messageId, exactTargetCurrent)) return false
+    if (!exactTargetCurrent()) return false
+    await setLastFormalConversationId(currentTarget.conversationId)
+    return exactTargetCurrent()
+    } catch { return false }
+  }
+
+  // Message navigation is defined by the message scopes alone: title/name matches never contribute.
+  async function listSearchMessageMatches(hit: SearchHit, context?: SearchSelectionContext): Promise<string[]> {
+    const fallback = [hit.entityId]
+    if (!context || !hit.convoId) return fallback
+    try {
+      const matches = await runGenerationV2SearchQuery({
+        q: context.query,
+        scope: { projectName: false, convoName: false,
+          userMessages: context.scope.userMessages, assistantMessages: context.scope.assistantMessages },
+        projectId: null, convoId: hit.convoId, timeFromSec: undefined, timeToSec: undefined, limit: 200, offset: 0, mode: context.mode, order: 'chronological',
+      })
+      const ids = matches.filter((match) => match.entityType === 'message').map((match) => match.entityId)
+      return ids.length > 0 ? ids : fallback
+    } catch { return fallback }
+  }
+
+  async function onSelectSearchHit(hit: SearchHit, context?: SearchSelectionContext): Promise<boolean> {
     if (!isReady.value || isDraftInteractionLocked.value || !searchModalOpen.value) return false
     const operation = ++searchNavigationOperation
     const isCurrent = () => operation === searchNavigationOperation && searchModalOpen.value && isReady.value
     try {
+    searchMessageNav.value = null
+    if (context) searchNameHighlight.value = collectNameMatchIds(context.hits)
+    else searchNameHighlight.value = collectNameMatchIds([hit])
     if (hit.entityType === 'project') {
       onSelectProject(hit.entityId)
       return isCurrent() && activeProjectId.value === hit.entityId
@@ -3168,51 +3239,34 @@ export function useAppChatAppLogic() {
     }
 
     if (hit.entityType === 'message') {
-      const sourceScope = getActiveDraftScope()
-      const target = await readGenerationV2SearchTarget(hit.entityId, activeBranchId.value)
-      if (!isCurrent() || sourceScope && !isDraftScopeCurrent(sourceScope) || target.status !== 'ready') return false
-      await flushDraftPersistence({ failOnError: true })
-      if (!isCurrent() || sourceScope && !isDraftScopeCurrent(sourceScope) || isDraftInteractionLocked.value) return false
-      if (activeConvoId.value !== target.conversationId) {
-        activeBranchId.value = null
-        activeConvoId.value = target.conversationId
-        const unboundScope = getActiveDraftScope()
-        await reloadGenerationV2ConversationAuthorities(target.conversationId)
-        await refreshBranchesForActiveConvo()
-        if (!isCurrent() || !unboundScope || !isDraftScopeCurrent(unboundScope)) return false
-        const suspendedDraft = await readScopedComposerDraft(unboundScope)
-        if (!isCurrent() || !isDraftScopeCurrent(unboundScope)) return false
-        activeBranchId.value = suspendedDraft.editSession?.branchId ?? target.branchId
-        const restoredScope = getActiveDraftScope()
-        await restoreDraftForActiveScope(restoredScope)
-        if (!isCurrent() || !restoredScope || !isDraftScopeCurrent(restoredScope)) return false
+      const messageIds = await listSearchMessageMatches(hit, context)
+      if (!isCurrent()) return false
+      const opened = await openSearchMessageTarget(messageIds[0], isCurrent)
+      if (opened) {
+        const conversationId = activeConvoId.value
+        searchMessageNav.value = conversationId ? { conversationId, messageIds, index: 0 } : null
       }
-      if (!await transitionToBranch(target.branchId, false, isCurrent)) return false
-      const targetScope = getActiveDraftScope()
-      if (!targetScope || !isCurrent()) return false
-      activeProjectId.value = target.projectId
-      await refreshConvos(false)
-      if (!isCurrent() || !isDraftScopeCurrent(targetScope) || isDraftInteractionLocked.value) return false
-      const currentTarget = await readGenerationV2SearchTarget(hit.entityId, target.branchId)
-      if (!isCurrent() || !isDraftScopeCurrent(targetScope) || isDraftInteractionLocked.value || currentTarget.status !== 'ready' ||
-          currentTarget.conversationId !== target.conversationId || currentTarget.branchId !== target.branchId ||
-          currentTarget.projectId !== target.projectId || activeProjectId.value !== currentTarget.projectId) return false
-      const exactTargetCurrent = () => isCurrent() && isDraftScopeCurrent(targetScope) && !isDraftInteractionLocked.value && activeProjectId.value === currentTarget.projectId
-      if (!exactTargetCurrent()) return false
-      if (!branches.value.some(branch => branch.id === currentTarget.branchId)) {
-        const now = Date.now()
-        branches.value = [...branches.value, { id: currentTarget.branchId, convoId: currentTarget.conversationId,
-          headMessageId: currentTarget.view.headMessageId, name: currentTarget.view.branchName,
-          createdAt: now, updatedAt: now, deletedAt: null }]
-      }
-      await loadTranscriptForBranch(currentTarget.branchId, null, false, undefined, currentTarget.view, exactTargetCurrent)
-      if (!await focusMessageAfterSearch(currentTarget.messageId, exactTargetCurrent)) return false
-      if (!exactTargetCurrent()) return false
-      await setLastFormalConversationId(currentTarget.conversationId)
-      return exactTargetCurrent()
+      return opened
     }
     } catch { return false }
     return false
+  }
+
+  const searchMessageNavLabel = computed(() => {
+    const nav = searchMessageNav.value
+    if (!nav || nav.conversationId !== activeConvoId.value) return null
+    return matchNavLabel(nav.index, nav.messageIds.length)
+  })
+
+  async function onNavigateSearchMessage(delta: 1 | -1) {
+    const nav = searchMessageNav.value
+    if (!nav || nav.conversationId !== activeConvoId.value || !isReady.value || isDraftInteractionLocked.value) return
+    const next = cycleMatchIndex(nav.index, nav.messageIds.length, delta)
+    const operation = ++searchNavigationOperation
+    const isCurrent = () => operation === searchNavigationOperation && isReady.value
+    if (await openSearchMessageTarget(nav.messageIds[next], isCurrent) && isCurrent()) {
+      searchMessageNav.value = { ...nav, index: next }
+    }
   }
 
   async function onResetSystemTemplate(input: Readonly<{ resetModelConfig: boolean; resetDraftAttachments: boolean }>) {
@@ -8506,6 +8560,9 @@ export function useAppChatAppLogic() {
     searchConvoOptions,
     closeSearchModal,
     onSelectSearchHit,
+    searchNameHighlight,
+    searchMessageNavLabel,
+    onNavigateSearchMessage,
     showReasoningPanel,
     reasoningDisplayMode,
     reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded,

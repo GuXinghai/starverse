@@ -12,6 +12,9 @@ const props = defineProps<{
   disabled?: boolean
   mutationDisabled?: boolean
   hasMore?: boolean
+  /** Ids whose own name/title matched the last search. */
+  highlightedProjectIds?: readonly string[]
+  highlightedConvoIds?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -337,7 +340,10 @@ function cancelProjectDialog() {
             @click="onSelectProject(project.id)"
           >
             <span class="text-base">📁</span>
-            <span class="min-w-0 flex-1 truncate">{{ project.name }}</span>
+            <span class="min-w-0 flex-1 truncate">
+              <mark v-if="props.highlightedProjectIds?.includes(project.id)" class="rounded bg-yellow-200 px-0.5" :data-testid="`project-name-match-${project.id}`">{{ project.name }}</mark>
+              <template v-else>{{ project.name }}</template>
+            </span>
             <span v-if="project.convoCount !== undefined" class="text-[10px] text-gray-500">
               {{ project.convoCount }}
             </span>
@@ -475,7 +481,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="onRowClick(c.id)"
           >
-            <div class="truncate text-sm font-medium" :class="c.id === props.activeId ? 'text-blue-700' : 'text-gray-900'">{{ c.title }}</div>
+            <div class="truncate text-sm font-medium" :class="c.id === props.activeId ? 'text-blue-700' : 'text-gray-900'"><mark v-if="props.highlightedConvoIds?.includes(c.id)" class="rounded bg-yellow-200 px-0.5" :data-testid="`convo-title-match-${c.id}`">{{ c.title }}</mark><template v-else>{{ c.title }}</template></div>
             <div class="mt-1 truncate text-[11px] text-gray-500">
               {{ formatTime(c.updatedAt) }}
             </div>

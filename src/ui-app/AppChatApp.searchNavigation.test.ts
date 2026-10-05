@@ -276,15 +276,26 @@ describe('actual App indexed message search navigation', () => {
   })
 
   it('lets a competing hit win and drops an old callback after modal close and reopen', async () => {
-    const first = turn(), second = turn(); await mount(); await search('searchneedle')
+    // Hits in one conversation resolve to its first match, so competing hits live in separate conversations.
+    createConvo('conversation:other', 'branch:other')
+    const first = turn(), second = turn('branch:other', 'conversation:other'); await mount(); await search('searchneedle')
     const gate = deferred<void>(), actualRead = bridge.workspace.readSearchTarget.getMockImplementation()!
-    bridge.workspace.readSearchTarget.mockImplementationOnce(async (packet: unknown) => { const result = await actualRead(packet); await gate.promise; return result })
+    let gated = false
+    bridge.workspace.readSearchTarget.mockImplementation(async (packet: unknown) => {
+      const result = await actualRead(packet)
+      if (!gated && JSON.stringify(packet).includes(first.questionId)) { gated = true; await gate.promise }
+      return result
+    })
     await clickHit(first.questionId); await clickHit(second.questionId); await focused(second.questionId)
     gate.resolve(); await nextTick(); await new Promise(resolve => setTimeout(resolve, 0))
     expect(logic().activeCursorMessageId.value).toBe(second.questionId)
     const reopenGate = deferred<void>()
     await search('searchneedle1')
-    bridge.workspace.readSearchTarget.mockImplementationOnce(async (packet: unknown) => { const result = await actualRead(packet); await reopenGate.promise; return result })
+    bridge.workspace.readSearchTarget.mockImplementation(async (packet: unknown) => {
+      const result = await actualRead(packet)
+      if (JSON.stringify(packet).includes(first.questionId)) await reopenGate.promise
+      return result
+    })
     await clickHit(first.questionId)
     await fireEvent.click(screen.getByRole('button', { name: /^Close$/ }))
     await search('searchneedle2')
@@ -293,5 +304,42 @@ describe('actual App indexed message search navigation', () => {
     expect(screen.getByTestId(`search-hit-${second.questionId}`)).toBeInTheDocument()
     expect(logic().activeCursorMessageId.value).toBe(second.questionId)
     expect(screen.queryByTestId('search-target-error')).toBeNull()
+  })
+
+  it('selects the first matching message, shows cyclic 1/n navigation, and wraps in both directions', async () => {
+    const first = turn(), second = turn()
+    await mount(); await search('searchable')
+    await clickHit(second.answerRootId)
+    await waitFor(() => expect(screen.getByTestId('search-match-nav-index')).toHaveTextContent('1/4'))
+    await focused(first.questionId)
+    await fireEvent.click(screen.getByTestId('search-match-nav-prev'))
+    await focused(second.answerRootId)
+    await waitFor(() => expect(screen.getByTestId('search-match-nav-index')).toHaveTextContent('4/4'))
+    await fireEvent.click(screen.getByTestId('search-match-nav-next'))
+    await focused(first.questionId)
+    await waitFor(() => expect(screen.getByTestId('search-match-nav-index')).toHaveTextContent('1/4'))
+    await fireEvent.click(screen.getByTestId('search-match-nav-next'))
+    await focused(first.answerRootId)
+    await waitFor(() => expect(screen.getByTestId('search-match-nav-index')).toHaveTextContent('2/4'))
+  })
+
+  it('limits navigation to the selected message scopes and never treats a title match as a message match', async () => {
+    turn(); await mount()
+    logic().openSearchModal()
+    const input = await screen.findByPlaceholderText('Search...')
+    await fireEvent.update(input, 'conversation')
+    await fireEvent.click(screen.getByTestId('search-scope-project'))
+    await fireEvent.click(screen.getByTestId('search-scope-convo'))
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByText('No results.')).toBeInTheDocument())
+    await fireEvent.click(screen.getByTestId('search-scope-project'))
+    await fireEvent.click(screen.getByTestId('search-scope-convo'))
+    await fireEvent.click(screen.getByTestId('search-scope-user'))
+    await fireEvent.click(screen.getByTestId('search-scope-assistant'))
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await clickHit(sourceConvo)
+    await waitFor(() => expect(screen.queryByPlaceholderText('Search...')).toBeNull())
+    expect(screen.queryByTestId('search-match-nav')).toBeNull()
+    expect(screen.getByTestId(`convo-title-match-${sourceConvo}`)).toBeInTheDocument()
   })
 })

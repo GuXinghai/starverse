@@ -65,6 +65,9 @@ const {
   searchConvoOptions,
   closeSearchModal,
   onSelectSearchHit,
+  searchNameHighlight,
+  searchMessageNavLabel,
+  onNavigateSearchMessage,
   runVM,
   isRunning,
   activeTitle,
@@ -444,6 +447,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           :mutationDisabled="isRunning"
           :disabled="!isReady || isDraftInteractionLocked"
           :hasMore="hasMoreConversations"
+          :highlightedProjectIds="searchNameHighlight.projectIds"
+          :highlightedConvoIds="searchNameHighlight.convoIds"
           @openSearch="openSearchModal"
           @selectProject="onSelectProject"
           @openProjectSettings="onOpenProjectWebSearchSettings"
@@ -520,6 +525,15 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             {{ t('chat.pagination.loadMore') }}
           </button>
           </div>
+        </div>
+        <div
+          v-if="isReady && workspaceMode !== 'none' && searchMessageNavLabel"
+          class="flex items-center gap-1 border-b border-gray-100 px-3 pb-2 text-xs text-gray-700"
+          data-testid="search-match-nav"
+        >
+          <span class="font-mono" data-testid="search-match-nav-index">{{ searchMessageNavLabel }}</span>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" aria-label="Previous match" data-testid="search-match-nav-prev" @click="onNavigateSearchMessage(-1)">&lt;</button>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" aria-label="Next match" data-testid="search-match-nav-next" @click="onNavigateSearchMessage(1)">&gt;</button>
         </div>
         <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
           <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
