@@ -49,6 +49,13 @@
       "restart": "Restart app",
       "close": "Close app",
       "loopWarning": "The window has failed repeatedly. Reloading is disabled; restart or close the app."
+    },
+    "quitWithActiveWork": {
+      "title": "Work is still running",
+      "message": "Starverse is still running work in the background.",
+      "detail": "Quitting now will interrupt it. Unfinished generations, file processing or plugin tasks may be lost.",
+      "quit": "Quit anyway",
+      "cancel": "Cancel"
     }
   }
 }

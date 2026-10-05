@@ -712,6 +712,10 @@
       "recentModelsLimit": "最近模型数量限制",
       "recentModelsLimitDesc": "控制模型选择器中的最近使用列表。"
     },
+    "quitWarning": {
+      "label": "退出时若仍有任务运行则提醒",
+      "help": "当生成、文件处理或插件任务仍在运行时，退出前先请求确认。"
+    },
     "generationTimeout": {
       "title": "生成超时",
       "unlimited": "总生成超时：不限时",

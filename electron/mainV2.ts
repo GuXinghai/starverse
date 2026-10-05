@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { checkConfigIntegrity, checkTotalSize, CURRENT_CONFIG_VERSION, migrateConfig, validateAndCleanConfig } from './config/configSchema'
+import { createAppShutdownCoordinatorV2, createStoreBackedQuitWarningSourceV2 } from './services/appShutdownCoordinatorV2'
 import { RawGenerationRequestStore } from './debug/rawGenerationRequestStore'
-import { initMainI18n } from './i18n/mainI18n'
+import { initMainI18n, t } from './i18n/mainI18n'
 import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
 import { registerDialogIpc } from './ipc/dialogIpc'
 import { createStoreBackedGenerationTotalTimeoutSourceV2, setGenerationTotalTimeoutSourceV2 } from './services/generationTimeoutPolicyV2'
@@ -93,6 +94,40 @@ export async function startMainV2(): Promise<void> {
       } catch { console.warn('[model-facts-v1] semantic invalidation delivery failed', { code: 'DELIVERY_FAILED' }) }
     }
   }
+  const shutdownCoordinator = createAppShutdownCoordinatorV2({
+    isWarningEnabled: createStoreBackedQuitWarningSourceV2(store),
+    confirmQuit: async () => {
+      const options = {
+        type: 'warning' as const,
+        title: t('dialogs.quitWithActiveWork.title'),
+        message: t('dialogs.quitWithActiveWork.message'),
+        detail: t('dialogs.quitWithActiveWork.detail'),
+        buttons: [t('dialogs.quitWithActiveWork.quit'), t('dialogs.quitWithActiveWork.cancel')],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      const parent = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed())
+      const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
+      return result.response === 0
+    },
+    closeResources: async () => {
+      rawGenerationRequestStore.close()
+      await packagedTestDocxFixtureAuthority?.dispose()
+      await cloudRulesCandidateRefresh.dispose()
+      await modelsDevSourceRefresh.dispose()
+      await runtime.epoch2.close()
+    },
+    exit: (code) => app.exit(code),
+    onShutdownStarted: () => {
+      mainWindowLifecycle.clearWindowListeners()
+      clearMainWindowActivator()
+    },
+    onQuitCancelled: () => {
+      // On Windows/Linux the window may already be closed (that is what triggered the quit).
+      if (!mainWindowLifecycle.focusWindow()) mainWindowLifecycle.createWindow()
+    },
+  })
   const inAppBrowserManager = createInAppBrowserManager()
   const fileSelectionGrants = createFileSelectionGrantStore()
   const packagedTestDocxFixtureAuthority = await createPackagedTestDocxFixtureAuthorityV1({
@@ -160,6 +195,8 @@ export async function startMainV2(): Promise<void> {
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
   const magikaProcessRunner = createMagikaUtilityProcessRunner()
+  shutdownCoordinator.registerSource({ name: 'electron-conversion', activeCount: () => electronConversionBridge.activeCount(),
+    quiesce: () => electronConversionBridge.quiesceForShutdown() })
   const enginePluginLifecycle = createEpoch2EnginePluginLifecycleService({
   db: runtime.epoch2.database,
   layout: runtime.layout,
@@ -181,6 +218,8 @@ export async function startMainV2(): Promise<void> {
     }
   },
 })
+  shutdownCoordinator.registerSource({ name: 'file-type-detection', activeCount: () => fileTypeDetectionService.activeCount(),
+    quiesce: () => fileTypeDetectionService.quiesceForShutdown() })
 
   const orphanRecovery = recoverGenerationOrphansV2(runtime.epoch2.database)
   if (orphanRecovery.unrecoveredOperationIds.length > 0) {
@@ -190,7 +229,7 @@ export async function startMainV2(): Promise<void> {
   setGenerationTotalTimeoutSourceV2(createStoreBackedGenerationTotalTimeoutSourceV2(store))
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
-  notifyModelFactsSemanticInvalidated })
+  notifyModelFactsSemanticInvalidated, registerActiveWorkSource: shutdownCoordinator.registerSource })
   registerGenerationV2CloudCapabilityRulesIpc({ registerInvoke, refresh: cloudRulesCandidateRefresh,
     application: cloudRulesApplication,
     applicationRepo: new CloudRulesApplicationV1Repo(runtime.epoch2.database),
@@ -244,23 +283,5 @@ export async function startMainV2(): Promise<void> {
     bindPackagedTestDocxFixtureGrantInvalidationV1({ window: packagedFixtureWindow, fileSelectionGrants })
   }
 
-  let closing = false
-  app.on('before-quit', (event) => {
-  if (closing) return
-  event.preventDefault()
-  closing = true
-  mainWindowLifecycle.clearWindowListeners()
-  clearMainWindowActivator()
-  void (async () => {
-    rawGenerationRequestStore.close()
-    await packagedTestDocxFixtureAuthority?.dispose()
-    await cloudRulesCandidateRefresh.dispose()
-    await modelsDevSourceRefresh.dispose()
-    await runtime.epoch2.close()
-    app.exit(0)
-  })().catch(() => {
-    console.error('[main-v2] MAIN_V2_SHUTDOWN_FAILED')
-    app.exit(1)
-  })
-  })
+  app.on('before-quit', (event) => shutdownCoordinator.handleBeforeQuit(event))
 }

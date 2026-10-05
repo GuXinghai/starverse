@@ -568,6 +568,24 @@ describe('ui-app SettingsPanel', () => {
     expect(credentialUpdate).not.toHaveBeenCalled()
   })
 
+  describe('quit warning', () => {
+    const KEY = 'generationV2UiPreferences.warnOnQuitWithActiveWork'
+    const quitWrites = () => ((globalThis as any).electronStore.set as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([key]) => key === KEY).map(([, value]) => value)
+
+    it('defaults to enabled and persists the toggled value on Save', async () => {
+      const user = userEvent.setup()
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      const toggle = await screen.findByTestId('settings-quit-warning-enabled') as HTMLInputElement
+      await waitFor(() => expect(toggle).not.toBeDisabled())
+      expect(toggle.checked).toBe(true)
+      await user.click(toggle)
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(quitWrites()).toEqual([false]))
+    })
+  })
+
   describe('total generation timeout', () => {
     const KEY = 'generationV2UiPreferences.generationTotalTimeoutMs'
     const timeoutWrites = () => ((globalThis as any).electronStore.set as ReturnType<typeof vi.fn>).mock.calls

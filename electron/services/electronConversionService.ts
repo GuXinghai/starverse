@@ -32,6 +32,9 @@ export class MainProcessElectronConversionService implements ElectronConversionB
   private readonly officialPackageRequest?: typeof net.request
   private readonly providerFetch?: typeof fetch
   private readonly beforeGovernedRequest?: () => void
+  private stopped = false
+  private readonly inFlight = new Set<Promise<unknown>>()
+  private readonly providerControllers = new Set<AbortController>()
 
   constructor(input: MainProcessElectronConversionServiceInput = {}) {
     this.htmlToPdfAdapter = input.htmlToPdfAdapter ?? createElectronHtmlPdfConversionAdapter()
@@ -40,9 +43,40 @@ export class MainProcessElectronConversionService implements ElectronConversionB
     this.beforeGovernedRequest = input.beforeGovernedRequest
   }
 
+  activeCount(): number { return this.inFlight.size }
+
+  /** App shutdown: reject new calls, abort in-flight provider fetches and wait for every call to settle. */
+  async quiesceForShutdown(): Promise<void> {
+    this.stopped = true
+    for (const controller of this.providerControllers) controller.abort()
+    await Promise.allSettled([...this.inFlight])
+  }
+
+  private track<T>(run: () => Promise<T>): Promise<T> {
+    const promise = run()
+    this.inFlight.add(promise)
+    const done = () => { this.inFlight.delete(promise) }
+    promise.then(done, done)
+    return promise
+  }
+
   async convert(rawRequest: ElectronConversionRequest): Promise<ElectronConversionResponse> {
     const prepared = prepareElectronConversionRequest(rawRequest)
     if (!prepared.ok) return prepared.response
+    if (this.stopped) {
+      return failClosedElectronConversionResponse({
+        requestId: prepared.request.requestId,
+        conversionKind: prepared.request.conversionKind,
+        status: 'blocked',
+        code: 'electron_conversion_blocked',
+        message: 'Electron conversion is unavailable because the app is shutting down.',
+      })
+    }
+    return this.track(() => this.convertPrepared(prepared.request))
+  }
+
+  private async convertPrepared(request: Extract<ReturnType<typeof prepareElectronConversionRequest>, { ok: true }>['request']): Promise<ElectronConversionResponse> {
+    const prepared = { request }
 
     if (prepared.request.conversionKind !== 'html_to_pdf') {
       return failClosedElectronConversionResponse({
@@ -61,10 +95,16 @@ export class MainProcessElectronConversionService implements ElectronConversionB
     try { this.beforeGovernedRequest?.() } catch (error) {
       return { ok: false, code: 'download_failed', detail: error instanceof Error ? error.message : 'proxy_environment_unavailable' }
     }
-    return await fetchPackageToFileWithElectronNet(request, { request: this.officialPackageRequest })
+    if (this.stopped) return { ok: false, code: 'download_failed', detail: 'app_shutting_down' }
+    return await this.track(() => fetchPackageToFileWithElectronNet(request, { request: this.officialPackageRequest }))
   }
 
   async fetchProvider(request: ElectronProviderFetchRequest): Promise<ElectronProviderFetchResult> {
+    if (this.stopped) return { ok: false, code: 'provider_fetch_failed', detail: 'app_shutting_down' }
+    return await this.track(() => this.fetchProviderUntracked(request))
+  }
+
+  private async fetchProviderUntracked(request: ElectronProviderFetchRequest): Promise<ElectronProviderFetchResult> {
     if (!this.providerFetch) {
       return {
         ok: false,
@@ -83,6 +123,7 @@ export class MainProcessElectronConversionService implements ElectronConversionB
     }
 
     const controller = new AbortController()
+    this.providerControllers.add(controller)
     const timeoutMs = normalizeProviderFetchTimeoutMs(request.timeoutMs)
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -118,6 +159,7 @@ export class MainProcessElectronConversionService implements ElectronConversionB
       }
     } finally {
       clearTimeout(timeoutId)
+      this.providerControllers.delete(controller)
     }
   }
 }

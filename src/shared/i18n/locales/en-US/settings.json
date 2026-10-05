@@ -712,6 +712,10 @@
       "recentModelsLimit": "Recent models limit",
       "recentModelsLimitDesc": "Controls the Model Picker Rec list."
     },
+    "quitWarning": {
+      "label": "Warn when quitting while work is still running",
+      "help": "If work such as a generation, file processing or a plugin task is still running, ask for confirmation before quitting."
+    },
     "generationTimeout": {
       "title": "Generation Timeout",
       "unlimited": "Total generation timeout: Unlimited",

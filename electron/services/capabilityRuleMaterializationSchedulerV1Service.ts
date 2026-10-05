@@ -58,6 +58,7 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
   readonly #logFailure: (details: Readonly<{ code: string; attempts: number }>) => void
   #requested = false
   #drainPromise: Promise<void> | null = null
+  #stopped = false
 
   constructor(input: SchedulerInput) {
     this.#materializationService = input.materializationService
@@ -72,6 +73,7 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
 
   /** Schedule one or, if a notification arrives while running, one coalesced follow-up run. */
   schedule(): Promise<void> {
+    if (this.#stopped) return Promise.resolve()
     this.#requested = true
     if (!this.#drainPromise) {
       const drainPromise = this.#drain()
@@ -88,6 +90,15 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
     return this.#drainPromise
   }
 
+  activeCount(): number { return this.#drainPromise ? 1 : 0 }
+
+  /** App shutdown: stop scheduling new runs and wait for the in-flight run to settle. */
+  async quiesceForShutdown(): Promise<void> {
+    this.#stopped = true
+    this.#requested = false
+    try { await this.#drainPromise } catch { /* the run's own awaiters observe the failure */ }
+  }
+
   #finishDrain(failed = false): Promise<void> | undefined {
     this.#drainPromise = null
     // A notification can land after #drain observes an empty queue but before this
@@ -99,7 +110,7 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
   }
 
   async #drain(): Promise<void> {
-    while (this.#requested) {
+    while (this.#requested && !this.#stopped) {
       this.#requested = false
       await this.#runOnce()
     }

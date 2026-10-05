@@ -590,4 +590,43 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
       db.close()
     }
   })
+
+  it('quiesces every active operation for app shutdown, rejects new work and seals late callbacks', async () => {
+    const db = createDb()
+    try {
+      const bundle = seedOperation(db, 'quit')
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+      const order: string[] = []
+      expect(registry.countActive()).toBe(0)
+      registry.start({ kind: 'created', execution: bundle }, (signal) => terminalizeOnAbort({
+        db, registry, signal, suffix: 'quit', order,
+      }))
+      expect(registry.countActive()).toBe(1)
+      await registry.quiesceForShutdown(1_000)
+      expect(order).toEqual(['aborted:quit'])
+      expect(registry.countActive()).toBe(0)
+      const other = seedOperation(db, 'quit-late')
+      expect(() => registry.register({ kind: 'created', execution: other }))
+        .toThrow('GENERATION_V2_RUNTIME_SHUTTING_DOWN')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('times out a stuck operation at shutdown and then ignores its late failure instead of writing to a closed db', async () => {
+    const db = createDb()
+    const bundle = seedOperation(db, 'late')
+    const registry = new GenerationOperationRuntimeRegistryV2(db)
+    let fail!: (error: Error) => void
+    registry.start({ kind: 'created', execution: bundle }, () => new Promise<void>((_resolve, reject) => { fail = reject }))
+    await expect(registry.quiesceForShutdown(10)).rejects.toThrow('GENERATION_V2_RUNTIME_SHUTDOWN_ABORT_TIMEOUT')
+    registry.seal()
+    db.close()
+    const unhandled = vi.fn()
+    process.once('unhandledRejection', unhandled)
+    fail(new Error('late runner failure'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    process.off('unhandledRejection', unhandled)
+    expect(unhandled).not.toHaveBeenCalled()
+  })
 })

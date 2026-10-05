@@ -244,6 +244,15 @@ describe('registerStoreIpc', () => {
     expect(store.get('generationV2UiPreferences')).toEqual({ generationTotalTimeoutMs: null })
   })
 
+  it('accepts only booleans for the quit-warning preference', async () => {
+    const { handlers, store } = registerHandlers()
+    const set = handlers.get('store-set')!
+    const key = 'generationV2UiPreferences.warnOnQuitWithActiveWork'
+    for (const bad of ['true', 1, null, {}, undefined]) expect(await set({}, key, bad), String(bad)).toBe(false)
+    expect(await set({}, key, false)).toBe(true)
+    expect(store.get('generationV2UiPreferences')).toEqual({ warnOnQuitWithActiveWork: false })
+  })
+
   it('merges concurrent UI preference leaf writes into one retained namespace', async () => {
     const { handlers, store } = registerHandlers()
     const set = handlers.get('store-set')!

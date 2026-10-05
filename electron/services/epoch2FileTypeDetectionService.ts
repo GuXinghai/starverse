@@ -50,6 +50,8 @@ export class Epoch2FileTypeDetectionService {
   private readonly queued = new Set<string>()
   private readonly queue: QueueItem[] = []
   private running = false
+  private stopped = false
+  private idleWaiters: Array<() => void> = []
 
   constructor(private readonly input: Readonly<{
     db: BetterSqlite3.Database
@@ -64,12 +66,25 @@ export class Epoch2FileTypeDetectionService {
     this.registry = new EnginePluginRegistryRepo(input.db)
   }
 
+  activeCount(): number { return this.queue.length + (this.running ? 1 : 0) }
+
+  /**
+   * App shutdown: stop accepting work, drop queued items (their rows stay pending and are
+   * re-scheduled by recoverPending on the next launch) and wait for the running item to settle.
+   */
+  async quiesceForShutdown(): Promise<void> {
+    this.stopped = true
+    this.queue.length = 0
+    if (!this.running) return
+    await new Promise<void>((resolve) => { this.idleWaiters.push(resolve) })
+  }
+
   recoverPending(): void {
     for (const projection of this.detections.listPending()) this.schedule(projection, null)
   }
 
   schedule(projection: FileTypeDetectionProjectionV2, conversationId: string | null): void {
-    if (projection.status !== 'pending') return
+    if (this.stopped || projection.status !== 'pending') return
     const key = this.key(projection)
     if (this.queued.has(key)) return
     this.queued.add(key)
@@ -108,6 +123,9 @@ export class Epoch2FileTypeDetectionService {
       }
     } finally {
       this.running = false
+      const waiters = this.idleWaiters
+      this.idleWaiters = []
+      for (const resolve of waiters) resolve()
       if (this.queue.length > 0) void this.drain()
     }
   }
@@ -122,6 +140,7 @@ export class Epoch2FileTypeDetectionService {
       if (fact.blob.sha256.value !== projection.assetSha256) throw new Error('DETECTION_ASSET_FACT_MISMATCH')
       bytes = this.input.attachmentBlobStore.readRevisionBytes(fact)
       const magika = await this.runMagika(bytes, fact.filename, fact.blob.mime)
+      if (this.stopped) return
       const detected = detectBasicFileTypeV2({
         bytes,
         filename: fact.filename,
@@ -145,6 +164,7 @@ export class Epoch2FileTypeDetectionService {
       })
       if (committed) this.notify(item, 'ready', projection.revision + 1)
     } catch (error) {
+      if (this.stopped) return
       const detail = sanitizeError(error)
       const errorCode = classifyDetectionFailure(error)
       const committed = this.detections.completeFailed({

@@ -183,4 +183,19 @@ describe('main-process electron conversion service skeleton', () => {
       detail: 'electron_provider_fetch_service_unavailable',
     })
   })
+
+  it('quiesces for shutdown: aborts in-flight provider fetches, waits for them and rejects new calls', async () => {
+    const providerFetch = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+    }))
+    const service = createMainProcessElectronConversionService({ providerFetch: providerFetch as unknown as typeof fetch })
+    const pending = service.fetchProvider({ url: 'https://example.com/x', method: 'GET' } as never)
+    expect(service.activeCount()).toBe(1)
+    await service.quiesceForShutdown()
+    expect(await pending).toMatchObject({ ok: false })
+    expect(service.activeCount()).toBe(0)
+    expect(await service.fetchProvider({ url: 'https://example.com/y', method: 'GET' } as never))
+      .toEqual({ ok: false, code: 'provider_fetch_failed', detail: 'app_shutting_down' })
+    expect(providerFetch).toHaveBeenCalledTimes(1)
+  })
 })

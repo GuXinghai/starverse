@@ -49,6 +49,13 @@
       "restart": "重启应用",
       "close": "关闭应用",
       "loopWarning": "窗口已反复失败，已禁用重新加载；请重启或关闭应用。"
+    },
+    "quitWithActiveWork": {
+      "title": "仍有任务在运行",
+      "message": "Starverse 仍有任务正在后台运行。",
+      "detail": "现在退出将中断这些任务，未完成的生成、文件处理或插件任务可能丢失。",
+      "quit": "仍然退出",
+      "cancel": "取消"
     }
   }
 }

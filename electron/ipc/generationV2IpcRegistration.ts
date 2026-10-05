@@ -40,6 +40,7 @@ import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/a
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
 import { ModelFactsInspectorV1Service } from '../services/modelFactsInspectorV1Service'
+import type { RegisterActiveWorkSourceV2 } from '../services/appShutdownCoordinatorV2'
 import type { ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 /**
@@ -54,6 +55,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
   localDirectFetch: ProviderFetch
   proxyMode: () => 'environment' | 'manual' | 'direct' | 'system'
   notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
+  registerActiveWorkSource?: RegisterActiveWorkSourceV2
 }>): readonly string[] {
   input.epoch2.assertCurrent()
   const common = Object.freeze({ db: input.epoch2.database,
@@ -61,6 +63,8 @@ export function registerGenerationV2Ipc(input: Readonly<{
     rawGenerationRequestStore: input.rawGenerationRequestStore,
     fetchImpl: input.cloudFetch })
   const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
+  input.registerActiveWorkSource?.({ name: 'generation-v2-runtime', activeCount: () => runtimeRegistry.countActive(),
+    quiesce: () => runtimeRegistry.quiesceForShutdown(), seal: () => runtimeRegistry.seal() })
   const subjectSetService = new AuthoritativeModelSubjectSetV1Service(input.epoch2.database,
     input.epoch2.credentialService, input.epoch2.openAICompatibleCredentialService)
   const modelFactsInspector = new ModelFactsInspectorV1Service(input.epoch2.database, subjectSetService)
@@ -69,6 +73,9 @@ export function registerGenerationV2Ipc(input: Readonly<{
   const materializationScheduler = new CapabilityRuleMaterializationSchedulerV1Service({
     db: input.epoch2.database, materializationService,
   })
+  input.registerActiveWorkSource?.({ name: 'capability-rule-materialization',
+    activeCount: () => materializationScheduler.activeCount(),
+    quiesce: () => materializationScheduler.quiesceForShutdown() })
   const notifyCommittedSubjectMutation = async () => { await materializationScheduler.schedule() }
   const channels = [
     ...registerGenerationV2CapabilityIpc({ registerInvoke: input.registerInvoke, epoch2: input.epoch2 }),

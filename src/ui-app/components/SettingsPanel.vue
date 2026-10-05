@@ -22,6 +22,7 @@ import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrout
 import { normalizeGenerationParamsLayer } from '@/next/generation-params/generationParamPersistence'
 import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import { CatalogQueryService } from '@/next/modelCatalog/catalogQueryService'
+import { getQuitWarningEnabled, setQuitWarningEnabled } from '@/next/settings/quitWarningClient'
 import { getGenerationTotalTimeoutMs, setGenerationTotalTimeoutMs } from '@/next/settings/generationTotalTimeoutClient'
 import { GENERATION_TOTAL_TIMEOUT_MAX_MINUTES, parseGenerationTotalTimeoutMinutesText } from '@/shared/settings/generationTotalTimeoutPreference'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
@@ -740,6 +741,7 @@ const requestedReasoningExclude = ref(false)
 const reasoningPanelDefaultExpanded = ref(true)
 const userMessageRenderDefault = ref(false)
 const maxRecentModelsDraft = ref('8')
+const quitWarningEnabled = ref(true)
 const generationTimeoutUnlimited = ref(true)
 const generationTimeoutMinutesDraft = ref('30')
 const generationTimeoutInvalid = computed(() =>
@@ -1287,6 +1289,7 @@ async function load() {
     const prefs = await getReasoningPrefs()
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
     reasoningPanelDefaultExpanded.value = await getChatReasoningPanelDefaultExpanded()
+    quitWarningEnabled.value = await getQuitWarningEnabled()
     const storedGenerationTimeoutMs = await getGenerationTotalTimeoutMs()
     generationTimeoutUnlimited.value = storedGenerationTimeoutMs === null
     if (storedGenerationTimeoutMs !== null) generationTimeoutMinutesDraft.value = String(storedGenerationTimeoutMs / 60_000)
@@ -1383,6 +1386,7 @@ async function save() {
     await setReasoningPrefs(nextReasoningPrefs)
     await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
     await setGenerationTotalTimeoutMs(nextGenerationTimeout.ms)
+    await setQuitWarningEnabled(quitWarningEnabled.value)
     await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
     if (isDev) {
       try {
@@ -3241,6 +3245,24 @@ onMounted(() => {
               data-testid="settings-max-recent-models"
             />
           </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-quit-warning">
+        <div class="flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+          <div class="min-w-0">
+            <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.quitWarning.label') }}</div>
+            <div class="text-[11px] text-gray-500">{{ t('settings.quitWarning.help') }}</div>
+          </div>
+          <label class="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              :aria-label="t('settings.quitWarning.label')"
+              :disabled="!canEdit || loading || saving"
+              v-model="quitWarningEnabled"
+              data-testid="settings-quit-warning-enabled"
+            />
+          </label>
         </div>
       </div>
 

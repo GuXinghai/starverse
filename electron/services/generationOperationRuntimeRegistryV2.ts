@@ -43,7 +43,9 @@ export class GenerationOperationRuntimeRegistryV2Error extends Error {
     | 'GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING'
     | 'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT'
     | 'GENERATION_V2_RUNTIME_PROJECT_QUIESCING'
-    | 'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT') {
+    | 'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT'
+    | 'GENERATION_V2_RUNTIME_SHUTDOWN_ABORT_TIMEOUT'
+    | 'GENERATION_V2_RUNTIME_SHUTTING_DOWN') {
     super(code)
     this.name = 'GenerationOperationRuntimeRegistryV2Error'
   }
@@ -93,6 +95,8 @@ export class GenerationOperationRuntimeRegistryV2 {
   readonly #quiescingBranches = new Set<string>()
   readonly #quiescingConversations = new Set<string>()
   readonly #quiescingProjects = new Set<string>()
+  #shuttingDown = false
+  #sealed = false
   readonly #recentUsage: GenerationRecentUsageAuthorityV2
 
   constructor(
@@ -127,6 +131,7 @@ export class GenerationOperationRuntimeRegistryV2 {
   }
 
   register(result: StartableGenerationResultV2): GenerationOperationRuntimeSnapshotV2 {
+    if (this.#shuttingDown) throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_SHUTTING_DOWN')
     const binding = bindingOf(result.execution)
     if (this.#quiescingBranches.has(binding.branchId)) {
       throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
@@ -182,7 +187,7 @@ export class GenerationOperationRuntimeRegistryV2 {
     }
     queueMicrotask(() => {
       void run(controller.signal)
-        .catch((error) => this.#terminalizeUnhandledRunFailure(result, error))
+        .catch((error) => { if (!this.#sealed) this.#terminalizeUnhandledRunFailure(result, error) })
         .finally(() => {
           const current = this.#entries.get(snapshot.binding.operationId)
           if (current?.abort) current.abort = null
@@ -265,6 +270,25 @@ export class GenerationOperationRuntimeRegistryV2 {
     }))
   }
 
+  /** Operations whose runner is still executing. */
+  countActive(): number {
+    let count = 0
+    for (const entry of this.#entries.values()) if (entry.snapshot.status === 'generating' && entry.abort !== null) count += 1
+    return count
+  }
+
+  /** App shutdown: reject new operations, abort every active one and wait (bounded) for terminal events. */
+  async quiesceForShutdown(timeoutMs = 5_000): Promise<void> {
+    this.#shuttingDown = true
+    await this.#abortAndDrainScope(() => true, timeoutMs, 'GENERATION_V2_RUNTIME_SHUTDOWN_ABORT_TIMEOUT')
+  }
+
+  /** After this, late runner callbacks neither terminalize nor publish through the (soon closed) database. */
+  seal(): void {
+    this.#shuttingDown = true
+    this.#sealed = true
+  }
+
   abort(operationId: string): boolean {
     return this.#entries.get(operationId)?.abort?.() ?? false
   }
@@ -343,7 +367,8 @@ export class GenerationOperationRuntimeRegistryV2 {
     timeoutMs: number,
     timeoutCode: 'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT' |
       'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT' |
-      'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT',
+      'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT' |
+      'GENERATION_V2_RUNTIME_SHUTDOWN_ABORT_TIMEOUT',
   ): Promise<void> {
     const remaining = new Set([...this.#entries.entries()]
       .filter(([, entry]) => matches(entry) && entry.snapshot.status === 'generating' && entry.abort !== null)
@@ -378,6 +403,7 @@ export class GenerationOperationRuntimeRegistryV2 {
   }
 
   publishPersistedProjection(projection: GenerationStreamProjectionV2): GenerationStreamEventV2 {
+    if (this.#sealed) throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_SHUTTING_DOWN')
     const bundle = this.#execution.findOperation(projection.operationId)
     if (!bundle) throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_OPERATION_UNKNOWN')
     const binding = bindingOf(bundle)
