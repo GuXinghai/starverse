@@ -81,10 +81,16 @@ describe('Gemini GenerateContent attachment encoding coverage', () => {
     expect(() => validate([managed({ include: false, sendAs: 'inline_text', conversion: 'plain_text' })])).not.toThrow()
   })
 
-  it('still rejects URL references and unencoded conversion values loudly, included or excluded', () => {
-    for (const include of [true, false]) {
-      expect(() => validate([urlRef({ include })])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
-    }
+  it('does not let excluded unsupported attachments block validation, wherever they sit in the list', () => {
+    expect(() => validate([urlRef({ include: false })])).not.toThrow()
+    expect(() => validate([urlRef({ include: false }), managed()])).not.toThrow()
+    expect(() => validate([managed(), urlRef({ include: false })])).not.toThrow()
+    expect(() => validate([managed({ include: false, conversion: 'images' })])).not.toThrow()
+  })
+
+  it('still rejects included URL references and unencoded conversion values loudly', () => {
+    expect(() => validate([urlRef()])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
+    expect(() => validate([urlRef({ include: false }), urlRef({ referenceId: 'url:2' })])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY')
     expect(() => validate([managed({ conversion: 'images' })])).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
   })
 })

@@ -341,7 +341,9 @@ function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): 
 function explicitValues(intent: GenerationIntentLayerV2): ReadonlyMap<ModelCapabilitySemanticPathV2, unknown> {
   const projected = projectGenerationIntentLayerV2({ schemaVersion: 2, generation: intent.generation,
     reasoning: intent.reasoning, web: intent.web, image: intent.image, tools: intent.tools,
-    attachments: intent.attachments, providerExtension: intent.providerExtension }) as Record<string, unknown>
+    // Excluded attachments stay in the snapshot but never reach the wire, so they cannot block transport validation.
+    attachments: intent.attachments?.filter((attachment) => attachment.include),
+    providerExtension: intent.providerExtension }) as Record<string, unknown>
   const values = new Map<ModelCapabilitySemanticPathV2, unknown>()
   const addObject = (prefix: string, value: unknown) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return

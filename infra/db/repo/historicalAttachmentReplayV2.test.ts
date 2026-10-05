@@ -588,6 +588,18 @@ describe('Gemini tool continuation with an attachment-bearing originating turn',
     } finally { db.close() }
   })
 
+  it('keeps an excluded url_reference in the snapshot without blocking or reaching the wire', () => {
+    const { db, op } = toolConversation([{ text: 'one', attachments: [
+      urlAttachment('image', 'https://example.test/p.png', false), textAttachment('asset:t', 'revision:t', sha(textBytes))] }], 2)
+    try {
+      const { body } = compileRound(db, op, 2)
+      expect(body.contents[0]).toEqual({ role: 'user', parts: [{ text: 'question 1' }, { text: 'continuation file text' }] })
+      expect(JSON.stringify(body)).not.toContain('example.test')
+      const stored = db.prepare('SELECT canonical_json AS j FROM assistant_generation_snapshot_v2 WHERE operation_id=?').get(op) as { j: string } | undefined
+      if (stored) expect(stored.j).toContain('https://example.test/p.png')
+    } finally { db.close() }
+  })
+
   it('encodes PDF forms (provider_file and converted_document) through production validation', () => {
     const pdf = pdfBytes
     const { db, op } = toolConversation([{ text: 'one', attachments: [
