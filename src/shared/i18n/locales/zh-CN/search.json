@@ -1,0 +1,137 @@
+{
+  "search": {
+    "title": "搜索",
+    "close": "关闭",
+    "queryLabel": "关键词",
+    "queryPlaceholder": "搜索…",
+    "submit": "搜索",
+    "hint": "输入关键词，搜索项目名称、对话标题和消息内容。",
+    "scope": {
+      "label": "搜索范围",
+      "project": "项目名称",
+      "convo": "对话标题",
+      "user": "用户消息",
+      "assistant": "助手消息",
+      "none": "请至少选择一个搜索范围。"
+    },
+    "scopeDefault": {
+      "save": "保存为默认范围",
+      "saved": "已保存默认范围",
+      "failed": "无法保存默认范围"
+    },
+    "mode": {
+      "label": "匹配方式",
+      "fuzzy": "模糊",
+      "exact": "精确"
+    },
+    "filters": {
+      "show": "显示筛选",
+      "hide": "隐藏筛选",
+      "project": "项目",
+      "convo": "对话",
+      "all": "全部",
+      "from": "起始时间（本地时间）",
+      "to": "截止时间（本地时间）",
+      "rebuildIndex": "重建索引"
+    },
+    "sort": {
+      "label": "排序",
+      "chronological": "最早优先",
+      "reverseChronological": "最新优先",
+      "relevance": "相关度"
+    },
+    "presentation": {
+      "label": "视图",
+      "scroll": "滚动",
+      "pagination": "分页"
+    },
+    "type": {
+      "project": "项目",
+      "convo": "对话",
+      "message": "消息"
+    },
+    "fallback": {
+      "project": "项目",
+      "convo": "对话"
+    },
+    "messageIn": "{title} 中的消息",
+    "status": {
+      "searching": "正在搜索…",
+      "noResults": "没有找到结果。",
+      "openingResult": "正在打开搜索结果…",
+      "loadingMore": "正在加载更多结果…",
+      "endOfResults": "已到结果末尾",
+      "count": "{count} 条结果",
+      "countMore": "{count}+ 条结果",
+      "rebuilding": "正在重建索引…",
+      "indexRebuilt": "索引已重建。"
+    },
+    "errors": {
+      "searchFailed": "搜索失败，请重试。",
+      "rebuildFailed": "无法重建搜索索引。",
+      "openFailed": "无法打开此搜索结果。",
+      "loadMoreFailed": "无法加载更多结果。",
+      "retry": "重试",
+      "pageFailed": "无法加载第 {page} 页。"
+    },
+    "limit": {
+      "message": "已达到搜索结果显示上限。如需继续加载，",
+      "link": "跳转设置",
+      "linkLabel": "打开搜索设置"
+    },
+    "capacity": {
+      "message": "已到达当前分页容量允许的最后一页（{pages} 页），仍有更多结果。如需浏览，",
+      "link": "请在设置中提高分页容量"
+    },
+    "paginator": {
+      "label": "结果分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {page} 页",
+      "current": "第 {page} 页，当前页",
+      "selected": "第 {page} 页，已选中",
+      "currentSelected": "第 {page} 页，当前页且已选中",
+      "readapt": "重新适配布局",
+      "readaptTitle": "根据当前窗口大小重新计算每页数量",
+      "navigating": "正在加载页面…"
+    },
+    "settings": {
+      "title": "搜索",
+      "description": "对话搜索的默认设置。在搜索窗口中临时更改排序或视图不会改变这些设置。",
+      "defaults": "默认值",
+      "defaultSort": "默认排序",
+      "defaultPresentation": "默认视图",
+      "resultLimit": "结果显示上限",
+      "resultLimitHint": "每次搜索最多检索并显示的结果数，对所有视图和加载策略生效。",
+      "scrollGroup": "滚动视图",
+      "paginationGroup": "分页视图",
+      "loading": "加载策略",
+      "loadingFull": "全量加载",
+      "loadingOnDemand": "按需加载",
+      "batchSize": "每批结果数",
+      "prefetchBatches": "预取批数",
+      "prefetchPages": "预取页数",
+      "capacity": "分页容量",
+      "capacityStandard": "标准（最多 99 页）",
+      "capacityExtended": "扩展（最多 999 页）",
+      "capacityUnlimited": "不限",
+      "pageSizing": "每页数量",
+      "pageSizingFixed": "固定",
+      "pageSizingAdaptive": "自适应（适配窗口）",
+      "fixedPageSize": "每页结果数",
+      "interactions": "分页器交互",
+      "arrowClick": "点击箭头",
+      "pageClick": "点击页码",
+      "keyboard": "键盘左右键",
+      "direct": "直接跳转",
+      "selectFirst": "先选中，按 Enter 跳转",
+      "positiveInteger": "请输入大于零的整数。",
+      "saved": "已保存",
+      "saveFailed": "无法保存"
+    },
+    "matchNav": {
+      "previous": "上一个匹配",
+      "next": "下一个匹配"
+    }
+  }
+}

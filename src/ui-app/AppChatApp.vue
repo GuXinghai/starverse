@@ -297,10 +297,18 @@ function openModelFactsInspectorPath(path: string) {
   const subject = activeSessionCapabilityExplanations.value?.subject
   if (subject) openModelFactsInspector(subject, path)
 }
+/** Search's display-limit and pagination-capacity notices deep-link to the Search settings section. */
+const searchSettingsTarget = ref(false)
+function openSearchSettings() {
+  closeSearchModal()
+  searchSettingsTarget.value = true
+  openSettings()
+}
 watch(settingsOpen, (open) => {
   if (!open) {
     modelFactsInspectorSubject.value = null
     modelFactsInspectorPath.value = null
+    searchSettingsTarget.value = false
   }
 })
 const templateResetOpen = ref(false)
@@ -461,6 +469,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       :disabled="!isReady || isDraftInteractionLocked"
       :selectHit="onSelectSearchHit"
       @close="closeSearchModal"
+      @open-settings="openSearchSettings"
     />
 
     <ChatWorkspaceShell
@@ -582,8 +591,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           data-testid="search-match-nav"
         >
           <span class="font-mono" data-testid="search-match-nav-index">{{ searchMessageNavLabel }}</span>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" aria-label="Previous match" data-testid="search-match-nav-prev" @click="onNavigateSearchMessage(-1)">&lt;</button>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" aria-label="Next match" data-testid="search-match-nav-next" @click="onNavigateSearchMessage(1)">&gt;</button>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" :aria-label="t('search.matchNav.previous')" data-testid="search-match-nav-prev" @click="onNavigateSearchMessage(-1)">&lt;</button>
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" :aria-label="t('search.matchNav.next')" data-testid="search-match-nav-next" @click="onNavigateSearchMessage(1)">&gt;</button>
         </div>
         <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
           <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
@@ -1261,7 +1270,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       <SettingsPanel
         :disabled="!settingsAllowed"
         :isRunning="effectiveIsRunning"
-        :initialCategory="modelFactsInspectorSubject ? 'models-capabilities' : undefined"
+        :initialCategory="modelFactsInspectorSubject ? 'models-capabilities' : searchSettingsTarget ? 'general' : undefined"
+        :focusSection="searchSettingsTarget ? 'search' : undefined"
         :inspectorSubject="modelFactsInspectorSubject"
         :inspectorPath="modelFactsInspectorPath"
       />

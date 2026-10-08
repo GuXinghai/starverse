@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
@@ -28,6 +28,7 @@ import { GENERATION_TOTAL_TIMEOUT_MAX_MINUTES, parseGenerationTotalTimeoutMinute
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
+import SearchSettingsSection from './SearchSettingsSection.vue'
 import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSettingsPanel.vue'
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
@@ -66,6 +67,8 @@ const props = defineProps<{
   disabled: boolean
   isRunning: boolean
   initialCategory?: SettingsCategoryId
+  /** Scrolls this settings section into view once the panel is showing (used by in-app deep links). */
+  focusSection?: 'search'
   inspectorSubject?: CanonicalModelSubjectV1 | null
   inspectorPath?: string | null
 }>()
@@ -452,6 +455,12 @@ const activeCategory = ref<SettingsCategoryId>(props.initialCategory ?? 'general
 watch(() => props.initialCategory, (value) => {
   if (value) activeCategory.value = value
 })
+function revealFocusSection() {
+  if (props.focusSection !== 'search') return
+  void nextTick(() => document.getElementById('settings-search-section')?.scrollIntoView?.({ block: 'start' }))
+}
+watch(() => props.focusSection, revealFocusSection)
+onMounted(revealFocusSection)
 
 function settingsCategoryTabId(id: SettingsCategoryId): string {
   return `settings-category-tab-${id}`
@@ -2149,6 +2158,7 @@ onMounted(() => {
         </div>
       </div>
 
+          <SearchSettingsSection :disabled="disabled" />
         </section>
 
         <section

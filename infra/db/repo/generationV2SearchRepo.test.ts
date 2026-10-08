@@ -27,7 +27,7 @@ describe('GenerationV2SearchRepo', () => {
       VALUES (?, ?, 'branch:1', 'user', 'completed', NULL, NULL, NULL, ?, ?, ?)`)
       .run('message:1', 'conversation:1', 0, 3_000, 3_000)
     db.prepare(`UPDATE message_body_v2 SET body_text=? WHERE message_id=?`).run('A precise nebula search term', 'message:1')
-    const hits = new GenerationV2SearchRepo(db).query({ q: 'nebula', scope: { projectName: false, convoName: false, userMessages: true, assistantMessages: true }, mode: 'fuzzy' })
+    const hits = new GenerationV2SearchRepo(db).query({ q: 'nebula', scope: { projectName: false, convoName: false, userMessages: true, assistantMessages: true }, mode: 'fuzzy' }).hits
     expect(hits).toEqual([expect.objectContaining({ entityType: 'message', entityId: 'message:1', projectId: 'project:1',
       convoId: 'conversation:1', createdAtSec: 3, snippet: expect.stringContaining('nebula') })])
   })
@@ -37,7 +37,7 @@ describe('GenerationV2SearchRepo', () => {
     db.prepare(`UPDATE project_v2 SET name=?, updated_at_ms=? WHERE project_id=?`).run('Renamed project', 4_000, 'project:1')
     db.prepare(`UPDATE conversation_v2 SET title=?, updated_at_ms=? WHERE conversation_id=?`).run('Renamed conversation', 5_000, 'conversation:1')
     const search = new GenerationV2SearchRepo(db)
-    expect(search.query({ q: 'Renamed', scope: { projectName: true, convoName: true, userMessages: false, assistantMessages: false }, mode: 'fuzzy' })
+    expect(search.query({ q: 'Renamed', scope: { projectName: true, convoName: true, userMessages: false, assistantMessages: false }, mode: 'fuzzy' }).hits
       .map((hit) => hit.entityType)).toEqual(['convo', 'project'])
   })
 
@@ -49,7 +49,7 @@ describe('GenerationV2SearchRepo', () => {
     db.prepare(`UPDATE message_body_v2 SET body_text=? WHERE message_id=?`).run('visible phrase', 'message:visible')
     const search = new GenerationV2SearchRepo(db)
     search.rebuild()
-    expect(search.query({ q: 'visible', scope: { projectName: false, convoName: false, userMessages: true, assistantMessages: true } })
+    expect(search.query({ q: 'visible', scope: { projectName: false, convoName: false, userMessages: true, assistantMessages: true } }).hits
       .map((hit) => hit.entityId)).toEqual(['message:visible'])
   })
 
@@ -66,10 +66,10 @@ describe('GenerationV2SearchRepo', () => {
     const db = database()
     message(db, 'message:1', 'user', 0, 3_000, 'unrelated body text')
     const search = new GenerationV2SearchRepo(db)
-    expect(search.query({ q: 'Alpha', scope: { ...none, userMessages: true, assistantMessages: true } })).toEqual([])
-    expect(search.query({ q: 'Alpha', scope: { ...none, convoName: true } }).map((hit) => [hit.entityType, hit.entityId]))
+    expect(search.query({ q: 'Alpha', scope: { ...none, userMessages: true, assistantMessages: true } }).hits).toEqual([])
+    expect(search.query({ q: 'Alpha', scope: { ...none, convoName: true } }).hits.map((hit) => [hit.entityType, hit.entityId]))
       .toEqual([['convo', 'conversation:1']])
-    expect(search.query({ q: 'Alpha', scope: { ...none, projectName: true } }).map((hit) => [hit.entityType, hit.entityId]))
+    expect(search.query({ q: 'Alpha', scope: { ...none, projectName: true } }).hits.map((hit) => [hit.entityType, hit.entityId]))
       .toEqual([['project', 'project:1']])
   })
 
@@ -80,11 +80,36 @@ describe('GenerationV2SearchRepo', () => {
     message(db, 'message:user2', 'user', 2, 3_020, 'shared quasar again')
     const search = new GenerationV2SearchRepo(db)
     const ids = (scope: Partial<typeof none>, order?: 'chronological') =>
-      search.query({ q: 'quasar', scope: { ...none, ...scope }, convoId: 'conversation:1', order }).map((hit) => hit.entityId)
+      search.query({ q: 'quasar', scope: { ...none, ...scope }, convoId: 'conversation:1', order }).hits.map((hit) => hit.entityId)
     expect(ids({ userMessages: true }, 'chronological')).toEqual(['message:user', 'message:user2'])
     expect(ids({ assistantMessages: true })).toEqual(['message:assistant'])
     expect(ids({ userMessages: true, assistantMessages: true }, 'chronological'))
       .toEqual(['message:user', 'message:assistant', 'message:user2'])
     expect(ids({})).toEqual([])
+  })
+  it('windows an ordered result set with an exact hasMore and mirrored newest-first order', () => {
+    const db = database()
+    for (let index = 0; index < 7; index += 1) message(db, `message:${index}`, 'user', index, 3_000 + index * 10, `pager token ${index}`)
+    const search = new GenerationV2SearchRepo(db)
+    const scope = { ...none, userMessages: true }
+    const window = (order: 'chronological' | 'reverse-chronological' | 'relevance', offset: number, limit: number) =>
+      search.query({ q: 'pager', scope, order, offset, limit })
+    const first = window('chronological', 0, 3)
+    expect(first.hits.map((hit) => hit.entityId)).toEqual(['message:0', 'message:1', 'message:2'])
+    expect(first.hasMore).toBe(true)
+    expect(window('chronological', 3, 3).hasMore).toBe(true)
+    const last = window('chronological', 6, 3)
+    expect(last.hits.map((hit) => hit.entityId)).toEqual(['message:6'])
+    expect(last.hasMore).toBe(false)
+    expect(window('chronological', 4, 3).hasMore).toBe(false)
+    expect(window('reverse-chronological', 0, 3).hits.map((hit) => hit.entityId)).toEqual(['message:6', 'message:5', 'message:4'])
+    // Consecutive windows tile the full set exactly once, in every order.
+    for (const order of ['chronological', 'reverse-chronological', 'relevance'] as const) {
+      const all = window(order, 0, 100).hits.map((hit) => hit.entityId)
+      const tiled = [0, 3, 6].flatMap((offset) => window(order, offset, 3).hits.map((hit) => hit.entityId))
+      expect(tiled).toEqual(all)
+      expect(new Set(all).size).toBe(7)
+    }
+    expect(search.query({ q: 'nothing-matches', scope })).toEqual({ hits: [], hasMore: false })
   })
 })

@@ -6,6 +6,7 @@ export const GENERATION_V2_UI_PREFERENCE_KEYS = new Set([
   'generationParamsDefaults',
   'projectDefaults',
   'searchScopeDefault',
+  'searchPreferences',
   'dfcAttachmentDefaults',
   'userMessageRenderDefault',
   'reasoningPrefs',

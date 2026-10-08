@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vu
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SearchModal from './SearchModal.vue'
 import ConversationList from './ConversationList.vue'
+import { resetI18nForTests, setLocale } from '@/shared/i18n'
 
 describe('SearchModal scope selection', () => {
   const originalStore = (globalThis as any).electronStore
@@ -9,7 +10,8 @@ describe('SearchModal scope selection', () => {
   let query: ReturnType<typeof vi.fn>, set: ReturnType<typeof vi.fn>, stored: unknown
 
   beforeEach(() => {
-    query = vi.fn(async () => ({ ok: true, value: [] }))
+    resetI18nForTests(); setLocale('en-US')
+    query = vi.fn(async () => ({ ok: true, value: { hits: [], hasMore: false } }))
     set = vi.fn(async () => true)
     stored = undefined
     ;(globalThis as any).electronStore = { get: vi.fn(async () => ({ searchScopeDefault: stored })), set }

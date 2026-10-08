@@ -18,7 +18,7 @@ import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '@/next/generation-v2/capabil
 import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '@/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { readReviewedDeepSeekStableChatDefinitionV2 } from '@/next/generation-v2/contracts/providerContractRegistryV2'
 import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
-import { resetI18nForTests, t } from '@/shared/i18n'
+import { resetI18nForTests, setLocale, t } from '@/shared/i18n'
 import type { useAppChatAppLogic } from './app/appChatApp.logic'
 import AppChatApp from './AppChatApp.vue'
 
@@ -110,6 +110,8 @@ describe('actual App indexed message search navigation', () => {
     await fireEvent.update(input, query)
     await fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(bridge.search.query).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('search-result-toolbar')).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('Searching...')).toBeNull())
   }
   async function clickHit(id: string) { await fireEvent.click(await screen.findByTestId(`search-hit-${id}`)) }
   async function focused(id: string) {
@@ -119,7 +121,7 @@ describe('actual App indexed message search navigation', () => {
   }
 
   beforeEach(async () => {
-    resetI18nForTests(); captured.logic = null; serial = 0; clock = 20
+    resetI18nForTests(); setLocale('en-US'); captured.logic = null; serial = 0; clock = 20
     bridge = installGenerationV2TestBridge()
     db = new BetterSqlite3(':memory:'); applyGenerationV2SchemaForTest(db, process.cwd())
     drafts = new ComposerDraftV2Repo(db, () => 10000); graph = new ConversationGraphV2Repo(db); workspace = new ConversationWorkspaceV2Repo(db)
@@ -213,7 +215,7 @@ describe('actual App indexed message search navigation', () => {
       if (this.dataset.testid !== `msg-wrap-${first.questionId}`) originalFocus.call(this, options)
     })
     await clickHit(first.questionId)
-    expect(await screen.findByTestId('search-target-error')).toHaveTextContent(t('sendPlan.targetMessageUnavailable'))
+    expect(await screen.findByTestId('search-target-error')).toHaveTextContent(t('search.errors.openFailed'))
     expect(screen.getByTestId(`search-hit-${first.questionId}`)).toBeEnabled()
     expect(logic().activeCursorMessageId.value).not.toBe(first.questionId)
     expect(document.activeElement).not.toBe(screen.getByTestId(`msg-wrap-${first.questionId}`))
@@ -232,7 +234,7 @@ describe('actual App indexed message search navigation', () => {
     else authority(context => { graph.createProject(context, { projectId: 'project:destination', name: 'Destination', createdAtMs: 20000 });
       workspace.moveConversation(context, { conversationId: 'conversation:target', projectId: 'project:destination', updatedAtMs: 20001 }) })
     gate.resolve()
-    expect(await screen.findByTestId('search-target-error')).toHaveTextContent(t('sendPlan.targetMessageUnavailable'))
+    expect(await screen.findByTestId('search-target-error')).toHaveTextContent(t('search.errors.openFailed'))
     expect(screen.getByTestId(`search-hit-${target.questionId}`)).toBeEnabled()
     expect(document.activeElement).not.toBe(screen.queryByTestId(`msg-wrap-${target.questionId}`))
     expect(logic().activeCursorMessageId.value).not.toBe(target.questionId)

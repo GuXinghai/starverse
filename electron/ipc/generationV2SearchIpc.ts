@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { GenerationV2SearchRepo } from '../../infra/db/repo/generationV2SearchRepo'
+import { GENERATION_V2_SEARCH_MAX_WINDOW, GenerationV2SearchRepo } from '../../infra/db/repo/generationV2SearchRepo'
 import type { RegisterInvoke } from './types'
 
 export const GENERATION_V2_SEARCH_CHANNELS = Object.freeze([
@@ -46,7 +46,7 @@ function decodeQuery(value: unknown) {
   const scope = closedObject(raw.scope, ['projectName', 'convoName', 'userMessages', 'assistantMessages'])
   if (typeof scope.projectName !== 'boolean' || typeof scope.convoName !== 'boolean' || typeof scope.userMessages !== 'boolean' ||
       typeof scope.assistantMessages !== 'boolean' || (raw.mode !== 'exact' && raw.mode !== 'fuzzy') ||
-      (raw.order !== 'relevance' && raw.order !== 'chronological')) {
+      (raw.order !== 'relevance' && raw.order !== 'chronological' && raw.order !== 'reverse-chronological')) {
     throw new Error('GENERATION_V2_SEARCH_INPUT_INVALID')
   }
   const timeFromSec = raw.timeFromSec === undefined ? undefined : nonNegativeInteger(raw.timeFromSec, 0, Number.MAX_SAFE_INTEGER)
@@ -61,8 +61,8 @@ function decodeQuery(value: unknown) {
     convoId: optionalId(raw.convoId),
     ...(timeFromSec === undefined ? {} : { timeFromSec }),
     ...(timeToSec === undefined ? {} : { timeToSec }),
-    limit: nonNegativeInteger(raw.limit, 1, 200),
-    offset: nonNegativeInteger(raw.offset, 0, 10_000),
+    limit: nonNegativeInteger(raw.limit, 1, GENERATION_V2_SEARCH_MAX_WINDOW),
+    offset: nonNegativeInteger(raw.offset, 0, 2_147_483_647),
     mode: raw.mode,
     order: raw.order,
   })

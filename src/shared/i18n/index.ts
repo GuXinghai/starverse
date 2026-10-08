@@ -39,6 +39,8 @@ import zhCNDialogs from './locales/zh-CN/dialogs.json'
 import enUSDialogs from './locales/en-US/dialogs.json'
 import zhCNChat from './locales/zh-CN/chat.json'
 import enUSChat from './locales/en-US/chat.json'
+import zhCNSearch from './locales/zh-CN/search.json'
+import enUSSearch from './locales/en-US/search.json'
 
 // ── 消息注册表 ────────────────────────────────────────────
 
@@ -54,6 +56,7 @@ const messageRegistry: Record<SupportedLocale, Record<string, MessageBundle>> = 
     filePipeline: zhCNFilePipeline as unknown as MessageBundle,
     dialogs: zhCNDialogs as unknown as MessageBundle,
     chat: zhCNChat as unknown as MessageBundle,
+    search: zhCNSearch as unknown as MessageBundle,
   },
   'en-US': {
     common: enUSCommon as unknown as MessageBundle,
@@ -66,6 +69,7 @@ const messageRegistry: Record<SupportedLocale, Record<string, MessageBundle>> = 
     filePipeline: enUSFilePipeline as unknown as MessageBundle,
     dialogs: enUSDialogs as unknown as MessageBundle,
     chat: enUSChat as unknown as MessageBundle,
+    search: enUSSearch as unknown as MessageBundle,
   },
 }
 

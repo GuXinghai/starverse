@@ -17,7 +17,15 @@ export type SearchQueryParams = {
   limit?: number
   offset?: number
   mode?: 'exact' | 'fuzzy'
-  order?: 'relevance' | 'chronological'
+  order?: SearchOrder
+}
+
+export type SearchOrder = 'relevance' | 'chronological' | 'reverse-chronological'
+
+/** One ordered window of a result set; `hasMore` is true iff a hit exists after the window. */
+export type SearchPage = {
+  hits: SearchHit[]
+  hasMore: boolean
 }
 
 export type SearchHit = {

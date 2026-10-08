@@ -73,7 +73,7 @@ function fixture(count=2) {
   const repo=new GenerationV2SearchTargetRepo(db)
   function target(messageId:string,preferredBranchId:string|null=null,limit=50) {return repo.read({messageId,preferredBranchId,limit})}
   function hit(query:string,id:string) {
-    const result=new GenerationV2SearchRepo(db).query({q:query,scope:{projectName:false,convoName:false,userMessages:true,assistantMessages:true}}).find(hit=>hit.entityId===id)
+    const result=new GenerationV2SearchRepo(db).query({q:query,scope:{projectName:false,convoName:false,userMessages:true,assistantMessages:true}}).hits.find(hit=>hit.entityId===id)
     expect(result).toBeDefined(); return result!
   }
   return {db,graph,workspace,authority,turn,fork,target,hit,close:()=>db.close()}

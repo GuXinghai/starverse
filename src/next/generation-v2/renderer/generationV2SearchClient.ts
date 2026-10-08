@@ -1,4 +1,4 @@
-import type { SearchHit, SearchQueryParams } from '@/next/search/searchTypes'
+import type { SearchPage, SearchQueryParams } from '@/next/search/searchTypes'
 
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
 
@@ -14,8 +14,9 @@ function unwrap<T>(value: unknown): T {
   return result.value
 }
 
-export async function runGenerationV2SearchQuery(params: SearchQueryParams): Promise<SearchHit[]> {
-  return unwrap<readonly SearchHit[]>(await searchBridge().query(params)).slice()
+export async function runGenerationV2SearchQuery(params: SearchQueryParams): Promise<SearchPage> {
+  const page = unwrap<Readonly<{ hits: SearchPage['hits']; hasMore: boolean }>>(await searchBridge().query(params))
+  return { hits: page.hits.slice(), hasMore: page.hasMore }
 }
 
 export async function rebuildGenerationV2SearchIndex(): Promise<boolean> {

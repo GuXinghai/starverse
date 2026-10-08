@@ -23,9 +23,23 @@ export type GenerationV2SearchQueryInput = Readonly<{
   limit?: number
   offset?: number
   mode?: 'exact' | 'fuzzy'
-  /** `chronological` is oldest-first by creation time and index insertion order. */
-  order?: 'relevance' | 'chronological'
+  /**
+   * `chronological` is oldest-first by creation time and index insertion order;
+   * `reverse-chronological` is its exact mirror (newest first).
+   */
+  order?: GenerationV2SearchOrder
 }>
+
+export type GenerationV2SearchOrder = 'relevance' | 'chronological' | 'reverse-chronological'
+
+/** One ordered window of a result set. `hasMore` is true iff at least one hit exists after the window. */
+export type GenerationV2SearchPage = Readonly<{
+  hits: readonly GenerationV2SearchHit[]
+  hasMore: boolean
+}>
+
+/** Largest window one query may return; callers needing more issue several offset queries. */
+export const GENERATION_V2_SEARCH_MAX_WINDOW = 1_000
 
 export type GenerationV2SearchHit = Readonly<{
   entityType: GenerationV2SearchEntityType
@@ -41,6 +55,7 @@ type Row = Readonly<Record<string, unknown>>
 
 const HIGHLIGHT_START = '\u0001'
 const HIGHLIGHT_END = '\u0002'
+const EMPTY_PAGE: GenerationV2SearchPage = Object.freeze({ hits: Object.freeze([]), hasMore: false })
 const MAX_SAFE_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000)
 
 function clamp(value: number, min: number, max: number): number {
@@ -111,18 +126,19 @@ export class GenerationV2SearchRepo {
     rebuild()
   }
 
-  query(input: GenerationV2SearchQueryInput): readonly GenerationV2SearchHit[] {
+  query(input: GenerationV2SearchQueryInput): GenerationV2SearchPage {
     const query = buildFtsQuery(input.q, input.mode ?? 'fuzzy')
     const roles = messageRoles(input.scope)
-    if (!query || (!input.scope.projectName && !input.scope.convoName && roles.length === 0)) return Object.freeze([])
-    const limit = clamp(input.limit ?? 50, 1, 200)
+    if (!query || (!input.scope.projectName && !input.scope.convoName && roles.length === 0)) return EMPTY_PAGE
+    const limit = clamp(input.limit ?? 50, 1, GENERATION_V2_SEARCH_MAX_WINDOW)
     const offset = Math.max(0, input.offset ?? 0)
     const bind: Record<string, unknown> = {
       projectId: input.projectId ?? null,
       convoId: input.convoId ?? null,
       timeFromMs: input.timeFromSec == null ? null : clamp(input.timeFromSec, 0, MAX_SAFE_SECONDS) * 1000,
       timeToMs: input.timeToSec == null ? null : clamp(input.timeToSec, 0, MAX_SAFE_SECONDS) * 1000,
-      limit,
+      // One extra row answers "is there anything after this window" without a COUNT over the whole set.
+      limit: limit + 1,
       offset,
     }
     // Each branch matches exactly one FTS column so a message row can never match through its
@@ -153,7 +169,9 @@ export class GenerationV2SearchRepo {
     }
     const orderBy = input.order === 'chronological'
       ? 'createdAtMs ASC, ord ASC'
-      : 'score ASC, createdAtMs DESC, entityId ASC'
+      : input.order === 'reverse-chronological'
+        ? 'createdAtMs DESC, ord DESC'
+        : 'score ASC, createdAtMs DESC, entityId ASC, ord ASC'
     const select = `SELECT * FROM (${branches.join(' UNION ALL ')}) ORDER BY ${orderBy} LIMIT @limit OFFSET @offset`
     const run = (ftsQuery: string) => {
       bind.query_title = `title : (${ftsQuery})`
@@ -162,17 +180,18 @@ export class GenerationV2SearchRepo {
       const used: Record<string, unknown> = { ...bind }
       if (!branches.some((entry) => entry.includes('@query_title'))) delete used.query_title
       if (!branches.some((entry) => entry.includes('@query_body'))) delete used.query_body
-      return this.readHits(this.db.prepare(select).all(used) as Row[])
+      const rows = this.db.prepare(select).all(used) as Row[]
+      return Object.freeze({ hits: this.readHits(rows.slice(0, limit)), hasMore: rows.length > limit })
     }
     try {
       return run(query)
     } catch {
       const fallback = buildFallbackFtsQuery(input.q)
-      if (!fallback) return Object.freeze([])
+      if (!fallback) return EMPTY_PAGE
       try {
         return run(fallback)
       } catch {
-        return Object.freeze([])
+        return EMPTY_PAGE
       }
     }
   }

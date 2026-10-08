@@ -19,10 +19,12 @@ import zhCNDialogs from './zh-CN/dialogs.json'
 import enUSDialogs from './en-US/dialogs.json'
 import zhCNChat from './zh-CN/chat.json'
 import enUSChat from './en-US/chat.json'
+import zhCNSearch from './zh-CN/search.json'
+import enUSSearch from './en-US/search.json'
 import { t, getMessages, resetI18nForTests } from '../index'
 
 /** Registered namespace names — must match messageRegistry keys in index.ts */
-const REGISTERED_NAMESPACES = ['settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline', 'dialogs', 'chat'] as const
+const REGISTERED_NAMESPACES = ['settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline', 'dialogs', 'chat', 'search'] as const
 
 /**
  * Reserved top-level prefixes that common namespace must not use as nested key paths.
@@ -224,6 +226,7 @@ describe('locale key consistency', () => {
       { zh: zhCNFilePipeline.filePipeline, en: enUSFilePipeline.filePipeline, name: 'filePipeline' },
       { zh: zhCNDialogs.dialogs, en: enUSDialogs.dialogs, name: 'dialogs' },
       { zh: zhCNChat.chat, en: enUSChat.chat, name: 'chat' },
+      { zh: zhCNSearch.search, en: enUSSearch.search, name: 'search' },
     ]
     for (const ns of namespaces) {
       const zhFlat = flattenKeys(ns.zh)
@@ -245,7 +248,7 @@ describe('locale key consistency', () => {
   })
 
   it('getMessages returns inner content for all namespaces', () => {
-    const nsNames = ['common', 'settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline', 'dialogs', 'chat']
+    const nsNames = ['common', 'settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline', 'dialogs', 'chat', 'search']
     for (const ns of nsNames) {
       const zhMsgs = getMessages('zh-CN', ns)
       expect(zhMsgs).toBeDefined()

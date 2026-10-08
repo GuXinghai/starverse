@@ -3232,7 +3232,7 @@ export function useAppChatAppLogic() {
     const fallback = [hit.entityId]
     if (!context || !hit.convoId) return fallback
     try {
-      const matches = await runGenerationV2SearchQuery({
+      const { hits: matches } = await runGenerationV2SearchQuery({
         q: context.query,
         scope: { projectName: false, convoName: false,
           userMessages: context.scope.userMessages, assistantMessages: context.scope.assistantMessages },

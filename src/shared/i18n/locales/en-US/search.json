@@ -1,0 +1,137 @@
+{
+  "search": {
+    "title": "Search",
+    "close": "Close",
+    "queryLabel": "Query",
+    "queryPlaceholder": "Search...",
+    "submit": "Search",
+    "hint": "Enter a query to search project names, conversation titles and messages.",
+    "scope": {
+      "label": "Search in",
+      "project": "Project name",
+      "convo": "Conversation title",
+      "user": "User messages",
+      "assistant": "Assistant messages",
+      "none": "Select at least one search scope."
+    },
+    "scopeDefault": {
+      "save": "Save scope as default",
+      "saved": "Default saved",
+      "failed": "Could not save default"
+    },
+    "mode": {
+      "label": "Match mode",
+      "fuzzy": "Fuzzy",
+      "exact": "Exact"
+    },
+    "filters": {
+      "show": "Show filters",
+      "hide": "Hide filters",
+      "project": "Project",
+      "convo": "Conversation",
+      "all": "All",
+      "from": "From (local time)",
+      "to": "To (local time)",
+      "rebuildIndex": "Rebuild index"
+    },
+    "sort": {
+      "label": "Sort",
+      "chronological": "Oldest first",
+      "reverseChronological": "Newest first",
+      "relevance": "Relevance"
+    },
+    "presentation": {
+      "label": "View",
+      "scroll": "Scroll",
+      "pagination": "Pages"
+    },
+    "type": {
+      "project": "Project",
+      "convo": "Conversation",
+      "message": "Message"
+    },
+    "fallback": {
+      "project": "Project",
+      "convo": "Conversation"
+    },
+    "messageIn": "Message in {title}",
+    "status": {
+      "searching": "Searching...",
+      "noResults": "No results.",
+      "openingResult": "Opening the search result…",
+      "loadingMore": "Loading more results…",
+      "endOfResults": "End of results",
+      "count": "{count} results",
+      "countMore": "{count}+ results",
+      "rebuilding": "Rebuilding index…",
+      "indexRebuilt": "Index rebuilt."
+    },
+    "errors": {
+      "searchFailed": "Search failed. Please try again.",
+      "rebuildFailed": "Could not rebuild the search index.",
+      "openFailed": "Could not open this search result.",
+      "loadMoreFailed": "Could not load more results.",
+      "retry": "Retry",
+      "pageFailed": "Could not load page {page}."
+    },
+    "limit": {
+      "message": "The search result display limit has been reached. To keep loading, ",
+      "link": "go to Settings",
+      "linkLabel": "Open the search settings"
+    },
+    "capacity": {
+      "message": "This is the last page the current pagination capacity allows ({pages} pages), and more results remain. To browse them, ",
+      "link": "increase the pagination capacity in Settings"
+    },
+    "paginator": {
+      "label": "Result pages",
+      "previous": "Previous page",
+      "next": "Next page",
+      "page": "Page {page}",
+      "current": "Page {page}, current page",
+      "selected": "Page {page}, selected",
+      "currentSelected": "Page {page}, current and selected page",
+      "readapt": "Re-adapt layout",
+      "readaptTitle": "Recalculate the page size from the current window size",
+      "navigating": "Loading page…"
+    },
+    "settings": {
+      "title": "Search",
+      "description": "Defaults for conversation search. Changing sort or view inside the Search dialog is temporary and does not change these.",
+      "defaults": "Defaults",
+      "defaultSort": "Default sort",
+      "defaultPresentation": "Default view",
+      "resultLimit": "Result display limit",
+      "resultLimitHint": "Maximum results retrieved and shown per search. Applies to every view and loading strategy.",
+      "scrollGroup": "Scroll view",
+      "paginationGroup": "Pagination view",
+      "loading": "Loading strategy",
+      "loadingFull": "Full load",
+      "loadingOnDemand": "On-demand load",
+      "batchSize": "Results per batch",
+      "prefetchBatches": "Batches to prefetch",
+      "prefetchPages": "Pages to prefetch",
+      "capacity": "Pagination capacity",
+      "capacityStandard": "Standard (up to 99 pages)",
+      "capacityExtended": "Extended (up to 999 pages)",
+      "capacityUnlimited": "Unlimited",
+      "pageSizing": "Page size",
+      "pageSizingFixed": "Fixed",
+      "pageSizingAdaptive": "Adaptive (fit the window)",
+      "fixedPageSize": "Results per page",
+      "interactions": "Paginator interaction",
+      "arrowClick": "Arrow clicks",
+      "pageClick": "Page number clicks",
+      "keyboard": "Keyboard left/right",
+      "direct": "Navigate immediately",
+      "selectFirst": "Select first, then press Enter",
+      "positiveInteger": "Enter a whole number greater than zero.",
+      "saved": "Saved",
+      "saveFailed": "Could not save"
+    },
+    "matchNav": {
+      "previous": "Previous match",
+      "next": "Next match"
+    }
+  }
+}
