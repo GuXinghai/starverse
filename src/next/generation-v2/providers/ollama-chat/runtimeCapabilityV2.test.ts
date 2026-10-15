@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { LocalEndpointProfileV2 } from '../../../../../infra/db/repo/localEndpointProfileV2Repo'
-import { createOllamaChatProviderBindingV2 } from './verifiedContractV2'
-import { composeOllamaChatCapabilityV2 } from './runtimeCapabilityV2'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
+import { createOllamaChatProviderBindingV2 } from '../../../../core/generation-v2/providers/ollama-chat/verifiedContractV2'
+import { composeOllamaChatCapabilityV2 } from '../../../../core/generation-v2/providers/ollama-chat/runtimeCapabilityV2'
 
 const profile: LocalEndpointProfileV2 = Object.freeze({
   endpointProfileId: 'ollama-chat:local', providerId: 'ollama', protocolContractId: 'ollama-chat-v1',

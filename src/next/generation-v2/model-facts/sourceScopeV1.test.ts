@@ -3,7 +3,7 @@ import {
   buildCapabilityRuleSourceScopeIdV1,
   buildModelsDevSourceScopeIdV1,
   buildProviderNativeSourceScopeIdV1,
-} from './sourceScopeV1'
+} from '../../../core/generation-v2/model-facts/sourceScopeV1'
 
 describe('Canonical source scope V1', () => {
   it('isolates Provider Native evidence by authority, surface, endpoint, credential, revision, and category', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeGeminiModelsEvidenceV1 } from './modelsEvidenceV1'
+import { decodeGeminiModelsEvidenceV1 } from '../../../../core/generation-v2/providers/gemini/modelsEvidenceV1'
 
 describe('Gemini models evidence V1', () => {
   it('accepts the provider model resource shape and ignores additive fields', () => {

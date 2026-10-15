@@ -6,26 +6,26 @@ import {
 import {
   createProviderNativeSourceAdapterV1,
   type ProviderNativeSurfaceIdV1,
-} from '../../../src/next/generation-v2/model-facts/providerNativeSourceAdapterV1'
+} from '../../../src/core/generation-v2/model-facts/providerNativeSourceAdapterV1'
 import { createModelsDevSourceAdapterV1 } from
-  '../../../src/next/generation-v2/model-facts/modelsDevSourceAdapterV1'
+  '../../../src/core/generation-v2/model-facts/modelsDevSourceAdapterV1'
 import {
   PROVIDER_AUTHORITY_REGISTRY_REVISION_V1,
   providerAuthorityForNativeSurfaceV1,
-} from '../../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
+} from '../../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
 import {
   buildRawSourceSnapshotRefV1,
   sanitizeRawSourcePayloadV1,
   type SanitizedRawPayloadV1,
-} from '../../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
+} from '../../../src/core/generation-v2/model-facts/rawSourceSnapshotV1'
 import {
   buildEnumerableSourcePublicationV1,
-} from '../../../src/next/generation-v2/model-facts/sourceSnapshotBuilderV1'
+} from '../../../src/core/generation-v2/model-facts/sourceSnapshotBuilderV1'
 import {
   buildModelsDevSourceScopeIdV1,
   buildProviderNativeSourceScopeIdV1,
-} from '../../../src/next/generation-v2/model-facts/sourceScopeV1'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/model-facts/sourceScopeV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 
 export type CanonicalRawEnvelopeInputV1 = Readonly<{
   recordKey: string

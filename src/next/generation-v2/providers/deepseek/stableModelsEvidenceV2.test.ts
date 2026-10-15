@@ -3,7 +3,7 @@ import {
   canonicalizeDeepSeekStableModelsEvidenceV2,
   decodeDeepSeekStableModelsEvidenceJsonV2,
   decodeDeepSeekStableModelsEvidenceV2,
-} from './stableModelsEvidenceV2'
+} from '../../../../core/generation-v2/providers/deepseek/stableModelsEvidenceV2'
 
 function response() {
   return {

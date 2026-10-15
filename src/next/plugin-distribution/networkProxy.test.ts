@@ -9,6 +9,12 @@ import {
 } from '@/shared/plugin-distribution/networkProxy'
 
 describe('networkProxy', () => {
+  it('rejects SOCKS5 in the Node fallback without opening a direct route', () => {
+    const settings = { proxyMode: 'manual' as const, manualProxyUrl: 'socks5://localhost:1080', noProxy: '', strictSSL: true }
+    expect(resolveNetworkProxyForUrl(settings, 'https://public.test/')).toMatchObject({ ok: false, mode: 'manual', diagnosticCode: 'proxy_manual_failed' })
+    expect(resolveNetworkProxyForUrl({ ...settings, proxyMode: 'environment' }, 'https://public.test/', { ALL_PROXY: settings.manualProxyUrl }))
+      .toMatchObject({ ok: false, mode: 'environment' })
+  })
   it('normalizes to environment mode by default', () => {
     expect(normalizeNetworkProxySettings(null)).toEqual(DEFAULT_NETWORK_PROXY_SETTINGS)
   })

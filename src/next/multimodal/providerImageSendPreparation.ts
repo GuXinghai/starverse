@@ -1,5 +1,5 @@
 import type { SendPlan, SendPlanModelDescriptor, SendPlanProviderContext } from '@/shared/files/sendPlanTypes'
-import type { ProviderRuntimeContentBlock } from './providerRuntimeContentBlocks'
+import type { ProviderRuntimeContentBlock } from '../../core/multimodal/providerRuntimeContentBlocks'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>

@@ -1,9 +1,9 @@
-import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
   pendingSourceBranchIdV2,
@@ -14,13 +14,13 @@ import { GenerationExecutionV2Repo, isGenerationExecutionOperationBundleForConte
 import { isGenerationCommandFactsAuthorityForContextV2, type GenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
 import { isLmStudioPlainTextEditResendCommandV2, isLmStudioPlainTextInitialCommandV2,
   isLmStudioPlainTextRegenerateCommandV2, isLmStudioPlainTextRetryCommandV2,
   type LmStudioPlainTextEditResendCommandV2, type LmStudioPlainTextInitialCommandV2,
-  type LmStudioPlainTextRegenerateCommandV2, type LmStudioPlainTextRetryCommandV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/plainTextCommandsV2'
+  type LmStudioPlainTextRegenerateCommandV2, type LmStudioPlainTextRetryCommandV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/plainTextCommandsV2'
 
 type CurrentCommand = LmStudioPlainTextInitialCommandV2 | LmStudioPlainTextRegenerateCommandV2 | LmStudioPlainTextEditResendCommandV2
 function baseline(

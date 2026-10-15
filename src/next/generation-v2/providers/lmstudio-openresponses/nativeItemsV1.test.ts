@@ -7,7 +7,7 @@ import {
   decodeLmStudioOpenResponsesReplayItemsV1,
   decodeLmStudioOpenResponsesReturnedItemsV1,
   LMSTUDIO_OPENRESPONSES_MAX_ITEM_STRING_BYTES_V1,
-} from './nativeItemsV1'
+} from '../../../../core/generation-v2/providers/lmstudio-openresponses/nativeItemsV1'
 
 const evidence = JSON.parse(readFileSync(path.resolve(
   'docs/architecture/generation-compiler-v2/evidence/lmstudio-openresponses-compliance-20260714.json',

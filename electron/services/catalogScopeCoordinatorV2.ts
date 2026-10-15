@@ -6,7 +6,7 @@ import {
   type ModelCatalogStatusV2,
   type ModelCatalogStoredSnapshotV2,
 } from '../../infra/db/repo/modelCatalogV2Repo'
-import { stableSerializeProviderRequestBoundedV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestBoundedV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   providerFailureFromUnknownV2,
   providerFailurePrimaryMessageV2,

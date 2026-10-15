@@ -11,7 +11,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.5
  */
 
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------

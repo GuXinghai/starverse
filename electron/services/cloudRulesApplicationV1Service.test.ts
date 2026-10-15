@@ -7,11 +7,11 @@ import {
   CLOUD_RULES_RELEASE_ASSET_NAME_V1,
   computeCloudRulesContentRevisionV1,
   validateCloudRulesReleasePublicationV1,
-} from '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import { buildAuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../src/core/generation-v2/model-facts/sourceScopeV1'
 import {
   CloudRulesDistributionV1Repo,
   prepareCloudRulesCandidateV1,
@@ -24,7 +24,7 @@ import { CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 } from
 import { CloudRulesApplicationV1Service, CloudRulesApplicationV1ServiceError } from
   './cloudRulesApplicationV1Service'
 import { applyBootstrapCapabilityRulesWithInvalidationV1 } from './modelFactsSemanticInvalidationV1'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 
 function database(): BetterSqlite3.Database {
   const db = new BetterSqlite3(':memory:')

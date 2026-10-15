@@ -3,7 +3,7 @@ import {
   createOpenAIChatCompatibleProviderBindingV2,
   readOpenAIChatCompatibleChatEndpointV2,
   readOpenAIChatCompatibleModelsEndpointV2,
-} from './verifiedContractV2'
+} from '../../../../core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
 
 const endpoint = {
   endpointRevisionId: 'endpoint-revision:1', providerInstanceId: 'provider:1', revision: 1,

@@ -17,7 +17,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.5
  */
 
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 import {
   appendDeepSeekReasoningDelta,
   buildDeepSeekFinalReasoningDisplayBlock,

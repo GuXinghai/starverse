@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeOpenRouterImageInitialSendCommandV2,
   isOpenRouterImageInitialSendCommandV2,
-} from './imageInitialSendCommandV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
 
 const input = () => ({
   operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,

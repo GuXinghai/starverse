@@ -4,10 +4,8 @@ import type { ProviderCredentialKey } from '../credentials/providerCredentialCon
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import type { RegisterInvoke } from './types'
 // Approved main-process Catalog composition boundary.
-// eslint-disable-next-line no-restricted-imports
-import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '../../src/next/modelCatalog/openRouterCategoryCache'
-// eslint-disable-next-line no-restricted-imports
-import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '../../src/shared/modelCatalog/openRouterCategoryContracts'
+import { ProviderCatalogAuthorityRegistryV2 } from '../../src/core/model-catalog/providerCatalogAuthorityRegistryV2'
 import {
   ModelCatalogV2Repo,
   type ModelCatalogScopeIdentityV2,

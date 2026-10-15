@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DeepSeekStableChatStreamAssemblerV1 } from './chatStreamV1'
+import { DeepSeekStableChatStreamAssemblerV1 } from '../../../../core/generation-v2/providers/deepseek/chatStreamV1'
 import {
   createDeepSeekStableTerminalArtifactV1,
   decodeDeepSeekStableTerminalArtifactV1,
   isDeepSeekStableTerminalArtifactV1,
   serializeDeepSeekStableTerminalArtifactV1,
-} from './terminalArtifactV1'
+} from '../../../../core/generation-v2/providers/deepseek/terminalArtifactV1'
 
 function result() {
   const assembler = new DeepSeekStableChatStreamAssemblerV1('enabled')

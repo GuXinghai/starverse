@@ -13,25 +13,21 @@ import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 // Approved Generation V2 main-process composition boundary: renderer never receives these domain facts.
-// eslint-disable-next-line no-restricted-imports
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-// eslint-disable-next-line no-restricted-imports
-import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
-// eslint-disable-next-line no-restricted-imports
-import { composeOpenAIChatCompatibleBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
-// eslint-disable-next-line no-restricted-imports
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { composeOpenAIChatCompatibleBaselineCapabilityV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
 import {
   decodeOpenAIChatCompatibleEditResendCommandV2, decodeOpenAIChatCompatibleInitialCommandV2,
   decodeOpenAIChatCompatibleRegenerateCommandV2, decodeOpenAIChatCompatibleRetryCommandV2,
   type OpenAIChatCompatibleEditResendCommandV2, type OpenAIChatCompatibleInitialCommandV2,
   type OpenAIChatCompatibleRegenerateCommandV2, type OpenAIChatCompatibleRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openai-chat-compatible/plainTextCommandsV2'
+} from '../../src/core/generation-v2/providers/openai-chat-compatible/plainTextCommandsV2'
 import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
 import { compileOpenAIChatCompatiblePreparedRequestV2 } from './openAIChatCompatiblePreparedRequestCompilerV2'
 import { commitOpenAIChatCompatibleCurrentSnapshotV2, commitOpenAIChatCompatibleRetrySnapshotV2 } from './openAIChatCompatibleSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { assertOpenAICompatibleTransportPolicyV2 } from './openAICompatibleNetworkV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 type Current = OpenAIChatCompatibleInitialCommandV2 | OpenAIChatCompatibleRegenerateCommandV2 | OpenAIChatCompatibleEditResendCommandV2
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>

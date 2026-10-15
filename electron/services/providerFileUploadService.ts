@@ -4,7 +4,7 @@ import {
   isProviderRuntimeUploadRequestBlock,
   type ProviderRuntimeContentBlock,
   type ProviderRuntimeUploadRequestBlock,
-} from '../../src/next/multimodal/providerRuntimeContentBlocks'
+} from '../../src/core/multimodal/providerRuntimeContentBlocks'
 import {
   buildNetworkErrorEnvelope,
   providerNetworkFailureMessage,

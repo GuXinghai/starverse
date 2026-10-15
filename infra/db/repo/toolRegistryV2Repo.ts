@@ -4,7 +4,7 @@ import {
   selectToolDefinitionsV2,
   type ToolDefinitionV2,
   type ToolRegistryRevisionV2,
-} from '../../../src/next/generation-v2/tools/toolRegistryV2'
+} from '../../../src/core/generation-v2/tools/toolRegistryV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,

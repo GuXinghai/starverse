@@ -42,8 +42,9 @@ import { AuthoritativeModelSubjectSetV1Service } from
 import { CloudRulesApplicationV1Repo } from '../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CloudRulesDistributionV1Repo } from '../infra/db/repo/cloudRulesDistributionV1Repo'
 import { GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED,
-  type ModelFactsSemanticInvalidationV1 } from '../src/next/generation-v2/model-facts/semanticInvalidationV1'
+  type ModelFactsSemanticInvalidationV1 } from '../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import { applyBootstrapCapabilityRulesWithInvalidationV1 } from './services/modelFactsSemanticInvalidationV1'
+import { applyAgentSessionNetworkPolicy, assertAgentNetworkAccess, getAgentAutomationOptions } from './bootstrap/agentAutomationRuntime'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -53,6 +54,8 @@ const viteDevServerUrl = process.env.VITE_DEV_SERVER_URL
 process.env.VITE_PUBLIC = viteDevServerUrl ? path.join(process.env.APP_ROOT, 'public') : rendererDist
 
 export async function startMainV2(): Promise<void> {
+  const agentAutomation = getAgentAutomationOptions()
+  applyAgentSessionNetworkPolicy(session.defaultSession)
   const runtime = requireEpoch2ApplicationRuntime()
   const store = runtime.configStore
   runtime.epoch2.assertCurrent()
@@ -149,7 +152,13 @@ export async function startMainV2(): Promise<void> {
   browserSession,
   env: () => process.env,
 })
-  applySessionRequestPolicy(browserSession, () => networkProxyController.getState('browser').status === 'ready')
+  applySessionRequestPolicy(browserSession, (rawUrl) => {
+    const url = new URL(rawUrl)
+    if (url.protocol === 'ws:') url.protocol = 'http:'
+    if (url.protocol === 'wss:') url.protocol = 'https:'
+    assertAgentNetworkAccess(url.toString())
+    return networkProxyController.getState('browser').status === 'ready'
+  })
   const startupProxyResult = await networkProxyController.applyStoredSettings()
   if (!startupProxyResult.ok) {
     console.warn('[proxy-v2] some network scopes are blocked', {
@@ -160,18 +169,25 @@ export async function startMainV2(): Promise<void> {
   const proxyDraftProbe = createNetworkProxyDraftProbe({
     createSession: () => {
       const target = session.fromPartition(`starverse-proxy-probe-${randomUUID()}`, { cache: false })
+      applyAgentSessionNetworkPolicy(target)
       return target
     },
+    beforeRequest: assertAgentNetworkAccess,
   })
   const localDirectSession = session.fromPartition('starverse-local-direct-v2')
+  applyAgentSessionNetworkPolicy(localDirectSession)
   await localDirectSession.setProxy({ mode: 'direct' })
   await localDirectSession.forceReloadProxyConfig()
   await localDirectSession.closeAllConnections()
   const cloudFetch = createElectronSessionProviderFetch({
   session: session.defaultSession,
-  beforeRequest: () => networkProxyController.assertGovernedRequestAvailable(),
+  beforeRequest: (url) => {
+    assertAgentNetworkAccess(url)
+    networkProxyController.assertGovernedRequestAvailable()
+  },
 })
-  const localDirectFetch = createElectronSessionProviderFetch({ session: localDirectSession })
+  const localDirectFetch = createElectronSessionProviderFetch({ session: localDirectSession,
+    beforeRequest: assertAgentNetworkAccess })
   const modelsDevSourceRefresh = new ModelsDevOfficialSourceRefreshV1({
   db: runtime.epoch2.database,
   fetchImpl: cloudFetch,
@@ -282,6 +298,8 @@ export async function startMainV2(): Promise<void> {
   registerInAppBrowserIpc({ registerInvoke, manager: inAppBrowserManager })
 
   const mainWindowLifecycle = createMainWindowLifecycle({
+  agentBackground: agentAutomation?.hidden,
+  agentControlled: agentAutomation !== null,
   isDev,
   viteDevServerUrl,
   rendererDist,

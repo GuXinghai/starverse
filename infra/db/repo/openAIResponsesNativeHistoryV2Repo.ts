@@ -4,18 +4,18 @@ import {
   OPENAI_RESPONSES_ARTIFACT_KIND_V2,
   decodeOpenAIResponsesContinuationArtifactV2,
   type OpenAIResponsesContinuationArtifactV2,
-} from '../../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+} from '../../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
 import type {
   OpenAIResponsesClientItemV1,
   OpenAIResponsesReplayItemV1,
-} from '../../../src/next/generation-v2/providers/openai-responses/nativeItemsV1'
+} from '../../../src/core/generation-v2/providers/openai-responses/nativeItemsV1'
 import {
   isOpenAIResponsesToolContinuationCommandV2,
   type OpenAIResponsesToolContinuationCommandV2,
-} from '../../../src/next/generation-v2/providers/openai-responses/toolContinuationCommandV2'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphIdentity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/providers/openai-responses/toolContinuationCommandV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphIdentity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
+import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,
@@ -33,9 +33,9 @@ import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFa
 import {
   decodeAssistantAnswerGenerationSnapshotV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../../src/next/generation-v2/domain/generationIntentV2'
-import { isOpenAIResponsesEncodedAttachmentV1 } from '../../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../../src/core/generation-v2/domain/generationIntentV2'
+import { isOpenAIResponsesEncodedAttachmentV1 } from '../../../src/core/generation-v2/providers/openai-responses/responsesRequestV1'
 import { OpenAIResponsesFileDescriptorV2Repo } from './openAIResponsesFileDescriptorV2Repo'
 import { GenerationContextProjectionV2Repo, type GenerationContextProjectionSnapshotV2 } from './generationContextProjectionV2Repo'
 

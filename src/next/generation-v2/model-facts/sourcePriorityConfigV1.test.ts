@@ -5,7 +5,7 @@ import {
   DEFAULT_SOURCE_PRIORITY_MAP_V1,
   decodeSourcePriorityConfigV1,
   sourcePriorityConfigSemanticJsonV1,
-} from './sourcePriorityConfigV1'
+} from '../../../core/generation-v2/model-facts/sourcePriorityConfigV1'
 
 describe('source priority configuration V1', () => {
   it('uses the frozen default ordering and canonical semantic JSON', () => {

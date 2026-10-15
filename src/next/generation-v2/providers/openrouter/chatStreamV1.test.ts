@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   OpenRouterChatProviderStreamErrorV1,
   OpenRouterChatStreamAssemblerV1,
-} from './chatStreamV1'
+} from '../../../../core/generation-v2/providers/openrouter/chatStreamV1'
 
 describe('OpenRouter Chat stream v1', () => {
   it('preserves the complete official typed mid-stream provider error payload', () => {

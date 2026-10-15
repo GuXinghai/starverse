@@ -1,7 +1,9 @@
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
+export type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import {
   decodeLocalEndpointExecutionProviderId,
   decodeLocalEndpointProtocolV2,
@@ -12,20 +14,7 @@ import {
 
 export type { LocalEndpointProtocolV2 } from '../../../src/shared/provider/localProviderRouteDescriptor'
 
-export type LocalEndpointProfileV2 = Readonly<{
-  endpointProfileId: string
-  providerId: LocalEndpointExecutionProviderId
-  protocolContractId: LocalEndpointProtocolV2
-  baseUrl: string
-  credentialMode: 'none'
-  credentialScopeId: string
-  protocolConfig: Readonly<Record<string, unknown>>
-  revisionGeneration: number
-  profileRevision: string
-  profileDigest: string
-  createdAtMs: number
-  updatedAtMs: number
-}>
+
 
 export class LocalEndpointProfileV2RepoError extends Error {
   constructor(readonly code:

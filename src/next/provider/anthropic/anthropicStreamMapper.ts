@@ -21,7 +21,7 @@
  * @see Anthropic SDK types: RawMessageStreamEvent union
  */
 
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // Anthropic event types — provider-native schema, contained here only

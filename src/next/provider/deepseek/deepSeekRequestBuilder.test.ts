@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 
 const baseMessages: DeepSeekMessage[] = [
   { role: 'system', content: 'You are a helpful assistant.' },

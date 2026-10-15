@@ -10,7 +10,7 @@ import {
   type CapabilityRuleDefaultActivationPolicyV1,
   type CapabilityRulePackModeV1,
   type CapabilityRulePackTargetV1,
-} from './capabilityRuleCoreV1'
+} from '../../../core/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 function rule(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

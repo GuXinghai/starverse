@@ -30,7 +30,7 @@ type ProviderCredentialStorageMode = 'system_secure' | 'session' | 'plaintext'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
 type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
-type GenerationV2ModelPreferenceProviderId = import('../src/next/provider/runtimeProviderId').RuntimeProviderId
+type GenerationV2ModelPreferenceProviderId = import('../src/shared/provider/runtimeProviderId').RuntimeProviderId
 type GenerationV2LocalEndpointExecutionProviderId = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointExecutionProviderId
 type GenerationV2LocalEndpointProtocol = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointProtocolV2
 type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
@@ -984,7 +984,7 @@ type OpenRouterImageGenerationV2Bridge = GenerationV2TextBridge & Readonly<{
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   generationV2?: Readonly<{
-    onModelFactsSemanticInvalidated: (listener: (event: import('../src/next/generation-v2/model-facts/semanticInvalidationV1').ModelFactsSemanticInvalidationV1) => void) => () => void
+    onModelFactsSemanticInvalidated: (listener: (event: import('../src/core/generation-v2/model-facts/semanticInvalidationV1').ModelFactsSemanticInvalidationV1) => void) => () => void
     capabilities: Readonly<{
       resolve: (payload: unknown) => Promise<unknown>
     }>

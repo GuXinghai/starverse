@@ -13,20 +13,20 @@ vi.mock('../../../electron/credentials/epoch2RuntimeCredentialService', () => ({
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { createSemanticConsumptionLedgerV2 } from '../../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { issuePreparedProviderRequestV2 } from '../../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { readReviewedAnthropicMessagesDefinitionV2 } from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { createSemanticConsumptionLedgerV2 } from '../../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { issuePreparedProviderRequestV2 } from '../../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { readReviewedAnthropicMessagesDefinitionV2 } from '../../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   createAnthropicNativeHistoryArtifactV1,
   serializeAnthropicNativeHistoryArtifactV1,
   type AnthropicNativeHistoryArtifactV1,
-} from '../../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
+} from '../../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { GenerationExecutionV2Repo } from './generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from './generationRequestV2Repo'

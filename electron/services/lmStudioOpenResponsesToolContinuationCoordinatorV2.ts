@@ -7,7 +7,7 @@ import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lm
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { decodeLmStudioOpenResponsesToolContinuationCommandV2,
-  type LmStudioOpenResponsesToolContinuationCommandV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/toolContinuationCommandV2'
+  type LmStudioOpenResponsesToolContinuationCommandV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/toolContinuationCommandV2'
 import { compileLmStudioOpenResponsesPreparedRequestV2 } from './lmStudioOpenResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'

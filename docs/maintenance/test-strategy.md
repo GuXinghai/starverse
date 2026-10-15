@@ -2,7 +2,7 @@
 
 Status: active
 Document Role: maintenance
-Last updated: 2026-08-14
+Last updated: 2026-10-13
 
 Starverse keeps the default test command small and predictable. The partition
 gate (`node scripts/check-test-partitions.mjs`) discovers every unignored
@@ -29,6 +29,20 @@ slow file at a time; do not pass a directory or a broad glob to a slow command.
 The deleted `infra/db/worker.filePipeline.test.ts` is intentionally not
 restored. It is not a partition entry and must not be recreated as part of
 test-strategy work.
+
+## UI worker budget
+
+`vitest.ui.config.ts` caps UI workers at `min(2, availableParallelism())`.
+Full App mounts combine jsdom and real SQLite fixtures; allowing Vitest to
+scale these forks to every available CPU can slow individual tests beyond
+their existing deadlines. On the 32-CPU Windows validation host, the default
+31-worker limit and a 4-worker run both exceeded the search-navigation test's
+5-second timeout, while the 2-worker full partition passed all 679 tests.
+
+This cap trades suite throughput for bounded concurrent resource use. It does
+not change test timeouts, partition ownership, assertions, or fixture size.
+The search-navigation fixture retains all 55 persisted turns and reuses only
+its identical immutable capability snapshot within each case.
 
 ## AppChatApp behavior ownership
 

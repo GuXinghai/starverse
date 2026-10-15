@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideOpenRouterImageDescriptorFreshnessV2 } from './descriptorFreshnessDecisionV2'
+import { decideOpenRouterImageDescriptorFreshnessV2 } from '../../../../core/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2'
 
 const settings = Object.freeze({ refreshAfterMs: 3_600_000, hardExpireAfterMs: 86_400_000 })
 

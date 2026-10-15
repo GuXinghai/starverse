@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeOpenAIResponsesToolContinuationCommandV2 } from './toolContinuationCommandV2'
+import { decodeOpenAIResponsesToolContinuationCommandV2 } from '../../../../core/generation-v2/providers/openai-responses/toolContinuationCommandV2'
 
 describe('OpenAIResponsesToolContinuationCommandV2', () => {
   const input = {

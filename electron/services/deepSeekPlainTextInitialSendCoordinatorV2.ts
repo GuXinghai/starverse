@@ -21,8 +21,8 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeDeepSeekPlainTextInitialSendCommandV2,
   type DeepSeekPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
-import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
+import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/core/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'

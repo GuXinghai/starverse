@@ -2,20 +2,20 @@ import type BetterSqlite3 from 'better-sqlite3'
 import type {
   GenerationConfigRevisionEntryV2,
   GenerationConfigRevisionScopeV2,
-} from '../../../src/next/generation-v2/config/generationConfigRevisionV2'
+} from '../../../src/core/generation-v2/config/generationConfigRevisionV2'
 import {
   decodeGenerationConfigLayerV2,
   projectGenerationConfigLayerV2,
   type GenerationConfigLayerV2,
-} from '../../../src/next/generation-v2/config/generationConfigLayerV2'
-import { mergeGenerationConfigLayersV2 } from '../../../src/next/generation-v2/config/resolveGenerationConfigV2'
+} from '../../../src/core/generation-v2/config/generationConfigLayerV2'
+import { mergeGenerationConfigLayersV2 } from '../../../src/core/generation-v2/config/resolveGenerationConfigV2'
 import {
   stableSerializeProviderRequestBoundedV2,
   sha256PreparedBytesV2,
-} from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
-import type { ResolvedGenerationIntentV2 } from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+} from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { ConversationGraphV2Identity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
+import { GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
+import type { ResolvedGenerationIntentV2 } from '../../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   isGenerationV2AuthorityTransactionContextV2,

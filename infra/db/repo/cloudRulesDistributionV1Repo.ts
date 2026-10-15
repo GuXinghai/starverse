@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   canonicalSourceFactDigestV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   decodeCloudRulesReleaseDocumentV1,
   decodeCloudRulesReleaseMetadataV1,
@@ -9,9 +9,9 @@ import {
   type CloudRulesReleaseDocumentV1,
   type CloudRulesReleaseMetadataV1,
   type CloudRulesValidatedPublicationV1,
-} from '../../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import { stableSerializeProviderRequestV2 } from
-  '../../../src/next/generation-v2/compiler/stableSerialize'
+  '../../../src/core/generation-v2/compiler/stableSerialize'
 
 export type CloudRulesCandidateRecordV1 = Readonly<{
   candidateRecordRevision: string

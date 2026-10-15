@@ -13,13 +13,13 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.5
  */
 
-import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
 import { decodeDeepSeekSSE } from '@/next/provider/deepseek/deepSeekSseDecoder'
 import { mapDeepSeekChunkToEvents } from '@/next/provider/deepseek/deepSeekStreamMapper'
 import { createDeepSeekReasoningDisplayAssemblerState } from '@/next/provider/deepseek/deepseekReasoningDisplayAssembler'
-import { hasProviderRuntimeNonTextBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
+import { hasProviderRuntimeNonTextBlock } from '@/core/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types

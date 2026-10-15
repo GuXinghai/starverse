@@ -1,14 +1,13 @@
-/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
-import { createGoogleApiKeyHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 } from '../../src/next/generation-v2/contracts/geminiDeveloperApiContractV2'
-import { compileGeminiInteractionsRequestV1 } from '../../src/next/generation-v2/providers/gemini/interactionsRequestV1'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
-import { readImageAspectRatioV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
+import { createGoogleApiKeyHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 } from '../../src/core/generation-v2/contracts/geminiDeveloperApiContractV2'
+import { compileGeminiInteractionsRequestV1 } from '../../src/core/generation-v2/providers/gemini/interactionsRequestV1'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { readImageAspectRatioV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 /* eslint-enable no-restricted-imports */
 
 export class GeminiInteractionsImagePreparedRequestCompilerV2Error extends Error {

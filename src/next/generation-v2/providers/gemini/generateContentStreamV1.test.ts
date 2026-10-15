@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GeminiGenerateContentStreamAssemblerV1,
   GeminiGenerateContentStreamV1Error,
-} from './generateContentStreamV1'
+} from '../../../../core/generation-v2/providers/gemini/generateContentStreamV1'
 
 function chunk(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

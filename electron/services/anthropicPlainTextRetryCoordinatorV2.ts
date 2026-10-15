@@ -12,7 +12,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeAnthropicPlainTextRetryCommandV2,
   type AnthropicPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/anthropic/plainTextRetryCommandV2'
+} from '../../src/core/generation-v2/providers/anthropic/plainTextRetryCommandV2'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { commitAnthropicPlainTextRetrySnapshotV2 } from './anthropicPlainTextSnapshotCommitV2'

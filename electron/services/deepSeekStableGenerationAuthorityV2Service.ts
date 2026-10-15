@@ -2,46 +2,46 @@ import {
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import type { PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import type { PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2 } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedDeepSeekStableChatDefinitionV2,
-} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
   type VerifiedProviderContractReferenceV2,
-} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+} from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
-} from '../../src/next/generation-v2/domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   readGenerationV2Digest,
   readGenerationV2Identity,
   type GenerationV2Digest,
-} from '../../src/next/generation-v2/domain/identityV2'
+} from '../../src/core/generation-v2/domain/identityV2'
 import {
   DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
   isVerifiedDeepSeekStableCapabilityPolicyV2,
   readVerifiedDeepSeekStableCapabilityPolicyV2,
   type DeepSeekStableCapabilityRuleV2,
   type VerifiedDeepSeekStableCapabilityPolicyV2,
-} from '../../src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2'
+} from '../../src/core/generation-v2/providers/deepseek/stableCapabilityPolicyV2'
 import {
   isVerifiedDeepSeekStableEndpointProfileV2,
   readVerifiedDeepSeekStableEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import {
   isGenerationCommandFactsAuthorityForContextV2,
   isGenerationCommandFactsAuthorityV2,

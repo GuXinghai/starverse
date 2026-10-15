@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { sha256PreparedBytesV2 } from '../../compiler/stableSerialize'
+import { sha256PreparedBytesV2 } from '../../../../core/generation-v2/compiler/stableSerialize'
 import {
   decodeOpenRouterImageRegenerateCommandV2,
   isOpenRouterImageRegenerateCommandV2,
-} from './imageActionCommandsV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/imageActionCommandsV2'
 
 const regenerate = () => ({
   operationId: 'operation:1', clientActionId: 'operation:1', sourceBranchId: 'branch:1', questionId: 'question:1',

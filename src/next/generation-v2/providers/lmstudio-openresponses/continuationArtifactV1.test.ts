@@ -9,7 +9,7 @@ import {
   decodeLmStudioOpenResponsesContinuationArtifactV1,
   isLmStudioOpenResponsesContinuationArtifactV1,
   serializeLmStudioOpenResponsesContinuationArtifactV1,
-} from './continuationArtifactV1'
+} from '../../../../core/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1'
 
 const evidenceRaw = readFileSync(path.resolve(
   'docs/architecture/generation-compiler-v2/evidence/lmstudio-openresponses-compliance-20260714.json',

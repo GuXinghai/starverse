@@ -27,6 +27,7 @@ export function createMainWindowLifecycle(input: CreateMainWindowInput): MainWin
   const focusWindow = (): boolean => {
     const window = getWindow()
     if (!window) return false
+    if (input.agentControlled) return true
     if (window.isMinimized()) window.restore()
     window.show()
     window.focus()

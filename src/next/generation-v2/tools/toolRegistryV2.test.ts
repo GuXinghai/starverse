@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeToolRegistryRevisionV2, selectToolDefinitionsV2 } from './toolRegistryV2'
+import { decodeToolRegistryRevisionV2, selectToolDefinitionsV2 } from '../../../core/generation-v2/tools/toolRegistryV2'
 
 describe('toolRegistryV2', () => {
   it('canonicalizes exact immutable function definitions', () => {

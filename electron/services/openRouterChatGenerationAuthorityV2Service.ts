@@ -1,32 +1,32 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
-} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
-import { listReviewedProviderContractDefinitionsV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+import { listReviewedProviderContractDefinitionsV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { verifyProviderContractReferenceV2 } from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
-} from '../../src/next/generation-v2/domain/providerBindingV2'
-import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import type { ManagedFileAttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
+} from '../../src/core/generation-v2/domain/providerBindingV2'
+import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/core/generation-v2/domain/identityV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import type { ManagedFileAttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
+import { OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
 import {
   readVerifiedOpenRouterFirstPartyEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import {
   isGenerationCommandFactsAuthorityForContextV2,
   type GenerationCommandFactsAuthorityV2,
@@ -37,7 +37,7 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import { resolveWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
+import { resolveWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
 
 export type VerifiedOpenRouterChatBindingAuthorityV2 = Readonly<{
   trust: 'verified_openrouter_chat_binding_v2'

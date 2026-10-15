@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,

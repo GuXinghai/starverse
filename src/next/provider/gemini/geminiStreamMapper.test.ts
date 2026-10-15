@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarverse, type GeminiStreamChunk } from '@/next/provider/gemini/geminiStreamMapper'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // Fixture helpers

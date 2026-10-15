@@ -3,17 +3,17 @@ import {
   CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
   type CloudRulesReleaseDocumentV1,
   type CloudRulesReleaseMetadataV1,
-} from '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import { applyCloudRulesActivationOverridesV1,
   CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1,
   type CloudRulesActivationOverrideV1 } from
-  '../../src/next/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
+  '../../src/core/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 import { prepareCapabilityRuleMaterializationV1 } from
-  '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import type { AuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../src/core/generation-v2/model-facts/sourceScopeV1'
 import {
   CapabilityRuleCoreV1Repo,
   prepareCapabilityRuleOwnershipSnapshotWriteV1,

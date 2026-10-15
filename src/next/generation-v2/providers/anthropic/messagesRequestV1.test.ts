@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { decodeResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
+import { decodeResolvedGenerationIntentV2 } from '../../../../core/generation-v2/domain/resolvedGenerationIntentV2'
 import {
   AnthropicMessagesRequestV1Error,
   compileAnthropicMessagesRequestV1,
-} from './messagesRequestV1'
+} from '../../../../core/generation-v2/providers/anthropic/messagesRequestV1'
 
 function intent(overrides: Record<string, unknown> = {}) {
   return decodeResolvedGenerationIntentV2({

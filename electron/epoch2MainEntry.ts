@@ -20,7 +20,9 @@ import {
 } from './data-epoch/schemaMismatchRecoveryPrompt'
 import { acquireEpochRootLease } from './data-epoch/win32EpochRootLease'
 import { requestMainWindowActivation } from './windows/mainWindowActivation'
+import { getAgentAutomationOptions, initializeAgentAutomation } from './bootstrap/agentAutomationRuntime'
 
+initializeAgentAutomation({ app, env: process.env, repositoryRoot: process.cwd() })
 applyIsolatedEpoch2SmokeAppDataRoot({ app, env: process.env })
 configureStarverseElectronIdentity({ app, isPackaged: app.isPackaged,
   isE2e: process.env.SV_ELECTRON_COMPATIBLE_E2E === '1', platform: process.platform,
@@ -139,6 +141,11 @@ if (isPrimaryInstance) void app.whenReady().then(async () => {
     await startup()
   } catch (error) {
     const code = startupFailureCode(error)
+    if (getAgentAutomationOptions()) {
+      process.stderr.write(`[agent-startup] ${code}\n`)
+      app.exit(1)
+      return
+    }
     if (code === 'EPOCH2_DATABASE_SCHEMA_MISMATCH') {
       await startWithSchemaMismatchRecovery()
       return

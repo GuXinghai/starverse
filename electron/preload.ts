@@ -1,7 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type { DfcReadyOptionBindingV2 } from '../src/shared/files/documentFormatConversion'
 import { decodeModelFactsSemanticInvalidationV1, GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED,
-  type ModelFactsSemanticInvalidationV1 } from '../src/next/generation-v2/model-facts/semanticInvalidationV1'
+  type ModelFactsSemanticInvalidationV1 } from '../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import type {
   LocalEndpointExecutionProviderId,
   LocalEndpointProtocolV2,

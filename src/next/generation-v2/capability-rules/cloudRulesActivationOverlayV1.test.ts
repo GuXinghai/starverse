@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeCloudRulesContentRevisionV1, decodeCloudRulesReleaseDocumentV1 } from
-  './cloudRulesReleaseV1'
-import { applyCloudRulesActivationOverridesV1 } from './cloudRulesActivationOverlayV1'
+  '../../../core/generation-v2/capability-rules/cloudRulesReleaseV1'
+import { applyCloudRulesActivationOverridesV1 } from '../../../core/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 
 function document() {
   const packs = [{ schemaVersion: 1, packId: 'pack.a', displayName: 'A', description: null,

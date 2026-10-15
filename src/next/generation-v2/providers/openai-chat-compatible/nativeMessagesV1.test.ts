@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOpenAIChatCompatibleNativeArtifactV1, decodeOpenAIChatCompatibleNativeArtifactV1 } from './nativeMessagesV1'
+import { createOpenAIChatCompatibleNativeArtifactV1, decodeOpenAIChatCompatibleNativeArtifactV1 } from '../../../../core/generation-v2/providers/openai-chat-compatible/nativeMessagesV1'
 
 describe('OpenAI-compatible V2 native message artifact', () => {
   it('persists the exact complete assistant/tool bundle rather than visible text only', () => {

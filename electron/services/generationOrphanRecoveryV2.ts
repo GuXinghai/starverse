@@ -12,23 +12,23 @@ import { LmStudioOpenResponsesNativeHistoryV2Repo, LmStudioOpenResponsesNativeHi
 import {
   decodeOpenRouterNativeHistoryArtifactV1,
   hasCompleteOpenRouterAssistantToolCallsV1,
-} from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
-import { decodeOpenRouterChatTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openrouter/terminalArtifactV1'
+} from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
+import { decodeOpenRouterChatTerminalArtifactV1 } from '../../src/core/generation-v2/providers/openrouter/terminalArtifactV1'
 import {
   decodeDeepSeekNativeHistoryArtifactV2,
   hasPendingDeepSeekAssistantToolCallsV2,
-} from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
-import { decodeDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
+} from '../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
+import { decodeDeepSeekStableTerminalArtifactV1 } from '../../src/core/generation-v2/providers/deepseek/terminalArtifactV1'
 import {
   decodeAnthropicNativeHistoryArtifactV1,
   hasPendingAnthropicToolUseBlocksV1,
-} from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
+} from '../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
 import {
   decodeOpenAIResponsesContinuationArtifactV2,
   hasPendingOpenAIResponsesFunctionCallsV2,
-} from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
-import { decodeOpenAIResponsesTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openai-responses/terminalArtifactV1'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
+import { decodeOpenAIResponsesTerminalArtifactV1 } from '../../src/core/generation-v2/providers/openai-responses/terminalArtifactV1'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 
 const ERROR_CODE = 'stream_interrupted'
 const ERROR_MESSAGE = 'Assistant generation was interrupted before completion.'

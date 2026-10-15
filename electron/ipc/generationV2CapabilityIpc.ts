@@ -3,7 +3,7 @@ import type { RegisterInvoke } from './types'
 import {
   decodeGenerationCapabilityResolutionRequestV2,
   type GenerationCapabilityResolutionResultV2,
-} from '../../src/next/generation-v2/capability/capabilityResolutionV2'
+} from '../../src/core/generation-v2/capability/capabilityResolutionV2'
 import {
   createGenerationV2CapabilityResolutionService,
   GenerationV2CapabilityResolutionServiceError,

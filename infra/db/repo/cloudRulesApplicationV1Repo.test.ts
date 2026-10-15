@@ -8,7 +8,7 @@ import {
   computeCloudRulesContentRevisionV1,
   projectCloudRulesReleaseMetadataV1,
   validateCloudRulesReleasePublicationV1,
-} from '../../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import {
   CloudRulesApplicationV1Repo,
   CloudRulesApplicationV1RepoError,
@@ -55,7 +55,7 @@ function awaitCanonicalDigest(value: unknown): string {
 }
 
 import { canonicalSourceFactDigestV1 as requireCanonicalDigest } from
-  '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+  '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 
 describe('CloudRulesApplicationV1Repo', () => {
   it('commits LKG/history/overrides atomically and rejects stale applied revisions', () => {

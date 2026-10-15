@@ -9,14 +9,12 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 // Approved main-process Gemini GenerateContent Generation V2 execution boundary.
-// eslint-disable-next-line no-restricted-imports
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-// eslint-disable-next-line no-restricted-imports
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import {
   GeminiGenerateContentChatStreamV1,
   GeminiGenerateContentStreamV1Error,
   type GeminiGenerateContentStreamResultV1,
-} from '../../src/next/generation-v2/providers/gemini/generateContentStreamV1'
+} from '../../src/core/generation-v2/providers/gemini/generateContentStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'

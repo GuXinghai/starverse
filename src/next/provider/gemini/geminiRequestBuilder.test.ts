@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildGeminiImageGenerationInteractionRequest, buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 
 const baseMessages: GeminiContent[] = [
   { role: 'user', parts: [{ text: 'Hello' }] },

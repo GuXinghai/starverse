@@ -6,10 +6,10 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
-import { decodeProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
+import { decodeProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import { buildGoal3ModelFactsSubjectV1, buildGoal3SourceScopeSelectionV1 } from './goal3ModelFactsCapabilityV1'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 

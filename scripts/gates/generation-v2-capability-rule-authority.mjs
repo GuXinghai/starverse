@@ -17,6 +17,7 @@ const removedAuthorities = [
   'src/next/generation-v2/capability-rules/builtinCapabilityRulePacksV2.json',
   'src/next/generation-v2/model-facts/capabilityRuleSourceAdapterV1.ts',
 ]
+removedAuthorities.push(...removedAuthorities.filter(file => file.startsWith('src/next/generation-v2/')).map(file => file.replace('src/next/', 'src/core/')))
 for (const file of removedAuthorities) {
   if (existsSync(path.resolve(root, file))) fail(`obsolete model-fact authority remains: ${file}`)
 }
@@ -24,7 +25,9 @@ for (const file of removedAuthorities) {
 const roots = [
   'electron/services',
   'src/next/provider',
+  'src/core/provider',
   'src/next/generation-v2/providers',
+  'src/core/generation-v2/providers',
   'infra/db/repo',
   'infra/db/services',
   'src/ui-app',

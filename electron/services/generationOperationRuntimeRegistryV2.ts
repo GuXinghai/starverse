@@ -5,14 +5,12 @@ import { GenerationExecutionV2Repo, type GenerationExecutionOperationBundleV2 } 
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 // Approved Generation V2 main-process runtime boundary: this registry owns the persisted operation lifecycle.
-// eslint-disable-next-line no-restricted-imports
-import type { GenerationOperationBindingV2 } from '../../src/next/generation-v2/domain/generationOperationBindingV2'
-// eslint-disable-next-line no-restricted-imports
+import type { GenerationOperationBindingV2 } from '../../src/core/generation-v2/domain/generationOperationBindingV2'
 import type {
   GenerationOperationRuntimeSnapshotV2,
   GenerationStreamEventV2,
   GenerationStreamPayloadV2,
-} from '../../src/next/generation-v2/domain/generationStreamEventV2'
+} from '../../src/core/generation-v2/domain/generationStreamEventV2'
 import {
   GENERATION_OPERATION_RUNTIME_START_V2,
   type CoordinatedGenerationStreamProjectionSinkV2,

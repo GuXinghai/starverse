@@ -4,7 +4,7 @@ import {
   isDynamicCapabilityHardExpiredV2,
   isModelRetiredV2,
   validateContractEvidenceV2,
-} from './contractEvidenceV2'
+} from '../../../core/generation-v2/contracts/contractEvidenceV2'
 
 const digest = 'a'.repeat(64)
 

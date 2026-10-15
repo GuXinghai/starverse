@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { createGenericLocalOpenAIChatArtifactV1, decodeGenericLocalOpenAIChatArtifactV1,
-  type GenericLocalOpenAIChatArtifactV1, type GenericLocalOpenAIChatMessageV1 } from '../../../src/next/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+  type GenericLocalOpenAIChatArtifactV1, type GenericLocalOpenAIChatMessageV1 } from '../../../src/core/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import { assertGenerationV2AuthorityTransactionContextV2, registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from './generationExecutionV2Repo'

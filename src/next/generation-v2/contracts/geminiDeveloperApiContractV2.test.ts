@@ -6,7 +6,7 @@ import {
   isGeminiDeveloperApiContractV2,
   readGeminiDeveloperApiContractV2,
   resolveGeminiDeveloperApiEndpointV2,
-} from './geminiDeveloperApiContractV2'
+} from '../../../core/generation-v2/contracts/geminiDeveloperApiContractV2'
 
 describe('Generation V2 Gemini Developer API provider-family contract', () => {
   it('owns one v1beta-only origin/auth policy and three independent typed surfaces', () => {

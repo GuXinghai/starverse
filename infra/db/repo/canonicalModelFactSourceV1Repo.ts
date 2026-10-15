@@ -11,16 +11,16 @@ import {
   type RawPayloadRefV1,
   type RawSourceSnapshotRefV1,
   type SourceFieldRefV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import type {
   RawPayloadReaderV1,
   SanitizedRawPayloadV1,
-} from '../../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
-import { buildRawSourceSnapshotRefV1 } from '../../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
+} from '../../../src/core/generation-v2/model-facts/rawSourceSnapshotV1'
+import { buildRawSourceSnapshotRefV1 } from '../../../src/core/generation-v2/model-facts/rawSourceSnapshotV1'
 import {
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
-} from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/compiler/stableSerialize'
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991
 const DIGEST = /^[0-9a-f]{64}$/u

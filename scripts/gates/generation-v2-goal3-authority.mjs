@@ -34,7 +34,7 @@ for (const absolute of productionFiles) {
 }
 
 const projection = readFileSync(path.resolve(root,
-  'src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.ts'), 'utf8')
+  'src/core/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1.ts'), 'utf8')
 for (const token of ['fallbackDomain', 'shape-safe execution envelope', '2_000_000', '1_000_000']) {
   if (projection.includes(token)) fail(`runtime projection contains fabricated-domain authority ${token}`)
 }

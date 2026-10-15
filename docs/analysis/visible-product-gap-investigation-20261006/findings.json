@@ -1,0 +1,283 @@
+{
+  "meta": {
+    "head": "c076df0fb0ea41a43f129f47007c51deae6463d7",
+    "branch": "models-dev-capability-resolution",
+    "date": "2026-10-06",
+    "method": "6 read-only Haiku scans (non-overlapping areas) + main-thread re-verification of every retained item against HEAD. Static code review only; no runtime reproduction performed.",
+    "counts": { "HIGH": 0, "MEDIUM": 7, "LOW": 8, "total": 15 },
+    "repairBoundaryNote": "BACKEND_ONLY here means Electron main-process code (no renderer change)."
+  },
+  "findings": [
+    {
+      "id": "VPG-01",
+      "severity": "MEDIUM",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Search",
+      "userScenario": "A zh-CN user opens Search: title 'Search', 'Close', placeholder 'Search...', scope labels ('Project name', 'Conversation title', 'User messages', 'Assistant messages'), 'Hide/Show filters', 'Save scope as default' and 'No results.' are all English. The overlay has no role=dialog/aria-modal and no Esc handler (only backdrop click closes).",
+      "evidence": [
+        "src/ui-app/components/SearchModal.vue:214-223 (overlay div, hard-coded 'Search' / 'Close', no role/aria-modal)",
+        "src/ui-app/components/SearchModal.vue:360 ('No results.')",
+        "SearchModal.vue contains no t( calls for UI text (grep: only scope/select logic matched)"
+      ],
+      "backendSupportStatus": "n/a - presentation only; i18n layer (src/shared/i18n) already used by sibling modals",
+      "whyRealCurrentGap": "Search is a primary, always-reachable surface (sidebar button). Sibling modals (SettingsModal) use t() and role=dialog; SearchModal was never brought in line.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Route strings through t() with en-US/zh-CN keys; add role=dialog, aria-modal, aria-label, Esc handling and focus-on-open like SettingsModal.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-02",
+      "severity": "MEDIUM",
+      "category": "BACKEND_WITHOUT_UI",
+      "productArea": "Search",
+      "userScenario": "Search always requests limit 50 / offset 0. A query with more than 50 hits silently shows only the first 50 with no count, 'more results' indicator or load-more control. Before the first query the result area is blank with no hint.",
+      "evidence": [
+        "src/ui-app/components/SearchModal.vue:85-96 (limit: 50, offset: 0 hard-coded)",
+        "src/ui-app/components/SearchModal.vue:356-385 (no pagination/total UI; only 'No results.' after search)"
+      ],
+      "backendSupportStatus": "Query params already accept limit/offset (SearchQueryParams); total-count/hasMore availability in response not verified",
+      "whyRealCurrentGap": "Users cannot reach older matches and are not told results are truncated - a silent data-visibility cap.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Add 'Load more' using offset (or at minimum a 'showing first 50' notice) plus an initial hint line. If the response lacks hasMore, fetch limit+1.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-03",
+      "severity": "MEDIUM",
+      "category": "DEVELOPMENT_RESIDUE",
+      "productArea": "Message actions / diagnostics",
+      "userScenario": "Every assistant message shows an English-only 'Raw Data' button. It opens a modal with request sequence, provider/model IDs, byte counts, SHA-256 hashes, 'Provider Error #n' and raw error codes such as RAW_DEBUG_BRIDGE_UNAVAILABLE / RAW_DEBUG_STORE_UNAVAILABLE.",
+      "evidence": [
+        "src/ui-app/AppChatApp.vue:790-796 (button, hard-coded 'Raw Data', unconditional)",
+        "src/ui-app/AppChatApp.vue:418-435 (openRawData; throws raw error codes)",
+        "src/ui-app/AppChatApp.vue:1318-1350 (modal body: hard-coded 'Raw Data', 'Close', 'Request #', 'Provider Error #', 'bytes', 'SHA-256')"
+      ],
+      "backendSupportStatus": "Exists (window.rawGenerationDebug / rawGenerationDebugIpc) and works; the question is audience, not function",
+      "whyRealCurrentGap": "A debug/support surface presented as an ordinary message action in the default UI, unlocalized, with developer-grade output and raw codes when the store is unavailable.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Owner decision: gate behind a Settings 'Developer/Diagnostics' toggle (or move into an overflow menu); localize labels and map RAW_DEBUG_* codes to readable text.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-04",
+      "severity": "MEDIUM",
+      "category": "ERROR_RECOVERY_GAP",
+      "productArea": "Startup / recovery",
+      "userScenario": "If epoch-2 startup recovery or retry fails, the user gets a native error box titled 'Starverse startup failed' whose body is just a bare machine code. No explanation, next step, or localization; app then exits.",
+      "evidence": [
+        "electron/epoch2MainEntry.ts:71,80,121,132,153 (dialog.showErrorBox('Starverse startup failed', <code>))"
+      ],
+      "backendSupportStatus": "mainI18n infrastructure exists (electron/i18n/mainI18n.ts) but is not used here; no dialog keys exist for these",
+      "whyRealCurrentGap": "Fatal-path dialog is the one place a user most needs guidance; currently dead-end and untranslated. Code paths verified as reachable startup-failure branches by agent; exact trigger frequency unknown.",
+      "repairBoundary": "BACKEND_ONLY",
+      "suggestedRepairDirection": "Add localized title + short explanation keyed by known recovery codes, keeping the code as a detail line.",
+      "confidence": "medium",
+      "runtimeReproNeeded": true
+    },
+    {
+      "id": "VPG-05",
+      "severity": "MEDIUM",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Startup / recovery",
+      "userScenario": "When config.json is corrupt, the recovery prompt (a data-handling decision dialog) is hard-coded in Chinese for all users: message, detail paragraph and buttons '创建新配置' / '退出'; title is English. An English user cannot make an informed choice.",
+      "evidence": [
+        "electron/data-epoch/corruptConfigRecoveryPrompt.ts:7-19 (title 'Starverse startup failed', Chinese message/detail/buttons)",
+        "electron/data-epoch/corruptConfigRecoveryPrompt.ts:39-41,55-57 (further hard-coded notices)"
+      ],
+      "backendSupportStatus": "mainI18n available, unused here",
+      "whyRealCurrentGap": "Verified directly at HEAD; the dialog gates whether settings/credentials are discarded, so comprehension matters.",
+      "repairBoundary": "BACKEND_ONLY",
+      "suggestedRepairDirection": "Move strings into main-process locale files; keep existing semantics and tests.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-06",
+      "severity": "MEDIUM",
+      "category": "STATE_OR_PERSISTENCE_MISMATCH",
+      "productArea": "Settings",
+      "userScenario": "The 'new chat lifecycle' block inside Settings has its own Save button, separate from the main Settings Save. Saving gives no success feedback (only errors render, as raw error.message). A user who changes it and presses only the main Save/closes the dialog loses the change with no warning.",
+      "evidence": [
+        "src/ui-app/components/NewChatLifecycleSettingsPanel.vue:12-18 (save(): no success state), :41 (own button), :43 (raw error.message)",
+        "src/ui-app/components/SettingsPanel.vue:~3018 (panel embedded); main save() at ~1330-1428 does not include it"
+      ],
+      "backendSupportStatus": "Yes (get/setNewChatLifecycleSettings)",
+      "whyRealCurrentGap": "Two save models in one dialog with silent success is misleading; main Save implies everything is saved.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Show 'Saved' feedback and/or auto-save on change; or fold into main save flow. Localize error text.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-07",
+      "severity": "MEDIUM",
+      "category": "MISLEADING_UI",
+      "productArea": "Attachments (sent messages)",
+      "userScenario": "Attachments on sent messages render as a <button> card that does nothing on click (cursor-default, @click.stop) - no open, preview-enlarge or save. The card also shows developer-style metadata: 'Type: <formatId> · <confidenceLevel>', route and compatibility text.",
+      "evidence": [
+        "src/ui-kit/chat/MessageAttachmentCard.vue:92-98 (button type, cursor-default, @click.stop)",
+        "src/ui-kit/chat/MessageAttachmentCard.vue:129-146 (formatId · confidenceLevel raw values)"
+      ],
+      "backendSupportStatus": "Partial: preview retrieval exists (src/next/files/previewClient.ts); no open-file / save-as handler found in electron/ipc or src/next/files",
+      "whyRealCurrentGap": "Looks interactive but is inert; users cannot retrieve or inspect a file they sent. Whether this is an intended limitation is not stated in code.",
+      "repairBoundary": "BOTH",
+      "suggestedRepairDirection": "Short term: remove the button semantics and hide raw type/confidence rows behind details. Longer term (product decision): add open/save via a new main-process handler.",
+      "confidence": "medium",
+      "runtimeReproNeeded": true
+    },
+    {
+      "id": "VPG-08",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Plugins",
+      "userScenario": "Clearing/quarantining the LibreOffice runtime shows English-only window.confirm text with internal wording ('managed runtime metadata', 'DOCX PDF').",
+      "evidence": [
+        "src/ui-app/components/PluginManagementPanel.vue:445 and :452"
+      ],
+      "backendSupportStatus": "Yes",
+      "whyRealCurrentGap": "Verified at HEAD; other confirms in the same app use t() (CompatibleProviderSettingsPanel.vue:285).",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Add i18n keys and plain-language copy.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-09",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Settings / local endpoint",
+      "userScenario": "Local endpoint 'Save' button is Chinese-only ('保存端点'); its failure message is English-only ('LocalEndpoint endpoint URL could not be saved locally.'). The URL is stored in renderer localStorage (separate from other settings), so it will not travel with config backup/reset.",
+      "evidence": [
+        "src/ui-app/components/SettingsPanel.vue:2690 ('保存端点')",
+        "src/ui-app/components/SettingsPanel.vue:1915-1930 (localStorage.setItem; English error string)"
+      ],
+      "backendSupportStatus": "Works; persistence location is localStorage by design (key starverse.localEndpointTextChat.url)",
+      "whyRealCurrentGap": "Mixed-language control on the local-model setup path. Persistence note is lower confidence and may be an intentional choice.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Use common.save-style key; localize error. Persistence location: confirm intent only.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-10",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Attachments (draft)",
+      "userScenario": "In the attachment details dialog: retry button reads 'Retry file detection' in all languages; DFC options/preview failures render the backend error string verbatim; unmapped DFC diagnostic codes show as raw codes.",
+      "evidence": [
+        "src/ui-app/app/appChatApp.logic.ts:4881 ('Retry file detection')",
+        "src/ui-app/components/DraftAttachmentDetailsDialog.vue:416 and :553 (props.attachment.dfcOptions.error / dfcPreview.error rendered raw)",
+        "src/ui-app/components/DraftAttachmentDetailsDialog.vue:295-298 (formatDfcDiagnostic only maps one code)"
+      ],
+      "backendSupportStatus": "Yes",
+      "whyRealCurrentGap": "Label verified directly; raw error content depends on what backend emits at runtime.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Add t() key; map known DFC error/diagnostic codes to localized text with raw code as detail.",
+      "confidence": "medium",
+      "runtimeReproNeeded": true
+    },
+    {
+      "id": "VPG-11",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Errors",
+      "userScenario": "When a generation fails, the top summary bar shows 'HTTP 400 — provider_bad_request — <message>': an untranslated machine code between status and message.",
+      "evidence": [
+        "src/ui-app/app/appChatApp.logic.ts:1325-1334 (normalizedErrorSummary)",
+        "src/ui-app/components/ChatTopSummaryBar.vue:57-58 (rendered)"
+      ],
+      "backendSupportStatus": "Structured code/httpStatus provided; i18n mapping exists in other error views (ProviderFailureDetailsV2)",
+      "whyRealCurrentGap": "Verified reachable path. Code is useful for support, so impact is polish.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Map common codes to localized phrases; keep code as secondary text.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-12",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Chat / composer / provider settings",
+      "userScenario": "Scattered English-only user-visible strings: search-match nav aria-labels 'Previous match'/'Next match'; composer 'Favorite models' and 'Recent models in this session' tooltips; five OpenAI-compatible model-field placeholders; 'Rule navigation' aria-labels; 'No active conversation' title fallback.",
+      "evidence": [
+        "src/ui-app/AppChatApp.vue:585-586 (verified)",
+        "src/ui-app/components/ChatAppComposer.vue:1517,1529 (verified)",
+        "src/ui-app/components/compatible/CompatibleProviderSettingsPanel.vue:771,820,824,828,832 (agent-reported)",
+        "src/ui-app/components/CapabilityRulesOverviewPanel.vue:523, CapabilityRulesUserPanel.vue:332 (agent-reported)",
+        "src/ui-app/AppChatApp.vue:515 (agent-reported)"
+      ],
+      "backendSupportStatus": "n/a",
+      "whyRealCurrentGap": "locale parity test (src/shared/i18n/locales/localeKeyConsistency.test.ts) only checks key parity, so hard-coded strings are invisible to CI; this is the root cause of VPG-01/05/08/09/10/12.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Fix in one i18n sweep; optionally add a lint/grep guard for CJK or title/placeholder/aria-label literals in .vue.",
+      "confidence": "high",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-13",
+      "severity": "LOW",
+      "category": "I18N_OR_ACCESSIBILITY",
+      "productArea": "Modals",
+      "userScenario": "ModelPickerDialog and DraftAttachmentDetailsDialog lack role=dialog/aria-modal on the overlay, so screen readers do not announce them as modals. Both do handle Esc.",
+      "evidence": [
+        "src/ui-app/components/ModelPickerDialog.vue:2397-2404 (no role/aria-modal)",
+        "src/ui-app/components/DraftAttachmentDetailsDialog.vue:323-330 (agent-reported; has @keydown.esc)",
+        "contrast: SettingsModal.vue:93-94 and PluginManagementPanel.vue:1072-1073 set role/aria-modal"
+      ],
+      "backendSupportStatus": "n/a",
+      "whyRealCurrentGap": "Inconsistent modal semantics across commonly used dialogs; focus-trap/restore not assessed statically.",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Shared modal wrapper or attribute pass; check focus restore at runtime.",
+      "confidence": "high",
+      "runtimeReproNeeded": true
+    },
+    {
+      "id": "VPG-14",
+      "severity": "LOW",
+      "category": "MISLEADING_UI",
+      "productArea": "Models / providers",
+      "userScenario": "Per-provider 'Refresh' in the model picker is disabled with no tooltip/text when the provider has no catalog key; LM Studio/Ollama mode buttons are disabled with explanation only in a hover title.",
+      "evidence": [
+        "src/ui-app/components/ModelPickerDialog.vue:2497-2503 (disabled, no title)",
+        "src/ui-app/components/ChatSessionConsole.vue:1717-1738 and ~1952-2012 (title-only explanation; agent-reported)"
+      ],
+      "backendSupportStatus": "Yes - disabling logic is correct; only explanation is missing",
+      "whyRealCurrentGap": "Verified the refresh button has no explanation; severity low because status labels exist nearby. (Agent's claim that disabled model rows lack explanation was weakened: statusLabel is rendered at ModelPickerDialog.vue:~3011.)",
+      "repairBoundary": "UI_ONLY",
+      "suggestedRepairDirection": "Add visible helper text or title for disabled reasons.",
+      "confidence": "medium",
+      "runtimeReproNeeded": false
+    },
+    {
+      "id": "VPG-15",
+      "severity": "LOW",
+      "category": "BACKEND_WITHOUT_UI",
+      "productArea": "Diagnostics",
+      "userScenario": "A user hitting a problem has no in-app way to open/export logs or diagnostics; debug flags exist only as localStorage keys (sv_debug_chat, sv_debug_reasoning). No application menu was found in electron/.",
+      "evidence": [
+        "src/ui-app/app/appChatApp.logic.ts:~843-845 (diagnostics logger/flags)",
+        "grep for Menu.buildFromTemplate/setApplicationMenu in electron/*.ts returned no matches"
+      ],
+      "backendSupportStatus": "Diagnostics infrastructure exists; no user-facing export surface found",
+      "whyRealCurrentGap": "May be intentional for current release stage - retained only as a product-decision item.",
+      "repairBoundary": "BOTH",
+      "suggestedRepairDirection": "Decide whether a 'Copy diagnostics / Open log folder' entry belongs in Settings; pairs with VPG-03.",
+      "confidence": "low",
+      "runtimeReproNeeded": false
+    }
+  ],
+  "rejected": [
+    { "item": "ChatStatusBar.vue JSON.stringify of errors", "reason": "Component only referenced by stories; not mounted in the app" },
+    { "item": "Model picker loading vs empty indistinguishable", "reason": "False positive: distinct strings loadingModels vs noModelsFound (ModelPickerDialog.vue:2957-2960)" },
+    { "item": "cancelDerivativeJob has no UI", "reason": "derivativeJobClient is not imported by any non-test code; dead client, not a visible gap" },
+    { "item": "archiveConvo/restoreConvo not in UI", "reason": "Client calls 'convo.archive'/'convo.restore' but no handler or UI references exist; dead code, not a user-facing feature at HEAD" },
+    { "item": "Search hit failure generic error, search timeout, stream-abort affordance, branch rename feedback, inline delete-confirm discoverability, conversation-list empty hint", "reason": "Speculative or UX-preference without a concrete broken scenario" },
+    { "item": "Unknown DFC decision status fallback, plugin health lacks remediation, attachment menu error without retry, reasoning section hidden for Gemini", "reason": "Defensive fallbacks / edge paths; not demonstrated user-visible failures" },
+    { "item": "Provider failure 'Copied' indicator 1.5 s", "reason": "Trivial" },
+    { "item": "ChatMessageBubble renders unknown blocks as JSON", "reason": "Which block types reach otherBlocks was not traced; speculative" },
+    { "item": "Settings UI-less clients (chatDisplayPrefs, dfcAttachmentDefaults, imageGenerationDefault, projectDefaults)", "reason": "Consumed in appChatApp.logic.ts and configured in context-specific UI; not shown to be user-facing gaps" }
+  ]
+}

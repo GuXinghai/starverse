@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { decodeGenerationIntentLayerV2 } from '../domain/generationIntentV2'
+import { decodeGenerationIntentLayerV2 } from '../../../core/generation-v2/domain/generationIntentV2'
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from './runtimeCapabilitySnapshotV2'
-import { decodeProviderBindingRecordV2 } from '../domain/providerBindingV2'
-import { validateGenerationExecutionCapabilityV2 } from '../compiler/semanticCapabilityValidatorV2'
-import { canonicalizeModelFactsV2, projectCanonicalModelFactsV2 } from './canonicalModelFactsV2'
+} from '../../../core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { decodeProviderBindingRecordV2 } from '../../../core/generation-v2/domain/providerBindingV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { canonicalizeModelFactsV2, projectCanonicalModelFactsV2 } from '../../../core/generation-v2/capability/canonicalModelFactsV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
-  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from './modelCapabilitySchemaV2'
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   authorizeResolvedCapabilityV2,
@@ -16,8 +16,8 @@ import {
   projectGenerationControlsProjectionV2,
   resolvedCapabilityFromRecordV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
-} from './resolvedCapabilityV2'
-import { resolveEncodingCoverageRegistryV2 } from './encodingCoverageRegistryV2'
+} from '../../../core/generation-v2/capability/resolvedCapabilityV2'
+import { resolveEncodingCoverageRegistryV2 } from '../../../core/generation-v2/capability/encodingCoverageRegistryV2'
 
 const digest = 'a'.repeat(64)
 

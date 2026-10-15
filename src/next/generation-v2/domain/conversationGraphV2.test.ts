@@ -4,7 +4,7 @@ import {
   CONVERSATION_GRAPH_V2_ROLES,
   ConversationGraphV2Identity,
   isConversationGraphV2Identity,
-} from './conversationGraphV2'
+} from '../../../core/generation-v2/domain/conversationGraphV2'
 
 describe('Generation V2 conversation graph domain', () => {
   it('owns a closed minimal role/status vocabulary', () => {

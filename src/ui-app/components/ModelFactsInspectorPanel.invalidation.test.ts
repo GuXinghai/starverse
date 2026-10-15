@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { t } from '@/shared/i18n'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '@/next/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '@/core/generation-v2/model-facts/semanticInvalidationV1'
 import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
 
 const subject = (id: string) => ({ providerAuthorityId: 'openai', endpointProfileId: 'openai-api-v1', nativeModelId: id })

@@ -7,17 +7,17 @@ import {
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import {
   OPENROUTER_IMAGE_DESCRIPTOR_CACHE_MAX_BYTES_V2,
-} from '../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
   decideOpenRouterImageDescriptorFreshnessV2,
   type OpenRouterImageDescriptorFreshnessDecisionV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2'
 import {
   decodeOpenRouterImageDescriptorFreshnessPairV2,
   type OpenRouterImageDescriptorFreshnessPairV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
-import type { DecodedOpenRouterImageDescriptorCacheRecordV2 } from '../../src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
-import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
+import type { DecodedOpenRouterImageDescriptorCacheRecordV2 } from '../../src/core/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
+import { GenerationV2Identity } from '../../src/core/generation-v2/domain/identityV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 
 const OPENROUTER_IMAGES_ORIGIN_V2 = 'https://openrouter.ai' as const

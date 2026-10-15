@@ -9,7 +9,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeOpenAIResponsesToolContinuationCommandV2,
   type OpenAIResponsesToolContinuationCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/toolContinuationCommandV2'
+} from '../../src/core/generation-v2/providers/openai-responses/toolContinuationCommandV2'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'

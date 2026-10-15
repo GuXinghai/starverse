@@ -2,8 +2,8 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   isPreparedProviderRequestV2,
   type PreparedProviderRequestV2,
-} from '../../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { createSemanticConsumptionLedgerV2 } from '../../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+} from '../../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { createSemanticConsumptionLedgerV2 } from '../../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   isGenerationExecutionOperationBundleForContextV2,
   type GenerationExecutionOperationBundleV2,
@@ -16,7 +16,7 @@ import {
 import {
   decodeGenerationExecutionProviderId,
   type GenerationExecutionProviderId,
-} from '../../../src/next/generation-v2/domain/generationExecutionProviderId'
+} from '../../../src/core/generation-v2/domain/generationExecutionProviderId'
 
 type GenerationRequestStateInternalV2 = 'prepared' | 'streaming' | 'completed' | 'failed' | 'cancelled'
 

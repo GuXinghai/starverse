@@ -17,14 +17,14 @@ import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModel
 import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterImageDescriptorAuthorityV2Service'
 import { commitOpenRouterImageInitialSnapshotV2 } from './openRouterImageInitialSnapshotCommitV2'
 import { compileOpenRouterImagePreparedRequestV2 } from './openRouterImagePreparedRequestCompilerV2'
-import { decodeOpenRouterImageInitialSendCommandV2, type OpenRouterImageInitialSendCommandV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { resolveOpenRouterImageSelectionInputV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
-import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
-import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
-import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { decodeOpenRouterImageInitialSendCommandV2, type OpenRouterImageInitialSendCommandV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { resolveOpenRouterImageSelectionInputV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
+import { decideOpenRouterImageSelectionV2 } from '../../src/core/generation-v2/providers/openrouter-images/selectionDecisionV2'
+import { issueOpenRouterImageProviderBindingV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageProviderBindingV2'
+import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export class OpenRouterImageInitialSendCoordinatorV2Error extends Error {
   constructor(readonly code:

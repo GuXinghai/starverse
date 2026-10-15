@@ -5,7 +5,7 @@ import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from './assistantAnswerGenerationSnapshotV2'
+} from '../../../core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 
 const contractDigest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)

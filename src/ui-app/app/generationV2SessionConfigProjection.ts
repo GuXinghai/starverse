@@ -1,10 +1,10 @@
-import { decodeGenerationConfigLayerV2 } from '@/next/generation-v2/config/generationConfigLayerV2'
-import { readImageAspectRatioV2 } from '@/next/generation-v2/domain/generationIntentV2'
+import { decodeGenerationConfigLayerV2 } from '@/core/generation-v2/config/generationConfigLayerV2'
+import { readImageAspectRatioV2 } from '@/core/generation-v2/domain/generationIntentV2'
 import type { GenerationParamsLayer, GenerationParamKey, GenerationParamValue } from '@/next/generation-params/generationParamTypes'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
-import type { ReasoningEffort } from '@/next/state/types'
+import type { ReasoningEffort } from '@/shared/provider/providerStreamPayloads'
 import type { ChatSessionConfig, ChatSessionConfigPatch } from './chatSessionConfig'
 
 const GENERATION_PARAM_FIELDS = Object.freeze({

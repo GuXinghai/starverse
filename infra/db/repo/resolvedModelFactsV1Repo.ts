@@ -3,15 +3,15 @@ import {
   canonicalizeCanonicalModelSubjectV1,
   canonicalSourceFactDigestV1,
   type CanonicalModelSubjectV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   decodeResolvedModelFactsV1,
   type ResolvedModelFactsV1,
-} from '../../../src/next/generation-v2/model-facts/resolvedModelFactsV1'
+} from '../../../src/core/generation-v2/model-facts/resolvedModelFactsV1'
 import {
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
-} from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/compiler/stableSerialize'
 
 const REVISION = /^resolved-model-facts-snapshot-v1:[0-9a-f]{64}$/u
 const CAPABILITY_REVISION = /^capability-revision-v1:[0-9a-f]{64}$/u

@@ -1,22 +1,11 @@
+import type { OpenRouterModelCategory } from '@/shared/modelCatalog/openRouterCategoryContracts'
+export { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '@/shared/modelCatalog/openRouterCategoryContracts'
 const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const DEFAULT_CATEGORY_CACHE_TTL_MS = 60 * 60 * 1000
 
-export const OPENROUTER_MODEL_CATEGORIES = [
-  'programming',
-  'roleplay',
-  'marketing',
-  'marketing/seo',
-  'technology',
-  'science',
-  'translation',
-  'legal',
-  'finance',
-  'health',
-  'trivia',
-  'academia',
-] as const
 
-export type OpenRouterModelCategory = (typeof OPENROUTER_MODEL_CATEGORIES)[number]
+
+
 
 type CacheEntry = Readonly<{
   fetchedAtMs: number

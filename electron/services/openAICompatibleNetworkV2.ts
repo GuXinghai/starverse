@@ -1,4 +1,4 @@
-import type { OpenAICompatibleEndpointRevisionV2 } from '../../infra/db/repo/openAICompatibleV2Repo'
+import type { OpenAICompatibleEndpointRevisionV2 } from '@/shared/provider/openai-chat-compatible/endpointContractsV2'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
 

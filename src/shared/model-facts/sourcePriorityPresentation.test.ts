@@ -3,7 +3,7 @@ import {
   SOURCE_PRIORITY_KEYS, parseSourcePriorityDraft, sourcePriorityErrorKey, sourcePriorityErrorKind, sourcePriorityKey,
   sourcePriorityRanks, sourcePriorityTies, sourcePriorityValidationKey,
 } from './modelFactPresentation'
-import { sourcePriorityConfigRevisionV1 } from '@/next/generation-v2/model-facts/sourcePriorityConfigV1'
+import { sourcePriorityConfigRevisionV1 } from '@/core/generation-v2/model-facts/sourcePriorityConfigV1'
 import { t } from '@/shared/i18n'
 
 describe('Source Priority presentation (Goal 4 S3)', () => {

@@ -1,5 +1,5 @@
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
-import type { GenerationOperationRuntimeSnapshotV2 } from '../domain/generationStreamEventV2'
+import type { GenerationOperationRuntimeSnapshotV2 } from '../../../core/generation-v2/domain/generationStreamEventV2'
 
 export type BranchRuntimeCacheEntryV2 = Readonly<{
   conversationId: string

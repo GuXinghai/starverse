@@ -7,7 +7,7 @@ import {
   listReviewedProviderContractDefinitionsV2,
   lookupReviewedProviderContractDefinitionV2,
   readProviderContractRegistryRevisionV2,
-} from './providerContractRegistryV2'
+} from '../../../core/generation-v2/contracts/providerContractRegistryV2'
 
 function currentLookup() {
   const definition = listReviewedProviderContractDefinitionsV2()

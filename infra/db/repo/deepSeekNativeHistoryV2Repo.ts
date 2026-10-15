@@ -7,13 +7,13 @@ import {
   serializeDeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryEntryV1,
-} from '../../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
-} from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/conversationGraphV2'
+import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,
@@ -35,7 +35,7 @@ import {
 import {
   isDeepSeekToolContinuationCommandV2,
   type DeepSeekToolContinuationCommandV2,
-} from '../../../src/next/generation-v2/providers/deepseek/toolContinuationCommandV2'
+} from '../../../src/core/generation-v2/providers/deepseek/toolContinuationCommandV2'
 
 const MAX_LINEAGE_DEPTH = 4_096
 

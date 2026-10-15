@@ -1,6 +1,6 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import { stableSerializeProviderRequestBoundedV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { ConversationGraphV2Identity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,

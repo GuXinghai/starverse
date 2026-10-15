@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { ReasoningDetailStreamMerger } from '@/next/state/reasoningDetailStreamMerger'
-import type { ReasoningDisplayBlock } from '@/next/state/types'
-import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
+import type { ProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 export type ActiveStream = Readonly<{
   abort: AbortController

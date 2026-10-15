@@ -3,7 +3,7 @@ import {
   decodeOpenAIResponsesClientItemsV1,
   decodeOpenAIResponsesReplayItemsV1,
   decodeOpenAIResponsesReturnedItemsV1,
-} from './nativeItemsV1'
+} from '../../../../core/generation-v2/providers/openai-responses/nativeItemsV1'
 
 const returnedItems = [
   {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import { decodeAnthropicPlainTextInitialSendCommandV2 } from '../../src/next/generation-v2/providers/anthropic/plainTextInitialSendCommandV2'
+import { decodeAnthropicPlainTextInitialSendCommandV2 } from '../../src/core/generation-v2/providers/anthropic/plainTextInitialSendCommandV2'
 import { commitVerifiedAnthropicPlainTextInitialSnapshotV2 } from './anthropicPlainTextSnapshotCommitV2'
 
 describe('Anthropic plain-text snapshot commit V2', () => {

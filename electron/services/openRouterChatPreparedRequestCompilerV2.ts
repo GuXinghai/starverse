@@ -13,22 +13,22 @@ import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
+import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
   issuePreparedProviderRequestV2,
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { buildOpenRouterNativeRequestHistoryV1, buildOpenRouterProjectedNativeRequestHistoryV1, OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
-import { compileOpenRouterChatRequestV1 } from '../../src/next/generation-v2/providers/openrouter/chatRequestV1'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { buildOpenRouterNativeRequestHistoryV1, buildOpenRouterProjectedNativeRequestHistoryV1, OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
+import { compileOpenRouterChatRequestV1 } from '../../src/core/generation-v2/providers/openrouter/chatRequestV1'
 import {
   readVerifiedOpenRouterFirstPartyEndpointProfileV2,
   resolveOpenRouterFirstPartyOperationV2,
-} from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export class OpenRouterChatPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

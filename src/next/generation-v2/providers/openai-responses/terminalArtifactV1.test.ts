@@ -3,8 +3,8 @@ import {
   createOpenAIResponsesTerminalArtifactV1,
   decodeOpenAIResponsesTerminalArtifactV1,
   isOpenAIResponsesTerminalArtifactV1,
-} from './terminalArtifactV1'
-import { OpenAIResponsesStreamAssemblerV1, OpenAIResponsesTypedSseDecoderV1 } from './responsesStreamV1'
+} from '../../../../core/generation-v2/providers/openai-responses/terminalArtifactV1'
+import { OpenAIResponsesStreamAssemblerV1, OpenAIResponsesTypedSseDecoderV1 } from '../../../../core/generation-v2/providers/openai-responses/responsesStreamV1'
 
 function completedResult() {
   const response = {

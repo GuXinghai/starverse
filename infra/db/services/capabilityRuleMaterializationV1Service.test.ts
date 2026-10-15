@@ -2,9 +2,9 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { buildAuthoritativeModelSubjectSetV1 } from
-  '../../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
 import { CapabilityRuleMaterializationV1Repo,
   CapabilityRuleMaterializationV1RepoError } from '../repo/capabilityRuleMaterializationV1Repo'

@@ -13,10 +13,10 @@ import { ConversationReadV2Repo } from '../../infra/db/repo/conversationReadV2Re
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { SystemChatTemplateV2Repo } from '../../infra/db/repo/systemChatTemplateV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2, decodeRuntimeCapabilitySnapshotV2 } from '@/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
-import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '@/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { readReviewedDeepSeekStableChatDefinitionV2 } from '@/next/generation-v2/contracts/providerContractRegistryV2'
+import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2, decodeRuntimeCapabilitySnapshotV2 } from '@/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '@/core/generation-v2/capability/modelCapabilitySchemaV2'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '@/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { readReviewedDeepSeekStableChatDefinitionV2 } from '@/core/generation-v2/contracts/providerContractRegistryV2'
 import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 import { resetI18nForTests, setLocale, t } from '@/shared/i18n'
 import type { useAppChatAppLogic } from './app/appChatApp.logic'
@@ -39,6 +39,7 @@ describe('actual App indexed message search navigation', () => {
   let db: BetterSqlite3.Database, bridge: any, drafts: ComposerDraftV2Repo
   let handlers: Map<string, IpcInvokeHandler>, graph: ConversationGraphV2Repo, workspace: ConversationWorkspaceV2Repo
   let inboxId: string, serial: number, clock: number
+  let runtimeCapability: ReturnType<typeof decodeRuntimeCapabilitySnapshotV2> | null
   const invoke = (channel: string, payload?: unknown) => handlers.get(channel)!({}, payload)
   const authority = <T>(action: Parameters<typeof runGenerationV2AuthorityTransactionOnOwnedConnectionV2<T>>[1]) =>
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, action)
@@ -55,7 +56,8 @@ describe('actual App indexed message search navigation', () => {
       endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: 'endpoint-set:1', descriptors: [{ endpointId: 'endpoint:deepseek', descriptorRevision: 'descriptor:1' }] },
       protocolContractId: contract.protocolContractId.value, contractRevision: contract.contractRevision.value,
       contractDefinitionDigest: contract.definitionDigest.value, registryRevision: contract.registryRevision.value, modelId: 'deepseek-chat', operation: 'text' }
-    const capability = decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({ schemaVersion: 2,
+    // All turns share this immutable capability; operation/answer snapshots remain distinct.
+    const capability = runtimeCapability ??= decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({ schemaVersion: 2,
       resolvedAt: '2026-10-03T00:00:00.000Z', binding, evidence: [{ evidenceId: 'test.search', kind: 'official_documentation', effect: 'supports',
         sourceRef: 'https://api-docs.deepseek.com/api/create-chat-completion', verifiedAt: '2026-10-03T00:00:00.000Z', contentDigest: hash }],
       fields: MODEL_CAPABILITY_SEMANTIC_PATHS_V2.map(path => ({ path, state: 'missing', constraints: [], evidenceIds: [] })),
@@ -122,6 +124,7 @@ describe('actual App indexed message search navigation', () => {
 
   beforeEach(async () => {
     resetI18nForTests(); setLocale('en-US'); captured.logic = null; serial = 0; clock = 20
+    runtimeCapability = null
     bridge = installGenerationV2TestBridge()
     db = new BetterSqlite3(':memory:'); applyGenerationV2SchemaForTest(db, process.cwd())
     drafts = new ComposerDraftV2Repo(db, () => 10000); graph = new ConversationGraphV2Repo(db); workspace = new ConversationWorkspaceV2Repo(db)

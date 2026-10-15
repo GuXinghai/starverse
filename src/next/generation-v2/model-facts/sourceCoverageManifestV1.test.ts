@@ -4,7 +4,7 @@ import {
   MODELS_DEV_COVERAGE_MANIFEST_V1,
   PROVIDER_NATIVE_COVERAGE_MANIFESTS_V1,
   SourceCoverageManifestV1Error,
-} from './sourceCoverageManifestV1'
+} from '../../../core/generation-v2/model-facts/sourceCoverageManifestV1'
 
 describe('source coverage manifests V1', () => {
   it('keeps no coverage distinct from observable missing', () => {

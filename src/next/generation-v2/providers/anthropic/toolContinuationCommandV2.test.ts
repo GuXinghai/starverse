@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeAnthropicToolContinuationCommandV2 } from './toolContinuationCommandV2'
+import { decodeAnthropicToolContinuationCommandV2 } from '../../../../core/generation-v2/providers/anthropic/toolContinuationCommandV2'
 
 describe('AnthropicToolContinuationCommandV2', () => {
   const input = {

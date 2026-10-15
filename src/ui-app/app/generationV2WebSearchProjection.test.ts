@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
 import { buildGenerationV2WebSearch, projectGenerationV2WebSearchControls } from './generationV2WebSearchProjection'
 
 function projection(providerId: string, protocolContractId: string, fields: Record<string, unknown> = {}): GenerationControlsProjectionV2 {

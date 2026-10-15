@@ -4,7 +4,7 @@ import {
   DEEPSEEK_STABLE_STREAM_MAX_NATIVE_OUTPUT_BYTES_V1,
   DeepSeekStableChatStreamAssemblerV1,
   DeepSeekStableSseDecoderV1,
-} from './chatStreamV1'
+} from '../../../../core/generation-v2/providers/deepseek/chatStreamV1'
 
 function chunk(input: Readonly<{
   delta?: unknown

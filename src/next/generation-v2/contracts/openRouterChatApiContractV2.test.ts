@@ -7,7 +7,7 @@ import {
   readOpenRouterChatApiContractV2,
   readOpenRouterChatRegistrySurfaceV2,
   resolveOpenRouterChatApiEndpointV2,
-} from './openRouterChatApiContractV2'
+} from '../../../core/generation-v2/contracts/openRouterChatApiContractV2'
 
 const artifactPath = path.resolve(
   'docs/architecture/generation-compiler-v2/evidence/openrouter-chat-api-contract-20260715.json',
@@ -99,7 +99,7 @@ describe('OpenRouter Chat API V2 static contract', () => {
       openApiSha256: null,
     })
     const source = readFileSync(path.resolve(
-      'src/next/generation-v2/contracts/openRouterChatApiContractV2.ts',
+      'src/core/generation-v2/contracts/openRouterChatApiContractV2.ts',
     ), 'utf8')
     expect(source).not.toMatch(/plugins|:online|modalities|image_config|providerFile|profileId|credentialScope|fetch\(|net\.request|ipcMain/iu)
   })

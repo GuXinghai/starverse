@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
-import { GenerationV2Identity } from '../../domain/identityV2'
-import { decodeProviderBindingRecordV2 } from '../../domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../../../core/generation-v2/compiler/stableSerialize'
+import { GenerationV2Identity } from '../../../../core/generation-v2/domain/identityV2'
+import { decodeProviderBindingRecordV2 } from '../../../../core/generation-v2/domain/providerBindingV2'
 import {
   decodeCanonicalOpenRouterImageDescriptorSetV2,
   projectCanonicalOpenRouterImageDescriptorSetForCacheV2,
-} from './canonicalDescriptorV2'
-import { decodeOpenRouterImageDescriptorCacheRecordV2 } from './descriptorCacheRecordV2'
-import { decideOpenRouterImageDescriptorFreshnessV2 } from './descriptorFreshnessDecisionV2'
-import { resolveOpenRouterImageSelectionInputV2 } from './imageDescriptorSelectionV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+import { decodeOpenRouterImageDescriptorCacheRecordV2 } from '../../../../core/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
+import { decideOpenRouterImageDescriptorFreshnessV2 } from '../../../../core/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2'
+import { resolveOpenRouterImageSelectionInputV2 } from '../../../../core/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
 import {
   decideOpenRouterImageSelectionV2,
   type OpenRouterImageSelectionBindingFactV2,
   type OpenRouterImageSelectionDecisionInputV2,
-} from './selectionDecisionV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/selectionDecisionV2'
 
 const SCOPE = 'credential-scope-v2:' + '1'.repeat(64)
 const MODEL = 'google/gemini-image'

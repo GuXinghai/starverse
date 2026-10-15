@@ -3,7 +3,7 @@ import {
   canonicalizeCanonicalModelSubjectV1,
   canonicalizeRawPayloadRefV1,
   type CanonicalSemanticPathV1,
-} from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import type { ModelFactsInspectorReadAuthorityV1 } from '../services/modelFactsInspectorV1Service'
 import type { RegisterInvoke } from './types'
 

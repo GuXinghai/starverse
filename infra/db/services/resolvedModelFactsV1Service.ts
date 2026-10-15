@@ -6,13 +6,13 @@ import {
   type CanonicalSubjectFactPayloadV1,
   type CanonicalSubjectFactRefV1,
   type CanonicalSourceKindV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   resolveModelFactsV1,
-} from '../../../src/next/generation-v2/model-facts/resolveModelFactsV1'
+} from '../../../src/core/generation-v2/model-facts/resolveModelFactsV1'
 import {
   RESOLVED_MODEL_FACTS_ONTOLOGY_SCHEMA_DIGEST_V1,
-} from '../../../src/next/generation-v2/model-facts/resolvedModelFactsV1'
+} from '../../../src/core/generation-v2/model-facts/resolvedModelFactsV1'
 import {
   CanonicalModelFactSourceV1Repo,
 } from '../repo/canonicalModelFactSourceV1Repo'

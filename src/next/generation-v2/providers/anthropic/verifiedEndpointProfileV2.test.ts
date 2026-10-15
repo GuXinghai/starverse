@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isVerifiedAnthropicEndpointProfileV2,
   readVerifiedAnthropicEndpointProfileV2,
-} from './verifiedEndpointProfileV2'
+} from '../../../../core/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
 
 describe('Anthropic V2 verified endpoint profile', () => {
   it('derives the sole standard first-party profile from the reviewed provider contract', () => {

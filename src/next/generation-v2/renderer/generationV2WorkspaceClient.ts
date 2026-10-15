@@ -1,7 +1,7 @@
 import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
 import type { ConversationRouteSelection } from '../../provider/conversationRouteSelection'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
-import type { GenerationExecutionProviderId } from '../domain/generationExecutionProviderId'
+import type { GenerationExecutionProviderId } from '../../../core/generation-v2/domain/generationExecutionProviderId'
 import type {
   LocalEndpointExecutionProviderId,
   LocalEndpointProtocolV2,

@@ -1,21 +1,21 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   GenerationV2Identity,
   GenerationV2IdentityError,
   isGenerationV2Identity,
-} from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/identityV2'
 import {
   decodeProviderBindingRecordV2,
   ProviderBindingV2Error,
   type DecodedProviderBindingRecordV2,
-} from '../../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../../src/core/generation-v2/domain/providerBindingV2'
 import {
   decodeOpenRouterImageDescriptorCacheRecordV2,
   OpenRouterImageDescriptorCacheRecordV2Error,
-} from '../../../src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
-import { CanonicalOpenRouterImageDescriptorV2Error } from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
-import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+} from '../../../src/core/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
+import { CanonicalOpenRouterImageDescriptorV2Error } from '../../../src/core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,

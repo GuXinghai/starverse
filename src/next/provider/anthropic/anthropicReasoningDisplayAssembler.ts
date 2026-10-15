@@ -1,6 +1,6 @@
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
-import type { AnthropicProviderNativeSnapshot } from '@/next/provider/anthropic/anthropicProviderNativeContent'
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
+import type { AnthropicProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 
 export type AnthropicReasoningDisplayAssemblerState = {
   thinkingBlockIndexes: Set<number>

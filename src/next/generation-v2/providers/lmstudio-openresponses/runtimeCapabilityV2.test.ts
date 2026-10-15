@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { LocalEndpointProfileV2 } from '../../../../../infra/db/repo/localEndpointProfileV2Repo'
-import { createLmStudioOpenResponsesProviderBindingV2 } from './verifiedContractV2'
-import { composeLmStudioOpenResponsesBaselineCapabilityV2 } from './runtimeCapabilityV2'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
+import { createLmStudioOpenResponsesProviderBindingV2 } from '../../../../core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { composeLmStudioOpenResponsesBaselineCapabilityV2 } from '../../../../core/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
 
 const profile: LocalEndpointProfileV2 = Object.freeze({ endpointProfileId: 'lmstudio-openresponses:local',
   providerId: 'lmstudio', protocolContractId: 'lmstudio-openresponses', baseUrl: 'http://127.0.0.1:1234',

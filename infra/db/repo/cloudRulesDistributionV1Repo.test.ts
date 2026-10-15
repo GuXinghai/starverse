@@ -7,7 +7,7 @@ import {
   CLOUD_RULES_RELEASE_ASSET_NAME_V1,
   computeCloudRulesContentRevisionV1,
   validateCloudRulesReleasePublicationV1,
-} from '../../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import {
   CloudRulesDistributionV1Repo,
   CloudRulesDistributionV1RepoError,

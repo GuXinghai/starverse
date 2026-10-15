@@ -12,7 +12,7 @@
  */
 
 import { expect } from 'vitest'
-import type { StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent, StarverseProviderError } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // Event collection

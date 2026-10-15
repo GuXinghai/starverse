@@ -6,7 +6,7 @@ import type { GenerationStreamProjectionSinkV2 } from './generationStreamProject
 import { createOpenRouterChatGenerationV2Runtime } from './openRouterChatGenerationV2Runtime'
 import { createOpenRouterImageGenerationV2Runtime } from './openRouterImageGenerationV2Runtime'
 import { createOpenRouterImageEndpointSelectionV2Service } from './openRouterImageEndpointSelectionV2Service'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export type OpenRouterFirstPartyGenerationV2Runtime = Readonly<{
   profileId: string

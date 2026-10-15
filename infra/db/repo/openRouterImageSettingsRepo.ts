@@ -4,7 +4,7 @@ import {
   DEFAULT_OPENROUTER_IMAGE_DESCRIPTOR_FRESHNESS_PAIR_V2,
   OpenRouterImageDescriptorFreshnessSettingsV2Error,
   type OpenRouterImageDescriptorFreshnessPairV2,
-} from '../../../src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
+} from '../../../src/core/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
 
 const SETTING_ID = 'endpoint_descriptor_freshness'
 

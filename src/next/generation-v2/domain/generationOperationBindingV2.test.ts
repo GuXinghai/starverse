@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { GenerationOperationBindingV2 } from './generationOperationBindingV2'
+import type { GenerationOperationBindingV2 } from '../../../core/generation-v2/domain/generationOperationBindingV2'
 
 const FORBIDDEN_OPERATION_NAMES = Object.freeze([
   'resultAnswerRootId',

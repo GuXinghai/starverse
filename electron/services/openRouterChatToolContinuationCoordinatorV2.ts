@@ -9,7 +9,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeOpenRouterToolContinuationCommandV2,
   type OpenRouterToolContinuationCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter/toolContinuationCommandV2'
+} from '../../src/core/generation-v2/providers/openrouter/toolContinuationCommandV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { compileOpenRouterChatPreparedRequestV2 } from './openRouterChatPreparedRequestCompilerV2'

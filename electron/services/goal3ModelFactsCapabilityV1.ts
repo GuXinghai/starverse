@@ -2,23 +2,23 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   buildModelsDevSourceScopeIdV1,
   buildProviderNativeSourceScopeIdV1,
-} from '../../src/next/generation-v2/model-facts/sourceScopeV1'
+} from '../../src/core/generation-v2/model-facts/sourceScopeV1'
 import {
   canonicalSourceFactDigestV1,
   type CanonicalModelSubjectV1,
-} from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   modelsDevProviderKeyForAuthorityV1,
   providerAuthorityForCompatibleProviderInstanceV1,
   providerAuthorityForExecutionBindingV1,
   providerAuthorityForLocalProfileV1,
-} from '../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
-import type { DecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import type { ResolvedModelFactsSnapshotBindingV1 } from '../../src/next/generation-v2/model-facts/resolvedModelFactsV1'
-import { projectResolvedModelFactsToRuntimeV2 } from '../../src/next/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1'
+} from '../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
+import type { DecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import type { ResolvedModelFactsSnapshotBindingV1 } from '../../src/core/generation-v2/model-facts/resolvedModelFactsV1'
+import { projectResolvedModelFactsToRuntimeV2 } from '../../src/core/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1'
 import { ResolvedModelFactsV1Service } from '../../infra/db/services/resolvedModelFactsV1Service'
 import type { ResolvedModelFactsSourceScopeSelectionV1 } from '../../infra/db/repo/resolvedModelFactsV1Repo'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 
 const MODELS_DEV_DISTRIBUTION_ID = 'models.dev-official-api'
 const MODELS_DEV_DISTRIBUTION_CHANNEL = 'https://models.dev/api.json'

@@ -1,8 +1,8 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
 import {
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
@@ -31,11 +31,11 @@ import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isGeminiPlainTextInitialSendCommandV2,
   type GeminiPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/plainTextInitialSendCommandV2'
+} from '../../src/core/generation-v2/providers/gemini/plainTextInitialSendCommandV2'
 import {
   isGeminiPlainTextEditResendCommandV2,
   isGeminiPlainTextRegenerateCommandV2,
@@ -43,7 +43,7 @@ import {
   type GeminiPlainTextEditResendCommandV2,
   type GeminiPlainTextRegenerateCommandV2,
   type GeminiPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/plainTextActionCommandsV2'
+} from '../../src/core/generation-v2/providers/gemini/plainTextActionCommandsV2'
 import {
   isVerifiedGeminiGenerateContentProviderBindingAuthorityV2,
   isVerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2,

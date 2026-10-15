@@ -8,8 +8,7 @@ import { OpenAIChatCompatibleNativeHistoryV2Repo } from '../../infra/db/repo/ope
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 // Approved Generation V2 main-process composition boundary: prepared requests never cross IPC as mutable values.
-// eslint-disable-next-line no-restricted-imports
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { CompatibleSseWireParser, decodeCompatibleNonStreamResponse, type CompatibleWireEvent } from '../../src/shared/provider/openai-chat-compatible/wire'
 import { CompatibleChatResponseCoordinator } from '../../src/shared/provider/openai-chat-compatible/runtime/compatibleChatResponseCoordinator'
 import { aggregateCompatibleDiscovery, type CompatibleDiscoveryObservation } from '../../src/shared/provider/openai-chat-compatible/extensions'
@@ -19,8 +18,7 @@ import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAI
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2, type GenerationBodyCheckpointV2 } from './generationBodyCheckpointV2'
-// eslint-disable-next-line no-restricted-imports
-import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStreamResultV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
+import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStreamResultV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { readOpenAICompatibleJsonResponseBytesV2 } from './openAIChatCompatibleResponseBodyV2'

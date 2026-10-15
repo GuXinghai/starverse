@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeDeepSeekToolContinuationCommandV2 } from './toolContinuationCommandV2'
+import { decodeDeepSeekToolContinuationCommandV2 } from '../../../../core/generation-v2/providers/deepseek/toolContinuationCommandV2'
 
 describe('DeepSeekToolContinuationCommandV2', () => {
   it('fingerprints exact ordered outputs and confirmation decisions', () => {

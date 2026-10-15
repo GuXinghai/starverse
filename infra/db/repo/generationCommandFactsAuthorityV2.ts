@@ -1,20 +1,20 @@
 import {
   type GenerationConfigRevisionEntryV2,
-} from '../../../src/next/generation-v2/config/generationConfigRevisionV2'
+} from '../../../src/core/generation-v2/config/generationConfigRevisionV2'
 import {
   decodeGenerationIntentLayerV2,
-} from '../../../src/next/generation-v2/domain/generationIntentV2'
+} from '../../../src/core/generation-v2/domain/generationIntentV2'
 import {
   projectGenerationIntentLayerV2,
-} from '../../../src/next/generation-v2/domain/generationIntentProjectionV2'
+} from '../../../src/core/generation-v2/domain/generationIntentProjectionV2'
 import {
   decodeResolvedGenerationIntentV2,
   type ResolvedGenerationIntentV2,
-} from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+} from '../../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
-} from '../../../src/next/generation-v2/domain/conversationGraphV2'
+} from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import {
   AttachmentAssetV2Repo,
   isResolvedAttachmentSetAuthorityV2,

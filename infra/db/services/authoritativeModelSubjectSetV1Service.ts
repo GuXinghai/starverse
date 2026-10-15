@@ -6,13 +6,13 @@ import {
   buildAuthoritativeModelSubjectSetV1,
   type AuthoritativeModelSubjectCandidateV1,
   type AuthoritativeModelSubjectSetV1,
-} from '../../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+} from '../../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import {
   providerAuthorityForCompatibleProviderInstanceV1,
   providerAuthorityForLocalProfileV1,
   providerAuthorityForNativeSurfaceV1,
-} from '../../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
-import { ProviderCatalogAuthorityRegistryV2 } from '../../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+} from '../../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
+import { ProviderCatalogAuthorityRegistryV2 } from '../../../src/core/model-catalog/providerCatalogAuthorityRegistryV2'
 import type { ProviderCredentialKey } from '../../../electron/credentials/providerCredentialContract'
 
 type CredentialStatus = Readonly<{

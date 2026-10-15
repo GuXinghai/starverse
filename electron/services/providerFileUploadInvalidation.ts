@@ -1,4 +1,4 @@
-import type { StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '../../src/shared/provider/providerStreamContracts'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from './providerFileUploadService'
 
 export async function invalidateProviderFileUploadCacheOnReferenceError(input: Readonly<{
@@ -25,7 +25,7 @@ export async function invalidateProviderFileUploadCacheOnReferenceError(input: R
 
 export function isProviderFileReferenceInvalidationError(event: StarverseStreamEvent): boolean {
   if (event.type !== 'stream.error') return false
-  const error = event.error as StarverseProviderError
+  const error = event.error
   const text = `${error.code ?? ''} ${error.message ?? ''}`.toLowerCase()
   return /\b(file|file_id|fileid|fileuri|file_uri|input_file|document)\b/.test(text) &&
     /(invalid|expired|deleted|not[_ -]?found|missing|does not exist|no such|unavailable)/.test(text)

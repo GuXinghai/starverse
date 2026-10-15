@@ -8,17 +8,17 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   OpenRouterChatSseDecoderV1,
   OpenRouterChatProviderStreamErrorV1,
   OpenRouterChatStreamV1Error,
   OpenRouterChatStreamAssemblerV1,
   type OpenRouterChatStreamResultV1,
-} from '../../src/next/generation-v2/providers/openrouter/chatStreamV1'
-import { completeOpenRouterNativeHistoryV1, completeOpenRouterProjectedNativeHistoryV1 } from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
-import { createOpenRouterChatTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openrouter/terminalArtifactV1'
+} from '../../src/core/generation-v2/providers/openrouter/chatStreamV1'
+import { completeOpenRouterNativeHistoryV1, completeOpenRouterProjectedNativeHistoryV1 } from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
+import { createOpenRouterChatTerminalArtifactV1 } from '../../src/core/generation-v2/providers/openrouter/terminalArtifactV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'

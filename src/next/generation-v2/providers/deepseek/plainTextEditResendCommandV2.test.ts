@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeDeepSeekPlainTextEditResendCommandV2 } from './plainTextEditResendCommandV2'
+import { decodeDeepSeekPlainTextEditResendCommandV2 } from '../../../../core/generation-v2/providers/deepseek/plainTextEditResendCommandV2'
 
 function command(overrides: Record<string, unknown> = {}) {
   return {

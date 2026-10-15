@@ -15,7 +15,6 @@ import {
   type Epoch2RuntimeCredentialService,
 } from '../credentials/epoch2RuntimeCredentialService'
 // Approved main-process DeepSeek Generation V2 execution boundary.
-// eslint-disable-next-line no-restricted-imports
 import {
   DeepSeekStableChatStreamAssemblerV1,
   DeepSeekStableChatStreamV1Error,
@@ -23,13 +22,10 @@ import {
   isDeepSeekStableStreamResultV1,
   type DeepSeekStableStreamDeltaV1,
   type DeepSeekStableStreamResultV1,
-} from '../../src/next/generation-v2/providers/deepseek/chatStreamV1'
-// eslint-disable-next-line no-restricted-imports
-import { completeDeepSeekProjectedNativeRequestV2, completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
-// eslint-disable-next-line no-restricted-imports
-import { createDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
-// eslint-disable-next-line no-restricted-imports
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+} from '../../src/core/generation-v2/providers/deepseek/chatStreamV1'
+import { completeDeepSeekProjectedNativeRequestV2, completeDeepSeekNativeRequestV2 } from '../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
+import { createDeepSeekStableTerminalArtifactV1 } from '../../src/core/generation-v2/providers/deepseek/terminalArtifactV1'
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import {
   isGenerationTextCommandResultV2,
   type GenerationTextCommandResultV2,

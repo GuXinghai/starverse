@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { LocalEndpointProfileV2 } from '../../../../../infra/db/repo/localEndpointProfileV2Repo'
-import { createGenericLocalOpenAIChatProviderBindingV2 } from './verifiedContractV2'
-import { composeGenericLocalOpenAIChatBaselineCapabilityV2 } from './runtimeCapabilityV2'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
+import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../../../core/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
+import { composeGenericLocalOpenAIChatBaselineCapabilityV2 } from '../../../../core/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
 
 const profile: LocalEndpointProfileV2 = Object.freeze({
   endpointProfileId: 'generic-local-openai-chat:local', providerId: 'generic_local',

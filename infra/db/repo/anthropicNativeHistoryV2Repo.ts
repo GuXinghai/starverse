@@ -6,22 +6,22 @@ import {
   isAnthropicNativeHistoryArtifactV1,
   serializeAnthropicNativeHistoryArtifactV1,
   type AnthropicNativeHistoryArtifactV1,
-} from '../../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
-import type { AnthropicMessagesRequestMessageV1 } from '../../../src/next/generation-v2/providers/anthropic/messagesRequestV1'
+} from '../../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
+import type { AnthropicMessagesRequestMessageV1 } from '../../../src/core/generation-v2/providers/anthropic/messagesRequestV1'
 import {
   createAnthropicToolResultMessageV1,
   type AnthropicToolResultMessageV1,
-} from '../../../src/next/generation-v2/providers/anthropic/toolContinuationContentV1'
+} from '../../../src/core/generation-v2/providers/anthropic/toolContinuationContentV1'
 import {
   isAnthropicToolContinuationCommandV2,
   type AnthropicToolContinuationCommandV2,
-} from '../../../src/next/generation-v2/providers/anthropic/toolContinuationCommandV2'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/providers/anthropic/toolContinuationCommandV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
-} from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/conversationGraphV2'
+import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,

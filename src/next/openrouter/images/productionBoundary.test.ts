@@ -26,7 +26,7 @@ describe('OpenRouter Images V2 production boundary', () => {
   })
 
   it('pins the explicit endpoint binding without fallback', () => {
-    const compiler = read('src/next/generation-v2/providers/openrouter-images/imageRequestV1.ts')
+    const compiler = read('src/core/generation-v2/providers/openrouter-images/imageRequestV1.ts')
     expect(compiler).toContain('allow_fallbacks')
     expect(compiler).toContain('providerTag')
     expect(compiler).toContain('It only serializes the selected tag as `provider.only`')

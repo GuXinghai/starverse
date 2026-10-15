@@ -14,12 +14,12 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.4
  */
 
-import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildAnthropicRequest, type AnthropicMessage } from '@/next/provider/anthropic/anthropicRequestBuilder'
 import { decodeAnthropicSSE } from '@/next/provider/anthropic/anthropicSseDecoder'
 import { mapAnthropicStreamEventToStarverse } from '@/next/provider/anthropic/anthropicStreamMapper'
-import { createAnthropicMessagesNativeContentAccumulator } from '@/next/provider/anthropic/anthropicMessagesNativeContentAccumulator'
+import { createAnthropicMessagesNativeContentAccumulator } from '@/core/provider/anthropic/anthropicMessagesNativeContentAccumulator'
 import {
   buildAnthropicFinalThinkingDisplayEvents,
   buildAnthropicThinkingDeltaEvents,
@@ -33,8 +33,8 @@ import {
   cloneAnthropicNativeContentBlocks,
   normalizeAnthropicNativeContentBlocks,
   type AnthropicProviderNativeSnapshot,
-} from '@/next/provider/anthropic/anthropicProviderNativeContent'
-import { buildAnthropicUserContent } from '@/next/multimodal/providerRuntimeContentBlocks'
+} from '@/core/provider/anthropic/anthropicProviderNativeContent'
+import { buildAnthropicUserContent } from '@/core/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types

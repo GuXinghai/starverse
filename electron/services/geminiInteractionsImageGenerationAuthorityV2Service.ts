@@ -3,32 +3,32 @@ import {
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
   type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
-} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiInteractionsDefinitionV2,
-} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
   type VerifiedProviderContractReferenceV2,
-} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+} from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
-} from '../../src/next/generation-v2/domain/providerBindingV2'
-import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+} from '../../src/core/generation-v2/domain/providerBindingV2'
+import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/core/generation-v2/domain/identityV2'
 import {
   isGenerationCommandFactsAuthorityForContextV2,
   type GenerationCommandFactsAuthorityV2,
@@ -40,7 +40,7 @@ import {
 import {
   isVerifiedGeminiDeveloperApiEndpointProfileV2,
   readVerifiedGeminiDeveloperApiEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,

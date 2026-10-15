@@ -10,13 +10,13 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { decodeGeminiInteractionsImageInitialCommandV2, type GeminiInteractionsImageInitialCommandV2 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCommandsV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { decodeGeminiInteractionsImageInitialCommandV2, type GeminiInteractionsImageInitialCommandV2 } from '../../src/core/generation-v2/providers/gemini/interactionsImageCommandsV2'
 import { withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2 } from './geminiInteractionsImageGenerationAuthorityV2Service'
 import { commitGeminiInteractionsImageInitialSnapshotV2 } from './geminiInteractionsImageSnapshotCommitV2'
 import { compileGeminiInteractionsImagePreparedRequestV2 } from './geminiInteractionsImagePreparedRequestCompilerV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 
 export type GeminiInteractionsImageCommandResultV2 = Readonly<{
   kind: 'created' | 'idempotent_replay'

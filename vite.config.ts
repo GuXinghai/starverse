@@ -3,26 +3,7 @@ import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
 import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './config/appCsp'
-
-const generatedRuntimeWatchIgnores = [
-  '**/.artifacts/**',
-  '**/artifacts/disk_audit_*/**',
-  '**/artifacts/openrouter/web-plugin-boundary/**',
-  '**/.external-runtime-work/**',
-  '**/.starverse-engines/**',
-  '**/managed-runtimes/**',
-  '**/staging/**',
-  '**/sandbox/**',
-  '**/temp/**',
-  '**/tmp/**',
-  '**/.vite/**',
-  '**/dist/**',
-  '**/dist-electron/**',
-  '**/dist-native/**',
-  '**/native/epoch-win32/build/**',
-  '**/release/**',
-  '**/out/**',
-]
+import { generatedRuntimeWatchIgnores } from './config/generatedRuntimeWatchIgnores'
 
 // https://vitejs.dev/config/
 export default defineConfig({

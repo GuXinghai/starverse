@@ -4,7 +4,7 @@ import {
   projectGenerationRequestAttemptStateV2,
   restoreGenerationRequestAttemptStateV2,
   transitionGenerationRequestAttemptTerminalV2,
-} from './generationRequestTerminalV2'
+} from '../../../core/generation-v2/runner/generationRequestTerminalV2'
 
 const key = Object.freeze({ operationId: 'op-terminal-1', requestSequence: 1, attempt: 1 })
 const outcomes = Object.freeze([

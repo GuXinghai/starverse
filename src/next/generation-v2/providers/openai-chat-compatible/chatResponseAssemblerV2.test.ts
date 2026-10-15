@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OpenAIChatCompatibleResponseAssemblerV2 } from './chatResponseAssemblerV2'
+import { OpenAIChatCompatibleResponseAssemblerV2 } from '../../../../core/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
 
 describe('OpenAI-compatible response assembler V2', () => {
   it('builds a complete assistant message from strict native stream events', () => {

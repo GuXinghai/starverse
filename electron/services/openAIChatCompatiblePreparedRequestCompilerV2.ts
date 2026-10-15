@@ -2,14 +2,16 @@ import type { OpenAICompatibleActiveConfigurationV2, OpenAICompatibleEndpointRev
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isOpenAIChatCompatibleRequestHistoryFactForContextV2, type OpenAIChatCompatibleRequestHistoryFactV2 } from '../../infra/db/repo/openAIChatCompatibleNativeHistoryV2Repo'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { ImmutablePreparedBodyV2, sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
+import { ImmutablePreparedBodyV2 } from '../../src/core/generation-v2/compiler/stableSerialize'
 import { buildCompatibleChatRequest, type CompatibleRequestFieldSettings } from '../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
 import type { CompatibleJsonValue, CompatibleReasoningControlState } from '../../src/shared/provider/openai-chat-compatible/request/messageTypes'
 import { compatibleAuthDescriptorSchema, compatibleInlinePolicyConfigSchema, compatibleReasoningMappingConfigSchema, compatibleRequestFieldMappingConfigSchema, compatibleRequestProfileConfigSchema, compatibleResponseProfileConfigSchema } from '../../src/shared/provider/openai-chat-compatible/schemas'
-import { readOpenAIChatCompatibleChatEndpointV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { readOpenAIChatCompatibleChatEndpointV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
 
 export class OpenAIChatCompatiblePreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

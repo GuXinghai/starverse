@@ -3,7 +3,7 @@ import {
   AnthropicMessagesChatStreamV1,
   AnthropicMessagesNamedSseDecoderV1,
   AnthropicMessagesStreamAssemblerV1,
-} from './chatStreamV1'
+} from '../../../../core/generation-v2/providers/anthropic/chatStreamV1'
 
 const encoder = new TextEncoder()
 

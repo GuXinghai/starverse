@@ -5,7 +5,7 @@ import {
   RESOLVED_MODEL_FACTS_ONTOLOGY_SCHEMA_DIGEST_V1,
   type ModelFactsResolutionInputV1,
   type ResolvedModelFactFieldV1,
-} from './resolvedModelFactsV1'
+} from '../../../core/generation-v2/model-facts/resolvedModelFactsV1'
 import {
   buildCanonicalSourceRevisionRefV1,
   buildCanonicalSubjectFactV1,
@@ -14,8 +14,8 @@ import {
   type CanonicalSourceRevisionRefV1,
   type CanonicalSubjectFactPayloadV1,
   type CanonicalSubjectFactRefV1,
-} from './canonicalSourceFactsV1'
-import { buildExplicitAssertionV1, presentOutcomeV1 } from './sourceAdapterV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { buildExplicitAssertionV1, presentOutcomeV1 } from '../../../core/generation-v2/model-facts/sourceAdapterV1'
 
 const subject = Object.freeze({
   providerAuthorityId: 'google-ai-studio',

@@ -8,7 +8,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
-import { decodeAnthropicToolContinuationCommandV2, type AnthropicToolContinuationCommandV2 } from '../../src/next/generation-v2/providers/anthropic/toolContinuationCommandV2'
+import { decodeAnthropicToolContinuationCommandV2, type AnthropicToolContinuationCommandV2 } from '../../src/core/generation-v2/providers/anthropic/toolContinuationCommandV2'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'

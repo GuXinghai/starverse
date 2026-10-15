@@ -1,15 +1,15 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { isGenerationV2Identity, type GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { isGenerationV2Identity, type GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import {
   decodeCanonicalOpenRouterImageDescriptorSetV2,
   OPENROUTER_IMAGE_DESCRIPTOR_CACHE_MAX_BYTES_V2,
   projectCanonicalOpenRouterImageDescriptorSetForCacheV2,
-} from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+} from '../../../src/core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
   decodeOpenRouterImageDescriptorCacheRecordV2,
   type DecodedOpenRouterImageDescriptorCacheRecordV2,
-} from '../../../src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
+} from '../../../src/core/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
 
 const OPERATION = 'image_generate'
 const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000

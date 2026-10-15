@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeGenerationIntentLayerV2,
   type AttachmentIntentV2,
-} from '../../../src/next/generation-v2/domain/generationIntentV2'
+} from '../../../src/core/generation-v2/domain/generationIntentV2'
 import {
   decodeResolvedGenerationIntentV2,
   type DecodedResolvedGenerationIntentV2,
-} from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+} from '../../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   AttachmentAssetV2Repo,

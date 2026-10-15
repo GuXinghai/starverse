@@ -13,12 +13,12 @@ import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeGeminiPlainTextInitialSendCommandV2,
   type GeminiPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/plainTextInitialSendCommandV2'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/gemini/plainTextInitialSendCommandV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedGeminiGenerateContentGenerationAuthoritiesV2 } from './geminiGenerateContentGenerationAuthorityV2Service'
 import { commitVerifiedGeminiPlainTextInitialSnapshotV2 } from './geminiPlainTextSnapshotCommitV2'

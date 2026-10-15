@@ -26,7 +26,7 @@
  * @see https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse
  */
 
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 import { createReasoningImageDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------

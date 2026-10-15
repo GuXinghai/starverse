@@ -4,8 +4,8 @@ import {
   decodeOllamaNativeChatArtifactV1,
   type OllamaNativeChatArtifactV1,
   type OllamaNativeChatMessageV1,
-} from '../../../src/next/generation-v2/providers/ollama-chat/nativeMessagesV1'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,

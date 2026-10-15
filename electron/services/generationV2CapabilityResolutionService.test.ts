@@ -8,11 +8,11 @@ import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointPro
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import { openAICompatibleUnauthenticatedCredentialScopeV2 } from './openAIChatCompatibleGenerationV2Coordinator'
 import { createGenerationV2CapabilityResolutionService } from './generationV2CapabilityResolutionService'
-import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+import { ProviderCatalogAuthorityRegistryV2 } from '../../src/core/model-catalog/providerCatalogAuthorityRegistryV2'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
-import { providerAuthorityForExecutionBindingV1 } from '../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
-import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
-import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import { providerAuthorityForExecutionBindingV1 } from '../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
+import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 

@@ -4,7 +4,7 @@ import {
   decodeRawSourceSnapshotRefV1,
   InMemoryRawPayloadStoreV1,
   sanitizeRawSourcePayloadV1,
-} from './rawSourceSnapshotV1'
+} from '../../../core/generation-v2/model-facts/rawSourceSnapshotV1'
 
 describe('raw source snapshot V1', () => {
   it('persists sanitized audit payload and deterministic source revision', () => {

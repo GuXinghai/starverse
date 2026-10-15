@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
+import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 
 function endpoint(tag: string, overrides: Record<string, unknown> = {}) {
   return {

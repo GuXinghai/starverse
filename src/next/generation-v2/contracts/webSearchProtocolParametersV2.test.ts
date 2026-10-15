@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveWebSearchProtocolParametersV2, validateWebSearchProtocolParametersV2 } from './webSearchProtocolParametersV2'
-import type { WebSearchIntentV2 } from '../domain/generationIntentV2'
+import { resolveWebSearchProtocolParametersV2, validateWebSearchProtocolParametersV2 } from '../../../core/generation-v2/contracts/webSearchProtocolParametersV2'
+import type { WebSearchIntentV2 } from '../../../core/generation-v2/domain/generationIntentV2'
 
 const bindings = {
   anthropic:{providerId:'anthropic',protocolContractId:'anthropic-messages-2023-06-01',operation:'text' as const},

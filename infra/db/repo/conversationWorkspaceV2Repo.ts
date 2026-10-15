@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import { ConversationGraphV2Identity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'

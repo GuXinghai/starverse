@@ -1,4 +1,4 @@
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 import { createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 export type OpenAIResponsesReasoningEvent = Readonly<{

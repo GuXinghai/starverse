@@ -3,17 +3,17 @@ import {
   buildCanonicalSourceRevisionRefV1,
   type CanonicalFieldOutcomeV1,
   type CanonicalSubjectFactCandidateV1,
-} from './canonicalSourceFactsV1'
-import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from './providerAuthorityRegistryV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from '../../../core/generation-v2/model-facts/providerAuthorityRegistryV1'
 import {
   buildRawSourceSnapshotRefV1,
   InMemoryRawPayloadStoreV1,
   sanitizeRawSourcePayloadV1,
-} from './rawSourceSnapshotV1'
+} from '../../../core/generation-v2/model-facts/rawSourceSnapshotV1'
 import {
   createProviderNativeSourceAdapterV1,
   type ProviderNativeSurfaceIdV1,
-} from './providerNativeSourceAdapterV1'
+} from '../../../core/generation-v2/model-facts/providerNativeSourceAdapterV1'
 
 function harness(surfaceId: ProviderNativeSurfaceIdV1, payload: unknown) {
   const store = new InMemoryRawPayloadStoreV1()

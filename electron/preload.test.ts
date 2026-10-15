@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1, GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED } from
-  '../src/next/generation-v2/model-facts/semanticInvalidationV1'
+  '../src/core/generation-v2/model-facts/semanticInvalidationV1'
 
 describe('Generation V2 preload boundary', () => {
   afterEach(() => {

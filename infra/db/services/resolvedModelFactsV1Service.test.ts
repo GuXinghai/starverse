@@ -6,7 +6,7 @@ import { ResolvedModelFactsV1Service } from './resolvedModelFactsV1Service'
 import { CanonicalModelFactSourceIngestionV1Service } from './canonicalModelFactSourceIngestionV1Service'
 import { CanonicalModelFactSourceV1Repo } from '../repo/canonicalModelFactSourceV1Repo'
 import { buildModelsDevSourceScopeIdV1, buildCapabilityRuleSourceScopeIdV1 } from
-  '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 
 describe('ResolvedModelFactsV1Service', () => {
   it('resolves explicit current source absence and publishes an all-unknown exact-subject snapshot', () => {

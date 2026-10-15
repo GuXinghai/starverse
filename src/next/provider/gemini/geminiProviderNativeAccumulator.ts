@@ -1,4 +1,4 @@
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 import {
   GEMINI_GENERATE_CONTENT_SOURCE_API,
   GEMINI_PROVIDER_NATIVE_PROVIDER_KEY,

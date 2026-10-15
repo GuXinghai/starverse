@@ -51,8 +51,8 @@ import {
 import {
   modelFactsSubjectForCatalogModelV1,
   modelFactsSubjectForCompatibleModelV1,
-} from '@/next/generation-v2/model-facts/modelFactsSubjectIdentityV1'
-import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '@/core/generation-v2/model-facts/modelFactsSubjectIdentityV1'
+import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { isRuntimeProviderId, type RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import {
   createProviderModelRouteSelection,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeOpenAIChatCompatibleInitialCommandV2,
   decodeOpenAIChatCompatibleRetryCommandV2,
-} from './plainTextCommandsV2'
+} from '../../../../core/generation-v2/providers/openai-chat-compatible/plainTextCommandsV2'
 
 describe('OpenAI-compatible V2 text commands', () => {
   it('pins the user-selected provider instance in a canonical current-config command', () => {

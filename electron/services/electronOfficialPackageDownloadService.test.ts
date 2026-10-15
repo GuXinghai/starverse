@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fetchPackageToFileWithElectronNet } from './electronOfficialPackageDownloadService'
-import type { PackageDownloadResumeDescriptor } from '../../src/next/plugin-distribution/packageDownloader'
+import type { PackageDownloadResumeDescriptor } from '../../src/shared/plugin-distribution/packageDownloadTransport'
 
 type FakeRequestRecord = {
   options: any

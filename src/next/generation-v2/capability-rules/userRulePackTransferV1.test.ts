@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createUserRulePackTransferV1, decodeUserRulePackTransferV1 } from
-  './userRulePackTransferV1'
+  '../../../core/generation-v2/capability-rules/userRulePackTransferV1'
 
 function pack() {
   return { schemaVersion: 1, packId: 'pack.user', displayName: 'User Pack', description: null,

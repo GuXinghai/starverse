@@ -13,7 +13,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeDeepSeekPlainTextRetryCommandV2,
   type DeepSeekPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextRetryCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextRetryCommandV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import {
   issueGenerationTextCommandResultV2,

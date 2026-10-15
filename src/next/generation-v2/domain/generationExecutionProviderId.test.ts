@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { GenerationV2Identity } from './identityV2'
+import { GenerationV2Identity } from '../../../core/generation-v2/domain/identityV2'
 import {
   GENERATION_EXECUTION_PROVIDER_IDS,
   createGenerationExecutionProviderIdentityV2,
   decodeGenerationExecutionProviderId,
   isGenerationExecutionProviderId,
   readGenerationExecutionProviderIdentityV2,
-} from './generationExecutionProviderId'
+} from '../../../core/generation-v2/domain/generationExecutionProviderId'
 
 describe('Generation execution provider identity', () => {
   it('accepts exactly the reviewed production execution provider domain', () => {

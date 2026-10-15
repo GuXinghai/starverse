@@ -13,9 +13,9 @@ import {
   createDeepSeekNativeHistoryArtifactV2,
   serializeDeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryArtifactV2,
-} from '../../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+} from '../../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2 } from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)

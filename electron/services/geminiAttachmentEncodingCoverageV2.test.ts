@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
-import { decodeGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { readReviewedGeminiGenerateContentDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { resolveEncodingCoverageRegistryV2 } from '../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
+import { decodeGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
+import { readReviewedGeminiGenerateContentDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { resolveEncodingCoverageRegistryV2 } from '../../src/core/generation-v2/capability/encodingCoverageRegistryV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { decodeRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import { decodeRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { geminiAttachmentCapabilityFieldsV2 } from './geminiGenerateContentGenerationAuthorityV2Service'
 
 const SUPPORTS = 'gemini.generate_content.v2.supports'

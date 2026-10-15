@@ -2,8 +2,7 @@ import {
   ANTHROPIC_MESSAGES_SOURCE_API,
   ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
   normalizeAnthropicProviderNativeSnapshot,
-  type AnthropicProviderNativeSnapshot,
-} from '@/next/provider/anthropic/anthropicProviderNativeContent'
+} from '@/core/provider/anthropic/anthropicProviderNativeContent'
 import {
   GEMINI_GENERATE_CONTENT_SOURCE_API,
   GEMINI_PROVIDER_NATIVE_PROVIDER_KEY,
@@ -11,9 +10,8 @@ import {
   type GeminiProviderNativeSnapshot,
 } from '@/next/provider/gemini/geminiProviderNativeContent'
 
-export type ProviderNativeSnapshot =
-  | GeminiProviderNativeSnapshot
-  | AnthropicProviderNativeSnapshot
+import type { ProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
+export type { ProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 export function normalizeProviderNativeSnapshot(value: unknown): ProviderNativeSnapshot {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

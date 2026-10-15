@@ -2,14 +2,14 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { OpenRouterImageBindingRepo } from '../../infra/db/repo/openRouterImageBindingRepo'
 import { OpenRouterImageSettingsRepo } from '../../infra/db/repo/openRouterImageSettingsRepo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
-import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import { GenerationV2Identity } from '../../src/core/generation-v2/domain/identityV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import {
   evaluateOpenRouterImageCandidatesV2,
   resolveOpenRouterImageSelectionInputV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
-import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
-import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
+import { decideOpenRouterImageSelectionV2 } from '../../src/core/generation-v2/providers/openrouter-images/selectionDecisionV2'
+import { issueOpenRouterImageProviderBindingV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageProviderBindingV2'
 import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterImageDescriptorAuthorityV2Service'
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>

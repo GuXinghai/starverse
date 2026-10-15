@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
+import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
   OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2,
   OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2,
   evaluateOpenRouterImageCandidatesV2,
   resolveOpenRouterImageSelectionInputV2,
-} from './imageDescriptorSelectionV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
 
 function intent(overrides: Record<string, unknown> = {}) {
   return {

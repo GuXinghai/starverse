@@ -1,8 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { decodeGenerationCommandAttachmentsV2 } from '../../../src/next/generation-v2/domain/commandAttachmentsV2'
-import type { AttachmentIntentV2 } from '../../../src/next/generation-v2/domain/generationIntentV2'
-import { readGenerationV2Digest, readGenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
-import { sha256PreparedBytesV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { decodeGenerationCommandAttachmentsV2 } from '../../../src/core/generation-v2/domain/commandAttachmentsV2'
+import type { AttachmentIntentV2 } from '../../../src/core/generation-v2/domain/generationIntentV2'
+import { readGenerationV2Digest, readGenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
+import { sha256PreparedBytesV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 

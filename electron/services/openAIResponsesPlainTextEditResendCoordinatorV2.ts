@@ -17,9 +17,9 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import {
   decodeOpenAIResponsesPlainTextEditResendCommandV2,
   type OpenAIResponsesPlainTextEditResendCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/plainTextEditResendCommandV2'
-import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/openai-responses/commandAttachmentsV2'
-import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openai-responses/plainTextEditResendCommandV2'
+import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/core/generation-v2/providers/openai-responses/commandAttachmentsV2'
+import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'

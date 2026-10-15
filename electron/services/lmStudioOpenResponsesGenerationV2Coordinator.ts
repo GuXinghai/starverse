@@ -13,18 +13,18 @@ import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lm
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { composeLmStudioOpenResponsesBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
-import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { composeLmStudioOpenResponsesBaselineCapabilityV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
+import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
 import { decodeLmStudioPlainTextEditResendCommandV2, decodeLmStudioPlainTextInitialCommandV2,
   decodeLmStudioPlainTextRegenerateCommandV2, decodeLmStudioPlainTextRetryCommandV2,
   type LmStudioPlainTextEditResendCommandV2, type LmStudioPlainTextInitialCommandV2,
-  type LmStudioPlainTextRegenerateCommandV2, type LmStudioPlainTextRetryCommandV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/plainTextCommandsV2'
+  type LmStudioPlainTextRegenerateCommandV2, type LmStudioPlainTextRetryCommandV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/plainTextCommandsV2'
 import { compileLmStudioOpenResponsesPreparedRequestV2 } from './lmStudioOpenResponsesPreparedRequestCompilerV2'
 import { commitLmStudioCurrentSnapshotV2, commitLmStudioRetrySnapshotV2 } from './lmStudioPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2, resolveGenerationToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 type CurrentCommand = LmStudioPlainTextInitialCommandV2 | LmStudioPlainTextRegenerateCommandV2 | LmStudioPlainTextEditResendCommandV2
 export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readonly<{

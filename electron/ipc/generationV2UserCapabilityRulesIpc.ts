@@ -4,15 +4,15 @@ import { AuthoritativeModelSubjectSetV1Service } from '../../infra/db/services/a
 import {
   decodeCapabilityRuleCoreRuleV1,
   decodeCapabilityRuleOwnershipSnapshotV1,
-} from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+} from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { decodeUserRulePackTransferV1, type UserCapabilityRuleNoteV1 } from
-  '../../src/next/generation-v2/capability-rules/userRulePackTransferV1'
+  '../../src/core/generation-v2/capability-rules/userRulePackTransferV1'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { type createOpenAICompatibleCredentialV2Service } from
   '../credentials/openAICompatibleCredentialV2Service'
 import { UserCapabilityRulesV1Service } from '../services/userCapabilityRulesV1Service'
 import type { RegisterInvoke } from './types'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 export const GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS = Object.freeze([

@@ -10,20 +10,20 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeGeminiInteractionsImageEditResendCommandV2,
   decodeGeminiInteractionsImageRegenerateCommandV2,
   decodeGeminiInteractionsImageRetryCommandV2,
   type GeminiInteractionsImageEditResendCommandV2,
   type GeminiInteractionsImageRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/interactionsImageCommandsV2'
+} from '../../src/core/generation-v2/providers/gemini/interactionsImageCommandsV2'
 import { withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2 } from './geminiInteractionsImageGenerationAuthorityV2Service'
 import { compileGeminiInteractionsImagePreparedRequestV2 } from './geminiInteractionsImagePreparedRequestCompilerV2'
 import { commitGeminiInteractionsImageCurrentSnapshotV2, commitGeminiInteractionsImageRetrySnapshotV2 } from './geminiInteractionsImageSnapshotCommitV2'
 import { promptForQuestion, type GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 
 type CurrentCommand = GeminiInteractionsImageRegenerateCommandV2 | GeminiInteractionsImageEditResendCommandV2
 

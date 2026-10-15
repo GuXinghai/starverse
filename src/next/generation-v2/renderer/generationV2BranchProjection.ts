@@ -1,7 +1,7 @@
 import { projectProviderFailureForUiV2 } from '../../../shared/provider/providerFailureUiProjectionV2'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 import type { GenerationV2BranchView } from './generationV2WorkspaceClient'
-import type { GenerationExecutionProviderId } from '../domain/generationExecutionProviderId'
+import type { GenerationExecutionProviderId } from '../../../core/generation-v2/domain/generationExecutionProviderId'
 
 export type GenerationV2UiContextMessage = Readonly<{
   id:string;convoId:string;role:string;seq:number;createdAt:number;parentId:string|null;status:string;

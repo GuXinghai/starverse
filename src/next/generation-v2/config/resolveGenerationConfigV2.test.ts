@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { decodeGenerationConfigLayerV2 } from './generationConfigLayerV2'
+import { decodeGenerationConfigLayerV2 } from '../../../core/generation-v2/config/generationConfigLayerV2'
 import {
   DEFAULT_RESOLVED_GENERATION_INTENT_V2,
   mergeGenerationConfigLayersV2,
-} from './resolveGenerationConfigV2'
+} from '../../../core/generation-v2/config/resolveGenerationConfigV2'
 
 describe('Generation Config V2 scope semantics', () => {
   it('uses one complete default and replaces explicit top-level semantic groups atomically', () => {

@@ -4,6 +4,20 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
+import type {
+  PackageDownloadFileTransportRequest,
+  PackageDownloadFileTransportResult,
+  PackageDownloadProgress,
+  PackageDownloadResumeDescriptor,
+  PackageDownloadResumeOptions,
+} from '@/shared/plugin-distribution/packageDownloadTransport'
+export type {
+  PackageDownloadFileTransportRequest,
+  PackageDownloadFileTransportResult,
+  PackageDownloadProgress,
+  PackageDownloadResumeDescriptor,
+  PackageDownloadResumeOptions,
+} from '@/shared/plugin-distribution/packageDownloadTransport'
 import {
   validateDownloadPolicy,
   type AcceptedDownloadPolicy,
@@ -29,43 +43,6 @@ export type PackageDownloadTransportRequest = Readonly<{
   proxy?: NetworkProxySettings
 }>
 
-export type PackageDownloadProgress = Readonly<{
-  bytesReceived: number
-  totalBytes: number | null
-  retryCount?: number
-  phase?: 'downloading' | 'retrying' | 'paused_retryable'
-}>
-
-export type PackageDownloadResumeDescriptor = Readonly<{
-  pluginId: string
-  runtimeId: string
-  packageId: string
-  releaseTag: string
-  assetName: string
-  sourceKind: 'github_release_asset'
-  expectedSizeBytes: number
-  expectedSha256: string
-  tempArtifactId: string
-  rangeSupportMode: 'direct_browser_download_url' | 'redirected_asset_host'
-}>
-
-export type PackageDownloadResumeOptions = Readonly<{
-  enabled: boolean
-  descriptor: PackageDownloadResumeDescriptor
-  maxRetries: number
-  retryDelayMs: number
-}>
-
-export type PackageDownloadFileTransportRequest = Readonly<{
-  transportRef: string
-  maxBytes: number
-  outputPath: string
-  signal?: AbortSignal
-  onProgress?: (progress: PackageDownloadProgress) => void
-  resume?: PackageDownloadResumeOptions
-  proxy?: NetworkProxySettings
-}>
-
 export type PackageDownloadTransportResult =
   | Readonly<{
       ok: true
@@ -75,30 +52,6 @@ export type PackageDownloadTransportResult =
   | Readonly<{
       ok: false
       code: 'cancelled' | 'download_failed' | 'redirect_rejected' | 'too_large'
-      detail?: string | null
-      finalRef?: string | null
-      networkError?: NetworkErrorEnvelope
-    }>
-
-export type PackageDownloadFileTransportResult =
-  | Readonly<{
-      ok: true
-      filePath: string
-      sizeBytes: number
-      sha256: string
-      finalRef?: string | null
-    }>
-  | Readonly<{
-      ok: false
-      code:
-        | 'cancelled'
-        | 'download_failed'
-        | 'redirect_rejected'
-        | 'too_large'
-        | 'resume_range_ignored'
-        | 'resume_range_rejected'
-        | 'resume_content_range_invalid'
-        | 'resume_retries_exhausted'
       detail?: string | null
       finalRef?: string | null
       networkError?: NetworkErrorEnvelope

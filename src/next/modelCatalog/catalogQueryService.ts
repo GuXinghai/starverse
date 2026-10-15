@@ -1,7 +1,7 @@
 import {
   OPENROUTER_MODEL_CATEGORIES,
   type OpenRouterModelCategory,
-} from './openRouterCategoryCache'
+} from '../../shared/modelCatalog/openRouterCategoryContracts'
 import { logModelCatalogEvent } from './modelCatalogObservability'
 import type { ProviderFailureV2 } from '../../shared/provider/providerFailureV2'
 import type {

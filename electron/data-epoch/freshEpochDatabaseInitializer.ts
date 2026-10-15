@@ -13,11 +13,11 @@ import {
 import { CapabilityRuleMaterializationV1Repo } from '../../infra/db/repo/capabilityRuleMaterializationV1Repo'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import { buildAuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { prepareCapabilityRuleMaterializationV1 } from
-  '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../src/core/generation-v2/model-facts/sourceScopeV1'
 import {
   createEpoch2RootManifest,
   type Epoch2WorkspaceLayout,

@@ -1,11 +1,11 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import type { AuthoritativeModelSubjectRecordV1 } from '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import type { AuthoritativeModelSubjectRecordV1 } from '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import {
   providerAuthorityForCompatibleProviderInstanceV1,
   providerAuthorityForLocalProfileV1,
   providerAuthorityForNativeSurfaceV1,
-} from '../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
-import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+} from '../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
+import { ProviderCatalogAuthorityRegistryV2 } from '../../src/core/model-catalog/providerCatalogAuthorityRegistryV2'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import type { ResolvedModelFactsSourceScopeSelectionV1 } from '../../infra/db/repo/resolvedModelFactsV1Repo'
 import { buildServerModelFactsSourceScopeSelectionV1 } from './goal3ModelFactsCapabilityV1'

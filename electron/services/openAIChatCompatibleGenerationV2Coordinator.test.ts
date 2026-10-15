@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
+import { ResolvedModelFactsV1Service } from '../../infra/db/services/resolvedModelFactsV1Service'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
 import { OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2, OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 } from './openAIChatCompatibleResponseBodyV2'
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }))
@@ -78,8 +79,28 @@ describe('OpenAI-compatible V2 coordinator', () => {
       expectedHeadMessageId: null, providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x',
       userBody: 'hello', commandAttachments: [] })
     const temperature = result.execution.capability.fields.find((field) => field.path === 'generation.temperature')
-    expect(temperature).toMatchObject({ state: 'supported', domain: { kind: 'range', max: 1 } })
-    expect(result.execution.capability.evidence.some((entry) => entry.kind === 'capability_rule')).toBe(true)
+    const resolved = new ResolvedModelFactsV1Service(db).readCurrent({
+      providerAuthorityId: 'openai-compatible-provider-instance-v1:ocp_provider_12345678',
+      endpointProfileId: 'ocp_provider_12345678', nativeModelId: 'model-x',
+    })
+    const maximum = resolved.snapshot.resolvedFacts.fields.find((field) => field.path === 'sampling.temperature.modelMaximum')
+    expect(result.execution.capability.modelFactsResolution).toMatchObject({
+      resolvedSnapshotRevision: resolved.snapshot.resolvedSnapshotRevision,
+      capabilityRevision: resolved.snapshot.resolvedFacts.capabilityRevision,
+    })
+    expect(maximum).toMatchObject({ state: 'resolved', selectedValue: { kind: 'decimal', value: 1 } })
+    expect(maximum?.supportingProvenance).toHaveLength(1)
+    expect(maximum?.supportingProvenance[0]).toMatchObject({
+      sourceKind: 'capability_rule',
+      sourceAssertion: { provenance: { ruleClaim: {
+        ruleId: 'rule.temperature-max', packId: 'pack.compatible', selectorKind: 'exact',
+      } } },
+    })
+    // A scalar maximum is an exact fact, not a complete runtime range.
+    expect(temperature).toMatchObject({ state: 'supported' })
+    expect(temperature?.domain).toBeUndefined()
+    expect(result.execution.capability.evidence.filter((entry) =>
+      entry.kind === 'capability_rule' && temperature?.evidenceIds.includes(entry.evidenceId))).toHaveLength(1)
   })
 
   it('commits and immediately selects an exact prepared initial request without legacy runtime state', async () => {

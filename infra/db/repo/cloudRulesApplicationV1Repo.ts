@@ -1,17 +1,17 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   canonicalSourceFactDigestV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { stableSerializeProviderRequestV2 } from
-  '../../../src/next/generation-v2/compiler/stableSerialize'
+  '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   decodeCloudRulesReleaseDocumentV1,
   decodeCloudRulesReleaseMetadataV1,
   type CloudRulesReleaseDocumentV1,
   type CloudRulesReleaseMetadataV1,
-} from '../../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import type { CloudRulesActivationOverrideV1 } from
-  '../../../src/next/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
+  '../../../src/core/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 
 export const CLOUD_RULES_DEFAULT_HISTORY_LIMIT_V1 = 4
 export const CLOUD_RULES_MIN_HISTORY_LIMIT_V1 = 0

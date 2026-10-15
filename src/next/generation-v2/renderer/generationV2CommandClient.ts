@@ -3,7 +3,7 @@ import type {
   GenerationOperationRuntimeSnapshotV2,
   GenerationStreamEventV2,
   GenerationStreamPayloadV2,
-} from '../domain/generationStreamEventV2'
+} from '../../../core/generation-v2/domain/generationStreamEventV2'
 import type { LocalProviderRouteKind } from '../../../shared/provider/localProviderRouteDescriptor'
 
 export type GenerationV2CommandResult = Readonly<{ ok: true; kind: 'created'|'idempotent_replay'; operationId:string;

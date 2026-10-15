@@ -2,7 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2,
   type GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import type { AttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import type { AttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 
 /** Regenerate resolves current settings, but the question keeps its frozen attachments. */
 export function readRegenerateSourceAttachmentsV2(input: Readonly<{

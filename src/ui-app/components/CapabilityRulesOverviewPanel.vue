@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
-import { evaluateCapabilityRuleActivationV1, planCapabilityRuleRewriteV1 } from '@/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import { evaluateCapabilityRuleActivationV1, planCapabilityRuleRewriteV1 } from '@/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { modelFactValueText } from '@/shared/model-facts/modelFactPresentation'
 import {
   cloudRuleSelectorHint,

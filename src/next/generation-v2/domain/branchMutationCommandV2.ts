@@ -1,5 +1,2 @@
-export type BranchMutationCommandV2 = Readonly<{
-  sourceBranchId: string
-  expectedHeadMessageId: string
-  clientActionId: string
-}>
+// Compatibility entry; the actual implementation and authority state have one owner.
+export * from '../../../core/generation-v2/domain/branchMutationCommandV2'

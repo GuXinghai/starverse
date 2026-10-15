@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildAnthropicRequest, type AnthropicMessage } from '@/next/provider/anthropic/anthropicRequestBuilder'
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 
 const baseMessages: AnthropicMessage[] = [
   { role: 'user', content: 'Hello' },

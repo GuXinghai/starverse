@@ -10,38 +10,38 @@ import {
   type AnthropicRequestHistoryRepositoryFactV2,
 } from '../../infra/db/repo/anthropicNativeHistoryV2Repo'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
 import {
   issuePreparedProviderRequestV2,
   createPreparedAttachmentRequirementsV2,
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedAnthropicMessagesDefinitionV2,
-} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
-} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+} from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   isAnthropicDeveloperApiContractV2,
   createAnthropicMessagesNonSecretHeaderPlanV2,
   readAnthropicDeveloperApiContractV2,
   resolveAnthropicDeveloperApiEndpointV2,
-} from '../../src/next/generation-v2/contracts/anthropicDeveloperApiContractV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
+} from '../../src/core/generation-v2/contracts/anthropicDeveloperApiContractV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
 import {
   compileAnthropicMessagesRequestV1,
   type AnthropicMessagesNativeRequestV1,
   type AnthropicMessagesRequestMessageV1,
   type AnthropicMessagesUserContentBlockV1,
-} from '../../src/next/generation-v2/providers/anthropic/messagesRequestV1'
+} from '../../src/core/generation-v2/providers/anthropic/messagesRequestV1'
 
 export class AnthropicMessagesPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

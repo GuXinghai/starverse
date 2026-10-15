@@ -12,6 +12,7 @@ const config: StorybookConfig = {
   "framework": {
     "name": "@storybook/vue3-vite",
     "options": {
+      builder: { viteConfigPath: '.storybook/vite.config.ts' },
       // 使用 vue-component-meta 替代默认 docgen，更好地支持 TypeScript
       "docgen": "vue-component-meta"
     }

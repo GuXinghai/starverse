@@ -1,7 +1,7 @@
 import type { GenerationReplayProjectionV2 } from '../../infra/db/repo/conversationGraphV2Repo'
 import type { GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import type { GenerationRequestRepositoryFactV2 } from '../../infra/db/repo/generationRequestV2Repo'
-import type { PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import type { PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 
 export type GenerationTextCommandResultV2 = Readonly<{
   kind: 'created' | 'idempotent_replay'

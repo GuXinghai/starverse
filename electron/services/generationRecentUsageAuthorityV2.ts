@@ -2,8 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { ModelPreferencesRepo } from '../../infra/db/repo/modelPreferencesRepo'
 import type { GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 // Approved Generation V2 main-process persistence boundary: recents are derived from the canonical snapshot.
-// eslint-disable-next-line no-restricted-imports
-import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { runtimeProviderIdForGenerationExecutionProvider } from '../../src/shared/provider/generationExecutionRuntimeProviderAuthority'
 
 type ReconciliationRow = Readonly<{

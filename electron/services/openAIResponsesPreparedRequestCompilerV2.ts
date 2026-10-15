@@ -2,24 +2,24 @@ import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/r
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { isOpenAIResponsesRequestHistoryFactForContextV2, type OpenAIResponsesRequestHistoryFactV2 } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { isReviewedProviderContractDefinitionV2, readReviewedOpenAIResponsesDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { isVerifiedProviderContractReferenceV2, verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
-import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
-import { compileOpenAIResponsesRequestV1, type OpenAIResponsesToolV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
-import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { isReviewedProviderContractDefinitionV2, readReviewedOpenAIResponsesDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { isVerifiedProviderContractReferenceV2, verifyProviderContractReferenceV2 } from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
+import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
+import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
+import { compileOpenAIResponsesRequestV1, type OpenAIResponsesToolV1 } from '../../src/core/generation-v2/providers/openai-responses/responsesRequestV1'
+import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
   issuePreparedProviderRequestV2,
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 
 export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

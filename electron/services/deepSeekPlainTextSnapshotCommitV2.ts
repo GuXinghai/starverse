@@ -1,9 +1,9 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
@@ -35,7 +35,7 @@ import {
   RuntimeCapabilityV2Repo,
   isRuntimeCapabilityRepositoryFactV2,
 } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import {
   isVerifiedDeepSeekStableProviderBindingAuthorityV2,
   isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2,
@@ -46,19 +46,19 @@ import {
 import {
   isDeepSeekPlainTextInitialSendCommandV2,
   type DeepSeekPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
 import {
   isDeepSeekPlainTextRetryCommandV2,
   type DeepSeekPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextRetryCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextRetryCommandV2'
 import {
   isDeepSeekPlainTextRegenerateCommandV2,
   type DeepSeekPlainTextRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextRegenerateCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextRegenerateCommandV2'
 import {
   isDeepSeekPlainTextEditResendCommandV2,
   type DeepSeekPlainTextEditResendCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextEditResendCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextEditResendCommandV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class DeepSeekPlainTextSnapshotCommitV2Error extends Error {

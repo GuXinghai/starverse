@@ -8,7 +8,7 @@ import {
   createAnthropicReasoningDisplayAssemblerState,
   ingestAnthropicThinkingBlockStart,
 } from '@/next/provider/anthropic/anthropicReasoningDisplayAssembler'
-import type { AnthropicProviderNativeSnapshot } from '@/next/provider/anthropic/anthropicProviderNativeContent'
+import type { AnthropicProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 const messageId = 'assistant_1'
 const blockId = `${messageId}:reasoning-display:anthropic:anthropic_messages:0:thinking`

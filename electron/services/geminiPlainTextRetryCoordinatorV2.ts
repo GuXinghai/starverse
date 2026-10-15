@@ -12,7 +12,7 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import {
   decodeGeminiPlainTextRetryCommandV2,
   type GeminiPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/plainTextActionCommandsV2'
+} from '../../src/core/generation-v2/providers/gemini/plainTextActionCommandsV2'
 import { commitGeminiPlainTextRetrySnapshotV2 } from './geminiPlainTextSnapshotCommitV2'
 import { compileGeminiGenerateContentPreparedRequestV2 } from './geminiGenerateContentPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'

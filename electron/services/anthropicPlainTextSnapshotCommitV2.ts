@@ -1,9 +1,9 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
@@ -36,19 +36,19 @@ import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFa
 import {
   isAnthropicPlainTextInitialSendCommandV2,
   type AnthropicPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/anthropic/plainTextInitialSendCommandV2'
+} from '../../src/core/generation-v2/providers/anthropic/plainTextInitialSendCommandV2'
 import {
   isAnthropicPlainTextRetryCommandV2,
   type AnthropicPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/anthropic/plainTextRetryCommandV2'
+} from '../../src/core/generation-v2/providers/anthropic/plainTextRetryCommandV2'
 import {
   isAnthropicPlainTextRegenerateCommandV2,
   type AnthropicPlainTextRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/anthropic/plainTextRegenerateCommandV2'
+} from '../../src/core/generation-v2/providers/anthropic/plainTextRegenerateCommandV2'
 import {
   isAnthropicPlainTextEditResendCommandV2,
   type AnthropicPlainTextEditResendCommandV2,
-} from '../../src/next/generation-v2/providers/anthropic/plainTextEditResendCommandV2'
+} from '../../src/core/generation-v2/providers/anthropic/plainTextEditResendCommandV2'
 import {
   isVerifiedAnthropicProviderBindingAuthorityV2,
   isVerifiedAnthropicRuntimeCapabilityAuthorityV2,

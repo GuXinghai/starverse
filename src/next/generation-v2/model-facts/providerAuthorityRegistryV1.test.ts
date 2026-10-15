@@ -7,7 +7,7 @@ import {
   providerAuthorityForLocalProfileV1,
   providerAuthorityForModelsDevKeyV1,
   providerAuthorityForNativeSurfaceV1,
-} from './providerAuthorityRegistryV1'
+} from '../../../core/generation-v2/model-facts/providerAuthorityRegistryV1'
 
 describe('Provider Authority Registry V1', () => {
   it('joins only explicit native, execution and models.dev bindings', () => {

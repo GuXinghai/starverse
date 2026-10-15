@@ -2,8 +2,8 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   decodeAssistantAnswerGenerationSnapshotV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import type { AttachmentIntentV2 } from '../../../src/next/generation-v2/domain/generationIntentV2'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import type { AttachmentIntentV2 } from '../../../src/core/generation-v2/domain/generationIntentV2'
 
 /**
  * Attachment facts of an earlier turn, read from that turn's immutable

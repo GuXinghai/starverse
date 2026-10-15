@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
-} from './providerContractReferenceAuthorityV2'
+} from '../../../core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   listReviewedProviderContractDefinitionsV2,
   type ReviewedProviderContractDefinitionV2,
-} from './providerContractRegistryV2'
+} from '../../../core/generation-v2/contracts/providerContractRegistryV2'
 
 const descriptorDigest = 'd'.repeat(64)
 

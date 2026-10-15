@@ -5,7 +5,7 @@ import {
   createDeepSeekNativeHistoryArtifactV2,
   decodeDeepSeekNativeHistoryArtifactV2,
   serializeDeepSeekNativeHistoryArtifactV2,
-} from './nativeMessagesV1'
+} from '../../../../core/generation-v2/providers/deepseek/nativeMessagesV1'
 
 const user = (content: string) => ({ kind: 'client', message: { role: 'user', content } }) as const
 const tool = (id: string, content: string) => ({

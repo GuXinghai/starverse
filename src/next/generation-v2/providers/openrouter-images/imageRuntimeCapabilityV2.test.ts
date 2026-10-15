@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { decodeProviderBindingRecordV2 } from '../../domain/providerBindingV2'
-import { listReviewedProviderContractDefinitionsV2 } from '../../contracts/providerContractRegistryV2'
-import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
+import { decodeProviderBindingRecordV2 } from '../../../../core/generation-v2/domain/providerBindingV2'
+import { listReviewedProviderContractDefinitionsV2 } from '../../../../core/generation-v2/contracts/providerContractRegistryV2'
+import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
   composeOpenRouterImageRuntimeCapabilityV2,
   OpenRouterImageRuntimeCapabilityV2Error,
-} from './imageRuntimeCapabilityV2'
+} from '../../../../core/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
 
 const contract = listReviewedProviderContractDefinitionsV2().find((definition) =>
   definition.protocolContractId.value === 'openrouter-images-v1',

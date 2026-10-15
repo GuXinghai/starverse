@@ -1,12 +1,10 @@
-import type { ProviderStreamConfig } from '../../src/next/provider/providerTypes'
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
 }
 
 export function validateProviderGenerationParamsPayload(
   raw: unknown,
-): ProviderStreamConfig['generationParams'] | null | undefined {
+): unknown {
   if (raw === undefined || raw === null) return undefined
   if (!isPlainRecord(raw)) return null
   try {

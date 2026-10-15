@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertRuntimeEvidenceUsableV2 } from './contractEvidenceRuntimeV2'
+import { assertRuntimeEvidenceUsableV2 } from '../../../core/generation-v2/contracts/contractEvidenceRuntimeV2'
 
 describe('contract evidence runtime V2', () => {
   it('does not block ordinary contract review expiry', () => {

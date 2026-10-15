@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   compileDeepSeekStableChatRequestV1,
   DEEPSEEK_STABLE_REQUEST_MAX_BYTES_V1,
-} from './chatRequestV1'
-import { completeDeepSeekNativeRequestV2 } from './nativeMessagesV1'
+} from '../../../../core/generation-v2/providers/deepseek/chatRequestV1'
+import { completeDeepSeekNativeRequestV2 } from '../../../../core/generation-v2/providers/deepseek/nativeMessagesV1'
 
 const user = (content: string) => ({ kind: 'client', message: { role: 'user', content } }) as const
 const functionTool = {

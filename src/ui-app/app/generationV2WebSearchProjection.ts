@@ -1,7 +1,7 @@
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import { resolveEncodingCoverageRegistryV2 } from '@/next/generation-v2/capability/encodingCoverageRegistryV2'
-import { resolveWebSearchProtocolParametersV2 } from '@/next/generation-v2/contracts/webSearchProtocolParametersV2'
-import type { ModelCapabilityDomainV2, ModelCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
+import { resolveEncodingCoverageRegistryV2 } from '@/core/generation-v2/capability/encodingCoverageRegistryV2'
+import { resolveWebSearchProtocolParametersV2 } from '@/core/generation-v2/contracts/webSearchProtocolParametersV2'
+import type { ModelCapabilityDomainV2, ModelCapabilitySemanticPathV2 } from '@/core/generation-v2/capability/modelCapabilitySchemaV2'
 import { resolveSearchSettings, type SearchSettingsLayers, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import type { ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
 

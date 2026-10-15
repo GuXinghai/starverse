@@ -3,9 +3,9 @@ import type { RegisterInvoke } from './types'
 import type { GenerationStreamProjectionSinkV2, GenerationStreamProjectionV2 } from '../services/generationStreamProjectionV2'
 import type { GenerationTextCommandResultV2 } from '../services/generationTextCommandResultV2'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
-import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
-import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/next/generation-v2/domain/capabilityBoundGenerationCommandV2'
-import { runWithExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import type { GenerationStreamEventV2 } from '../../src/core/generation-v2/domain/generationStreamEventV2'
+import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/core/generation-v2/domain/capabilityBoundGenerationCommandV2'
+import { runWithExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 export type TextGenerationV2IpcRuntime = Readonly<{
   submitInitial: (command: unknown) => Promise<GenerationTextCommandResultV2>

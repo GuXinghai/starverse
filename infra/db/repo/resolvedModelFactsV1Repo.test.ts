@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import {
   DEFAULT_SOURCE_PRIORITY_CONFIG_V1,
-} from '../../../src/next/generation-v2/model-facts/sourcePriorityConfigV1'
+} from '../../../src/core/generation-v2/model-facts/sourcePriorityConfigV1'
 import {
   buildResolvedModelFactsV1,
   type ModelFactsResolutionInputV1,
-} from '../../../src/next/generation-v2/model-facts/resolvedModelFactsV1'
+} from '../../../src/core/generation-v2/model-facts/resolvedModelFactsV1'
 import { ResolvedModelFactsV1Repo } from './resolvedModelFactsV1Repo'
 
 const subject = { providerAuthorityId: 'provider:test', endpointProfileId: 'endpoint:test', nativeModelId: 'model:test' }

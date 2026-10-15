@@ -12,6 +12,8 @@ import {
 } from './rendererRecovery'
 
 export type CreateMainWindowInput = Readonly<{
+  agentBackground?: boolean
+  agentControlled?: boolean
   isDev: boolean
   viteDevServerUrl?: string
   rendererDist: string
@@ -65,7 +67,7 @@ export function createMainWindowNavigationPolicy(
   return Object.freeze({ isTrustedAppUrl, externalHttpUrl })
 }
 
-function attachRendererRecovery(win: BrowserWindow): void {
+function attachRendererRecovery(win: BrowserWindow, agentControlled = false): void {
   const recovery = createRendererRecovery({
     log: (event, details) => console.error(`[main] ${event}`, details),
     reloadRenderer: () => {
@@ -78,6 +80,7 @@ function attachRendererRecovery(win: BrowserWindow): void {
     closeApp: () => app.quit(),
     promptUser: async ({ failure, reloadAllowed }) => {
       if (win.isDestroyed()) return null
+      if (agentControlled) return 'close'
       const ids: RecoveryChoiceId[] = reloadAllowed ? ['reload', 'restart', 'close'] : ['restart', 'close']
       const message = t(
         failure.kind === 'renderer-crashed'
@@ -115,11 +118,14 @@ function attachRendererRecovery(win: BrowserWindow): void {
 
 export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | null {
   const win = new BrowserWindow({
+    ...(input.agentControlled ? { show: !input.agentBackground, width: 1440, height: 900 } : {}),
     icon: path.join(input.publicPath, 'electron-vite.svg'),
     minWidth: CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX,
     webPreferences: {
       preload: input.preloadPath,
       sandbox: true,
+      ...(input.agentControlled ? { backgroundThrottling: false } : {}),
+      ...(input.agentBackground ? { offscreen: true } : {}),
     },
   })
 
@@ -146,7 +152,7 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     const externalUrl = navigationPolicy.externalHttpUrl(url)
-    if (externalUrl) shell.openExternal(externalUrl)
+    if (externalUrl && !input.agentControlled) shell.openExternal(externalUrl)
     return { action: 'deny' }
   })
 
@@ -154,7 +160,7 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     if (navigationPolicy.isTrustedAppUrl(url)) return
     event.preventDefault()
     const externalUrl = navigationPolicy.externalHttpUrl(url)
-    if (externalUrl) {
+    if (externalUrl && !input.agentControlled) {
       shell.openExternal(externalUrl)
     }
   })
@@ -164,11 +170,11 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     input.onMainProcessMessage?.(win)
   })
 
-  attachRendererRecovery(win)
+  attachRendererRecovery(win, input.agentControlled)
 
   if (input.isDev) {
     win.loadURL(input.viteDevServerUrl!)
-    win.webContents.openDevTools()
+    if (!input.agentControlled) win.webContents.openDevTools()
   } else {
     win.loadFile(path.join(input.rendererDist, 'index.html'))
   }

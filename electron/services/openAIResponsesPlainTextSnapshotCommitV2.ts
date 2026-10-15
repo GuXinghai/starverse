@@ -1,9 +1,9 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
@@ -35,19 +35,19 @@ import {
 import {
   isOpenAIResponsesPlainTextInitialSendCommandV2,
   type OpenAIResponsesPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
+} from '../../src/core/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
 import {
   isOpenAIResponsesPlainTextRetryCommandV2,
   type OpenAIResponsesPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/plainTextRetryCommandV2'
+} from '../../src/core/generation-v2/providers/openai-responses/plainTextRetryCommandV2'
 import {
   isOpenAIResponsesPlainTextRegenerateCommandV2,
   type OpenAIResponsesPlainTextRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/plainTextRegenerateCommandV2'
+} from '../../src/core/generation-v2/providers/openai-responses/plainTextRegenerateCommandV2'
 import {
   isOpenAIResponsesPlainTextEditResendCommandV2,
   type OpenAIResponsesPlainTextEditResendCommandV2,
-} from '../../src/next/generation-v2/providers/openai-responses/plainTextEditResendCommandV2'
+} from '../../src/core/generation-v2/providers/openai-responses/plainTextEditResendCommandV2'
 import {
   isVerifiedOpenAIResponsesProviderBindingAuthorityV2,
   isVerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2,

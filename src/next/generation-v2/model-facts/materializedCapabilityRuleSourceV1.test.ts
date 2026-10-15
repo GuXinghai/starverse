@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { projectCapabilityRuleOwnershipSnapshotV1 } from
-  '../capability-rules/capabilityRuleCoreV1'
-import { buildAuthoritativeModelSubjectSetV1 } from './authoritativeModelSubjectSetV1'
-import { prepareCapabilityRuleMaterializationV1 } from './materializedCapabilityRuleSourceV1'
+  '../../../core/generation-v2/capability-rules/capabilityRuleCoreV1'
+import { buildAuthoritativeModelSubjectSetV1 } from '../../../core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { prepareCapabilityRuleMaterializationV1 } from '../../../core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 
 const proof = (scopeId: string) => Object.freeze({ kind: 'provider_native_catalog' as const,
   providerKey: 'openai_responses', scopeId, credentialScopeId: 'credential-scope-v2:test',

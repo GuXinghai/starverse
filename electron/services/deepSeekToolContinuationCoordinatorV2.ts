@@ -9,7 +9,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeDeepSeekToolContinuationCommandV2,
   type DeepSeekToolContinuationCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/toolContinuationCommandV2'
+} from '../../src/core/generation-v2/providers/deepseek/toolContinuationCommandV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'

@@ -1,14 +1,14 @@
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
 import { isGenericLocalOpenAIChatRequestHistoryFactForContextV2,
   type GenericLocalOpenAIChatRequestHistoryFactV2 } from '../../infra/db/repo/genericLocalOpenAIChatNativeHistoryV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { compileGenericLocalOpenAIChatRequestV1 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/chatRequestV1'
-import { createGenericLocalOpenAIChatArtifactV1 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
-import { readGenericLocalOpenAIChatEndpointV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { compileGenericLocalOpenAIChatRequestV1 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/chatRequestV1'
+import { createGenericLocalOpenAIChatArtifactV1 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
+import { readGenericLocalOpenAIChatEndpointV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
 
 export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{ context: GenerationV2AuthorityTransactionContextV2;
   execution: GenerationExecutionOperationBundleV2; profile: LocalEndpointProfileV2;

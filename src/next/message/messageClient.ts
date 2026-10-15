@@ -15,7 +15,7 @@ import {
   decodeMessageSetStatusResponse,
   decodeReasoningDisplayBlockListResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 import { normalizeProviderNativeSnapshot, type ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 
 export type PersistedMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter' | string

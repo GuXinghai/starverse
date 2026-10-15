@@ -12,7 +12,7 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import {
   decodeOpenRouterPlainTextRetryCommandV2,
   type OpenRouterPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter/plainTextActionCommandsV2'
+} from '../../src/core/generation-v2/providers/openrouter/plainTextActionCommandsV2'
 import { compileOpenRouterChatPreparedRequestV2 } from './openRouterChatPreparedRequestCompilerV2'
 import { commitOpenRouterChatRetrySnapshotV2 } from './openRouterChatSnapshotCommitV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'

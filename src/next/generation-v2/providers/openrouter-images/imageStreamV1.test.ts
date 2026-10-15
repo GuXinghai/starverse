@@ -3,7 +3,7 @@ import {
   decodeOpenRouterImageBufferedResponseV1,
   OpenRouterImageSingleResultAssemblerV1,
   OpenRouterImageSseDecoderV1,
-} from './imageStreamV1'
+} from '../../../../core/generation-v2/providers/openrouter-images/imageStreamV1'
 
 const encoder = new TextEncoder()
 const image = Buffer.from([137, 80, 78, 71]).toString('base64')
@@ -16,6 +16,19 @@ function completed() {
 }
 
 describe('OpenRouter Images V1 strict single-image SSE decoder', () => {
+  it.each(['', 'AA=A', 'A===', '!AAA', 'AB=='])('rejects malformed or noncanonical image encoding %j', b64_json => {
+    expect(() => decodeOpenRouterImageBufferedResponseV1({
+      created: 1, data: [{ b64_json, media_type: 'image/png' }], usage: {},
+    })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_EVENT')
+  })
+
+  it('rejects the existing encoded image size ceiling before decoding', () => {
+    const b64_json = 'A'.repeat(Math.ceil(32 * 1024 * 1024 / 3) * 4 + 5)
+    expect(() => decodeOpenRouterImageBufferedResponseV1({
+      created: 1, data: [{ b64_json, media_type: 'image/png' }], usage: {},
+    })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_EVENT')
+  })
+
   it('decodes the documented non-streaming n:1 response without accepting a hidden second image', () => {
     const result = decodeOpenRouterImageBufferedResponseV1({
       created: 1748372400,

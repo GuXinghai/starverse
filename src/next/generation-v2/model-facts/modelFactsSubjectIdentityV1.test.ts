@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   modelFactsSubjectForCatalogModelV1,
   modelFactsSubjectForCompatibleModelV1,
-} from './modelFactsSubjectIdentityV1'
+} from '../../../core/generation-v2/model-facts/modelFactsSubjectIdentityV1'
 
 describe('model facts picker subject identity', () => {
   it('uses the explicit catalog and authority binding for native catalog models', () => {

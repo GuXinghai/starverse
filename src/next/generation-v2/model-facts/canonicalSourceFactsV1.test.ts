@@ -6,8 +6,8 @@ import {
   decodeCanonicalSourceRevisionRefV1,
   type CanonicalObservationProvenanceV1,
   type CanonicalSourceRevisionRefV1,
-} from './canonicalSourceFactsV1'
-import { buildExplicitAssertionV1, invalidOutcomeV1, missingOutcomeV1, presentOutcomeV1 } from './sourceAdapterV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { buildExplicitAssertionV1, invalidOutcomeV1, missingOutcomeV1, presentOutcomeV1 } from '../../../core/generation-v2/model-facts/sourceAdapterV1'
 
 const subject = Object.freeze({ providerAuthorityId: 'google-ai-studio',
   endpointProfileId: 'gemini-developer-api-v1beta', nativeModelId: 'models/gemini-test' })

@@ -8,7 +8,7 @@
  * @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
  */
 
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 import { createReasoningImageDisplayBlock, createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 export type DomainEvent =

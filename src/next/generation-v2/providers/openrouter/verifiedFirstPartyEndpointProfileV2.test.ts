@@ -5,7 +5,7 @@ import {
   readOpenRouterFirstPartyProfileDigestV2,
   readVerifiedOpenRouterFirstPartyEndpointProfileV2,
   resolveOpenRouterFirstPartyOperationV2,
-} from './verifiedFirstPartyEndpointProfileV2'
+} from '../../../../core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 describe('OpenRouter first-party endpoint profile V2', () => {
   it('binds the Owner-selected permanent identity to separate reviewed operation contracts', () => {

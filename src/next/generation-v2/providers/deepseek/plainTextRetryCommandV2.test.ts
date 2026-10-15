@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeDeepSeekPlainTextRetryCommandV2 } from './plainTextRetryCommandV2'
+import { decodeDeepSeekPlainTextRetryCommandV2 } from '../../../../core/generation-v2/providers/deepseek/plainTextRetryCommandV2'
 
 function command(overrides: Record<string, unknown> = {}) {
   return {

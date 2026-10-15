@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   compileGeminiInteractionsRequestV1,
   GeminiInteractionsRequestV1Error,
-} from './interactionsRequestV1'
+} from '../../../../core/generation-v2/providers/gemini/interactionsRequestV1'
 
 const base = Object.freeze({
   model: 'gemini-3.1-flash-image',

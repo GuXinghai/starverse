@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildOpenRouterProjectedNativeRequestHistoryV1,
   completeOpenRouterProjectedNativeHistoryV1,
-} from './nativeMessagesV1'
+} from '../../../../core/generation-v2/providers/openrouter/nativeMessagesV1'
 
 describe('OpenRouter selected native history projection V1', () => {
   it('preserves a complete selected tool turn and creates no hidden parent artifact', () => {

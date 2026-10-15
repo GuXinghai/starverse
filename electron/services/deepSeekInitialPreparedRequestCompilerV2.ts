@@ -14,32 +14,32 @@ import {
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedDeepSeekStableChatDefinitionV2,
-} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
-} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import {
   DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
-} from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+} from '../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
 import {
   compileDeepSeekStableChatRequestV1,
   type DeepSeekToolChoiceV1,
   type DeepSeekStableChatRequestV1,
-} from '../../src/next/generation-v2/providers/deepseek/chatRequestV1'
+} from '../../src/core/generation-v2/providers/deepseek/chatRequestV1'
 import {
   isVerifiedDeepSeekStableEndpointProfileV2,
   readVerifiedDeepSeekStableEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+} from '../../src/core/generation-v2/providers/deepseek/stableEndpointProfileV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   issuePreparedProviderRequestV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 
 export class DeepSeekInitialPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

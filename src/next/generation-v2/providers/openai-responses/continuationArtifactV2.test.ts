@@ -5,7 +5,7 @@ import {
   completeOpenAIResponsesRequestV2,
   decodeOpenAIResponsesContinuationArtifactV2,
   isOpenAIResponsesContinuationArtifactV2,
-} from './continuationArtifactV2'
+} from '../../../../core/generation-v2/providers/openai-responses/continuationArtifactV2'
 
 const user = (text: string) => ({ role: 'user', content: [{ type: 'input_text', text }] })
 const reasoning = (id: string) => ({

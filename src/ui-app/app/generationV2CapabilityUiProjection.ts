@@ -1,4 +1,4 @@
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
 import type { GeminiThinkingCapability, GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingControl'
 import type { ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution } from './chatSessionConfig'
 import type { ImageGenerationOutputMode } from '@/next/openrouter/imageGenerationSettingsPersistence'

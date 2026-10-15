@@ -3,7 +3,7 @@ import {
   isGeminiInteractionsImageTerminalArtifactV2,
   serializeGeminiInteractionsImageTerminalArtifactV2,
   type GeminiInteractionsImageTerminalArtifactV2,
-} from '../../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
+} from '../../../src/core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from './generationExecutionV2Repo'
 import { isGenerationRequestRepositoryFactForContextV2, type GenerationRequestRepositoryFactV2 } from './generationRequestV2Repo'

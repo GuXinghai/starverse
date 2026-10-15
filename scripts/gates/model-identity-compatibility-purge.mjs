@@ -81,13 +81,13 @@ const nativeModelIdAllowlist = [
   'infra/db/repo/capabilityRuleCoreV1Repo.ts',
   'infra/db/repo/resolvedModelFactsV1Repo.ts',
   'infra/db/services/authoritativeModelSubjectSetV1Service.ts',
-  'src/next/generation-v2/capability-rules/capabilityRuleCoreV1.ts',
-  'src/next/generation-v2/capability/canonicalModelFactsV2.ts',
-  'src/next/generation-v2/model-facts/canonicalSourceFactsV1.ts',
-  'src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1.ts',
-  'src/next/generation-v2/model-facts/modelFactsSubjectIdentityV1.ts',
-  'src/next/generation-v2/model-facts/modelsDevSourceAdapterV1.ts',
-  'src/next/generation-v2/model-facts/providerNativeSourceAdapterV1.ts',
+  'src/core/generation-v2/capability-rules/capabilityRuleCoreV1.ts',
+  'src/core/generation-v2/capability/canonicalModelFactsV2.ts',
+  'src/core/generation-v2/model-facts/canonicalSourceFactsV1.ts',
+  'src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1.ts',
+  'src/core/generation-v2/model-facts/modelFactsSubjectIdentityV1.ts',
+  'src/core/generation-v2/model-facts/modelsDevSourceAdapterV1.ts',
+  'src/core/generation-v2/model-facts/providerNativeSourceAdapterV1.ts',
   'src/ui-app/components/CapabilityRulesUserPanel.vue',
   'src/ui-app/components/ModelFactsInspectorPanel.vue',
   // Pure display/diff of canonical exact rule selectors; no runtime identity resolution.
@@ -121,7 +121,7 @@ if (/const\s+providerId\s*=\s*descriptor\.providerKey/u.test(modelPicker)) {
   fail('Model Picker directly assigns a Catalog provider key to a Runtime provider identity')
 }
 
-const catalogAuthority = read('src/next/modelCatalog/providerCatalogAuthorityRegistryV2.ts')
+const catalogAuthority = read('src/core/model-catalog/providerCatalogAuthorityRegistryV2.ts')
 if (!catalogAuthority.includes('executionProviderId: GenerationExecutionProviderId')) {
   fail('Catalog authority does not expose an explicit Generation execution identity')
 }

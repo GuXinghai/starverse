@@ -7,7 +7,7 @@ import {
   readAnthropicDeveloperApiContractV2,
   readAnthropicMessagesRegistrySurfaceV2,
   resolveAnthropicDeveloperApiEndpointV2,
-} from './anthropicDeveloperApiContractV2'
+} from '../../../core/generation-v2/contracts/anthropicDeveloperApiContractV2'
 
 describe('Generation V2 Anthropic Developer API provider-family contract', () => {
   it('owns one direct-API origin/version/auth policy and three independent surfaces', () => {

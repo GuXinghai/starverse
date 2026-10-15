@@ -1,6 +1,6 @@
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
-import { runtimeProjectionSourcePathsV1 } from '@/next/generation-v2/capability/runtimeProjectionSourcePathsV1'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
+import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { runtimeProjectionSourcePathsV1 } from '@/core/generation-v2/capability/runtimeProjectionSourcePathsV1'
 import {
   modelFactControlKey,
   modelFactControlPresentation,

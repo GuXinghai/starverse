@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
-import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
-import type { CanonicalOpenRouterImageDescriptorV2 } from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+import type { CanonicalOpenRouterImageDescriptorV2 } from '../../../src/core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import { OpenRouterImageEndpointRepo } from './openRouterImageEndpointRepo'
 import {
   isOpenRouterImageBindingRepositoryFactV2,

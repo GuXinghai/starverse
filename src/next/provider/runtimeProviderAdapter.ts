@@ -10,7 +10,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // ProviderStreamTransport — injectable transport for remote adapters

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileOpenRouterChatRequestV1 } from './chatRequestV1'
+import { compileOpenRouterChatRequestV1 } from '../../../../core/generation-v2/providers/openrouter/chatRequestV1'
 
 describe('OpenRouter Chat V1 attachment wire body', () => {
   it('keeps inline text, image data URL and PDF data URL in the prepared body', () => {

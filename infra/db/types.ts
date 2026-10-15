@@ -29,7 +29,7 @@ import type {
   DfcSendStrategy,
   DfcTargetKind,
 } from '../../src/shared/files/documentFormatConversion'
-import type { ProviderNativeSnapshot } from '../../src/next/provider/providerNativeSnapshot'
+import type { ProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 export type JsonObject = Record<string, unknown>
 

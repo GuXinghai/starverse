@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createAnthropicMessagesNativeContentAccumulator } from './anthropicMessagesNativeContentAccumulator'
-import type { AnthropicProviderNativeSnapshot } from './anthropicProviderNativeContent'
+import { createAnthropicMessagesNativeContentAccumulator } from '../../../core/provider/anthropic/anthropicMessagesNativeContentAccumulator'
+import type { AnthropicProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 function start(index: number, contentBlock: Record<string, unknown>) {
   return { type: 'content_block_start', index, content_block: contentBlock }

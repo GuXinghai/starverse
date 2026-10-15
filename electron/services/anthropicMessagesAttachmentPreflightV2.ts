@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { AnthropicMessagesFileDescriptorV2Repo, type AnthropicMessagesFileDescriptorV2 } from '../../infra/db/repo/anthropicMessagesFileDescriptorV2Repo'
-import type { AttachmentIntentV2, ManagedFileAttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import type { AttachmentIntentV2, ManagedFileAttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'

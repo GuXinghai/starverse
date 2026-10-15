@@ -1,3 +1,5 @@
+import type { OpenAICompatibleEndpointRevisionV2, OpenAICompatibleProviderDetailsV2 } from '@/shared/provider/openai-chat-compatible/endpointContractsV2'
+export type { OpenAICompatibleEndpointRevisionV2, OpenAICompatibleProviderDetailsV2 } from '@/shared/provider/openai-chat-compatible/endpointContractsV2'
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import {
@@ -17,7 +19,7 @@ import { compatibleModelIdSchema } from '../../../src/shared/provider/openai-cha
 import { mergeCompatibleModelRecords } from '../../../src/shared/modelCatalog/providers/openai-chat-compatible/compatibleCatalogMerge'
 import type { CompatibleMergedModel, CompatibleModelRecord } from '../../../src/shared/provider/openai-chat-compatible/domain'
 import type { CompatibleModelMetadata } from '../../../src/shared/provider/openai-chat-compatible/schemas'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 
 type ConfigKind = 'request_profile' | 'request_mapping' | 'reasoning_mapping' | 'inline_policy' | 'response_profile'
 type ProviderStatus = 'active' | 'disabled' | 'deleted'
@@ -31,33 +33,9 @@ export type OpenAICompatibleConfigRevisionV2 = Readonly<{
   createdAtMs: number
 }>
 
-export type OpenAICompatibleEndpointRevisionV2 = Readonly<{
-  endpointRevisionId: string
-  providerInstanceId: string
-  revision: number
-  baseUrl: string
-  securityPolicy: 'compatibility_first' | 'strict_ssrf'
-  auth: unknown
-  ordinaryHeaders: unknown
-  query: unknown
-  requestProfileId: string
-  requestProfileVersion: number
-  responseProfileId: string
-  responseProfileVersion: number
-  endpointDigest: string
-  createdAtMs: number
-}>
 
-export type OpenAICompatibleProviderDetailsV2 = Readonly<{
-  providerInstanceId: string
-  protocolContractId: 'openai_chat_compatible'
-  displayName: string
-  status: ProviderStatus
-  createdAtMs: number
-  updatedAtMs: number
-  deletedAtMs: number | null
-  endpointRevisions: readonly OpenAICompatibleEndpointRevisionV2[]
-}>
+
+
 
 export type OpenAICompatibleActiveConfigurationV2 = Readonly<{
   requestProfile: OpenAICompatibleConfigRevisionV2

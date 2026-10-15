@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
-import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
-import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { createGenerationV2CapabilityResolutionService } from './generationV2CapabilityResolutionService'
 
 const scope = `credential-scope-v2:${'b'.repeat(64)}` as never

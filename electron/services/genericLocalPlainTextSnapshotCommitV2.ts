@@ -1,9 +1,9 @@
-import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2, decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
   pendingSourceAnswerIdV2, pendingSourceBranchIdV2,
@@ -12,12 +12,12 @@ import { GenerationExecutionV2Repo, isGenerationExecutionOperationBundleForConte
 import { isGenerationCommandFactsAuthorityForContextV2, type GenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
-import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
+import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
 import { isGenericLocalOpenAIChatEditResendCommandV2, isGenericLocalOpenAIChatInitialCommandV2,
   isGenericLocalOpenAIChatRegenerateCommandV2, isGenericLocalOpenAIChatRetryCommandV2,
   type GenericLocalOpenAIChatEditResendCommandV2, type GenericLocalOpenAIChatInitialCommandV2,
-  type GenericLocalOpenAIChatRegenerateCommandV2, type GenericLocalOpenAIChatRetryCommandV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/plainTextCommandsV2'
+  type GenericLocalOpenAIChatRegenerateCommandV2, type GenericLocalOpenAIChatRetryCommandV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/plainTextCommandsV2'
 
 type Current = GenericLocalOpenAIChatInitialCommandV2 | GenericLocalOpenAIChatRegenerateCommandV2 | GenericLocalOpenAIChatEditResendCommandV2
 function assertIntent(facts: GenerationCommandFactsAuthorityV2): void {

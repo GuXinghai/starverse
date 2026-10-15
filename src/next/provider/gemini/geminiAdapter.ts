@@ -14,7 +14,7 @@
  * @see https://ai.google.dev/api/generate-content
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/shared/provider/providerStreamContracts'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import {
   buildGeminiImageGenerationInteractionRequest,
@@ -30,7 +30,7 @@ import {
   buildGeminiThoughtSummaryDeltaEvents,
   createGeminiReasoningDisplayAssemblerState,
 } from '@/next/provider/gemini/geminiReasoningDisplayAssembler'
-import { buildGeminiUserParts } from '@/next/multimodal/providerRuntimeContentBlocks'
+import { buildGeminiUserParts } from '@/core/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types

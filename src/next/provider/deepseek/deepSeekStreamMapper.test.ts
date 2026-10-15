@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mapDeepSeekChunkToEvents, type DeepSeekChunk } from '@/next/provider/deepseek/deepSeekStreamMapper'
 import { createDeepSeekReasoningDisplayAssemblerState } from '@/next/provider/deepseek/deepseekReasoningDisplayAssembler'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // DeepSeek stream mapper — fixture-based tests

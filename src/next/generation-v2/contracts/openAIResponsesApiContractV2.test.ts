@@ -6,7 +6,7 @@ import {
   isOpenAIResponsesApiContractV2,
   readOpenAIResponsesApiContractV2,
   resolveOpenAIResponsesApiEndpointV2,
-} from './openAIResponsesApiContractV2'
+} from '../../../core/generation-v2/contracts/openAIResponsesApiContractV2'
 
 describe('Generation V2 OpenAI Responses API provider-family contract', () => {
   it('owns the direct API origin, Bearer auth and three independent zero-authority surfaces', () => {
@@ -145,10 +145,10 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
 
   it('enters only the reviewed V2 registry and no legacy execution path', () => {
     const contractSource = readFileSync(path.resolve(
-      'src/next/generation-v2/contracts/openAIResponsesApiContractV2.ts',
+      'src/core/generation-v2/contracts/openAIResponsesApiContractV2.ts',
     ), 'utf8')
     const registrySource = readFileSync(path.resolve(
-      'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
+      'src/core/generation-v2/contracts/providerContractRegistryV2.ts',
     ), 'utf8')
     const legacySources = [
       'electron/ipc/openAIResponsesTextChatIpc.ts',

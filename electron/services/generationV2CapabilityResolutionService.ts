@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- Main-process capability authority composes canonical Generation V2 resolver contracts. */
 import type BetterSqlite3 from 'better-sqlite3'
 import { LocalEndpointProfileV2Repo, type LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
@@ -19,34 +18,34 @@ import {
   openAICompatibleUnauthenticatedCredentialScopeV2,
   mappedReasoningSources,
 } from './openAIChatCompatibleGenerationV2Coordinator'
-import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
-import { resolveLmStudioOpenResponsesCapabilityV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
-import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
-import { resolveGenericLocalOpenAIChatCapabilityV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
-import { createOllamaChatProviderBindingV2 } from '../../src/next/generation-v2/providers/ollama-chat/verifiedContractV2'
-import { resolveOllamaChatCapabilityV2 } from '../../src/next/generation-v2/providers/ollama-chat/runtimeCapabilityV2'
-import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
-import { resolveOpenAIChatCompatibleCapabilityV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
-import { resolveOpenRouterImageCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
-import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 as readOpenRouterProfile } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { createLmStudioOpenResponsesProviderBindingV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { resolveLmStudioOpenResponsesCapabilityV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/runtimeCapabilityV2'
+import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
+import { resolveGenericLocalOpenAIChatCapabilityV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
+import { createOllamaChatProviderBindingV2 } from '../../src/core/generation-v2/providers/ollama-chat/verifiedContractV2'
+import { resolveOllamaChatCapabilityV2 } from '../../src/core/generation-v2/providers/ollama-chat/runtimeCapabilityV2'
+import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { resolveOpenAIChatCompatibleCapabilityV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
+import { resolveOpenRouterImageCapabilityV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
+import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 as readOpenRouterProfile } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import {
   assertCapabilityResolutionScopeV2,
   projectGenerationCapabilityResolutionV2,
   type GenerationCapabilityResolutionRequestV2,
   type GenerationCapabilityResolutionResultV2,
-} from '../../src/next/generation-v2/capability/capabilityResolutionV2'
-import { canonicalizeResolvedCapabilityV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+} from '../../src/core/generation-v2/capability/capabilityResolutionV2'
+import { canonicalizeResolvedCapabilityV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import { GenerationV2Identity } from '../../src/core/generation-v2/domain/identityV2'
 import {
   readVerifiedAnthropicEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
-import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
-import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import { listEncodingCoverageRegistriesV2 } from '../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
-import { decodeProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../src/core/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
+import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/core/generation-v2/providers/deepseek/stableEndpointProfileV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { listEncodingCoverageRegistriesV2 } from '../../src/core/generation-v2/capability/encodingCoverageRegistryV2'
+import { decodeProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import { resolveGoal3ModelFactsForBindingV1 } from './goal3ModelFactsCapabilityV1'
 /* eslint-enable no-restricted-imports */
 

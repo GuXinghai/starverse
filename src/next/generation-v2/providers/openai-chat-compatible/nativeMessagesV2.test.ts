@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOpenAIChatCompatibleNativeArtifactV2, decodeOpenAIChatCompatibleNativeArtifactV2 } from './nativeMessagesV2'
+import { createOpenAIChatCompatibleNativeArtifactV2, decodeOpenAIChatCompatibleNativeArtifactV2 } from '../../../../core/generation-v2/providers/openai-chat-compatible/nativeMessagesV2'
 
 describe('OpenAI-compatible native messages V2', () => {
   it('pins base messages and independently replayable reasoning facts', () => {

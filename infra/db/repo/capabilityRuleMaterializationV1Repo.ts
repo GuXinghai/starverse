@@ -1,14 +1,14 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestV2 } from
-  '../../../src/next/generation-v2/compiler/stableSerialize'
+  '../../../src/core/generation-v2/compiler/stableSerialize'
 import type { PreparedCapabilityRuleMaterializationV1 } from
-  '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { MATERIALIZED_CAPABILITY_RULE_ADAPTER_REVISION_V1 } from
-  '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { MATERIALIZED_CAPABILITY_RULE_COVERAGE_MANIFEST_V1 } from
-  '../../../src/next/generation-v2/model-facts/sourceCoverageManifestV1'
+  '../../../src/core/generation-v2/model-facts/sourceCoverageManifestV1'
 import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from
-  '../../../src/next/generation-v2/model-facts/providerAuthorityRegistryV1'
+  '../../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
 import { CapabilityRuleCoreV1Repo } from './capabilityRuleCoreV1Repo'
 import {
   CanonicalModelFactSourceV1Repo,

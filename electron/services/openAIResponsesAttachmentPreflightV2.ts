@@ -5,12 +5,11 @@ import {
   type OpenAIResponsesFileDescriptorV2,
 } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
-// eslint-disable-next-line no-restricted-imports -- Main-process attachment preflight validates Generation V2 attachment intent.
 import {
   requiresProviderFileBindingV2,
   type AttachmentIntentV2,
   type ManagedFileAttachmentIntentV2,
-} from '../../src/next/generation-v2/domain/generationIntentV2'
+} from '../../src/core/generation-v2/domain/generationIntentV2'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'

@@ -3,15 +3,15 @@ import {
   buildAuthoritativeModelSubjectSetV1,
   type AuthoritativeModelSubjectCandidateV1,
   type AuthoritativeModelSubjectSetV1,
-} from '../../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+} from '../../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import {
   prepareCapabilityRuleMaterializationV1,
   type CapabilityRuleDefaultActivationPoliciesV1,
-} from '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+} from '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import type { CapabilityRuleOwnershipSnapshotV1 } from
-  '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+  '../../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
 import { CapabilityRuleMaterializationV1Repo } from '../repo/capabilityRuleMaterializationV1Repo'
 import { CanonicalModelFactSourceV1Repo } from '../repo/canonicalModelFactSourceV1Repo'

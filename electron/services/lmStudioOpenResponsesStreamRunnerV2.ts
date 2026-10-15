@@ -7,9 +7,9 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { LmStudioOpenResponsesStreamV1Error, LmStudioOpenResponsesTypedSseDecoderV1,
-  type LmStudioOpenResponsesStreamResultV1 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/responsesStreamV1'
+  type LmStudioOpenResponsesStreamResultV1 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/responsesStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'

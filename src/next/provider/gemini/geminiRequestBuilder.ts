@@ -7,7 +7,7 @@
  * @see https://ai.google.dev/api/generate-content
  */
 
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 import type { GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingControl'
 import { asProviderGenerationParamsRecord } from '@/next/provider/providerGenerationParams'
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeAnthropicPlainTextRetryCommandV2,
   isAnthropicPlainTextRetryCommandV2,
-} from './plainTextRetryCommandV2'
+} from '../../../../core/generation-v2/providers/anthropic/plainTextRetryCommandV2'
 
 function command(overrides: Record<string, unknown> = {}) {
   return {

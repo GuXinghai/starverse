@@ -1,10 +1,10 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { createHash } from 'node:crypto'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   GenerationV2Digest,
   GenerationV2Identity,
-} from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/identityV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,

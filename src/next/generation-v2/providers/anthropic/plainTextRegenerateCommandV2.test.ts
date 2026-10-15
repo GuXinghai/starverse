@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeAnthropicPlainTextRegenerateCommandV2 } from './plainTextRegenerateCommandV2'
+import { decodeAnthropicPlainTextRegenerateCommandV2 } from '../../../../core/generation-v2/providers/anthropic/plainTextRegenerateCommandV2'
 
 function command(overrides: Record<string, unknown> = {}) {
   return {

@@ -1,12 +1,12 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
@@ -35,8 +35,8 @@ import { RuntimeCapabilityV2Repo, isRuntimeCapabilityRepositoryFactV2 } from '..
 import {
   isOpenRouterImageInitialSendCommandV2,
   type OpenRouterImageInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
-import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
+import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import {
   isOpenRouterImageEditResendCommandV2,
   isOpenRouterImageRegenerateCommandV2,
@@ -44,8 +44,8 @@ import {
   type OpenRouterImageEditResendCommandV2,
   type OpenRouterImageRegenerateCommandV2,
   type OpenRouterImageRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/imageActionCommandsV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 
 export class OpenRouterImageInitialSnapshotCommitV2Error extends Error {

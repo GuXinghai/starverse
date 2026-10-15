@@ -18,8 +18,8 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import {
   decodeDeepSeekPlainTextRegenerateCommandV2,
   type DeepSeekPlainTextRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/deepseek/plainTextRegenerateCommandV2'
-import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/deepseek/plainTextRegenerateCommandV2'
+import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/core/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'
 import {

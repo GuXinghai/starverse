@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { createGeminiInteractionsImageTerminalArtifactV2 } from './interactionsTerminalArtifactV2'
+import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../../../core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
-  GeminiInteractionsImageStreamV1Error } from './interactionsStreamV1'
+  GeminiInteractionsImageStreamV1Error } from '../../../../core/generation-v2/providers/gemini/interactionsStreamV1'
 
 function sse(events: readonly unknown[]): Uint8Array {
   const frames = events.map((event) => `data: ${typeof event === 'string' ? event : JSON.stringify(event)}\n\n`).join('')
@@ -25,6 +25,34 @@ const interaction = { id: 'interaction:1', model: 'gemini-3.1-flash-image', stat
   usage: { total_input_tokens: 1, total_output_tokens: 2 } }
 
 describe('Gemini Interactions image SSE V1', () => {
+  it.each(['', 'AA=A', 'A===', '!AAA', 'AB=='])('rejects malformed or noncanonical image encoding %j', data => {
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data, mime_type: 'image/jpeg' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+  })
+
+  it('retains the wire size ceiling before parsing', () => {
+    const decoder = new GeminiInteractionsImageSseDecoderV1()
+    expect(() => decoder.push(new Uint8Array(48 * 1024 * 1024 + 1)))
+      .toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_LIMIT_EXCEEDED')
+  })
+
+  it('decodes only after joining image pieces split inside a Base64 quantum', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'a', mime_type: 'image/jpeg' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'W1hZ2U=' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction }, '[DONE]',
+    ])
+    expect(new TextDecoder().decode(result.bytes)).toBe('image')
+  })
+
   it('assembles one ordered native image stream and creates a body-free terminal artifact', () => {
     const result = decode([
       { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },

@@ -5,16 +5,16 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import {
   readReviewedDeepSeekStableChatDefinitionV2,
   readReviewedOpenAIResponsesDefinitionV2,
-} from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   GenerationExecutionV2Repo,

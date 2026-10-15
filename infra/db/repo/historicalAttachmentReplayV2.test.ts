@@ -5,19 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import {
   readReviewedAnthropicMessagesDefinitionV2,
   readReviewedGeminiGenerateContentDefinitionV2,
-} from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
-import { createAnthropicNativeHistoryArtifactV1 } from '../../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
-import { createSemanticConsumptionLedgerV2 } from '../../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+} from '../../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { createAnthropicNativeHistoryArtifactV1 } from '../../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
+import { createSemanticConsumptionLedgerV2 } from '../../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { GenerationExecutionV2Repo } from './generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from './generationRequestV2Repo'
@@ -26,7 +26,7 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './genera
 import { AnthropicNativeHistoryV2Repo } from './anthropicNativeHistoryV2Repo'
 import { GeminiGenerateContentNativeHistoryV2Repo } from './geminiGenerateContentNativeHistoryV2Repo'
 import { compileAnthropicMessagesPreparedRequestV2 } from '../../../electron/services/anthropicMessagesPreparedRequestCompilerV2'
-import { geminiFunctionCallAssociationKeyV2 } from '../../../src/next/generation-v2/providers/gemini/toolContinuationCommandV2'
+import { geminiFunctionCallAssociationKeyV2 } from '../../../src/core/generation-v2/providers/gemini/toolContinuationCommandV2'
 import { compileGeminiGenerateContentPreparedRequestV2 } from '../../../electron/services/geminiGenerateContentPreparedRequestCompilerV2'
 import { geminiAttachmentCapabilityFieldsV2 } from '../../../electron/services/geminiGenerateContentGenerationAuthorityV2Service'
 

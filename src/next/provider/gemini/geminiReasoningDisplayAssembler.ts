@@ -1,5 +1,5 @@
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 
 export type GeminiReasoningDisplayAssemblerState = {
   textByCandidateKey: Map<string, string>

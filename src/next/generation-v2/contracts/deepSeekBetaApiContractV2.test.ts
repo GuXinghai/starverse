@@ -3,7 +3,7 @@ import {
   isDeepSeekBetaApiContractV2,
   readDeepSeekBetaApiContractV2,
   resolveDeepSeekBetaApiEndpointV2,
-} from './deepSeekBetaApiContractV2'
+} from '../../../core/generation-v2/contracts/deepSeekBetaApiContractV2'
 
 describe('Generation V2 DeepSeek Beta provider-family contract', () => {
   it('is a separate explicitly selected non-executable contract', () => {

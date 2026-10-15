@@ -1,4 +1,4 @@
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 
 export type ReasoningDisplayTextRole = Extract<ReasoningDisplayBlock, { type: 'text' }>['semanticRole']
 export type ReasoningDisplayImageRole = Extract<ReasoningDisplayBlock, { type: 'image' }>['semanticRole']

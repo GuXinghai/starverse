@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../capability/modelCapabilitySchemaV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../../core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   isVerifiedDeepSeekStableCapabilityPolicyV2,
   readVerifiedDeepSeekStableCapabilityPolicyV2,
-} from './stableCapabilityPolicyV2'
+} from '../../../../core/generation-v2/providers/deepseek/stableCapabilityPolicyV2'
 
 describe('DeepSeek stable family capability policy V2', () => {
   it('closes every semantic path exactly once without issuing execution authority', () => {

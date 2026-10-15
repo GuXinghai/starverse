@@ -3,13 +3,13 @@ import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
-import { buildAuthoritativeModelSubjectSetV1 } from '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { buildAuthoritativeModelSubjectSetV1 } from '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCanonicalSourceRevisionRefV1, buildCanonicalSubjectFactV1 } from
-  '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+  '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { buildExplicitAssertionV1, buildObservationProvenanceV1, presentOutcomeV1 } from
-  '../../src/next/generation-v2/model-facts/sourceAdapterV1'
+  '../../src/core/generation-v2/model-facts/sourceAdapterV1'
 import { buildRawSourceSnapshotRefV1, sanitizeRawSourcePayloadV1 } from
-  '../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
+  '../../src/core/generation-v2/model-facts/rawSourceSnapshotV1'
 import { ModelFactsInspectorV1Service } from './modelFactsInspectorV1Service'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { SourcePriorityConfigV1Repo } from '../../infra/db/repo/sourcePriorityConfigV1Repo'

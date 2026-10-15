@@ -9,7 +9,7 @@
  */
 
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent, StarverseProviderError } from './providerTypes'
+import type { StarverseStreamEvent, StarverseProviderError } from '../../shared/provider/providerStreamContracts'
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 
 /**

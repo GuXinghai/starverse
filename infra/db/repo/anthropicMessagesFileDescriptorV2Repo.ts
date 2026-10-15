@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { createHash } from 'node:crypto'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { GenerationV2Digest, GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { GenerationV2Digest, GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
 
 const ENDPOINT_PROFILE_ID = 'anthropic-messages-2023-06-01'
 const FILE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u

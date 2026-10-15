@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isVerifiedOpenAIResponsesEndpointProfileV2,
   readVerifiedOpenAIResponsesEndpointProfileV2,
-} from './verifiedEndpointProfileV2'
+} from '../../../../core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 
 describe('OpenAI Responses V2 verified endpoint profile', () => {
   it('derives one fixed first-party profile from the reviewed contract', () => {

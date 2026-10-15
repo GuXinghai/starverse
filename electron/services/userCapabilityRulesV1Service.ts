@@ -5,20 +5,20 @@ import {
   type CapabilityRuleCorePackV1,
   type CapabilityRuleCoreRuleV1,
   type CapabilityRuleOwnershipSnapshotV1,
-} from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+} from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import {
   createUserRulePackTransferV1,
   decodeUserRulePackTransferV1,
   USER_RULES_LOCAL_OWNER_ID_V1,
   type UserCapabilityRuleNoteV1,
   type UserRulePackTransferV1,
-} from '../../src/next/generation-v2/capability-rules/userRulePackTransferV1'
+} from '../../src/core/generation-v2/capability-rules/userRulePackTransferV1'
 import { prepareCapabilityRuleMaterializationV1 } from
-  '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import type { AuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../src/core/generation-v2/model-facts/sourceScopeV1'
 import {
   CapabilityRuleCoreV1Repo,
   prepareCapabilityRuleOwnershipSnapshotWriteV1,

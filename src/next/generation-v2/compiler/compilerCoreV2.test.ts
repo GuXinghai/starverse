@@ -4,7 +4,7 @@ import {
   ImmutablePreparedBodyV2,
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
-} from './stableSerialize'
+} from '../../../core/generation-v2/compiler/stableSerialize'
 
 describe('Generation Compiler V2 core', () => {
   it('serializes plain provider-native JSON deterministically by Unicode code point', () => {

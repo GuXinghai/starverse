@@ -1,15 +1,15 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import type { CapabilityRuleDefaultActivationPoliciesV1,
   PreparedCapabilityRuleMaterializationV1 } from
-  '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { prepareCapabilityRuleMaterializationV1 } from
-  '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import { projectCapabilityRuleDefinitionSetV1 } from
-  '../../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+  '../../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import type { AuthoritativeModelSubjectSetV1 } from
-  '../../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { buildCapabilityRuleSourceScopeIdV1 } from
-  '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
 import { CapabilityRuleMaterializationV1Repo,
   type CapabilityRuleMaterializationStageResultV1 } from

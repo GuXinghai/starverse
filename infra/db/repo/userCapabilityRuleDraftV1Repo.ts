@@ -1,15 +1,15 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestV2 } from
-  '../../../src/next/generation-v2/compiler/stableSerialize'
+  '../../../src/core/generation-v2/compiler/stableSerialize'
 import { canonicalSourceFactDigestV1 } from
-  '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+  '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   projectCapabilityRuleOwnershipSnapshotV1,
   type CapabilityRuleOwnershipSnapshotV1,
   type ProjectedCapabilityRuleOwnershipSnapshotV1,
-} from '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+} from '../../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { USER_RULES_LOCAL_OWNER_ID_V1, type UserCapabilityRuleNoteV1 } from
-  '../../../src/next/generation-v2/capability-rules/userRulePackTransferV1'
+  '../../../src/core/generation-v2/capability-rules/userRulePackTransferV1'
 import { CapabilityRuleCoreV1Repo } from './capabilityRuleCoreV1Repo'
 
 export type UserCapabilityRuleDraftV1 = Readonly<{

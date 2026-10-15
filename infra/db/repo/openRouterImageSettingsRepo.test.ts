@@ -8,7 +8,7 @@ import {
   decodeOpenRouterImageDescriptorFreshnessPairV2,
   OPENROUTER_IMAGE_HARD_EXPIRE_AFTER_PRESETS_MS_V2,
   OPENROUTER_IMAGE_REFRESH_AFTER_PRESETS_MS_V2,
-} from '../../../src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
+} from '../../../src/core/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   isOpenRouterImageDescriptorFreshnessSettingsFactV2,

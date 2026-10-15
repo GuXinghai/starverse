@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeProviderBindingRecordV2 } from './providerBindingV2'
+import { decodeProviderBindingRecordV2 } from '../../../core/generation-v2/domain/providerBindingV2'
 
 const digest = 'a'.repeat(64)
 const contractDigest = 'b'.repeat(64)

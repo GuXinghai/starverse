@@ -1,5 +1,7 @@
 /* eslint-env node */
 
+const { builtinModules } = require('node:module')
+
 module.exports = {
   root: true,
   plugins: ['@typescript-eslint'],
@@ -14,6 +16,7 @@ module.exports = {
     'node_modules/',
     'dist/',
     'dist-electron/',
+    'out/',
     'release/',
     'public/',
     'docs/',
@@ -21,6 +24,23 @@ module.exports = {
     'archived-services/',
   ],
   overrides: [
+    {
+      files: ['src/core/**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+      rules: {
+        'no-restricted-globals': ['error', 'Buffer', 'process', 'require', '__dirname', '__filename', 'global'],
+        'no-restricted-imports': ['error', {
+          paths: [...builtinModules, 'electron'].map(name => ({ name, message: 'src/core/** cannot depend on Node or Electron runtime modules.' })),
+          patterns: [{
+            group: [
+              '**/next/**', '**/ui-kit/**', '**/ui-app/**', '**/electron/**', '**/infra/**',
+              '@/next', '@/ui-kit', '@/ui-app', '**/*.vue', 'vue', 'vue/**', 'pinia', 'pinia/**',
+              'node:*', 'node:*/**',
+            ],
+            message: 'src/core/** is platform-neutral: depend on core/shared contracts, never next/UI/Electron/infra or Node builtins.',
+          }],
+        }],
+      },
+    },
     {
       files: ['**/*.cjs'],
       parserOptions: {

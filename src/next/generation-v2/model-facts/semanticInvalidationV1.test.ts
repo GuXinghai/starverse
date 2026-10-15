@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1, decodeModelFactsSemanticInvalidationV1 } from './semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1, decodeModelFactsSemanticInvalidationV1 } from '../../../core/generation-v2/model-facts/semanticInvalidationV1'
 
 describe('closed semantic invalidation event', () => {
   it('accepts only existing semantic revision hashes and the shared Rules scope', () => {

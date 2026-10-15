@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GenerationOperationRuntimeSnapshotV2 } from '../domain/generationStreamEventV2'
+import type { GenerationOperationRuntimeSnapshotV2 } from '../../../core/generation-v2/domain/generationStreamEventV2'
 import { BranchRuntimeCacheV2 } from './branchRuntimeCacheV2'
 
 function snapshot(input: Readonly<{

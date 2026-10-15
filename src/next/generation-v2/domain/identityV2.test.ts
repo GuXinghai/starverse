@@ -6,7 +6,7 @@ import {
   isGenerationV2Identity,
   readGenerationV2Digest,
   readGenerationV2Identity,
-} from './identityV2'
+} from '../../../core/generation-v2/domain/identityV2'
 
 describe('Generation V2 runtime identities', () => {
   it('creates immutable kind-bound identities without exposing a public constructor', () => {

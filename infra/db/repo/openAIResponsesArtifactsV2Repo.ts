@@ -1,13 +1,13 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   isOpenAIResponsesContinuationArtifactV2,
   type OpenAIResponsesContinuationArtifactV2,
-} from '../../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+} from '../../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
 import {
   isOpenAIResponsesTerminalArtifactV1,
   type OpenAIResponsesTerminalArtifactV1,
-} from '../../../src/next/generation-v2/providers/openai-responses/terminalArtifactV1'
+} from '../../../src/core/generation-v2/providers/openai-responses/terminalArtifactV1'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,

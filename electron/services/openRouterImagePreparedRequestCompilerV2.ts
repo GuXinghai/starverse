@@ -3,21 +3,21 @@ import {
   isGenerationExecutionOperationBundleForContextV2,
   type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
   issuePreparedProviderRequestV2,
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import {
   readVerifiedOpenRouterFirstPartyEndpointProfileV2,
   resolveOpenRouterFirstPartyOperationV2,
-} from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import type { CanonicalOpenRouterImageDescriptorSetV2 } from '../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
-import { compileOpenRouterImageRequestV1, type OpenRouterImageWireFieldV1 } from '../../src/next/generation-v2/providers/openrouter-images/imageRequestV1'
+} from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import type { CanonicalOpenRouterImageDescriptorSetV2 } from '../../src/core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+import { compileOpenRouterImageRequestV1, type OpenRouterImageWireFieldV1 } from '../../src/core/generation-v2/providers/openrouter-images/imageRequestV1'
 
 export class OpenRouterImagePreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:

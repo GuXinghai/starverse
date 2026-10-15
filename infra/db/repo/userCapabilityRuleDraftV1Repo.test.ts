@@ -5,7 +5,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import type { CapabilityRuleOwnershipSnapshotV1 } from
-  '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+  '../../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { CapabilityRuleCoreV1Repo } from './capabilityRuleCoreV1Repo'
 import { UserCapabilityRuleDraftV1Repo, UserCapabilityRuleDraftV1RepoError } from
   './userCapabilityRuleDraftV1Repo'

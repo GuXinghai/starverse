@@ -1,8 +1,8 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
 import {
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
@@ -30,7 +30,7 @@ import {
   type GeminiInteractionsImageInitialCommandV2,
   type GeminiInteractionsImageRegenerateCommandV2,
   type GeminiInteractionsImageRetryCommandV2,
-} from '../../src/next/generation-v2/providers/gemini/interactionsImageCommandsV2'
+} from '../../src/core/generation-v2/providers/gemini/interactionsImageCommandsV2'
 import {
   isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2,
   isVerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2,

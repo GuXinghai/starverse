@@ -3,7 +3,7 @@ import {
   decodeOpenAIResponsesPlainTextInitialSendCommandJsonV2,
   decodeOpenAIResponsesPlainTextInitialSendCommandV2,
   isOpenAIResponsesPlainTextInitialSendCommandV2,
-} from './plainTextInitialSendCommandV2'
+} from '../../../../core/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
 
 const input = () => ({
   operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,

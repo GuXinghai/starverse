@@ -2,16 +2,16 @@ import {
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
-} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
+} from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
@@ -20,30 +20,30 @@ import {
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedOpenAIResponsesDefinitionV2,
-} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   isVerifiedProviderContractReferenceV2,
   verifyProviderContractReferenceV2,
   type VerifiedProviderContractReferenceV2,
-} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+} from '../../src/core/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
-} from '../../src/next/generation-v2/domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { requiresProviderFileBindingV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { isOpenAIResponsesEncodedAttachmentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
+} from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { requiresProviderFileBindingV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
+import { isOpenAIResponsesEncodedAttachmentV1 } from '../../src/core/generation-v2/providers/openai-responses/responsesRequestV1'
 import {
   readGenerationV2Digest,
   readGenerationV2Identity,
   type GenerationV2Digest,
-} from '../../src/next/generation-v2/domain/identityV2'
-import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+} from '../../src/core/generation-v2/domain/identityV2'
+import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
 import {
   isVerifiedOpenAIResponsesEndpointProfileV2,
   readVerifiedOpenAIResponsesEndpointProfileV2,
-} from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import {
   isGenerationCommandFactsAuthorityForContextV2,
   isGenerationCommandFactsAuthorityV2,

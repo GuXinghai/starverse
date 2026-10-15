@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ProviderCatalogAuthorityRegistryV2 } from './providerCatalogAuthorityRegistryV2'
+import { ProviderCatalogAuthorityRegistryV2 } from '../../core/model-catalog/providerCatalogAuthorityRegistryV2'
 
 describe('ProviderCatalogAuthorityRegistryV2 identity mappings', () => {
   it('owns explicit Catalog, credential, and execution identities', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ProviderHttpTransportError } from '../net/providerHttpTransport'
 import { formatOpenRouterChatTransportFailureMessage } from './openRouterChatStreamRunnerV2'
-import { OpenRouterChatProviderStreamErrorV1, OpenRouterChatStreamV1Error } from '../../src/next/generation-v2/providers/openrouter/chatStreamV1'
+import { OpenRouterChatProviderStreamErrorV1, OpenRouterChatStreamV1Error } from '../../src/core/generation-v2/providers/openrouter/chatStreamV1'
 
 describe('openRouterChatStreamRunnerV2 transport diagnostics', () => {
   it('persists only the classified pre-response transport code', () => {

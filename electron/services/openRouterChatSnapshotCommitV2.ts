@@ -1,9 +1,9 @@
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import {
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
@@ -35,7 +35,7 @@ import {
 import {
   isOpenRouterPlainTextInitialSendCommandV2,
   type OpenRouterPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter/plainTextInitialSendCommandV2'
+} from '../../src/core/generation-v2/providers/openrouter/plainTextInitialSendCommandV2'
 import {
   isOpenRouterPlainTextEditResendCommandV2,
   isOpenRouterPlainTextRegenerateCommandV2,
@@ -43,7 +43,7 @@ import {
   type OpenRouterPlainTextEditResendCommandV2,
   type OpenRouterPlainTextRegenerateCommandV2,
   type OpenRouterPlainTextRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter/plainTextActionCommandsV2'
+} from '../../src/core/generation-v2/providers/openrouter/plainTextActionCommandsV2'
 import {
   isVerifiedOpenRouterChatBindingAuthorityV2,
   isVerifiedOpenRouterChatCapabilityAuthorityV2,

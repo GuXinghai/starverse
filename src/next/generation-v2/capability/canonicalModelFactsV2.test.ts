@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalizeModelFactsV2,
   projectCanonicalModelFactsDraftV2,
-} from './canonicalModelFactsV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from './modelCapabilitySchemaV2'
+} from '../../../core/generation-v2/capability/canonicalModelFactsV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
 
 const digest = 'c'.repeat(64)
 

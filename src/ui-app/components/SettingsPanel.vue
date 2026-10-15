@@ -23,7 +23,7 @@ import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSett
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
 import ModelsAndCapabilitiesSettingsPanel from './ModelsAndCapabilitiesSettingsPanel.vue'
-import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -50,7 +50,7 @@ import {
   type ProviderFailureV2,
 } from '@/shared/provider/providerFailureV2'
 import { catalogRuntimeStoreV2ForApp } from '@/next/modelCatalog/catalogRuntimeStoreV2'
-import { ProviderCatalogAuthorityRegistryV2 } from '@/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+import { ProviderCatalogAuthorityRegistryV2 } from '@/core/model-catalog/providerCatalogAuthorityRegistryV2'
 import type { CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
 
 const props = defineProps<{

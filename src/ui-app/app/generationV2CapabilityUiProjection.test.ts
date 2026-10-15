@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
 import { projectGeminiThinkingCapabilityV2 } from './generationV2CapabilityUiProjection'
 
 function projection(path: string, control: Readonly<Record<string, unknown>>): GenerationControlsProjectionV2 {

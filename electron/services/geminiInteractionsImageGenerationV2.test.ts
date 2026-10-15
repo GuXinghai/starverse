@@ -6,11 +6,11 @@ import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReaso
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
-import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
-import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
-import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+import type { CanonicalFactValueV1, CanonicalSemanticPathV1 } from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CapabilityRuleCoreRuleV1, CapabilityRuleOwnershipSnapshotV1 } from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 

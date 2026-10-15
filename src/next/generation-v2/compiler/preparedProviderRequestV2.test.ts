@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ImmutablePreparedBodyV2 } from './stableSerialize'
-import { createSemanticConsumptionLedgerV2 } from './semanticConsumptionLedgerV2'
+import { ImmutablePreparedBodyV2 } from '../../../core/generation-v2/compiler/stableSerialize'
+import { createSemanticConsumptionLedgerV2 } from '../../../core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   type PreparedAttachmentEncodingProofV2,
@@ -8,8 +8,8 @@ import {
   createOpenAICompatibleCredentialHeaderPlanV2,
   issuePreparedProviderRequestV2,
   PreparedProviderRequestV2Error,
-} from './preparedProviderRequestV2'
-import { createAnthropicMessagesNonSecretHeaderPlanV2 } from '../contracts/anthropicDeveloperApiContractV2'
+} from '../../../core/generation-v2/compiler/preparedProviderRequestV2'
+import { createAnthropicMessagesNonSecretHeaderPlanV2 } from '../../../core/generation-v2/contracts/anthropicDeveloperApiContractV2'
 
 function issue(credentialPlacement: 'bearer_authorization' | 'anthropic_x_api_key' | 'openai_compatible_credential' | 'unknown') {
   return issuePreparedProviderRequestV2({

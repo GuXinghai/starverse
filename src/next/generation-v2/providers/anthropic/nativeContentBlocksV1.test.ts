@@ -7,7 +7,7 @@ import {
   deserializeAnthropicNativeHistoryArtifactV1,
   isAnthropicNativeHistoryArtifactV1,
   serializeAnthropicNativeHistoryArtifactV1,
-} from './nativeContentBlocksV1'
+} from '../../../../core/generation-v2/providers/anthropic/nativeContentBlocksV1'
 
 const usage = Object.freeze({
   cache_creation: null,

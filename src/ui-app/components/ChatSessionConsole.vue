@@ -46,7 +46,7 @@ import type {
   ChatSessionConfigImageResolution,
   ChatSessionConfigReasoningEffort,
 } from '../app/chatSessionConfig'
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import { projectGenerationV2WebSearchControls, webSearchBindingForRouteV2 } from '../app/generationV2WebSearchProjection'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'

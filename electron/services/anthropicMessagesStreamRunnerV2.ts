@@ -16,10 +16,10 @@ import {
 import {
   AnthropicMessagesChatStreamV1,
   type AnthropicMessagesVisibleDeltaV1,
-} from '../../src/next/generation-v2/providers/anthropic/chatStreamV1'
-import type { AnthropicProviderNativeSnapshot } from '../../src/next/provider/anthropic/anthropicProviderNativeContent'
-import { createAnthropicNativeHistoryArtifactV1 } from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
-import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+} from '../../src/core/generation-v2/providers/anthropic/chatStreamV1'
+import type { AnthropicProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
+import { createAnthropicNativeHistoryArtifactV1 } from '../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
+import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import {
   isGenerationTextCommandResultV2,
   type GenerationTextCommandResultV2,

@@ -67,9 +67,9 @@ import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Init
   type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
 import { resolveGenerationV2Capabilities } from '@/next/generation-v2/renderer/generationV2CapabilityClient'
 import { selectGeminiGenerationV2RouteV2 } from './generationV2RouteSelection'
-import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/next/generation-v2/capability/capabilityResolutionV2'
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import { modelFactsSubjectForCatalogModelV1, modelFactsSubjectForCompatibleModelV1 } from '@/next/generation-v2/model-facts/modelFactsSubjectIdentityV1'
+import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/core/generation-v2/capability/capabilityResolutionV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
+import { modelFactsSubjectForCatalogModelV1, modelFactsSubjectForCompatibleModelV1 } from '@/core/generation-v2/model-facts/modelFactsSubjectIdentityV1'
 import {
   buildModelFactControlExplanationsV1,
   failedModelFactControlExplanationsV1,
@@ -299,7 +299,7 @@ import type { ProviderModelPickerSource } from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
 import { createConversationConfigUpdateQueue } from './conversationConfigUpdateQueue'
 import { createWorkspaceStartupController, WorkspaceStartupSupersededError, type WorkspaceStartupLease } from './workspaceStartupController'
-import { decodeModelFactsSemanticInvalidationV1 } from '@/next/generation-v2/model-facts/semanticInvalidationV1'
+import { decodeModelFactsSemanticInvalidationV1 } from '@/core/generation-v2/model-facts/semanticInvalidationV1'
 import {
   resolveNetworkErrorDisplayMessage,
 } from './networkErrorDisplay'

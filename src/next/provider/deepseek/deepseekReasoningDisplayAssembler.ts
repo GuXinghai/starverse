@@ -1,4 +1,4 @@
-import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ReasoningDisplayBlock } from '@/shared/provider/providerStreamPayloads'
 
 export type DeepSeekReasoningDisplayAssemblerState = {
   textByBlockKey: Map<string, string>

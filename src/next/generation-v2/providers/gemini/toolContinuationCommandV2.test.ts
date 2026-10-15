@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeGeminiToolContinuationCommandV2,
   geminiFunctionCallAssociationKeyV2,
-} from './toolContinuationCommandV2'
+} from '../../../../core/generation-v2/providers/gemini/toolContinuationCommandV2'
 
 describe('Gemini tool continuation command V2', () => {
   const command = () => ({

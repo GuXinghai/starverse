@@ -1,11 +1,11 @@
 import BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   projectCapabilityRuleOwnershipSnapshotV1,
   type CapabilityRuleOwnershipSnapshotV1,
   type CapabilityRuleOwnershipV1,
   type ProjectedCapabilityRuleOwnershipSnapshotV1,
-} from '../../../src/next/generation-v2/capability-rules/capabilityRuleCoreV1'
+} from '../../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
 
 type SnapshotRow = Readonly<{
   ownership: string

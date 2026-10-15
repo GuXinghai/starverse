@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { decodeProviderBindingRecordV2, projectDecodedProviderBindingRecordV2 } from '../domain/providerBindingV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from './modelCapabilitySchemaV2'
-import { projectResolvedModelFactsToRuntimeV2 } from './resolvedModelFactsRuntimeProjectionV1'
-import type { ResolvedModelFactsV1 } from '../model-facts/resolvedModelFactsV1'
+import { decodeProviderBindingRecordV2, projectDecodedProviderBindingRecordV2 } from '../../../core/generation-v2/domain/providerBindingV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
+import { projectResolvedModelFactsToRuntimeV2 } from '../../../core/generation-v2/capability/resolvedModelFactsRuntimeProjectionV1'
+import type { ResolvedModelFactsV1 } from '../../../core/generation-v2/model-facts/resolvedModelFactsV1'
 import {
   buildCanonicalSourceRevisionRefV1,
   buildCanonicalSubjectFactV1,
@@ -12,13 +12,13 @@ import {
   type CanonicalSemanticPathV1,
   type CanonicalSourceKindV1,
   type CanonicalFactProvenanceV1,
-} from '../model-facts/canonicalSourceFactsV1'
-import { buildExplicitAssertionV1, presentOutcomeV1 } from '../model-facts/sourceAdapterV1'
-import { buildSourcePriorityConfigV1 } from '../model-facts/sourcePriorityConfigV1'
-import { resolveModelFactsV1 } from '../model-facts/resolveModelFactsV1'
-import { runtimeProjectionSourcePathsV1 } from './runtimeProjectionSourcePathsV1'
-import { readReviewedGeminiInteractionsDefinitionV2 } from '../contracts/providerContractRegistryV2'
-import { canonicalizeResolvedCapabilityV2, resolvedCapabilityFromRecordV2, runtimeSnapshotRecordFromResolvedCapabilityV2 } from './resolvedCapabilityV2'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { buildExplicitAssertionV1, presentOutcomeV1 } from '../../../core/generation-v2/model-facts/sourceAdapterV1'
+import { buildSourcePriorityConfigV1 } from '../../../core/generation-v2/model-facts/sourcePriorityConfigV1'
+import { resolveModelFactsV1 } from '../../../core/generation-v2/model-facts/resolveModelFactsV1'
+import { runtimeProjectionSourcePathsV1 } from '../../../core/generation-v2/capability/runtimeProjectionSourcePathsV1'
+import { readReviewedGeminiInteractionsDefinitionV2 } from '../../../core/generation-v2/contracts/providerContractRegistryV2'
+import { canonicalizeResolvedCapabilityV2, resolvedCapabilityFromRecordV2, runtimeSnapshotRecordFromResolvedCapabilityV2 } from '../../../core/generation-v2/capability/resolvedCapabilityV2'
 
 const binding = decodeProviderBindingRecordV2({
   credentialScopeId: 'credential-scope:test', providerId: 'openai_responses',

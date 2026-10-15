@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
@@ -10,29 +9,29 @@ import {
   isGeminiGenerateContentHistoryRepositoryFactForContextV2,
   type GeminiGenerateContentHistoryRepositoryFactV2,
 } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
-import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createGoogleApiKeyHeaderPlanV2,
   issuePreparedProviderRequestV2,
   createPreparedAttachmentRequirementsV2,
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
-} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { compileGeminiGenerateContentRequestV1 } from '../../src/next/generation-v2/providers/gemini/generateContentRequestV1'
-import type { GeminiGenerateContentNativeContentV1 } from '../../src/next/generation-v2/providers/gemini/generateContentNativeHistoryV1'
-import { GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1 } from '../../src/next/generation-v2/providers/gemini/generateContentNativeHistoryV1'
+} from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { compileGeminiGenerateContentRequestV1 } from '../../src/core/generation-v2/providers/gemini/generateContentRequestV1'
+import type { GeminiGenerateContentNativeContentV1 } from '../../src/core/generation-v2/providers/gemini/generateContentNativeHistoryV1'
+import { GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1 } from '../../src/core/generation-v2/providers/gemini/generateContentNativeHistoryV1'
 import {
   readGeminiDeveloperApiContractV2,
   resolveGeminiDeveloperApiEndpointV2,
-} from '../../src/next/generation-v2/contracts/geminiDeveloperApiContractV2'
-import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+} from '../../src/core/generation-v2/contracts/geminiDeveloperApiContractV2'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/core/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { validateWebSearchProtocolParametersV2 } from '../../src/next/generation-v2/contracts/webSearchProtocolParametersV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation-v2/contracts/webSearchProtocolParametersV2'
 /* eslint-enable no-restricted-imports */
 
 export class GeminiGenerateContentPreparedRequestCompilerV2Error extends Error {

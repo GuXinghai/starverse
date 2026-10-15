@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createOpenAIChatCompatibleProviderBindingV2 } from './verifiedContractV2'
-import { composeOpenAIChatCompatibleBaselineCapabilityV2 } from './runtimeCapabilityV2'
+import { createOpenAIChatCompatibleProviderBindingV2 } from '../../../../core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { composeOpenAIChatCompatibleBaselineCapabilityV2 } from '../../../../core/generation-v2/providers/openai-chat-compatible/runtimeCapabilityV2'
 
 const provider = Object.freeze({ providerInstanceId: 'ocp_provider_12345678', protocolContractId: 'openai_chat_compatible' as const,
   displayName: 'Compatible', status: 'active' as const, createdAtMs: 1, updatedAtMs: 1, deletedAtMs: null, endpointRevisions: [] })

@@ -7,7 +7,7 @@ import {
   readDeepSeekStableApiContractV2,
   readDeepSeekStableChatRegistrySurfaceV2,
   resolveDeepSeekStableApiEndpointV2,
-} from './deepSeekStableApiContractV2'
+} from '../../../core/generation-v2/contracts/deepSeekStableApiContractV2'
 
 describe('Generation V2 DeepSeek stable provider-family contract', () => {
   it('owns exact stable origin, auth, Chat and Models without v1 or beta fallback', () => {

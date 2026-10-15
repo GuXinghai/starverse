@@ -9,7 +9,7 @@ import {
   selectCloudRulesReleaseAssetV1,
   selectHighestCloudRulesReleaseV1,
   validateCloudRulesReleasePublicationV1,
-} from './cloudRulesReleaseV1'
+} from '../../../core/generation-v2/capability-rules/cloudRulesReleaseV1'
 
 function rule(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

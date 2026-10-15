@@ -2,26 +2,26 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
-} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { lookupReviewedProviderContractDefinitionV2 } from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { lookupReviewedProviderContractDefinitionV2 } from '../../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import {
   decodeRuntimeCapabilitySnapshotJsonV2,
   type DecodedRuntimeCapabilitySnapshotV2,
-} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../../src/core/generation-v2/domain/providerBindingV2'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
-} from '../../../src/next/generation-v2/domain/conversationGraphV2'
+} from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import {
   GenerationV2Identity,
   type GenerationV2Identity as Identity,
-} from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/identityV2'
 import {
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
-} from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { assertExpectedCapabilityRevisionV2 } from '../../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+} from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { assertExpectedCapabilityRevisionV2 } from '../../generation-v2/capabilityRevisionExpectationV2'
 import {
   createGenerationRequestAttemptOpenStateV2,
   projectGenerationRequestAttemptStateV2,
@@ -30,7 +30,7 @@ import {
   type GenerationAttemptKeyV2,
   type GenerationRequestAttemptStateV2,
   type GenerationRequestTerminalTransitionV2,
-} from '../../../src/next/generation-v2/runner/generationRequestTerminalV2'
+} from '../../../src/core/generation-v2/runner/generationRequestTerminalV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   registerGenerationV2AuthorityTransactionParticipantV2,

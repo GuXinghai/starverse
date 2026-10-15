@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCanonicalSourceRevisionRefV1, buildCanonicalSubjectFactV1,
   type CanonicalModelSubjectV1, type CanonicalSourceKindV1,
-} from './canonicalSourceFactsV1'
-import { buildExplicitAssertionV1, invalidOutcomeV1, presentOutcomeV1 } from './sourceAdapterV1'
-import { buildSourcePriorityConfigV1 } from './sourcePriorityConfigV1'
-import { resolveModelFactsV1 } from './resolveModelFactsV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { buildExplicitAssertionV1, invalidOutcomeV1, presentOutcomeV1 } from '../../../core/generation-v2/model-facts/sourceAdapterV1'
+import { buildSourcePriorityConfigV1 } from '../../../core/generation-v2/model-facts/sourcePriorityConfigV1'
+import { resolveModelFactsV1 } from '../../../core/generation-v2/model-facts/resolveModelFactsV1'
 import { modelFactMatchesFilter, modelFactPresentationState } from '@/shared/model-facts/modelFactPresentation'
 
 const subject: CanonicalModelSubjectV1 = { providerAuthorityId: 'provider:test', endpointProfileId: 'endpoint:test', nativeModelId: 'model:test' }

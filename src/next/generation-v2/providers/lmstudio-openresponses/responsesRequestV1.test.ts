@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileLmStudioOpenResponsesRequestV1 } from './responsesRequestV1'
+import { compileLmStudioOpenResponsesRequestV1 } from '../../../../core/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
 
 const user = Object.freeze({ role: 'user' as const,
   content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: 'add 2 and 3' })]) })

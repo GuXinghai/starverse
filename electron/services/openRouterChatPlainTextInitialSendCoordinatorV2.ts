@@ -13,12 +13,12 @@ import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeOpenRouterPlainTextInitialSendCommandV2,
   type OpenRouterPlainTextInitialSendCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter/plainTextInitialSendCommandV2'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+} from '../../src/core/generation-v2/providers/openrouter/plainTextInitialSendCommandV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenRouterChatGenerationAuthoritiesV2 } from './openRouterChatGenerationAuthorityV2Service'
 import {

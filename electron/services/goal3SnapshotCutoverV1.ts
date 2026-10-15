@@ -2,17 +2,17 @@ import {
   authorizeResolvedCapabilityV2,
   composeRuntimeSnapshotFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import {
   canonicalizeModelFactsV2,
   projectCanonicalModelIdentityV2,
-} from '../../src/next/generation-v2/capability/canonicalModelFactsV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+} from '../../src/core/generation-v2/capability/canonicalModelFactsV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 import type {
   DecodedRuntimeCapabilitySnapshotV2,
   PersistedRuntimeToolCapabilityV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import type { DecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import type { DecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import {
   readGenerationV2AuthorityTransactionDatabaseV2,
   type GenerationV2AuthorityTransactionContextV2,

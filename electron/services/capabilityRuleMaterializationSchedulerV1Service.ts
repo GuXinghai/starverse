@@ -1,8 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/capabilityRuleMaterializationV1Service'
-import { buildCapabilityRuleSourceScopeIdV1 } from '../../src/next/generation-v2/model-facts/sourceScopeV1'
-import type { CapabilityRuleDefaultActivationPoliciesV1 } from '../../src/next/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+import { buildCapabilityRuleSourceScopeIdV1 } from '../../src/core/generation-v2/model-facts/sourceScopeV1'
+import type { CapabilityRuleDefaultActivationPoliciesV1 } from '../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 
 export const CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 = 'epoch-2-capability-rules' as const
 export const CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1:

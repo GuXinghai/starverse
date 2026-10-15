@@ -11,17 +11,17 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type Generation
 import { GenericLocalOpenAIChatNativeHistoryV2Repo } from '../../infra/db/repo/genericLocalOpenAIChatNativeHistoryV2Repo'
 import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { composeGenericLocalOpenAIChatBaselineCapabilityV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
-import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { composeGenericLocalOpenAIChatBaselineCapabilityV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/runtimeCapabilityV2'
+import { createGenericLocalOpenAIChatProviderBindingV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/verifiedContractV2'
 import { decodeGenericLocalOpenAIChatEditResendCommandV2, decodeGenericLocalOpenAIChatInitialCommandV2,
   decodeGenericLocalOpenAIChatRegenerateCommandV2, decodeGenericLocalOpenAIChatRetryCommandV2,
   type GenericLocalOpenAIChatEditResendCommandV2, type GenericLocalOpenAIChatInitialCommandV2,
-  type GenericLocalOpenAIChatRegenerateCommandV2, type GenericLocalOpenAIChatRetryCommandV2 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/plainTextCommandsV2'
+  type GenericLocalOpenAIChatRegenerateCommandV2, type GenericLocalOpenAIChatRetryCommandV2 } from '../../src/core/generation-v2/providers/generic-local-openai-chat/plainTextCommandsV2'
 import { compileGenericLocalOpenAIChatPreparedRequestV2 } from './genericLocalOpenAIChatPreparedRequestCompilerV2'
 import { commitGenericLocalCurrentSnapshotV2, commitGenericLocalRetrySnapshotV2 } from './genericLocalPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
-import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 type Current = GenericLocalOpenAIChatInitialCommandV2 | GenericLocalOpenAIChatRegenerateCommandV2 | GenericLocalOpenAIChatEditResendCommandV2
 export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Readonly<{ db: BetterSqlite3.Database; nowMs?: () => number;

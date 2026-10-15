@@ -1,15 +1,14 @@
-/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { isLmStudioOpenResponsesRequestHistoryFactForContextV2,
   type LmStudioOpenResponsesRequestHistoryFactV2 } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { compileLmStudioOpenResponsesRequestV1 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
-import { readLmStudioOpenResponsesEndpointV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { compileLmStudioOpenResponsesRequestV1 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
+import { readLmStudioOpenResponsesEndpointV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
 /* eslint-enable no-restricted-imports */
 
 export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{

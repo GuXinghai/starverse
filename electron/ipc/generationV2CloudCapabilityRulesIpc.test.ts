@@ -8,10 +8,10 @@ import { CloudRulesDistributionV1Repo } from '../../infra/db/repo/cloudRulesDist
 import { prepareCloudRulesCandidateV1 } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import { CLOUD_RULES_RELEASE_ASSET_NAME_V1, computeCloudRulesContentRevisionV1, validateCloudRulesReleasePublicationV1 } from
-  '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+  '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import { buildAuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { CloudRulesApplicationV1Service } from '../services/cloudRulesApplicationV1Service'
 import { CloudRulesCandidateRefreshV1 } from '../services/cloudRulesCandidateRefreshV1'
 import {

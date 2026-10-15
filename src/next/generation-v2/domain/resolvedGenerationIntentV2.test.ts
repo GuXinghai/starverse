@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeResolvedGenerationIntentV2,
   isDecodedResolvedGenerationIntentV2,
-} from './resolvedGenerationIntentV2'
+} from '../../../core/generation-v2/domain/resolvedGenerationIntentV2'
 
 const complete = {
   schemaVersion: 2,

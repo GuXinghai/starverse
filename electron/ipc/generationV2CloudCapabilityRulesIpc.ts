@@ -1,12 +1,12 @@
-import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import type { CloudRulesActivationOverrideV1 } from
-  '../../src/next/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
+  '../../src/core/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CloudRulesDistributionV1Repo } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import { CloudRulesApplicationV1Service } from '../services/cloudRulesApplicationV1Service'
 import { CloudRulesCandidateRefreshV1 } from '../services/cloudRulesCandidateRefreshV1'
 import type { RegisterInvoke } from './types'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
 
 export const GENERATION_V2_CLOUD_CAPABILITY_RULES_IPC_CHANNELS = Object.freeze([

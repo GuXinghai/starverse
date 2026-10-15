@@ -3,8 +3,7 @@ import {
   isIncludedOpenAIResponsesFileIntentV2,
   preflightOpenAIResponsesAttachmentDescriptorsV2,
 } from './openAIResponsesAttachmentPreflightV2'
-// eslint-disable-next-line no-restricted-imports -- Main-process attachment preflight test builds verified Generation V2 intents.
-import { decodeGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { decodeGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 
 const base = decodeGenerationIntentLayerV2({ schemaVersion: 2, attachments: [{
   kind: 'managed_file', assetId: 'asset:1', assetRevisionId: 'revision:1',

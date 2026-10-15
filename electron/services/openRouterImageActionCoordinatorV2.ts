@@ -16,24 +16,24 @@ import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
-import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeOpenRouterImageEditResendCommandV2,
   decodeOpenRouterImageRegenerateCommandV2,
   decodeOpenRouterImageRetryCommandV2,
   type OpenRouterImageEditResendCommandV2,
   type OpenRouterImageRegenerateCommandV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
-import { resolveOpenRouterImageSelectionInputV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
-import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
-import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
+} from '../../src/core/generation-v2/providers/openrouter-images/imageActionCommandsV2'
+import { resolveOpenRouterImageSelectionInputV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { issueOpenRouterImageProviderBindingV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageProviderBindingV2'
+import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/core/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
+import { decideOpenRouterImageSelectionV2 } from '../../src/core/generation-v2/providers/openrouter-images/selectionDecisionV2'
 import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterImageDescriptorAuthorityV2Service'
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2 } from '../../infra/db/repo/conversationGraphV2Repo'
 import { commitOpenRouterImageCurrentSnapshotV2, commitOpenRouterImageRetrySnapshotV2 } from './openRouterImageInitialSnapshotCommitV2'
 import { compileOpenRouterImagePreparedRequestV2 } from './openRouterImagePreparedRequestCompilerV2'
-import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/core/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 type CurrentCommand = OpenRouterImageRegenerateCommandV2 | OpenRouterImageEditResendCommandV2
 export type OpenRouterImageActionResultV2 = Readonly<{

@@ -6,9 +6,9 @@ import type { GeminiGenerateContentGenerationV2Runtime } from '../services/gemin
 import type { GeminiInteractionsImageCommandResultV2 } from '../services/geminiInteractionsImageInitialSendCoordinatorV2'
 import type { GeminiInteractionsImageGenerationV2Runtime } from '../services/geminiInteractionsImageGenerationV2Runtime'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
-import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
-import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/next/generation-v2/domain/capabilityBoundGenerationCommandV2'
-import { runWithExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import type { GenerationStreamEventV2 } from '../../src/core/generation-v2/domain/generationStreamEventV2'
+import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/core/generation-v2/domain/capabilityBoundGenerationCommandV2'
+import { runWithExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 export const GEMINI_GENERATION_V2_IPC_CHANNELS = Object.freeze([
   'generation-v2:gemini:generate-content:initial', 'generation-v2:gemini:generate-content:retry',

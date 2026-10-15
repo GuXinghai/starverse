@@ -7,7 +7,7 @@ import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   sanitizeProviderRuntimeImageContentBlocks,
-} from '@/next/multimodal/providerRuntimeContentBlocks'
+} from '@/core/multimodal/providerRuntimeContentBlocks'
 
 describe('providerRuntimeContentBlocks', () => {
   const uploadBlock = {

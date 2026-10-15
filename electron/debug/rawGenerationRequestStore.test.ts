@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RawGenerationRequestStore } from './rawGenerationRequestStore'
-import { ImmutablePreparedBodyV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { ImmutablePreparedBodyV2 } from '../../src/core/generation-v2/compiler/stableSerialize'
 
 const roots: string[] = []
 afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }) })

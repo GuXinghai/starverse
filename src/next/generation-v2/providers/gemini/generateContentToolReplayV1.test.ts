@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { compileGeminiGenerateContentRequestV1 } from './generateContentRequestV1'
-import { GeminiGenerateContentStreamAssemblerV1 } from './generateContentStreamV1'
+import { compileGeminiGenerateContentRequestV1 } from '../../../../core/generation-v2/providers/gemini/generateContentRequestV1'
+import { GeminiGenerateContentStreamAssemblerV1 } from '../../../../core/generation-v2/providers/gemini/generateContentStreamV1'
 
 describe('Gemini GenerateContent native tool replay V1', () => {
   it('keeps Gemini 3 default thinking unset and encodes an explicit level without a budget', () => {

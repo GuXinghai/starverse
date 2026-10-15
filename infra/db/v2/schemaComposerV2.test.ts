@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CONVERSATION_GRAPH_V2_MESSAGE_STATUSES,
   CONVERSATION_GRAPH_V2_ROLES,
-} from '../../../src/next/generation-v2/domain/conversationGraphV2'
+} from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import {
   inspectGenerationV2SchemaBundle,
   installGenerationV2SchemaInActiveTransaction,

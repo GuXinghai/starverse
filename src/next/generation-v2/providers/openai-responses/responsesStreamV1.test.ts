@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OpenAIResponsesStreamAssemblerV1, OpenAIResponsesTypedSseDecoderV1 } from './responsesStreamV1'
+import { OpenAIResponsesStreamAssemblerV1, OpenAIResponsesTypedSseDecoderV1 } from '../../../../core/generation-v2/providers/openai-responses/responsesStreamV1'
 
 function event(type: string, sequence_number: number, value: Record<string, unknown> = {}) {
   const data = JSON.stringify({ type, sequence_number, ...value })

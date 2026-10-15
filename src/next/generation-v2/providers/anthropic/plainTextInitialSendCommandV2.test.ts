@@ -3,7 +3,7 @@ import {
   decodeAnthropicPlainTextInitialSendCommandJsonV2,
   decodeAnthropicPlainTextInitialSendCommandV2,
   isAnthropicPlainTextInitialSendCommandV2,
-} from './plainTextInitialSendCommandV2'
+} from '../../../../core/generation-v2/providers/anthropic/plainTextInitialSendCommandV2'
 
 function command(overrides: Record<string, unknown> = {}) {
   return {

@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import type { AuthoritativeModelSubjectSetV1 } from '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import type { AuthoritativeModelSubjectSetV1 } from '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import {
   canonicalizeCanonicalModelSubjectV1,
   canonicalizeRawPayloadRefV1,
@@ -7,7 +7,7 @@ import {
   type CanonicalModelSubjectV1,
   type CanonicalSemanticPathV1,
   type RawPayloadRefV1,
-} from '../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   CanonicalModelFactSourceV1Repo,
   type CanonicalModelFactSourceStateV1,

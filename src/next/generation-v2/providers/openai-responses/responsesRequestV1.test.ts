@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { completeOpenAIResponsesRequestV2 } from './continuationArtifactV2'
-import { compileOpenAIResponsesRequestV1 } from './responsesRequestV1'
+import { completeOpenAIResponsesRequestV2 } from '../../../../core/generation-v2/providers/openai-responses/continuationArtifactV2'
+import { compileOpenAIResponsesRequestV1 } from '../../../../core/generation-v2/providers/openai-responses/responsesRequestV1'
 
 const user = (text: string) => ({ role: 'user', content: [{ type: 'input_text', text }] })
 

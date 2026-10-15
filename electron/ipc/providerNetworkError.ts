@@ -1,4 +1,4 @@
-import type { StarverseProviderError } from '../../src/next/provider/providerTypes'
+import type { StarverseProviderError } from '../../src/shared/provider/providerError'
 import {
   buildNetworkErrorEnvelope,
   providerNetworkFailureMessage,

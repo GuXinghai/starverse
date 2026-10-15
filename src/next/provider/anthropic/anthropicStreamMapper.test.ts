@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mapAnthropicStreamEventToStarverse, type AnthropicStreamEvent } from '@/next/provider/anthropic/anthropicStreamMapper'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // Fixture helpers

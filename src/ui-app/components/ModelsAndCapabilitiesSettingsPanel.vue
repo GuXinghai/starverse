@@ -4,7 +4,7 @@ import { t } from '@/shared/i18n'
 import CapabilityRulesOverviewPanel from './CapabilityRulesOverviewPanel.vue'
 import ModelFactsInspectorPanel from './ModelFactsInspectorPanel.vue'
 import ModelFactsSourcePrioritySettingsPanel from './ModelFactsSourcePrioritySettingsPanel.vue'
-import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
 
 type TabId = 'cloud' | 'user' | 'inspector'
 const props = withDefaults(defineProps<{

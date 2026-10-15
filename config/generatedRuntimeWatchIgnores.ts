@@ -1,0 +1,20 @@
+// Shared by the application and Storybook without loading application plugins.
+export const generatedRuntimeWatchIgnores = [
+  '**/.artifacts/**',
+  '**/artifacts/disk_audit_*/**',
+  '**/artifacts/openrouter/web-plugin-boundary/**',
+  '**/.external-runtime-work/**',
+  '**/.starverse-engines/**',
+  '**/managed-runtimes/**',
+  '**/staging/**',
+  '**/sandbox/**',
+  '**/temp/**',
+  '**/tmp/**',
+  '**/.vite/**',
+  '**/dist/**',
+  '**/dist-electron/**',
+  '**/dist-native/**',
+  '**/native/epoch-win32/build/**',
+  '**/release/**',
+  '**/out/**',
+]

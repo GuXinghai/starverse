@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { GenericLocalOpenAIChatStreamAssemblerV1 } from './generic-local-openai-chat/chatStreamV1'
-import { OllamaNativeChatStreamAssemblerV1 } from './ollama-chat/chatStreamV1'
-import { LmStudioOpenResponsesTypedSseDecoderV1 } from './lmstudio-openresponses/responsesStreamV1'
+import { GenericLocalOpenAIChatStreamAssemblerV1 } from '../../../core/generation-v2/providers/generic-local-openai-chat/chatStreamV1'
+import { OllamaNativeChatStreamAssemblerV1 } from '../../../core/generation-v2/providers/ollama-chat/chatStreamV1'
+import { LmStudioOpenResponsesTypedSseDecoderV1 } from '../../../core/generation-v2/providers/lmstudio-openresponses/responsesStreamV1'
 
 // Reported model is provenance only: stream decoders surface it verbatim and never compare it
 // with the requested model ID (the runners no longer fail on a difference).

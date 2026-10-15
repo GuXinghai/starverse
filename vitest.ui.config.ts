@@ -1,4 +1,5 @@
 import vue from '@vitejs/plugin-vue'
+import { availableParallelism } from 'node:os'
 import { defineConfig } from 'vitest/config'
 import { applySlowGate, partitionOverridePaths, sharedResolve, sharedTest } from './vitest.shared'
 
@@ -28,6 +29,8 @@ export default defineConfig({
   test: {
     ...sharedTest,
     environment: 'jsdom',
+    // Bound memory-heavy jsdom/SQLite forks instead of scaling to every logical CPU.
+    maxWorkers: Math.min(2, availableParallelism()),
     setupFiles: ['./tests/setup-ui.ts'],
     include: slow.include,
     exclude: [...slow.exclude, ...uiExclude],

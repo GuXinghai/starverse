@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
+import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { ConversationGraphV2Identity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
+import { GenerationV2Identity } from '../../../src/core/generation-v2/domain/identityV2'
 import { BranchContextFilterV2Repo } from './branchContextFilterV2Repo'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 import {

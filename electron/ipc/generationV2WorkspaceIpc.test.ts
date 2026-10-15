@@ -12,10 +12,10 @@ import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { ConversationRoutePreferenceV2Repo } from '../../infra/db/repo/conversationRoutePreferenceV2Repo'
-import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,decodeRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
-import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,decodeRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
+import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { registerGenerationV2ComposerIpc } from './generationV2ComposerIpc'
 
 function createDb() {

@@ -10,20 +10,20 @@ import {
   type CanonicalSourceRevisionRefV1,
   type CanonicalSubjectFactPayloadV1,
   type CanonicalSubjectFactRefV1,
-} from './canonicalSourceFactsV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   buildDerivedAssertionV1,
   buildExplicitAssertionV1,
   invalidOutcomeV1,
   presentOutcomeV1,
-} from './sourceAdapterV1'
+} from '../../../core/generation-v2/model-facts/sourceAdapterV1'
 import {
   buildSourcePriorityConfigV1,
   DEFAULT_SOURCE_PRIORITY_CONFIG_V1,
   type SourcePriorityConfigV1,
-} from './sourcePriorityConfigV1'
-import { resolveModelFactsV1 } from './resolveModelFactsV1'
-import type { ModelFactsResolutionInputV1 } from './resolvedModelFactsV1'
+} from '../../../core/generation-v2/model-facts/sourcePriorityConfigV1'
+import { resolveModelFactsV1 } from '../../../core/generation-v2/model-facts/resolveModelFactsV1'
+import type { ModelFactsResolutionInputV1 } from '../../../core/generation-v2/model-facts/resolvedModelFactsV1'
 
 const subject: CanonicalModelSubjectV1 = Object.freeze({
   providerAuthorityId: 'provider:test', endpointProfileId: 'endpoint:test', nativeModelId: 'model:test',

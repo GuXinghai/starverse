@@ -8,7 +8,7 @@ import {
   CloudRulesReleaseV1Error,
   type CloudRulesGitHubReleaseV1,
   type CloudRulesReleaseAssetV1,
-} from '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import {
   CloudRulesDistributionV1Repo,
   CloudRulesDistributionV1RepoError,

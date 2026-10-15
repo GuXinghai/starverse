@@ -6,9 +6,9 @@ import type { OpenRouterImageInitialSendResultV2 } from '../services/openRouterI
 import type { OpenRouterImageActionResultV2 } from '../services/openRouterImageActionCoordinatorV2'
 import type { OpenRouterFirstPartyGenerationV2Runtime } from '../services/openRouterFirstPartyGenerationV2Runtime'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
-import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
-import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/next/generation-v2/domain/capabilityBoundGenerationCommandV2'
-import { runWithExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import type { GenerationStreamEventV2 } from '../../src/core/generation-v2/domain/generationStreamEventV2'
+import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/core/generation-v2/domain/capabilityBoundGenerationCommandV2'
+import { runWithExpectedCapabilityRevisionV2 } from '../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 export const OPENROUTER_CHAT_GENERATION_V2_IPC_CHANNELS = Object.freeze([
   'generation-v2:openrouter:chat:initial', 'generation-v2:openrouter:chat:retry',

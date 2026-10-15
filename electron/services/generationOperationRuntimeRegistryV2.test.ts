@@ -3,19 +3,16 @@ import { createHash } from 'node:crypto'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 // Approved Generation V2 main-process boundary fixture imports.
-// eslint-disable-next-line no-restricted-imports
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
-} from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
-// eslint-disable-next-line no-restricted-imports
+} from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-// eslint-disable-next-line no-restricted-imports
-import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWorkspaceV2Repo'
 import {
@@ -27,7 +24,7 @@ import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GenerationOperationRuntimeRegistryV2 } from './generationOperationRuntimeRegistryV2'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 
 const HASH = 'a'.repeat(64)
 

@@ -1,7 +1,7 @@
 import type {
   GenerationCapabilityResolutionRequestV2,
   GenerationCapabilityResolutionResultV2,
-} from '../capability/capabilityResolutionV2'
+} from '../../../core/generation-v2/capability/capabilityResolutionV2'
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))

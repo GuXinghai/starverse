@@ -15,7 +15,7 @@ import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
-import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestBoundedV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 
 const MAX_USAGE_BYTES = 1024 * 1024
 

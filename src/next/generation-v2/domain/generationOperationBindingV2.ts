@@ -1,12 +1,2 @@
-import type { GenerationExecutionProviderId } from './generationExecutionProviderId'
-
-export type GenerationOperationBindingV2 = Readonly<{
-  operationId: string
-  conversationId: string
-  branchId: string
-  targetAnswerId: string
-  sourceAnswerId: string | null
-  snapshotHash: string
-  providerId: GenerationExecutionProviderId
-  contractId: string
-}>
+// Compatibility entry; the actual implementation and authority state have one owner.
+export * from '../../../core/generation-v2/domain/generationOperationBindingV2'

@@ -7,7 +7,7 @@
  * @see https://docs.anthropic.com/en/api/messages
  */
 
-import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig } from '@/shared/provider/providerStreamContracts'
 import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------

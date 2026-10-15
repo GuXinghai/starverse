@@ -3,14 +3,14 @@ import {
   buildCanonicalSourceRevisionRefV1,
   type CanonicalFieldOutcomeV1,
   type CanonicalSubjectFactCandidateV1,
-} from './canonicalSourceFactsV1'
-import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from './providerAuthorityRegistryV1'
+} from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
+import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from '../../../core/generation-v2/model-facts/providerAuthorityRegistryV1'
 import {
   buildRawSourceSnapshotRefV1,
   InMemoryRawPayloadStoreV1,
   sanitizeRawSourcePayloadV1,
-} from './rawSourceSnapshotV1'
-import { createModelsDevSourceAdapterV1 } from './modelsDevSourceAdapterV1'
+} from '../../../core/generation-v2/model-facts/rawSourceSnapshotV1'
+import { createModelsDevSourceAdapterV1 } from '../../../core/generation-v2/model-facts/modelsDevSourceAdapterV1'
 
 function harness(payload: unknown, recordSetCompleteness: 'complete' | 'partial' = 'complete') {
   const store = new InMemoryRawPayloadStoreV1()

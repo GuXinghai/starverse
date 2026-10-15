@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
-import { decodeModelFactsSemanticInvalidationV1 } from '@/next/generation-v2/model-facts/semanticInvalidationV1'
+import { decodeModelFactsSemanticInvalidationV1 } from '@/core/generation-v2/model-facts/semanticInvalidationV1'
 import {
   modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
   modelFactPresentationState, modelFactPresentationTone, modelFactSelectionReasonKey, modelFactSourceKindKey,

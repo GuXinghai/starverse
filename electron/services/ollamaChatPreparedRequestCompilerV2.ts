@@ -1,13 +1,13 @@
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2,type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import type { LocalEndpointProfileV2 } from '@/shared/provider/localEndpointProfileContractsV2'
 import { isOllamaChatRequestHistoryFactForContextV2,type OllamaChatRequestHistoryFactV2 } from '../../infra/db/repo/ollamaChatNativeHistoryV2Repo'
-import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { createNoCredentialHeaderPlanV2,issuePreparedProviderRequestV2,type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { compileOllamaNativeChatRequestV1 } from '../../src/next/generation-v2/providers/ollama-chat/chatRequestV1'
-import { buildOllamaNativeChatRequestHistoryV1 } from '../../src/next/generation-v2/providers/ollama-chat/nativeMessagesV1'
-import { readOllamaChatEndpointV2,readOllamaThinkingControlV2 } from '../../src/next/generation-v2/providers/ollama-chat/verifiedContractV2'
+import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { createNoCredentialHeaderPlanV2,issuePreparedProviderRequestV2,type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { compileOllamaNativeChatRequestV1 } from '../../src/core/generation-v2/providers/ollama-chat/chatRequestV1'
+import { buildOllamaNativeChatRequestHistoryV1 } from '../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1'
+import { readOllamaChatEndpointV2,readOllamaThinkingControlV2 } from '../../src/core/generation-v2/providers/ollama-chat/verifiedContractV2'
 export function compileOllamaChatPreparedRequestV2(input:Readonly<{context:GenerationV2AuthorityTransactionContextV2;execution:GenerationExecutionOperationBundleV2;profile:LocalEndpointProfileV2;history:OllamaChatRequestHistoryFactV2}>):PreparedProviderRequestV2{
   if(!isGenerationExecutionOperationBundleForContextV2(input.execution,input.context)||!isOllamaChatRequestHistoryFactForContextV2(input.history,input.context)||!['committed','streaming','completed','failed','cancelled'].includes(input.execution.operation.state))throw new Error('GENERATION_V2_OLLAMA_COMPILER_AUTHORITY_INVALID')
   const {operation,snapshot,capability}=input.execution

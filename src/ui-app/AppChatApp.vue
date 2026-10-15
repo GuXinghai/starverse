@@ -25,7 +25,7 @@ import { formatModelIndicatorName } from './components/modelIndicatorName'
 import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
 import { t, tf } from '@/shared/i18n'
 import { createCompatibleProviderRegistryClient } from '@/next/provider/openai-chat-compatible/ui'
-import type { CanonicalModelSubjectV1 } from '@/next/generation-v2/model-facts/canonicalSourceFactsV1'
+import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
 
 const {
   isReady,

@@ -3,7 +3,7 @@ import {
   assertExpectedCapabilityRevisionV2,
   readExpectedCapabilityRevisionV2,
   runWithExpectedCapabilityRevisionV2,
-} from './capabilityRevisionExpectationV2'
+} from '../../../../infra/generation-v2/capabilityRevisionExpectationV2'
 
 describe('Generation V2 capability revision expectation', () => {
   it('dispatches exactly once when the resolved revision matches', async () => {

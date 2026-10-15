@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isVerifiedDeepSeekStableEndpointProfileV2,
   readVerifiedDeepSeekStableEndpointProfileV2,
-} from './stableEndpointProfileV2'
+} from '../../../../core/generation-v2/providers/deepseek/stableEndpointProfileV2'
 
 describe('DeepSeek stable first-party endpoint profile V2', () => {
   it('uses the reviewed stable contract family as the sole profile and endpoint identity', () => {

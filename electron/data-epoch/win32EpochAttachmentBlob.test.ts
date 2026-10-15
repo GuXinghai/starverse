@@ -10,7 +10,7 @@ import {
 } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
-import { decodeGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { decodeGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 import { Epoch2AttachmentBlobStoreV2 } from './epoch2AttachmentBlobStoreV2'
 import { createEpoch2ResetJournal } from './resetJournal'
 import { writeEpoch2ResetJournalAtomic } from './resetJournalStore'

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { type CanonicalModelFactSourceAdapterV1 } from './sourceAdapterV1'
-import { buildEnumerableSourcePublicationV1 } from './sourceSnapshotBuilderV1'
-import { buildRawSourceSnapshotRefV1, sanitizeRawSourcePayloadV1 } from './rawSourceSnapshotV1'
-import { PROVIDER_NATIVE_COVERAGE_MANIFESTS_V1 } from './sourceCoverageManifestV1'
+import { type CanonicalModelFactSourceAdapterV1 } from '../../../core/generation-v2/model-facts/sourceAdapterV1'
+import { buildEnumerableSourcePublicationV1 } from '../../../core/generation-v2/model-facts/sourceSnapshotBuilderV1'
+import { buildRawSourceSnapshotRefV1, sanitizeRawSourcePayloadV1 } from '../../../core/generation-v2/model-facts/rawSourceSnapshotV1'
+import { PROVIDER_NATIVE_COVERAGE_MANIFESTS_V1 } from '../../../core/generation-v2/model-facts/sourceCoverageManifestV1'
 
 const raw = sanitizeRawSourcePayloadV1({ recordKey: 'root', payload: { data: [{ id: 'a' }, { id: 'b' }] } })
 const rawSnapshot = buildRawSourceSnapshotRefV1({ sourceKind: 'provider_native', sourceScopeId: 'scope:test',

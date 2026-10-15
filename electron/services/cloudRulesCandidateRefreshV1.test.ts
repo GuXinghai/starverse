@@ -5,14 +5,14 @@ import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import {
   CLOUD_RULES_RELEASE_ASSET_NAME_V1,
   computeCloudRulesContentRevisionV1,
-} from '../../src/next/generation-v2/capability-rules/cloudRulesReleaseV1'
+} from '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import {
   CLOUD_RULES_GITHUB_RELEASES_LISTING_URL_V1,
   CloudRulesCandidateRefreshV1,
   projectCloudRulesRedirectHeadersV1,
 } from './cloudRulesCandidateRefreshV1'
 import { buildAuthoritativeModelSubjectSetV1 } from
-  '../../src/next/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+  '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CloudRulesDistributionV1Repo } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import { CloudRulesApplicationV1Service } from './cloudRulesApplicationV1Service'

@@ -19,8 +19,8 @@ import type {
   ProviderGenerationParamProfile,
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
-import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import type { ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
+import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
+import type { ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '@/core/generation-v2/capability/modelCapabilitySchemaV2'
 import { t, tf } from '@/shared/i18n'
 import { modelFactControlKey } from '@/shared/model-facts/modelFactPresentation'
 import {

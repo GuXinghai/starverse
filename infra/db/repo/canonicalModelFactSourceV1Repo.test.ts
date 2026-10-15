@@ -7,18 +7,18 @@ import {
   type CanonicalSourceKindV1,
   type CanonicalSourceRevisionRefV1,
   type CanonicalSubjectFactPayloadV1,
-} from '../../../src/next/generation-v2/model-facts/canonicalSourceFactsV1'
+} from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import {
   buildExplicitAssertionV1,
   buildObservationProvenanceV1,
   invalidOutcomeV1,
   missingOutcomeV1,
   presentOutcomeV1,
-} from '../../../src/next/generation-v2/model-facts/sourceAdapterV1'
+} from '../../../src/core/generation-v2/model-facts/sourceAdapterV1'
 import {
   buildRawSourceSnapshotRefV1,
   sanitizeRawSourcePayloadV1,
-} from '../../../src/next/generation-v2/model-facts/rawSourceSnapshotV1'
+} from '../../../src/core/generation-v2/model-facts/rawSourceSnapshotV1'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { CanonicalModelFactSourceV1Repo } from './canonicalModelFactSourceV1Repo'
 

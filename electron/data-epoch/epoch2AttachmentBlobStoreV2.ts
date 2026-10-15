@@ -5,8 +5,8 @@ import type {
   VerifiedAttachmentSendBytesLeaseV2,
 } from '../../infra/db/repo/attachmentAssetV2Repo'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import type { AttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
+import type { AttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 import type { Epoch2WorkspaceLayout } from './rootManifest'
 import {
   putWin32EpochAttachmentBlob,

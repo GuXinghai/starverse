@@ -10,9 +10,9 @@ const requiredFiles = [
   'electron/mainV2.ts',
   'electron/ipc/generationV2IpcRegistration.ts',
   'electron/debug/rawGenerationRequestStore.ts',
-  'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
-  'src/next/generation-v2/capability/canonicalModelFactsV2.ts',
-  'src/next/generation-v2/capability/modelCapabilitySchemaV2.ts',
+  'src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
+  'src/core/generation-v2/capability/canonicalModelFactsV2.ts',
+  'src/core/generation-v2/capability/modelCapabilitySchemaV2.ts',
 ]
 for (const file of requiredFiles) if (!existsSync(path.resolve(root, file))) fail(`required V2 file is missing: ${file}`)
 
@@ -39,6 +39,7 @@ const deletedLegacyFiles = [
   'src/next/modelCatalog/modelCapabilityResolverV2.ts',
   'electron/types/openrouter-service.d.ts',
 ]
+deletedLegacyFiles.push(...deletedLegacyFiles.filter(file => file.startsWith('src/next/generation-v2/')).map(file => file.replace('src/next/', 'src/core/')))
 for (const file of deletedLegacyFiles) if (existsSync(path.resolve(root, file))) fail(`deleted legacy file remains: ${file}`)
 
 const vite = read('vite.config.ts')

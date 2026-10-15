@@ -5,7 +5,7 @@ import {
   sourcePriorityConfigSemanticHashV1,
   sourcePriorityConfigSemanticJsonV1,
   type SourcePriorityConfigV1,
-} from '../../../src/next/generation-v2/model-facts/sourcePriorityConfigV1'
+} from '../../../src/core/generation-v2/model-facts/sourcePriorityConfigV1'
 
 const DIGEST = /^[0-9a-f]{64}$/u
 const REVISION = /^source-priority-config-v1:[0-9a-f]{64}$/u

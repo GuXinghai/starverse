@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { buildModelsDevSourceScopeIdV1, buildProviderNativeSourceScopeIdV1 } from
-  '../../../src/next/generation-v2/model-facts/sourceScopeV1'
+  '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { CanonicalModelFactSourceIngestionV1Service } from './canonicalModelFactSourceIngestionV1Service'
 
 const root = path.resolve(process.cwd())

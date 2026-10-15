@@ -1,22 +1,22 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   sha256PreparedBytesV2,
-} from '../../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   isAttachmentIntentV2,
   requiresProviderFileBindingV2,
   type AttachmentIntentV2,
-} from '../../../src/next/generation-v2/domain/generationIntentV2'
+} from '../../../src/core/generation-v2/domain/generationIntentV2'
 import {
   isDecodedResolvedGenerationIntentV2,
   type DecodedResolvedGenerationIntentV2,
-} from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+} from '../../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import {
   GenerationV2Digest,
   GenerationV2Identity,
   readGenerationV2Digest,
   readGenerationV2Identity,
-} from '../../../src/next/generation-v2/domain/identityV2'
+} from '../../../src/core/generation-v2/domain/identityV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   isGenerationV2AuthorityTransactionContextV2,

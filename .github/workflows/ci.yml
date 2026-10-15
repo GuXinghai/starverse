@@ -56,7 +56,7 @@ jobs:
       - name: Typecheck (zero errors)
         run: npm run typecheck
       - name: Run verify:ssot
-        run: bash -lc "npm run verify:ssot | tee verify.log"
+        run: bash -o pipefail -lc "npm run verify:ssot | tee verify.log"
       - name: Build renderer artifacts
         run: npx vite build
       - name: Gate tc20 (KaTeX CSS artifact assertion)
@@ -80,7 +80,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run UI partition
-        run: bash -lc "npm run test:ui | tee test-ui.log"
+        run: bash -o pipefail -lc "npm run test:ui | tee test-ui.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -145,7 +145,7 @@ jobs:
       - name: Run tc14 live smoke
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: bash -lc "node scripts/gates/tc14-ui-live-smoke.mjs | tee live-smoke.log"
+        run: bash -o pipefail -lc "node scripts/gates/tc14-ui-live-smoke.mjs | tee live-smoke.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -6,7 +6,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   isImmutablePreparedBodyV2,
   type ImmutablePreparedBodyV2,
-} from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/compiler/stableSerialize'
 
 const nodeRequire = createRequire(import.meta.url)
 let BetterSqlite3Constructor: typeof BetterSqlite3 | null = null

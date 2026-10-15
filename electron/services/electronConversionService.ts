@@ -18,7 +18,7 @@ import type { net } from 'electron'
 import type {
   PackageDownloadFileTransportRequest,
   PackageDownloadFileTransportResult,
-} from '../../src/next/plugin-distribution/packageDownloader'
+} from '../../src/shared/plugin-distribution/packageDownloadTransport'
 
 export type MainProcessElectronConversionServiceInput = Readonly<{
   htmlToPdfAdapter?: ElectronHtmlPdfConversionAdapter

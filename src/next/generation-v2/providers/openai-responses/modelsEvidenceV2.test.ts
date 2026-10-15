@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalizeOpenAIResponsesModelsEvidenceV2,
   decodeOpenAIResponsesModelsEvidenceV2,
-} from './modelsEvidenceV2'
+} from '../../../../core/generation-v2/providers/openai-responses/modelsEvidenceV2'
 
 describe('OpenAI Responses V2 Models evidence', () => {
   it('canonicalizes the exact official list shape with content-addressed identity', () => {

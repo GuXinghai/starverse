@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import { compileAnthropicMessagesRequestV1 } from '../../src/next/generation-v2/providers/anthropic/messagesRequestV1'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
-import { decodeGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { decodeResolvedGenerationIntentV2 } from '../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
-import { readReviewedAnthropicMessagesDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
-import { resolveEncodingCoverageRegistryV2 } from '../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
+import { compileAnthropicMessagesRequestV1 } from '../../src/core/generation-v2/providers/anthropic/messagesRequestV1'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as PATHS } from '../../src/core/generation-v2/capability/modelCapabilitySchemaV2'
+import { decodeGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
+import { decodeResolvedGenerationIntentV2 } from '../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
+import { readReviewedAnthropicMessagesDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
+import { resolveEncodingCoverageRegistryV2 } from '../../src/core/generation-v2/capability/encodingCoverageRegistryV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
-} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { decodeRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+} from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import { decodeRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { ANTHROPIC_URL_METADATA_UNKNOWN_EVIDENCE_V2, anthropicAttachmentCapabilityFieldsV2 } from './anthropicGenerationAuthorityV2Service'
 
 const SUPPORTS = 'anthropic.messages.v2.supports'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAuthoritativeModelSubjectSetV1 } from './authoritativeModelSubjectSetV1'
+import { buildAuthoritativeModelSubjectSetV1 } from '../../../core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 
 const subject = (providerAuthorityId: string, endpointProfileId: string, nativeModelId: string) =>
   Object.freeze({ providerAuthorityId, endpointProfileId, nativeModelId })

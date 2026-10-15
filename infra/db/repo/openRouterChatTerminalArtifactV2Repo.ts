@@ -3,7 +3,7 @@ import {
   isOpenRouterChatTerminalArtifactV1,
   serializeOpenRouterChatTerminalArtifactV1,
   type OpenRouterChatTerminalArtifactV1,
-} from '../../../src/next/generation-v2/providers/openrouter/terminalArtifactV1'
+} from '../../../src/core/generation-v2/providers/openrouter/terminalArtifactV1'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from './generationExecutionV2Repo'
 import { isGenerationRequestRepositoryFactForContextV2, type GenerationRequestRepositoryFactV2 } from './generationRequestV2Repo'

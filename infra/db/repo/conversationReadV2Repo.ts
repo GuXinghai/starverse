@@ -1,15 +1,15 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import { ConversationGraphV2Identity } from '../../../src/core/generation-v2/domain/conversationGraphV2'
 import { AnswerReasoningProjectionV2Repo } from './answerReasoningProjectionV2Repo'
 import { BranchContextFilterV2Repo, type BranchTurnContextFilterV2 } from './branchContextFilterV2Repo'
-import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { decodeProviderFailureFact } from './generationExecutionV2Repo'
 import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 import {
   decodeGenerationExecutionProviderId,
   type GenerationExecutionProviderId,
-} from '../../../src/next/generation-v2/domain/generationExecutionProviderId'
+} from '../../../src/core/generation-v2/domain/generationExecutionProviderId'
 
 export class ConversationReadV2RepoError extends Error {
   constructor(readonly code:

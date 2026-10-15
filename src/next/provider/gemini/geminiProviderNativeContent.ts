@@ -1,36 +1,24 @@
+import type { GeminiProviderNativeStatus, GeminiProviderNativeContent, GeminiProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
+export type { GeminiProviderNativeStatus, GeminiProviderNativePart, GeminiProviderNativeContent, GeminiProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 import {
   ProviderNativeValidationError,
   clonePlainJsonObject,
   clonePlainJsonValue,
   validateJsonByteLimit,
-  type ProviderNativeStatus,
-} from '@/next/provider/providerNativeContent'
+} from '@/core/provider/providerNativeContent'
 
 export const GEMINI_PROVIDER_NATIVE_PROVIDER_KEY = 'google_ai_studio' as const
 export const GEMINI_GENERATE_CONTENT_SOURCE_API = 'gemini_generate_content' as const
 
 export const GEMINI_PROVIDER_NATIVE_STATUSES = ['streaming', 'final', 'error', 'cancelled'] as const
 
-export type GeminiProviderNativeStatus = ProviderNativeStatus
 
-export type GeminiProviderNativePart = Readonly<Record<string, unknown>>
 
-export type GeminiProviderNativeContent = Readonly<{
-  role: string
-  parts: ReadonlyArray<GeminiProviderNativePart>
-}>
 
-export type GeminiProviderNativeSnapshot = Readonly<{
-  providerKey: typeof GEMINI_PROVIDER_NATIVE_PROVIDER_KEY
-  sourceApi: typeof GEMINI_GENERATE_CONTENT_SOURCE_API
-  snapshotKey: string
-  candidateIndex: number
-  status: GeminiProviderNativeStatus
-  content: GeminiProviderNativeContent
-  finishReason?: string
-  usageMetadata?: Readonly<Record<string, unknown>>
-  modelVersion?: string
-}>
+
+
+
+
 
 export const MAX_GEMINI_NATIVE_PART_BYTES = 2 * 1024 * 1024
 export const MAX_GEMINI_NATIVE_SNAPSHOT_BYTES = 8 * 1024 * 1024

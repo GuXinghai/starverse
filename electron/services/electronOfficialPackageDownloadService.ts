@@ -10,7 +10,7 @@ import type {
   PackageDownloadProgress,
   PackageDownloadResumeDescriptor,
   PackageDownloadResumeOptions,
-} from '../../src/next/plugin-distribution/packageDownloader'
+} from '../../src/shared/plugin-distribution/packageDownloadTransport'
 
 type ElectronNetRequest = typeof net.request
 

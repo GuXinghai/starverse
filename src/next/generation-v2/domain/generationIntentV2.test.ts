@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeGenerationIntentLayerV2, readImageAspectRatioV2 } from './generationIntentV2'
+import { decodeGenerationIntentLayerV2, readImageAspectRatioV2 } from '../../../core/generation-v2/domain/generationIntentV2'
 
 const hash = 'a'.repeat(64)
 

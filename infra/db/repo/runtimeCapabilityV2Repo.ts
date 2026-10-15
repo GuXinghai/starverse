@@ -2,7 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import {
   decodeRuntimeCapabilitySnapshotJsonV2,
   type DecodedRuntimeCapabilitySnapshotV2,
-} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+} from '../../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   isGenerationV2AuthorityTransactionContextV2,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeGeminiInteractionsImageInitialCommandV2, decodeGeminiInteractionsImageRetryCommandV2 } from './interactionsImageCommandsV2'
+import { decodeGeminiInteractionsImageInitialCommandV2, decodeGeminiInteractionsImageRetryCommandV2 } from '../../../../core/generation-v2/providers/gemini/interactionsImageCommandsV2'
 
 describe('Gemini Interactions image commands V2', () => {
   const base = { operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null, prompt: 'draw', commandAttachments: [] }

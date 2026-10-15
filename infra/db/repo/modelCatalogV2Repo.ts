@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { stableSerializeProviderRequestBoundedV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import { decodeProviderFailureV2, type ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 
 const MAX_ITEMS_JSON_BYTES = 32 * 1024 * 1024

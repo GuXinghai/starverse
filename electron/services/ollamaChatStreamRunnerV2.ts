@@ -7,13 +7,13 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from "../../in
 import { OllamaChatNativeHistoryV2Repo } from "../../infra/db/repo/ollamaChatNativeHistoryV2Repo";
 import { LocalEndpointProfileV2Repo } from "../../infra/db/repo/localEndpointProfileV2Repo";
 import type { RawGenerationRequestStore } from "../debug/rawGenerationRequestStore";
-import { isPreparedProviderRequestV2 } from "../../src/next/generation-v2/compiler/preparedProviderRequestV2";
+import { isPreparedProviderRequestV2 } from "../../src/core/generation-v2/compiler/preparedProviderRequestV2";
 import {
   OllamaNativeChatNdjsonDecoderV1,
   OllamaNativeChatStreamAssemblerV1,
   type OllamaNativeChatStreamResultV1,
-} from "../../src/next/generation-v2/providers/ollama-chat/chatStreamV1";
-import { buildOllamaNativeChatRequestHistoryV1 } from "../../src/next/generation-v2/providers/ollama-chat/nativeMessagesV1";
+} from "../../src/core/generation-v2/providers/ollama-chat/chatStreamV1";
+import { buildOllamaNativeChatRequestHistoryV1 } from "../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1";
 import {
   isGenerationTextCommandResultV2,
   type GenerationTextCommandResultV2,

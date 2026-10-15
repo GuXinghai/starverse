@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeResolvedGenerationIntentV2 } from '../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+import { decodeResolvedGenerationIntentV2 } from '../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import { projectAnswerSnapshotAttachmentIntentsV2 } from './generationV2ComposerIpc'
 
 describe('Composer replace-from-answer-snapshot attachment projection', () => {

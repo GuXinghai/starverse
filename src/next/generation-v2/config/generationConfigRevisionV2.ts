@@ -1,9 +1,2 @@
-import type { GenerationV2Identity } from '../domain/identityV2'
-
-export type GenerationConfigRevisionScopeV2 = 'global' | 'project' | 'conversation'
-
-export type GenerationConfigRevisionEntryV2 = Readonly<{
-  ownerKind: GenerationConfigRevisionScopeV2
-  ownerId: string
-  revision: GenerationV2Identity<'config_revision'>
-}>
+// Compatibility entry; the actual implementation and authority state have one owner.
+export * from '../../../core/generation-v2/config/generationConfigRevisionV2'

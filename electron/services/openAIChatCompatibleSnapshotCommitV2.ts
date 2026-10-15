@@ -1,14 +1,11 @@
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority composes verified Generation V2 domain contracts.
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority composes verified Generation V2 domain contracts.
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority composes verified Generation V2 domain contracts.
-import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority serializes prepared Generation V2 requests.
-import { sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+} from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { projectGenerationIntentLayerV2 } from '../../src/core/generation-v2/domain/generationIntentProjectionV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
 import {
   isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
   pendingSourceAnswerIdV2, pendingSourceBranchIdV2,
@@ -18,20 +15,17 @@ import { GenerationExecutionV2Repo, isGenerationExecutionOperationBundleForConte
 import { isGenerationCommandFactsAuthorityForContextV2, type GenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority persists validated Generation V2 capability facts.
-import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
+import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { createGoal3RuntimeSnapshotV1 } from './goal3SnapshotCutoverV1'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { OpenAICompatibleActiveConfigurationV2, OpenAICompatibleEndpointRevisionV2, OpenAICompatibleProviderDetailsV2 } from '../../infra/db/repo/openAICompatibleV2Repo'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority constructs the verified compatible provider binding.
-import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
 import { compatibleRequestProfileConfigSchema } from '../../src/shared/provider/openai-chat-compatible/schemas'
-// eslint-disable-next-line no-restricted-imports -- Main-process snapshot authority validates compatible Generation V2 commands before persistence.
 import {
   type OpenAIChatCompatibleEditResendCommandV2, type OpenAIChatCompatibleInitialCommandV2,
   type OpenAIChatCompatibleRegenerateCommandV2, type OpenAIChatCompatibleRetryCommandV2,
-} from '../../src/next/generation-v2/providers/openai-chat-compatible/plainTextCommandsV2'
+} from '../../src/core/generation-v2/providers/openai-chat-compatible/plainTextCommandsV2'
 
 type CurrentCommand = OpenAIChatCompatibleInitialCommandV2 | OpenAIChatCompatibleRegenerateCommandV2 | OpenAIChatCompatibleEditResendCommandV2
 type CurrentPending = PendingInitialTurnV2 | PendingAnswerActionV2 | PendingEditedTurnV2

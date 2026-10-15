@@ -1,5 +1,5 @@
-import type { ModelFactsSemanticInvalidationV1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
-import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/next/generation-v2/model-facts/semanticInvalidationV1'
+import type { ModelFactsSemanticInvalidationV1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 
 export type ModelFactsSemanticInvalidationNotifierV1 = (event: ModelFactsSemanticInvalidationV1) => void | Promise<void>
 

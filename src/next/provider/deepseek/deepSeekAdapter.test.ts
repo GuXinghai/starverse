@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '@/next/provider/deepseek/deepSeekAdapter'
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseStreamEvent } from '@/shared/provider/providerStreamContracts'
 
 // ---------------------------------------------------------------------------
 // Helpers

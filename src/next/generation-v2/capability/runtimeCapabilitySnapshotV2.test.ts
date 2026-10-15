@@ -7,9 +7,9 @@ import {
   RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2,
   RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2,
   RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
-} from './runtimeCapabilitySnapshotV2'
+} from '../../../core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
-  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from './modelCapabilitySchemaV2'
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
 
 const contractDigest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)

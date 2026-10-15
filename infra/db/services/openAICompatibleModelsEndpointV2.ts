@@ -1,2 +1,2 @@
 export { readOpenAIChatCompatibleModelsEndpointV2 } from
-  '../../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+  '../../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
