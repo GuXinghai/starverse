@@ -31,9 +31,14 @@ contextBridge.exposeInMainWorld('rawGenerationDebug', {
 contextBridge.exposeInMainWorld('networkProxy', {
   getSettings: () => ipcRenderer.invoke('network-proxy:get-settings'),
   updateSettings: (settings: unknown) => ipcRenderer.invoke('network-proxy:update-settings', settings),
-  resetSettings: () => ipcRenderer.invoke('network-proxy:reset-settings'),
-  reapplySettings: () => ipcRenderer.invoke('network-proxy:reapply-settings'),
+  resetSettings: (payload?: unknown) => ipcRenderer.invoke('network-proxy:reset-settings', payload),
+  reapplySettings: (payload?: unknown) => ipcRenderer.invoke('network-proxy:reapply-settings', payload),
   resolveProxy: (payload: unknown) => ipcRenderer.invoke('network-proxy:resolve-proxy', payload),
+  getConfiguration: () => ipcRenderer.invoke('network-proxy:get-configuration'),
+  updateConfiguration: (value: unknown) => ipcRenderer.invoke('network-proxy:update-configuration', value),
+  getEnvironment: () => ipcRenderer.invoke('network-proxy:get-environment'),
+  probeDraft: (value: unknown) => ipcRenderer.invoke('network-proxy:probe-draft', value),
+  cancelProbe: (id: string) => ipcRenderer.invoke('network-proxy:cancel-probe', id),
 })
 
 type GenerationV2TextChannels = Readonly<{

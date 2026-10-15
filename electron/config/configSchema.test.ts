@@ -15,10 +15,12 @@ describe('configSchema provider credential secure-store keys', () => {
     const result = validateAndCleanConfig({
       configVersion: 2,
       networkProxyPolicy: policy,
+      inAppBrowserProxySettingsV1: { mode: 'inherit' },
       unknownLargeField: { removed: true },
     })
 
     expect(result.cleaned.networkProxyPolicy).toEqual(policy)
+    expect(result.cleaned.inAppBrowserProxySettingsV1).toEqual({ mode: 'inherit' })
     expect(result.removed.map((item) => item.key)).toEqual(['unknownLargeField'])
   })
 

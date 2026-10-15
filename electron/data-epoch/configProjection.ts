@@ -90,7 +90,9 @@ function projectNetworkProxy(raw: Record<string, unknown>, projected: Record<str
     try {
       projected.networkProxySettingsV2 = parseNetworkProxySettingsStrict(raw.networkProxySettingsV2)
     } catch {
-      throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'networkProxySettingsV2')
+      // A malformed proxy policy blocks its network scope at runtime, not the
+      // independent browser or database bootstrap. Preserve it for explicit repair.
+      projected.networkProxySettingsV2 = raw.networkProxySettingsV2
     }
     return
   }
@@ -142,6 +144,11 @@ export async function projectEpoch2Config(input: Readonly<{
   if (!raw) throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID')
   const projected = copyPreferences(raw)
   projectNetworkProxy(raw, projected)
+  // Preserve even malformed browser settings: the browser authority quarantines
+  // its scope without preventing the application and database from starting.
+  if (Object.prototype.hasOwnProperty.call(raw, 'inAppBrowserProxySettingsV1')) {
+    projected.inAppBrowserProxySettingsV1 = raw.inAppBrowserProxySettingsV1
+  }
   projectCatalogPolicy(raw, projected)
   const credentialRoot = record(raw.providerCredentials)
   const credentialV1 = record(credentialRoot?.v1)

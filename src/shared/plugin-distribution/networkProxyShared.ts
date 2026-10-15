@@ -9,6 +9,61 @@ export type NetworkProxySettings = Readonly<{
   strictSSL: boolean
 }>
 
+export type NetworkProxyScope = 'application' | 'browser'
+export type InAppBrowserProxySettings = Readonly<{
+  mode: 'inherit' | 'independent'
+  settings: NetworkProxySettings
+}>
+export type NetworkProxyConfiguration = Readonly<{
+  application: NetworkProxySettings
+  browser: InAppBrowserProxySettings
+}>
+
+export type NetworkProxyProbeResult = Readonly<{
+  ok: boolean
+  configurationValid: boolean
+  resolvedProxy: string | null
+  httpStatus: number | null
+  elapsedMs: number
+  code: string
+}>
+
+export type NetworkProxyDraftProbe = Readonly<{
+  id: string
+  scope: NetworkProxyScope
+  configuration: NetworkProxyConfiguration
+  url: string
+}>
+
+export function defaultBrowserProxySettings(): InAppBrowserProxySettings {
+  return { mode: 'inherit', settings: { ...DEFAULT_NETWORK_PROXY_SETTINGS } }
+}
+
+export function parseBrowserProxySettingsStrict(value: unknown): InAppBrowserProxySettings {
+  if (value === undefined || value === null) return defaultBrowserProxySettings()
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('browser proxy settings are invalid')
+  const raw = value as Record<string, unknown>
+  if (JSON.stringify(Object.keys(raw).sort()) !== JSON.stringify(['mode', 'settings']) ||
+      (raw.mode !== 'inherit' && raw.mode !== 'independent') || raw.settings == null) {
+    throw new Error('browser proxy settings are invalid')
+  }
+  return { mode: raw.mode, settings: parseNetworkProxySettingsStrict(raw.settings) }
+}
+
+export function parseProxyConfigurationStrict(value: unknown): NetworkProxyConfiguration {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('proxy configuration is invalid')
+  const raw = value as Record<string, unknown>
+  if (JSON.stringify(Object.keys(raw).sort()) !== JSON.stringify(['application', 'browser']) || raw.application == null || raw.browser == null) {
+    throw new Error('proxy configuration is invalid')
+  }
+  return { application: parseNetworkProxySettingsStrict(raw.application), browser: parseBrowserProxySettingsStrict(raw.browser) }
+}
+
+export function effectiveProxySettings(configuration: NetworkProxyConfiguration, scope: NetworkProxyScope): NetworkProxySettings {
+  return scope === 'application' || configuration.browser.mode === 'inherit'
+    ? configuration.application : configuration.browser.settings
+}
+
 export type NetworkProxyDiagnosticCode =
   | 'proxy_probe_passed'
   | 'proxy_direct_failed'

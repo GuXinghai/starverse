@@ -26,6 +26,7 @@ const electronMock = vi.hoisted(() => {
   }
 
   class WebContentsView {
+    options: unknown
     windowOpenHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null = null
     handlers = new Map<string, (...args: any[]) => void>()
     currentUrl = 'https://example.com/'
@@ -59,7 +60,8 @@ const electronMock = vi.hoisted(() => {
     }
     setBounds = vi.fn()
 
-    constructor() {
+    constructor(options: unknown) {
+      this.options = options
       views.push(this)
     }
   }
@@ -97,6 +99,21 @@ describe('InAppBrowserManager external URL policy', () => {
     electronMock.views.length = 0
     electronMock.windows.length = 0
     vi.mocked(shell.openExternal).mockClear()
+  })
+
+  it('uses the governed browser session and refuses first load until ready', () => {
+    const session = {} as any
+    const assertNetworkReady = vi.fn<() => void>(() => { throw new Error('proxy_updating') })
+    const manager = new InAppBrowserManager({ preloadPath: 'inapp-preload.js', shellUrl: 'https://app.example.test/inapp-shell.html', session, assertNetworkReady })
+    expect(() => manager.openLink('https://example.com/')).toThrow('proxy_updating')
+    expect(electronMock.views).toHaveLength(0)
+    assertNetworkReady.mockImplementation(() => undefined)
+    const opened = manager.openLink('https://example.com/')
+    expect(electronMock.views[0].options).toMatchObject({ webPreferences: { session } })
+    manager.detachTab(opened.tabId)
+    expect(electronMock.views).toHaveLength(1)
+    assertNetworkReady.mockImplementation(() => { throw new Error('proxy_store_rollback_failed') })
+    expect(() => manager.reload(opened.tabId)).toThrow('proxy_store_rollback_failed')
   })
 
   it('opens the active tab externally only for http and https URLs', () => {

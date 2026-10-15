@@ -158,6 +158,9 @@ describe('registerStoreIpc', () => {
   it('blocks credential namespace ancestors and descendants under electron-store dot notation', async () => {
     const { handlers, store } = registerHandlers()
     const blockedPaths = [
+      'inAppBrowserProxySettingsV1',
+      'inAppBrowserProxySettingsV1.settings',
+      'inAppBrowserProxySettingsV1.settings.manualProxyUrl',
       'openaiCompatibleCredentials',
       'openaiCompatibleCredentials.v2',
       'openaiCompatibleCredentials.v2.ocp_credential_12345678',
@@ -175,6 +178,12 @@ describe('registerStoreIpc', () => {
       expect(store.set).not.toHaveBeenCalledWith(key, 'tamper')
       expect(store.delete).not.toHaveBeenCalledWith(key)
     }
+  })
+
+  it('preserves browser proxy settings during renderer safe clear', async () => {
+    const { handlers } = registerHandlers()
+    await handlers.get('store-clear-safe')?.({}, [])
+    expect(vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1]).toContain('inAppBrowserProxySettingsV1')
   })
 
   it('keeps activeProvider and non-sensitive settings available through generic store IPC', async () => {

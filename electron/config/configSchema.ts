@@ -99,6 +99,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
 
   'networkProxyPolicy',   // Legacy Electron policy; removed with the legacy main path in Goal 2 Round 5.
   'networkProxySettingsV2', // Epoch-2 product modes: environment/manual/direct/system.
+  'inAppBrowserProxySettingsV1', // Browser inherits the application policy unless explicitly independent.
   'catalogPolicyV2', // Provider-neutral user-selected model catalog policy.
   'providerCatalog', // Provider-scoped catalog policy namespace.
 

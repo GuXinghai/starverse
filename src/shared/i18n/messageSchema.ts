@@ -269,6 +269,32 @@ export interface SettingsMessages {
     }
     readonly network: {
       readonly title: string
+      readonly applicationTitle: string
+      readonly stateReady: string
+      readonly resetApply: string
+      readonly stateApplying: string
+      readonly stateUninitialized: string
+      readonly stateBlocked: string
+      readonly browserTitle: string
+      readonly browserPolicy: string
+      readonly inherit: string
+      readonly independent: string
+      readonly effectiveMode: string
+      readonly reconnectHint: string
+      readonly protocolHint: string
+      readonly environmentHint: string
+      readonly systemHint: string
+      readonly saveApply: string
+      readonly testDraft: string
+      readonly reapply: string
+      readonly cancelTest: string
+      readonly testTarget: string
+      readonly diagnosticHint: string
+      readonly configurationCheck: string
+      readonly plannedRoute: string
+      readonly downloadCheck: string
+      readonly applied: string
+      readonly reapplied: string
       readonly proxyTitle: string
       readonly proxyPolicyDesc: string
       readonly proxyMode: string

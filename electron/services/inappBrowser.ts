@@ -1,4 +1,5 @@
 import { BrowserWindow, WebContentsView, clipboard, shell } from 'electron'
+import type { Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -9,6 +10,8 @@ type InAppBrowserConfig = {
   preloadPath: string
   shellUrl: string
   toolbarHeight?: number
+  session?: Session
+  assertNetworkReady?: () => void
 }
 
 export type InAppTabState = {
@@ -59,6 +62,7 @@ export class InAppBrowserManager {
    * 打开链接（默认复用现有窗口，创建新 Tab）
    */
   openLink(url: string, targetWindowId?: number) {
+    this.config.assertNetworkReady?.()
     const normalizedUrl = this.normalizeUrl(url)
     const window = targetWindowId ? this.windows.get(targetWindowId) : this.getOrCreatePrimaryWindow()
     const win = window ?? this.getOrCreatePrimaryWindow()
@@ -69,6 +73,7 @@ export class InAppBrowserManager {
   }
 
   goBack(tabId: string) {
+    this.config.assertNetworkReady?.()
     const tab = this.tabs.get(tabId)
     if (tab && tab.view.webContents.navigationHistory.canGoBack()) {
       tab.view.webContents.navigationHistory.goBack()
@@ -76,6 +81,7 @@ export class InAppBrowserManager {
   }
 
   goForward(tabId: string) {
+    this.config.assertNetworkReady?.()
     const tab = this.tabs.get(tabId)
     if (tab && tab.view.webContents.navigationHistory.canGoForward()) {
       tab.view.webContents.navigationHistory.goForward()
@@ -83,6 +89,7 @@ export class InAppBrowserManager {
   }
 
   reload(tabId: string) {
+    this.config.assertNetworkReady?.()
     const tab = this.tabs.get(tabId)
     tab?.view.webContents.reload()
   }
@@ -248,7 +255,7 @@ export class InAppBrowserManager {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        partition: 'persist:intra-links',
+        ...(this.config.session ? { session: this.config.session } : { partition: 'persist:intra-links' }),
         backgroundThrottling: false
       }
     })
@@ -289,6 +296,7 @@ export class InAppBrowserManager {
   }
 
   private loadUrl(tabId: string, url: string) {
+    this.config.assertNetworkReady?.()
     const tab = this.tabs.get(tabId)
     if (!tab) return
     tab.view.webContents.loadURL(url).catch(() => {
@@ -389,7 +397,7 @@ export class InAppBrowserManager {
 /**
  * 工厂方法：使用主进程上下文生成 manager。
  */
-export const createInAppBrowserManager = () => {
+export const createInAppBrowserManager = (network: Pick<InAppBrowserConfig, 'session' | 'assertNetworkReady'> = {}) => {
   const __dirname = path.dirname(fileURLToPath(import.meta.url))
   const shellPath =
     process.env.VITE_DEV_SERVER_URL && process.env.VITE_DEV_SERVER_URL.startsWith('http')
@@ -399,6 +407,7 @@ export const createInAppBrowserManager = () => {
   const preloadPath = path.join(__dirname, '..', 'inappPreload.mjs')
 
   return new InAppBrowserManager({
+    ...network,
     shellUrl: shellPath,
     preloadPath
   })

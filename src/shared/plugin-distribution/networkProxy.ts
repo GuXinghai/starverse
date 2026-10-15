@@ -1,4 +1,4 @@
-import { EnvHttpProxyAgent, ProxyAgent, type Dispatcher } from 'undici'
+import { ProxyAgent, type Dispatcher } from 'undici'
 import {
   normalizeNetworkProxySettings,
   type NetworkProxyDiagnosticCode,
@@ -38,7 +38,8 @@ export type NetworkProxyResolution =
 
 export function resolveNetworkProxyForUrl(
   settings: NetworkProxySettings,
-  targetUrl: string
+  targetUrl: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): NetworkProxyResolution {
   const normalized = normalizeNetworkProxySettings(settings)
   if (!normalized.strictSSL) {
@@ -48,9 +49,6 @@ export function resolveNetworkProxyForUrl(
       diagnosticCode: 'proxy_strict_ssl_unsupported',
       detail: 'disabling TLS certificate verification is not supported for plugin downloads',
     }
-  }
-  if (matchesNoProxy(targetUrl, normalized.noProxy)) {
-    return { ok: true, mode: normalized.proxyMode, bypassed: true }
   }
   if (normalized.proxyMode === 'direct') {
     return { ok: true, mode: 'direct', bypassed: false }
@@ -64,15 +62,24 @@ export function resolveNetworkProxyForUrl(
     }
   }
   if (normalized.proxyMode === 'environment') {
-    return {
-      ok: true,
-      mode: 'environment',
-      dispatcher: new EnvHttpProxyAgent(),
-      bypassed: false,
+    const value = (lower: string, upper: string) => String(env[lower] ?? '').trim() || String(env[upper] ?? '').trim()
+    const http = value('http_proxy', 'HTTP_PROXY')
+    const proxy = (targetUrl.startsWith('https:') ? value('https_proxy', 'HTTPS_PROXY') || http : http) || value('all_proxy', 'ALL_PROXY')
+    if (!proxy) return { ok: false, mode: 'environment', diagnosticCode: 'proxy_environment_failed', detail: 'proxy environment variables are unavailable' }
+    const resolved = buildManualProxyDispatcher(proxy)
+    if (!resolved.ok) return { ...resolved, mode: 'environment' }
+    if (matchesNoProxy(targetUrl, value('no_proxy', 'NO_PROXY'))) {
+      void resolved.dispatcher?.close()
+      return { ok: true, mode: 'environment', bypassed: true }
     }
+    return { ok: true, mode: 'environment', dispatcher: resolved.dispatcher, bypassed: false }
   }
   const manual = buildManualProxyDispatcher(normalized.manualProxyUrl)
   if (!manual.ok) return manual
+  if (matchesNoProxy(targetUrl, normalized.noProxy)) {
+    void manual.dispatcher?.close()
+    return { ok: true, mode: 'manual', bypassed: true }
+  }
   return { ok: true, mode: 'manual', dispatcher: manual.dispatcher, bypassed: false }
 }
 

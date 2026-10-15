@@ -1,6 +1,10 @@
 import {
   normalizeNetworkProxySettings,
   type NetworkProxySettings,
+  defaultBrowserProxySettings,
+  type NetworkProxyConfiguration,
+  type NetworkProxyDraftProbe,
+  type NetworkProxyScope,
 } from '@/shared/plugin-distribution/networkProxyShared'
 
 export type LibreOfficeProxyProbeResult = Readonly<{
@@ -35,6 +39,48 @@ export async function setNetworkProxySettings(value: NetworkProxySettings): Prom
   const result = await requireProxyBridge().updateSettings(normalizeNetworkProxySettings(value))
   if (!result.ok) throw new Error(result.code)
   return true
+}
+
+export async function getProxyConfiguration() {
+  const bridge = requireProxyBridge()
+  if (bridge.getConfiguration) return bridge.getConfiguration()
+  return { ok: true, configuration: { application: await getNetworkProxySettings(), browser: defaultBrowserProxySettings() }, states: null }
+}
+
+export async function saveProxyConfiguration(configuration: NetworkProxyConfiguration) {
+  const bridge = requireProxyBridge()
+  if (!bridge.updateConfiguration) throw new Error('proxy_configuration_bridge_unavailable')
+  const result = await bridge.updateConfiguration(configuration)
+  if (!result.ok) throw new Error(result.code)
+  return result
+}
+
+export async function getProxyEnvironment() {
+  return await requireProxyBridge().getEnvironment?.() ?? {}
+}
+
+export async function probeProxyDraft(input: NetworkProxyDraftProbe) {
+  const bridge = requireProxyBridge()
+  if (!bridge.probeDraft) throw new Error('proxy_probe_unavailable')
+  return bridge.probeDraft(input)
+}
+
+export async function cancelProxyProbe(id: string) {
+  await requireProxyBridge().cancelProbe?.(id)
+}
+
+export async function reapplyProxySettings(scope: NetworkProxyScope) {
+  const bridge = requireProxyBridge()
+  if (!bridge.reapplySettings) throw new Error('proxy_configuration_bridge_unavailable')
+  const result = await bridge.reapplySettings({ scope })
+  if (!result.ok) throw new Error(result.code)
+}
+
+export async function resetProxySettings(scope: NetworkProxyScope) {
+  const bridge = requireProxyBridge()
+  if (!bridge.resetSettings) throw new Error('proxy_configuration_bridge_unavailable')
+  const result = await bridge.resetSettings({ scope })
+  if (!result.ok) throw new Error(result.code)
 }
 
 export async function probeLibreOfficeOfficialDownloadNetwork(): Promise<LibreOfficeProxyProbeResult> {

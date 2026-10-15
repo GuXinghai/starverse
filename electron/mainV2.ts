@@ -6,6 +6,9 @@ import { createAppShutdownCoordinatorV2, createStoreBackedQuitWarningSourceV2 } 
 import { RawGenerationRequestStore } from './debug/rawGenerationRequestStore'
 import { initMainI18n, t } from './i18n/mainI18n'
 import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
+import { randomUUID } from 'node:crypto'
+import { createNetworkProxyDraftProbe } from './net/networkProxyDraftProbe'
+import { applySessionRequestPolicy } from './net/sessionRequestPolicy'
 import { registerDialogIpc } from './ipc/dialogIpc'
 import { createStoreBackedGenerationTotalTimeoutSourceV2, setGenerationTotalTimeoutSourceV2 } from './services/generationTimeoutPolicyV2'
 import { registerGenerationV2Ipc } from './ipc/generationV2IpcRegistration'
@@ -25,7 +28,7 @@ import { clearMainWindowActivator, registerMainWindowActivator } from './windows
 import { requireEpoch2ApplicationRuntime } from './bootstrap/epoch2ApplicationRuntime'
 import { createProductNetworkProxyV2Controller } from './net/productNetworkProxyV2'
 import { createElectronSessionProviderFetch } from './net/providerHttpTransport'
-import { registerNetworkProxyIpc } from './ipc/networkProxyIpc'
+import { isTrustedProxyIpcSender, registerNetworkProxyIpc } from './ipc/networkProxyIpc'
 import { isEpoch2SmokeFixtureAuthorityEnabled, registerEpoch2SmokeFixtureIpc } from './ipc/epoch2SmokeFixtureIpc'
 import { bindPackagedTestDocxFixtureGrantInvalidationV1, createPackagedTestDocxFixtureAuthorityV1 } from './ipc/packagedTestDocxFixtureAuthorityV1'
 import { createMagikaUtilityProcessRunner } from './services/magikaUtilityProcessRunner'
@@ -128,7 +131,6 @@ export async function startMainV2(): Promise<void> {
       if (!mainWindowLifecycle.focusWindow()) mainWindowLifecycle.createWindow()
     },
   })
-  const inAppBrowserManager = createInAppBrowserManager()
   const fileSelectionGrants = createFileSelectionGrantStore()
   const packagedTestDocxFixtureAuthority = await createPackagedTestDocxFixtureAuthorityV1({
   isPackaged: app.isPackaged,
@@ -140,15 +142,27 @@ export async function startMainV2(): Promise<void> {
   registerInvoke,
   fileSelectionGrants,
 })
+  const browserSession = session.fromPartition('persist:intra-links')
   const networkProxyController = createProductNetworkProxyV2Controller({
   store,
   session: session.defaultSession,
+  browserSession,
   env: () => process.env,
 })
+  applySessionRequestPolicy(browserSession, () => networkProxyController.getState('browser').status === 'ready')
   const startupProxyResult = await networkProxyController.applyStoredSettings()
   if (!startupProxyResult.ok) {
-    console.warn('[proxy-v2] governed network requests are blocked', { code: startupProxyResult.code })
+    console.warn('[proxy-v2] some network scopes are blocked', {
+      application: networkProxyController.getState().errorCode, browser: networkProxyController.getState('browser').errorCode })
   }
+  const inAppBrowserManager = createInAppBrowserManager({ session: browserSession,
+    assertNetworkReady: () => networkProxyController.assertGovernedRequestAvailable('browser') })
+  const proxyDraftProbe = createNetworkProxyDraftProbe({
+    createSession: () => {
+      const target = session.fromPartition(`starverse-proxy-probe-${randomUUID()}`, { cache: false })
+      return target
+    },
+  })
   const localDirectSession = session.fromPartition('starverse-local-direct-v2')
   await localDirectSession.setProxy({ mode: 'direct' })
   await localDirectSession.forceReloadProxyConfig()
@@ -234,7 +248,8 @@ export async function startMainV2(): Promise<void> {
     application: cloudRulesApplication,
     applicationRepo: new CloudRulesApplicationV1Repo(runtime.epoch2.database),
     distributionRepo: new CloudRulesDistributionV1Repo(runtime.epoch2.database), notifyModelFactsSemanticInvalidated })
-  registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController })
+  registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController, probe: proxyDraftProbe,
+    authorize: (event) => isTrustedProxyIpcSender(event, mainWindowLifecycle.getWindow()?.webContents ?? null) })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,
   electronConversionBridge, tempRoot: runtime.layout.tempRoot, runtimesRoot: runtime.layout.runtimesRoot,

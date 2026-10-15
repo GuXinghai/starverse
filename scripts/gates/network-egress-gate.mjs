@@ -199,8 +199,11 @@ function scanText(relPath, text) {
     if (isCommentOnlyLine(line)) continue
 
     for (const rule of NETWORK_RULES) {
+      // Object/class method declarations are not calls to the ambient fetch API.
+      const candidate = rule.id === 'bare-fetch-call'
+        ? line.replace(/^\s*(?:async\s+)?fetch\s*\([^)]*\)\s*(?::[^={]*)?\{/u, '') : line
       rule.regex.lastIndex = 0
-      if (!rule.regex.test(line)) continue
+      if (!rule.regex.test(candidate)) continue
 
       const classification = classifiedProductionTransportFor(relPath, line, rule.id)
       const allow = classification ? null : allowlistFor(relPath, line, rule.id)
@@ -352,9 +355,12 @@ function runSelfTest() {
     'electron/net/compatibleProviderTransport.ts',
     "import { fetch as undiciFetch } from 'undici'\n",
   )
-  assertSelfTest('compatible canonical Node transport is classified', compatibleUndici.classified.length === 1)
-  assertSelfTest('compatible canonical Node transport is not allowlisted', compatibleUndici.allowed.length === 0)
-  assertSelfTest('compatible canonical Node transport has no violation', compatibleUndici.violations.length === 0)
+  assertSelfTest('removed compatible Node broker cannot bypass Electron transport', compatibleUndici.violations.length === 1)
+  const method = scanText('src/next/search/searchTestKit.ts', '  async fetch(params): Promise<SearchPage> {\n')
+  assertSelfTest('fetch method declaration is not a network call', method.violations.length === 0)
+  const callBesideMethod = scanText('src/next/search/searchTestKit.ts', "  async fetch(params): Promise<SearchPage> {\n    return fetch('https://example.test');\n  }\n")
+  assertSelfTest('a real ambient call inside a method is still rejected', callBesideMethod.violations.length === 1)
+  assertSelfTest('a same-line ambient call is still rejected', scanText('src/a.ts', "async fetch(p) { return fetch('https://example.test'); }").violations.length === 1)
 
   const compatibleUndiciElsewhere = scanText(
     'electron/ipc/compatibleProviderTransportIpc.ts',

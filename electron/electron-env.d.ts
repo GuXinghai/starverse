@@ -412,6 +412,7 @@ type NetworkProxyProductErrorCode =
   | 'proxy_session_apply_failed'
   | 'proxy_store_unavailable'
   | 'proxy_store_rollback_failed'
+  | 'proxy_updating'
 
 interface NetworkProxyProductSettings {
   proxyMode: NetworkProxyProductMode
@@ -421,7 +422,7 @@ interface NetworkProxyProductSettings {
 }
 
 interface NetworkProxyProductState {
-  status: 'uninitialized' | 'ready' | 'blocked'
+  status: 'uninitialized' | 'applying' | 'ready' | 'blocked'
   settings: NetworkProxyProductSettings
   errorCode: NetworkProxyProductErrorCode | null
   appliedAtMs: number | null
@@ -1220,9 +1221,14 @@ interface Window {
   networkProxy?: {
     getSettings?: () => Promise<NetworkProxyProductResult>
     updateSettings?: (settings: NetworkProxyProductSettings) => Promise<NetworkProxyProductResult>
-    resetSettings?: () => Promise<NetworkProxyProductResult>
-    reapplySettings?: () => Promise<NetworkProxyProductResult>
-    resolveProxy?: (payload: string | { url?: string }) => Promise<NetworkProxyResolveResult>
+    resetSettings?: (payload?: { scope: import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyScope }) => Promise<NetworkProxyProductResult>
+    reapplySettings?: (payload?: { scope: import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyScope }) => Promise<NetworkProxyProductResult>
+    resolveProxy?: (payload: string | { url?: string; scope?: import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyScope }) => Promise<NetworkProxyResolveResult>
+    getConfiguration?: () => Promise<import('./net/productNetworkProxyV2').ProductProxyConfigurationResult>
+    updateConfiguration?: (value: import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyConfiguration) => Promise<import('./net/productNetworkProxyV2').ProductProxyConfigurationResult>
+    getEnvironment?: () => Promise<Readonly<Record<string, string>>>
+    probeDraft?: (value: import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyDraftProbe) => Promise<import('../src/shared/plugin-distribution/networkProxyShared').NetworkProxyProbeResult>
+    cancelProbe?: (id: string) => Promise<void>
   }
   electronAPI?: {
     platform?: NodeJS.Platform

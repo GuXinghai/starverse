@@ -75,3 +75,107 @@ git diff --check
 Final classification: `network_proxy_governance_stage_complete`.
 
 The next work should be documentation, closeout verification, and narrowly scoped regression fixes. Do not expand this phase into Settings UI, diagnostics panels, NetLog export, per-provider proxy override UI, or Node system/PAC parity work without a new task boundary.
+
+## 2026-10-15: Application and browser proxy completion
+
+This is a separately authorized extension of the historical stage above. The
+original stage's scope and deferred items are not retroactively reclassified.
+
+### Configuration and runtime behavior
+
+- The application retains `networkProxySettingsV2` and its four product modes:
+  system, manual, environment, and direct. HTTP, HTTPS, and unauthenticated SOCKS5
+  proxy URLs are supported by the Electron transport. TLS validation remains on.
+- `inAppBrowserProxySettingsV1` defaults to following the application. Independent
+  browser settings reuse the same compiler and retain their draft when switching
+  back to follow. All browser tabs retain the existing `persist:intra-links`
+  session, including tabs detached into another window.
+- Cloud providers, catalogs, attachments, URL imports, and runtime downloads use
+  the application policy. Local model sessions remain explicitly direct; external
+  system browsers remain outside the application's proxy authority.
+- Only manual mode uses the editable bypass list. Environment mode uses process
+  `no_proxy`/`NO_PROXY`; system mode uses OS rules, including an existing OS PAC.
+  Nonempty lowercase variables win. HTTP uses HTTP_PROXY then ALL_PROXY; HTTPS
+  uses HTTPS_PROXY, HTTP_PROXY, then ALL_PROXY. Reapply reads the existing process
+  environment, not later changes to the Windows environment registry.
+- One serial coordinator applies both scopes and persists the configuration in a
+  single store update. Identical saves do not close connections. Failed updates
+  restore the previously applied compiled policies, not a freshly interpreted
+  environment. A failed rollback blocks new requests in the affected scope.
+- Proxy configuration corruption is retained for explicit repair and isolated by
+  scope at runtime; it no longer aborts database bootstrap. An invalid application
+  policy blocks a following browser, but not a healthy independent browser.
+- Browser HTTP(S), subresources, and WebSocket handshakes are gated in the session
+  alongside agent offline policy. Live connections are not promised seamless
+  migration; rebuilding connections can interrupt work and does not replay it.
+- Proxy configuration keys and descendants are protected from generic renderer
+  store access and retained by safe-clear and configuration projection. Dedicated
+  proxy IPC accepts only the current application window's main frame.
+
+### Diagnostics and remaining boundaries
+
+Draft probes own nonpersistent sessions. They never apply draft policy to a live
+session or write settings, never obtain provider keys, and send HEAD without
+cookies. The total deadline is ten seconds, including queueing, setup, DNS, and
+proxy resolution; cancellation closes and clears the diagnostic session. Public
+URL and redirect validation are reused from the attachment URL boundary.
+
+Results distinguish configuration validity, planned proxy resolution, HTTP
+status, elapsed time, and safe error code. A planned route does not prove actual
+egress. HTTP 401/403/405 are received responses, not model-availability success;
+407 indicates proxy authentication. LibreOffice's existing probe remains a
+separately labeled download check against saved settings.
+
+PAC editing, proxy credential storage/authentication, custom CA management,
+per-provider overrides, and Node fallback SOCKS5/system/PAC equivalence remain
+outside this extension. Unsupported Node fallback routes fail explicitly.
+
+### Validation evidence
+
+- Targeted compiler/coordinator, projection, protected-store, IPC, browser,
+  diagnostics, settings-client, and UI suites cover mode semantics, scoped
+  isolation, rollback, serialization, cancellation, redirect rejection, and draft
+  testing without persistence. The existing SettingsPanel suite is retained.
+- `node scripts/gates/network-egress-gate.mjs` and `--self-test` pass. The gate
+  distinguishes a method declaration named fetch from a real ambient fetch call,
+  including a call on the same line as the declaration; the removed compatible
+  Node transport is no longer classified as a legitimate production exit.
+- `node scripts/smoke/network-proxy-smoke.mjs` runs Electron against generated
+  local HTTP/TLS targets, two recording HTTP proxies, and a recording SOCKS5
+  proxy. An external temporary profile and a fixture-specific certificate key
+  allow HTTPS routing tests; a second, untrusted certificate is still rejected.
+  The runner verifies its PASS marker and removes only its guarded temporary root.
+- The controlled Electron run passed application/browser follow and independent
+  routing, real main-frame preload IPC, startup blocking, HTTP, HTTPS CONNECT,
+  SOCKS5 HTTP/HTTPS, bypass, ALL_PROXY, direct mode, refusal without direct
+  fallback, and independent-browser survival. Seventeen requests were recorded.
+- Native Electron rebuild completed using the existing header cache via
+  `npm_config_devdir` after the initial header download failed. Final ABI is
+  Electron. No native outputs are part of the source change.
+
+Public-provider requests, paid generation, full application UI visual acceptance,
+macOS/Linux, and packaged-release acceptance were not performed. Controlled
+session/IPC routing is not a claim of those broader acceptance results.
+
+Final targeted results after static-review repairs: 86 integration tests, 10 unit
+tests, and 44 UI tests passed (140 distinct tests). `npm run typecheck` and scoped
+whitespace checks passed. ESLint over all changed TypeScript, Vue, and gate/smoke
+files reported zero errors and 15 structural warnings (including existing large
+functions in the main process, settings panel, and tests). The final Electron smoke also
+loaded better-sqlite3, queried an in-memory database, and verified ABI 146.
+
+A fresh-context GPT-6.1-sol review at high reasoning identified two P1 issues:
+an equivalent save could incorrectly unblock a scope after failed rollback, and
+scoped reapply could replace another scope's corrupt persisted configuration
+with a default. Non-ready scopes now require a real session apply; scoped reapply
+preserves unrelated raw configuration, while repair uses an explicit scoped reset.
+Four controller regressions and the scoped UI reset regression pass. The reviewer
+rechecked both repairs and reported no remaining P1 finding in that follow-up.
+
+ABI record: mismatch encountered **no**; rebuild command
+`npm run rebuild:electron` (successful retry with
+`npm_config_devdir=%USERPROFILE%\.electron-gyp`); final target **electron**;
+tests retried for ABI mismatch **none**; Electron smoke retried after rebuild
+**yes**; native artifacts committed **none**. The earlier failed rebuild attempts
+were environment failures (header download, then a custom nodedir library path),
+not source regressions; the final cache-based rebuild and native load passed.

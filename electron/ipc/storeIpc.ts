@@ -34,6 +34,7 @@ export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
   'apiKey',
   // Proxy settings must only change through the apply-before-persist authority.
   'networkProxySettingsV2',
+  'inAppBrowserProxySettingsV1',
 ])
 
 const RENDERER_MAIN_AUTHORITY_STORE_KEYS = new Set([

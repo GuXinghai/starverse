@@ -14,10 +14,16 @@ describe('epoch-2 config projection network policy', () => {
     expect(projected).not.toHaveProperty('networkProxyPolicy')
   })
 
-  it('blocks corrupt V2 proxy settings instead of applying the fresh-profile default', async () => {
-    await expect(projectEpoch2Config({
-      rawConfig: { networkProxySettingsV2: { proxyMode: 'environment', extra: true } },
-    })).rejects.toThrow('EPOCH2_CONFIG_INVALID:networkProxySettingsV2')
+  it('preserves corrupt V2 policies for scoped runtime blocking instead of stopping database bootstrap', async () => {
+    const invalid = { proxyMode: 'environment', extra: true }
+    expect(await projectEpoch2Config({ rawConfig: { networkProxySettingsV2: invalid } }))
+      .toEqual({ networkProxySettingsV2: invalid })
+  })
+
+  it('preserves browser settings and lets the runtime isolate a malformed browser policy', async () => {
+    const settings = { mode: 'independent', settings: { proxyMode: 'manual', manualProxyUrl: 'socks5://localhost:1080', noProxy: '', strictSSL: true } }
+    expect((await projectEpoch2Config({ rawConfig: { inAppBrowserProxySettingsV1: settings } })).inAppBrowserProxySettingsV1).toEqual(settings)
+    expect((await projectEpoch2Config({ rawConfig: { inAppBrowserProxySettingsV1: 'corrupt' } })).inAppBrowserProxySettingsV1).toBe('corrupt')
   })
 
   it('preserves global and provider catalog policies without spreading OpenRouter legacy settings', async () => {

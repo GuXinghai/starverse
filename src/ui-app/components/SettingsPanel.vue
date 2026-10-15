@@ -5,17 +5,7 @@ import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next
 import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
 import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getGenerationParamsDefaults, setGenerationParamsDefaults } from '@/next/settings/generationParamsDefaultsClient'
-import {
-  getNetworkProxySettings,
-  probeLibreOfficeOfficialDownloadNetwork,
-  setNetworkProxySettings,
-  type LibreOfficeProxyProbeResult,
-} from '@/next/settings/networkProxySettingsClient'
-import {
-  DEFAULT_NETWORK_PROXY_SETTINGS,
-  normalizeNetworkProxySettings,
-  type NetworkProxyMode,
-} from '@/shared/plugin-distribution/networkProxyShared'
+import NetworkProxySettingsPanel from './NetworkProxySettingsPanel.vue'
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
@@ -81,27 +71,6 @@ const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
   catalogRuntimeSnapshot.value = catalogRuntimeStore.snapshot()
 })
 onBeforeUnmount(unsubscribeCatalogRuntimeStore)
-
-function networkProxyModeText(mode: NetworkProxyMode): string {
-  switch (mode) {
-    case 'environment':
-      return t('settings.network.proxyModeEnvironment')
-    case 'manual':
-      return t('settings.network.proxyModeManual')
-    case 'direct':
-      return t('settings.network.proxyModeDirect')
-    case 'system':
-      return t('settings.network.proxyModeSystem')
-  }
-}
-
-function passedFailedText(value: boolean): string {
-  return value ? t('settings.network.passed') : t('settings.network.failed')
-}
-
-function reachableText(value: boolean): string {
-  return value ? t('settings.network.reachable') : t('settings.network.unreachable')
-}
 
 type ElectronStoreLike = Readonly<{
   get: (key: string) => Promise<any>
@@ -757,12 +726,7 @@ const generationTimeoutInvalid = computed(() =>
   !generationTimeoutUnlimited.value && !parseGenerationTotalTimeoutMinutesText(generationTimeoutMinutesDraft.value).ok)
 const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
 const generationParamsDefaults = ref<GenerationParamsLayer | null>(null)
-const networkProxyMode = ref<NetworkProxyMode>(DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode)
-const networkProxyManualUrl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.manualProxyUrl)
-const networkProxyNoProxy = ref(DEFAULT_NETWORK_PROXY_SETTINGS.noProxy)
-const networkProxyStrictSsl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.strictSSL)
-const networkProxyProbeLoading = ref(false)
-const networkProxyProbeResult = ref<LibreOfficeProxyProbeResult | null>(null)
+const proxySettingsPanel = ref<InstanceType<typeof NetworkProxySettingsPanel> | null>(null)
 const localEndpointUrl = ref('http://localhost:1234')
 const localEndpointProbeLoading = ref(false)
 const localEndpointProbeResult = ref<LocalEndpointProbeResult | null>(null)
@@ -1288,11 +1252,6 @@ async function load() {
     await loadCatalogProviderPolicies(store)
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
-    const proxySettings = await getNetworkProxySettings()
-    networkProxyMode.value = proxySettings.proxyMode
-    networkProxyManualUrl.value = proxySettings.manualProxyUrl
-    networkProxyNoProxy.value = proxySettings.noProxy
-    networkProxyStrictSsl.value = true
     langMode.value = langPrefs.mode
     langManualLocale.value = langPrefs.mode === 'manual' ? langPrefs.uiLocale : getSystemLocale()
     const prefs = await getReasoningPrefs()
@@ -1385,12 +1344,7 @@ async function save() {
     }
     catalogProviderOverrideTouched.value = {}
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
-    await setNetworkProxySettings(normalizeNetworkProxySettings({
-      proxyMode: networkProxyMode.value,
-      manualProxyUrl: networkProxyManualUrl.value,
-      noProxy: networkProxyNoProxy.value,
-      strictSSL: true,
-    }))
+    await proxySettingsPanel.value?.save()
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
     await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
@@ -1512,30 +1466,6 @@ function clearApiKey() {
         // no-op
       }
     } })
-}
-
-async function testNetworkProxyConnection() {
-  error.value = null
-  savedMessage.value = null
-  networkProxyProbeResult.value = null
-  networkProxyProbeLoading.value = true
-  try {
-    await setNetworkProxySettings(normalizeNetworkProxySettings({
-      proxyMode: networkProxyMode.value,
-      manualProxyUrl: networkProxyManualUrl.value,
-      noProxy: networkProxyNoProxy.value,
-      strictSSL: true,
-    }))
-    networkProxyProbeResult.value = await probeLibreOfficeOfficialDownloadNetwork()
-    savedMessage.value = networkProxyProbeResult.value.ok ? t('settings.runtime.proxyProbePassed') : null
-    if (!networkProxyProbeResult.value.ok) {
-      error.value = tf('settings.runtime.proxyProbeFailedWithDiagnostic', { diagnostic: networkProxyProbeResult.value.terminalDiagnostic })
-    }
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : t('settings.runtime.proxyProbeFailed')
-  } finally {
-    networkProxyProbeLoading.value = false
-  }
 }
 
 function clearOpenAIResponsesApiKey() {
@@ -3077,78 +3007,7 @@ onMounted(() => {
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.network.title') }}</div>
 
-        <div class="mt-3 space-y-3">
-          <div class="rounded-md border border-gray-100 bg-gray-50 p-3">
-            <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.proxyTitle') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">
-              {{ t('settings.network.proxyPolicyDesc') }}
-            </div>
-            <div class="mt-3 grid gap-3 sm:grid-cols-2">
-              <label class="block text-[11px] text-gray-700">
-                <span class="font-semibold">{{ t('settings.network.proxyMode') }}</span>
-                <select
-                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
-                  :disabled="!canEdit || loading || saving"
-                  v-model="networkProxyMode"
-                >
-                  <option value="environment">{{ t('settings.network.proxyModeEnvironment') }}</option>
-                  <option value="manual">{{ t('settings.network.proxyModeManual') }}</option>
-                  <option value="direct">{{ t('settings.network.proxyModeDirect') }}</option>
-                  <option value="system">{{ t('settings.network.proxyModeSystem') }}</option>
-                </select>
-              </label>
-              <label class="block text-[11px] text-gray-700">
-                <span class="font-semibold">{{ t('settings.network.manualProxyUrl') }}</span>
-                <input
-                  type="text"
-                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
-                  placeholder="http://127.0.0.1:7890"
-                  :disabled="!canEdit || loading || saving || networkProxyMode !== 'manual'"
-                  v-model="networkProxyManualUrl"
-                />
-              </label>
-              <label class="block text-[11px] text-gray-700 sm:col-span-2">
-                <span class="font-semibold">{{ t('settings.network.noProxyList') }}</span>
-                <input
-                  type="text"
-                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
-                  placeholder="localhost,127.0.0.1,.example.com"
-                  :disabled="!canEdit || loading || saving"
-                  v-model="networkProxyNoProxy"
-                />
-              </label>
-            </div>
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <label class="inline-flex items-center gap-2 text-[11px] text-gray-700">
-                <input
-                  type="checkbox"
-                  disabled
-                  v-model="networkProxyStrictSsl"
-                />
-                <span>{{ t('settings.network.strictSslRequired') }}</span>
-              </label>
-              <button
-                type="button"
-                class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                :disabled="!canEdit || loading || saving || networkProxyProbeLoading"
-                @click="testNetworkProxyConnection"
-              >
-                {{ networkProxyProbeLoading ? t('settings.network.testing') : t('settings.network.testConnection') }}
-              </button>
-            </div>
-            <div class="mt-2 text-[11px] text-gray-500">
-              {{ tf('settings.network.currentModeProbeDesc', { mode: networkProxyModeText(networkProxyMode) }) }}
-            </div>
-            <div v-if="networkProxyProbeResult" class="mt-2 rounded-md border border-gray-100 bg-white px-2 py-1 text-[11px] text-gray-600">
-              <div>{{ t('settings.network.probeLabel') }} {{ passedFailedText(networkProxyProbeResult.ok) }}</div>
-              <div>{{ t('settings.network.metadataLabel') }} {{ reachableText(networkProxyProbeResult.metadataReachable) }}</div>
-              <div>{{ t('settings.network.headLabel') }} {{ passedFailedText(networkProxyProbeResult.headPassed) }}</div>
-              <div>{{ t('settings.network.contentLengthLabel') }} {{ networkProxyProbeResult.contentLength }}</div>
-              <div>{{ t('settings.network.rangeLabel') }} {{ passedFailedText(networkProxyProbeResult.rangePassed) }}</div>
-              <div>{{ t('settings.network.diagnosticLabel') }} {{ networkProxyProbeResult.terminalDiagnostic }}</div>
-            </div>
-          </div>
-        </div>
+        <NetworkProxySettingsPanel ref="proxySettingsPanel" :disabled="!canEdit || loading" />
       </div>
         </section>
 
