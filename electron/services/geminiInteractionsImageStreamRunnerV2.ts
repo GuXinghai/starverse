@@ -12,6 +12,7 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2, readBoundedResponseTextV2 } from '../net/boundedResponseBodyV2'
 // Approved main-process Gemini Interactions Generation V2 execution boundary.
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
@@ -22,8 +23,17 @@ import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailureP
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
+const geminiStreamFailureResponseMetadata = new WeakMap<GeminiInteractionsImageStreamV1Error,
+  Readonly<{ httpStatus: number; httpStatusText: string; headers: Readonly<Record<string, string>> }>>()
 
 export class GeminiInteractionsImageStreamRunnerV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_AUTHORITY_INVALID' |
@@ -42,7 +52,9 @@ export class GeminiInteractionsImageStreamRunnerV2Error extends Error {
 }
 
 async function responseBodyText(response: Response): Promise<string | null> {
-  try { return await response.text() } catch { return null }
+  try {
+    return (await readBoundedResponseTextV2(response, PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2)).text
+  } catch { return null }
 }
 
 function responseHeaders(response: Response): Readonly<Record<string, string>> {
@@ -75,10 +87,35 @@ async function readResult(response: Response, expectedModel: string, onStreamByt
       const item = await reader.read()
       if (item.done) break
       if (item.value.byteLength > 0) onStreamBytes()
-      for (const event of decoder.push(item.value)) assembler.push(event)
+      let decodedEvents: ReturnType<typeof decoder.push> = []
+      let decoderFailed = false
+      let decoderError: unknown
+      try { decodedEvents = decoder.push(item.value) } catch (error) { decoderFailed = true; decoderError = error }
+      if (decoderFailed) {
+        for (const event of decoder.takeParsedEventsAfterError()) assembler.push(event)
+        throw decoderError
+      }
+      for (const event of decodedEvents) assembler.push(event)
     }
-    for (const event of decoder.finish()) assembler.push(event)
+    let finalEvents: ReturnType<typeof decoder.finish> = []
+    let finishFailed = false
+    let finishError: unknown
+    try { finalEvents = decoder.finish() } catch (error) { finishFailed = true; finishError = error }
+    if (finishFailed) {
+      for (const event of decoder.takeParsedEventsAfterError()) assembler.push(event)
+      throw finishError
+    }
+    for (const event of finalEvents) assembler.push(event)
     return assembler.finish()
+  } catch (error) {
+    if (error instanceof GeminiInteractionsImageStreamV1Error) {
+      geminiStreamFailureResponseMetadata.set(error, Object.freeze({
+        httpStatus: response.status,
+        httpStatusText: response.statusText,
+        headers: responseHeaders(response),
+      }))
+    }
+    throw error
   } finally {
     try { await reader.cancel() } catch { /* best effort */ }
     reader.releaseLock()
@@ -245,6 +282,14 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
       state, errorCode, errorMessage, ...(errorFact ? { errorFact } : {}) })
   }
 
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'gemini-interactions-v1beta', (_receipt, command, value) => {
+    const result = value as GeminiInteractionsImageResultV1
+    createGeminiInteractionsImageTerminalArtifactV2(result)
+    return terminal(command, 'completed', result, null, null)
+  }, (_command, value) => {
+    createGeminiInteractionsImageTerminalArtifactV2(value as GeminiInteractionsImageResultV1)
+  })
+
   return Object.freeze({ run: async (command: GeminiInteractionsImageCommandResultV2, signal?: AbortSignal) => {
     if (command.kind !== 'created' || !command.preparedRequest || !isPreparedProviderRequestV2(command.preparedRequest) ||
         command.preparedRequest.providerId !== 'google_ai_studio' || command.preparedRequest.contractId !== 'gemini-interactions-v1beta' ||
@@ -279,11 +324,31 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           return readResult(response, created.preparedRequest.modelId, () => { responseStarted = true })
         } })
       providerResultCompleted = true
-      terminal(created, 'completed', result, null, null)
+      materializeNewGenerationNativeCompletionV2({
+        db: input.db, command: created, nativeResult: result, nowMs,
+        materialize: () => terminal(created, 'completed', result, null, null),
+      })
     } catch (error) {
+      if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+      if (hasPendingGenerationNativeCompletionForOperationV2(input.db, created.preparedRequest.operationId)) {
+        throw preserveGenerationNativeCompletionPendingFailureV2(input.db, created, error)
+      }
       const cancelled = signal?.aborted === true && !scope.timedOut()
       const failure = cancelled ? null : error instanceof GeminiInteractionsImageStreamV1Error
-        ? createProviderFailureV2({
+        ? (() => {
+          const responseMetadata = geminiStreamFailureResponseMetadata.get(error)
+          const nativePayload = error.providerError ?? error.rawEvent ?? {
+            code: error.code, message: error.message, eventType: error.eventType, stepType: error.stepType,
+          }
+          const body = error.diagnosticStage === null
+            ? nativePayload
+            : Object.assign({ streamDiagnostic: null }, nativePayload, { streamDiagnostic: {
+              stage: error.diagnosticStage,
+              fieldPath: error.fieldPath,
+              reason: error.diagnosticReason,
+              context: error.diagnosticContext,
+            } })
+          return createProviderFailureV2({
           context: { origin: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
               ? 'response_stream' : 'response_decoder',
             phase: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
@@ -292,9 +357,15 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
             requestSequence: created.preparedRequest.requestSequence,
             starverseDiagnosticCode: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
               ? error.code : 'PROVIDER_RESPONSE_DECODE_FAILED' },
-          body: error.providerError ?? error.rawEvent ?? { code: error.code, message: error.message, eventType: error.eventType, stepType: error.stepType },
-          rawFrameExcerpt: error.rawFrameExcerpt ?? (error.rawEvent ? JSON.stringify(error.rawEvent) : null),
-        })
+          httpStatus: responseMetadata?.httpStatus,
+          httpStatusText: responseMetadata?.httpStatusText,
+          headers: responseMetadata?.headers,
+          body,
+          // Keep valid JSON intact until the failure factory has redacted it
+          // and applied its byte limit (truncating first can hide JSON keys).
+          rawFrameExcerpt: error.rawEvent ? JSON.stringify(error.rawEvent) : error.rawFrameExcerpt,
+          })
+        })()
         : providerResultCompleted
         ? createProviderFailureV2({
           context: { origin: 'starverse_internal', phase: 'terminal_persistence', provider: { namespace: 'generation_execution', id: created.preparedRequest.providerId },
@@ -323,8 +394,10 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
       const code = cancelled ? 'user_cancelled' : scope.timedOut()
         ? 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TIMEOUT'
         : failure?.starverseDiagnosticCode ?? (error instanceof Error ? error.message : 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TRANSPORT_FAILED')
+      const failureMessage = cancelled ? 'Generation cancelled by user.' : failure ? providerFailurePrimaryMessageV2(failure) : code
+      const terminalFailureMessage = failureMessage.length <= 8192 ? failureMessage : code
       terminal(created, cancelled ? 'cancelled' : 'failed', null, code,
-        cancelled ? 'Generation cancelled by user.' : failure ? providerFailurePrimaryMessageV2(failure) : code, failure)
+        terminalFailureMessage, failure)
     } finally { scope.dispose() }
   } })
 }

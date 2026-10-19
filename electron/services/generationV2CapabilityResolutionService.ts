@@ -47,6 +47,9 @@ import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/cor
 import { listEncodingCoverageRegistriesV2 } from '../../src/core/generation-v2/capability/encodingCoverageRegistryV2'
 import { decodeProviderBindingRecordV2 } from '../../src/core/generation-v2/domain/providerBindingV2'
 import { resolveGoal3ModelFactsForBindingV1 } from './goal3ModelFactsCapabilityV1'
+import { readGenerationRequestRulesV2 } from '../../infra/db/repo/generationRequestRulesV2Repo'
+import { ResolvedModelFactsV1Repo } from '../../infra/db/repo/resolvedModelFactsV1Repo'
+import { SourcePriorityConfigV1Repo } from '../../infra/db/repo/sourcePriorityConfigV1Repo'
 /* eslint-enable no-restricted-imports */
 
 export class GenerationV2CapabilityResolutionServiceError extends Error {
@@ -331,7 +334,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
         ...executionResolution.resolvedCapability.modelFacts.evidence
           .filter((item) => !goal3EvidenceIds.has(item.evidenceId as string)),
       ]
-      return projectGenerationCapabilityResolutionV2(canonicalizeResolvedCapabilityV2({
+      const result = projectGenerationCapabilityResolutionV2(canonicalizeResolvedCapabilityV2({
         binding: executionResolution.resolvedCapability.executionContext.binding,
         ...(executionResolution.resolvedCapability.executionContext.catalogAuthority === undefined ? {} : {
           catalogAuthority: executionResolution.resolvedCapability.executionContext.catalogAuthority,
@@ -345,6 +348,11 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
         modelFactsResolution: goal3.snapshot,
         continuation: executionResolution.resolvedCapability.executionContext.continuation,
       }))
+      const bundle = readGenerationRequestRulesV2(input.db, goal3.subject)
+      return bundle.ownerSnapshotRevisions.length === 0 ? result : Object.freeze({ ...result,
+        requestRulePreview: { bundle,
+          baseFacts: new ResolvedModelFactsV1Repo(input.db).readSnapshot(goal3.snapshot.resolvedSnapshotRevision).resolvedFacts,
+          sourcePriority: new SourcePriorityConfigV1Repo(input.db).get().config } })
     },
   })
 }

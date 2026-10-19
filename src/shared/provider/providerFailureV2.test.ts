@@ -9,6 +9,21 @@ import {
 } from './providerFailureV2'
 
 describe('ProviderFailureV2', () => {
+  it.each([
+    '"headers":{"Authorization":"Bearer DUMMY_FRAME_SECRET","Cookie":"session=DUMMY_COOKIE"}',
+    '"headers":{"Authorization":"Bearer prefix\'DUMMY_FRAME_SECRET","Cookie":"prefix\'DUMMY_COOKIE"}',
+    "'headers':{'Proxy-Authorization':'Bearer prefix\"DUMMY_FRAME_SECRET','Set-Cookie':'prefix\"DUMMY_COOKIE'}",
+  ])('redacts quoted credentials in malformed JSON SSE excerpts before truncation: %s', (headers) => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'response_decoder', phase: 'stream_decode', provider: { namespace: 'generation_execution',
+        id: 'google_ai_studio' }, contractId: 'gemini-interactions-v1beta', operationId: 'bad-frame', requestSequence: 1 },
+      rawFrameExcerpt: `event: step.delta\ndata: {${headers},"index":"bad",BROKEN}`,
+    })
+    expect(failure.rawFrameExcerpt).toContain('step.delta')
+    expect(failure.rawFrameExcerpt).toContain('"index":"bad"')
+    expect(JSON.stringify(failure)).not.toMatch(/DUMMY_FRAME_SECRET|DUMMY_COOKIE/)
+    expect(failure.redactions.map(r => r.reason)).toEqual(expect.arrayContaining(['authorization_header', 'cookie']))
+  })
   it('preserves provider HTTP facts without assigning a semantic category', () => {
     const failure = createProviderFailureV2({
       context: {

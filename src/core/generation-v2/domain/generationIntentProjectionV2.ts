@@ -24,7 +24,7 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   if (intent.reasoning !== undefined) projection.reasoning = { ...intent.reasoning }
   if (intent.web !== undefined) {
     projection.web = intent.web.mode === 'disabled'
-      ? { mode: 'disabled' }
+      ? compact({ mode: 'disabled', searchPrompt: intent.web.searchPrompt })
       : compact({
           ...intent.web,
           types: [...intent.web.types],
@@ -77,6 +77,12 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   }
   if (intent.providerExtension !== undefined) {
     projection.providerExtension = { ...intent.providerExtension }
+  }
+  if (intent.requestedParameters !== undefined) {
+    projection.requestedParameters = Object.fromEntries(Object.entries(intent.requestedParameters).map(([key, entry]) => [key, {
+      ...entry,
+      ...(key === 'stopSequences' && entry.mode === 'custom' ? { value: [...entry.value as readonly string[]] } : {}),
+    }]))
   }
   return projection
 }

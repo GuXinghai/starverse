@@ -1,5 +1,6 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 /**
  * Lossless OpenRouter Chat continuation artifact.  The assistant message is
@@ -32,7 +33,7 @@ export class OpenRouterNativeMessagesV1Error extends Error {
 
 const branded = new WeakSet<object>()
 const MAX_MESSAGES = 4_096
-const MAX_BYTES = 20 * 1024 * 1024
+const MAX_BYTES = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 function cloneNativeMessage(value: unknown): OpenRouterNativeMessageV1 {
   try {
@@ -50,6 +51,11 @@ function cloneNativeMessage(value: unknown): OpenRouterNativeMessageV1 {
     if (error instanceof OpenRouterNativeMessagesV1Error) throw error
     throw new OpenRouterNativeMessagesV1Error('GENERATION_V2_OPENROUTER_NATIVE_HISTORY_INVALID')
   }
+}
+
+/** Strict canonical decoder for one provider-native message without requiring history context. */
+export function decodeOpenRouterNativeMessageV1(value: unknown): OpenRouterNativeMessageV1 {
+  return cloneNativeMessage(value)
 }
 
 function canonicalMessages(value: unknown): readonly OpenRouterNativeMessageV1[] {

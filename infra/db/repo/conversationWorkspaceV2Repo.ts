@@ -50,7 +50,7 @@ export class ConversationWorkspaceV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db); const id = ConversationGraphV2Identity.create('conversation_id', input.conversationId)
     this.assertNotSystemTemplate(id.value)
     const result = this.db.prepare('UPDATE conversation_v2 SET title=?, updated_at_ms=? WHERE conversation_id=? AND updated_at_ms<=?')
-      .run(title(input.title, 16384, true), time(input.updatedAtMs), id.value, input.updatedAtMs)
+      .run(title(input.title, 16384, false), time(input.updatedAtMs), id.value, input.updatedAtMs)
     if (result.changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_CONVERSATION_NOT_FOUND')
   }
   moveConversation(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ conversationId: string; projectId: string; updatedAtMs: number }>): void {

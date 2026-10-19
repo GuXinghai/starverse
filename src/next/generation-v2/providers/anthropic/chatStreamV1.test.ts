@@ -4,6 +4,10 @@ import {
   AnthropicMessagesNamedSseDecoderV1,
   AnthropicMessagesStreamAssemblerV1,
 } from '../../../../core/generation-v2/providers/anthropic/chatStreamV1'
+import {
+  createAnthropicNativeHistoryArtifactV1,
+  serializeAnthropicNativeHistoryArtifactV1,
+} from '../../../../core/generation-v2/providers/anthropic/nativeContentBlocksV1'
 
 const encoder = new TextEncoder()
 
@@ -84,6 +88,33 @@ describe('Anthropic Messages named-SSE V1', () => {
       { type: 'tool_use', id: 'toolu_1', name: 'lookup', input: { q: 'x' }, caller: { type: 'direct' } },
     ])
   })
+
+  it('accepts a response above legacy snapshot capacity and produces a native artifact', () => {
+    const text = 'x'.repeat(9 * 1024 * 1024)
+    const stream = new AnthropicMessagesChatStreamV1()
+    const wire = startMessage() + blockStart(0, { type: 'text', text: '', citations: null }) +
+      blockDelta(0, { type: 'text_delta', text: text.slice(0, 3 * 1024 * 1024) }) +
+      blockDelta(0, { type: 'text_delta', text: text.slice(3 * 1024 * 1024, 6 * 1024 * 1024) }) +
+      blockDelta(0, { type: 'text_delta', text: text.slice(6 * 1024 * 1024) }) +
+      blockStop(0) + messageDelta() + messageStop()
+    stream.push(encoder.encode(wire))
+    const snapshot = stream.finish()
+    const artifact = createAnthropicNativeHistoryArtifactV1(snapshot)
+    const codecJson = serializeAnthropicNativeHistoryArtifactV1(artifact)
+
+    expect(snapshot.content[0]).toMatchObject({ type: 'text', text })
+    expect(Buffer.byteLength(codecJson, 'utf8')).toBeGreaterThan(8 * 1024 * 1024)
+    expect(artifact.artifactHash).toMatch(/^[0-9a-f]{64}$/u)
+  }, 30_000)
+
+  it('rejects a response that exceeds the shared 64MiB capacity', () => {
+    const assembler = new AnthropicMessagesStreamAssemblerV1()
+    const message = JSON.parse(startMessage().match(/data: (.*)\n/u)![1]) as Record<string, unknown>
+    assembler.push({ type: 'event', eventName: 'message_start', value: message })
+    expect(() => assembler.push({ type: 'event', eventName: 'content_block_start', value: {
+      type: 'content_block_start', index: 0, content_block: { type: 'text', text: 'x'.repeat(64 * 1024 * 1024 + 1) },
+    } })).toThrow('GENERATION_V2_ANTHROPIC_STREAM_LIMIT_EXCEEDED')
+  }, 30_000)
 
   it('rejects duplicate message_start and duplicate/post-terminal message_stop', () => {
     const duplicateStart = new AnthropicMessagesChatStreamV1()

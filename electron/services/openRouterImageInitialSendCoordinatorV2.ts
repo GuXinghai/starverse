@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -213,8 +215,10 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
                 ),
                 resolvedAt: new Date(nowMs()).toISOString(),
               })
+              return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
+                projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (compatibleFacts) => {
               const persisted = commitOpenRouterImageInitialSnapshotV2({
-                context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
+                context, executionRepo, capabilityRepo, pending, command, commandFacts: compatibleFacts, binding, capability,
                 credentialRevision: request.expectedCredentialRevision,
               })
               graphRepo.commitInitialTurnProjection(context, pending)
@@ -228,6 +232,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
                 preparedRequest,
                 request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest),
               })
+              }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolvedCapabilityFromRuntimeSnapshotV2(capability), request.expectedCredentialRevision) })
             },
           )
           }),

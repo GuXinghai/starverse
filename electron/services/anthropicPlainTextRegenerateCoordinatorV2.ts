@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveAnthropicCapabilityV2 } from './anthropicGenerationAuthorityV2Service'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { projectAnthropicCommandAttachmentsV2 } from '../../src/core/generation-v2/providers/anthropic/commandAttachmentsV2'
 import { randomUUID } from 'node:crypto'
@@ -121,7 +123,7 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
                   projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
                   request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
               } })
-            })
+            }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveAnthropicCapabilityV2(modelEvidence), request.expectedCredentialRevision) })
           }),
         })
       } catch (error) {

@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS assistant_generation_snapshot_v2 (
   operation_id TEXT NOT NULL UNIQUE,
   schema_version INTEGER NOT NULL CHECK (schema_version = 2),
   canonical_json TEXT NOT NULL CHECK (
-    length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 1048576
+    length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 3145728
     AND json_valid(canonical_json)
     AND json_type(canonical_json) = 'object'
   ),
@@ -363,7 +363,7 @@ CREATE TABLE IF NOT EXISTS generation_request_v2 (
     length(prepared_body_sha256) = 64 AND prepared_body_sha256 NOT GLOB '*[^0-9a-f]*'
   ),
   prepared_body_byte_length INTEGER NOT NULL CHECK (
-    prepared_body_byte_length BETWEEN 2 AND 20971520
+    prepared_body_byte_length BETWEEN 2 AND 29360128
   ),
   continuation_command_fingerprint TEXT CHECK (
     continuation_command_fingerprint IS NULL OR (
@@ -578,7 +578,20 @@ BEGIN
       AND request.state = 'completed'
       AND operation.state IN ('streaming', 'completed')
       AND answer.status IN ('streaming', 'completed')
-      AND json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'image_generate'
+      -- OpenAI Responses generated image tool V1: scoped text-operation exception.
+      AND (
+        json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'image_generate'
+        OR (
+          json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'text'
+          AND json_extract(snapshot.canonical_json, '$.providerBinding.providerId') = 'openai_responses'
+          AND json_extract(snapshot.canonical_json, '$.providerBinding.protocolContractId') = 'openai-responses-v1'
+          AND request.provider_id = 'openai_responses'
+          AND request.contract_id = 'openai-responses-v1'
+          AND json_extract(snapshot.canonical_json, '$.semanticIntent.image.mode') = 'generate'
+        )
+      )
+      AND snapshot.snapshot_hash = request.snapshot_hash
+      -- End OpenAI Responses generated image tool V1.
       AND asset.asset_kind = 'image' AND asset.source_kind = 'generated'
       AND asset.retired_at_ms IS NULL
       AND blob.sha256 = NEW.asset_sha256 AND blob.mime = NEW.mime
@@ -740,4 +753,180 @@ WHEN EXISTS (
 )
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_NATIVE_ARTIFACT_DELETE_FORBIDDEN');
+END;
+
+-- Interrupted native replay V1: separate from completed continuation artifacts.
+CREATE TABLE IF NOT EXISTS generation_interrupted_replay_v2 (
+  answer_root_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  request_sequence INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL CHECK (json_valid(snapshot_json) AND json_type(snapshot_json)='object'
+    AND length(CAST(snapshot_json AS BLOB)) BETWEEN 2 AND 134217728),
+  snapshot_hash TEXT NOT NULL CHECK (length(snapshot_hash)=64 AND snapshot_hash NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY(answer_root_id,request_sequence),
+  FOREIGN KEY(operation_id,request_sequence,answer_root_id)
+    REFERENCES generation_request_v2(operation_id,request_sequence,answer_root_id) ON DELETE CASCADE
+);
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_v2_state BEFORE INSERT ON generation_interrupted_replay_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM generation_operation_v2 o JOIN message_v2 a ON a.message_id=o.target_answer_id
+      JOIN generation_request_v2 r ON r.operation_id=o.operation_id AND r.request_sequence=NEW.request_sequence
+    WHERE o.operation_id=NEW.operation_id AND o.target_answer_id=NEW.answer_root_id
+      AND ((o.state IN ('cancelled','failed') AND a.status=o.state AND r.state=o.state)
+        OR (o.state='streaming' AND a.status='streaming' AND r.state='completed'))
+  ) THEN RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_STATE_INVALID') END;
+END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_v2_immutable BEFORE UPDATE ON generation_interrupted_replay_v2
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_v2_delete BEFORE DELETE ON generation_interrupted_replay_v2
+WHEN EXISTS(SELECT 1 FROM generation_request_v2 WHERE operation_id=OLD.operation_id
+  AND request_sequence=OLD.request_sequence AND answer_root_id=OLD.answer_root_id)
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_DELETE_FORBIDDEN'); END;
+
+-- Request contract V2: durable completion receipts and content-addressed native artifacts.
+CREATE TABLE IF NOT EXISTS generation_native_artifact_content_chunk_v2 (
+  content_sha256 TEXT PRIMARY KEY CHECK (
+    length(content_sha256)=64 AND content_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  raw_byte_length INTEGER NOT NULL CHECK (raw_byte_length BETWEEN 1 AND 1048576),
+  content_base64 TEXT NOT NULL CHECK (
+    length(CAST(content_base64 AS BLOB)) = 4*((raw_byte_length+2)/3)
+    AND content_base64 NOT GLOB '*[^A-Za-z0-9+/=]*'
+  )
+);
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_content_chunk_v2_immutable
+BEFORE UPDATE ON generation_native_artifact_content_chunk_v2
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_ARTIFACT_CHUNK_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_content_chunk_v2_referenced
+BEFORE DELETE ON generation_native_artifact_content_chunk_v2
+WHEN EXISTS (
+  SELECT 1 FROM generation_native_artifact_v2 AS artifact,
+    json_each(artifact.artifact_json,'$.chunkHashes') AS chunk
+  WHERE json_extract(artifact.artifact_json,'$.artifactStorageVersion')=1
+    AND chunk.value=OLD.content_sha256
+)
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_ARTIFACT_CHUNK_REFERENCED'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_v2_cleanup_chunks
+AFTER DELETE ON generation_native_artifact_v2
+WHEN json_extract(OLD.artifact_json,'$.artifactStorageVersion')=1
+BEGIN
+  DELETE FROM generation_native_artifact_content_chunk_v2
+  WHERE content_sha256 IN (SELECT value FROM json_each(OLD.artifact_json,'$.chunkHashes'))
+    AND NOT EXISTS (
+      SELECT 1 FROM generation_native_artifact_v2 AS artifact,
+        json_each(artifact.artifact_json,'$.chunkHashes') AS chunk
+      WHERE json_extract(artifact.artifact_json,'$.artifactStorageVersion')=1
+        AND chunk.value=content_sha256
+    );
+END;
+
+CREATE TABLE IF NOT EXISTS generation_native_completion_receipt_v2 (
+  operation_id TEXT NOT NULL,
+  request_sequence INTEGER NOT NULL,
+  attempt INTEGER NOT NULL CHECK(attempt=1),
+  provider_id TEXT NOT NULL CHECK(length(provider_id) BETWEEN 1 AND 512),
+  contract_id TEXT NOT NULL CHECK(length(contract_id) BETWEEN 1 AND 512),
+  answer_root_id TEXT NOT NULL,
+  native_result_json TEXT NOT NULL CHECK(json_valid(native_result_json)),
+  native_result_sha256 TEXT NOT NULL CHECK(length(native_result_sha256)=64 AND native_result_sha256 NOT GLOB '*[^0-9a-f]*'),
+  prepared_request_json TEXT NOT NULL CHECK(json_valid(prepared_request_json)),
+  prepared_request_sha256 TEXT NOT NULL CHECK(length(prepared_request_sha256)=64 AND prepared_request_sha256 NOT GLOB '*[^0-9a-f]*'),
+  received_at_ms INTEGER NOT NULL CHECK(received_at_ms>=0),
+  materialization_state TEXT NOT NULL DEFAULT 'pending' CHECK(materialization_state IN ('pending','materialized')),
+  materialization_error_code TEXT CHECK(materialization_error_code IS NULL OR length(materialization_error_code) BETWEEN 1 AND 512),
+  materialization_error_message TEXT CHECK(materialization_error_message IS NULL OR length(CAST(materialization_error_message AS BLOB))<=1048576),
+  materialized_at_ms INTEGER CHECK(materialized_at_ms IS NULL OR materialized_at_ms>=received_at_ms),
+  PRIMARY KEY(operation_id,request_sequence,attempt),
+  FOREIGN KEY(operation_id,request_sequence,answer_root_id)
+    REFERENCES generation_request_v2(operation_id,request_sequence,answer_root_id) ON DELETE CASCADE,
+  CHECK(length(CAST(native_result_json AS BLOB))+length(CAST(prepared_request_json AS BLOB)) BETWEEN 4 AND 328204288),
+  CHECK((materialization_state='pending' AND materialized_at_ms IS NULL)
+    OR (materialization_state='materialized' AND materialized_at_ms IS NOT NULL
+      AND materialization_error_code IS NULL AND materialization_error_message IS NULL))
+);
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_completion_receipt_v2_identity
+AFTER INSERT ON generation_native_completion_receipt_v2
+WHEN NOT EXISTS (
+  SELECT 1 FROM generation_request_v2
+  WHERE operation_id=NEW.operation_id AND request_sequence=NEW.request_sequence
+    AND answer_root_id=NEW.answer_root_id AND provider_id=NEW.provider_id AND contract_id=NEW.contract_id
+)
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_COMPLETION_RECEIPT_IDENTITY_INVALID'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_completion_receipt_v2_immutable
+BEFORE UPDATE OF operation_id,request_sequence,attempt,provider_id,contract_id,answer_root_id,
+  native_result_json,native_result_sha256,prepared_request_json,prepared_request_sha256,received_at_ms
+ON generation_native_completion_receipt_v2
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_COMPLETION_RECEIPT_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_completion_receipt_v2_terminal
+BEFORE UPDATE ON generation_native_completion_receipt_v2
+WHEN OLD.materialization_state='materialized'
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_COMPLETION_RECEIPT_TERMINAL'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_completion_receipt_v2_delete
+BEFORE DELETE ON generation_native_completion_receipt_v2
+WHEN EXISTS(SELECT 1 FROM generation_request_v2
+  WHERE operation_id=OLD.operation_id AND request_sequence=OLD.request_sequence)
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_NATIVE_COMPLETION_RECEIPT_DELETE_FORBIDDEN'); END;
+
+-- Interrupted replay checkpoint V1: bounded exact snapshot bytes in immutable 1 MiB chunks.
+CREATE TABLE IF NOT EXISTS generation_interrupted_replay_content_chunk_v2 (
+  content_sha256 TEXT PRIMARY KEY CHECK (
+    length(content_sha256)=64 AND content_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  raw_byte_length INTEGER NOT NULL CHECK (raw_byte_length BETWEEN 1 AND 1048576),
+  content_base64 TEXT NOT NULL CHECK (
+    length(CAST(content_base64 AS BLOB)) = 4*((raw_byte_length+2)/3)
+    AND content_base64 NOT GLOB '*[^A-Za-z0-9+/=]*'
+  )
+);
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_content_chunk_v2_immutable
+BEFORE UPDATE ON generation_interrupted_replay_content_chunk_v2
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_CHUNK_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_content_chunk_v2_referenced
+BEFORE DELETE ON generation_interrupted_replay_content_chunk_v2
+WHEN EXISTS (
+  SELECT 1 FROM generation_interrupted_replay_v2 AS replay,
+    json_each(replay.snapshot_json,'$.chunkHashes') AS chunk
+  WHERE json_extract(replay.snapshot_json,'$.interruptedReplayStorageVersion')=1
+    AND chunk.value=OLD.content_sha256
+)
+BEGIN SELECT RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_CHUNK_REFERENCED'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_v2_chunk_manifest
+BEFORE INSERT ON generation_interrupted_replay_v2
+WHEN json_type(NEW.snapshot_json,'$.interruptedReplayStorageVersion') IS NOT NULL
+BEGIN
+  SELECT CASE WHEN json_extract(NEW.snapshot_json,'$.interruptedReplayStorageVersion')<>1
+    OR (SELECT count(*) FROM json_each(NEW.snapshot_json))<>7
+    OR json_extract(NEW.snapshot_json,'$.operationId')<>NEW.operation_id
+    OR json_extract(NEW.snapshot_json,'$.answerRootId')<>NEW.answer_root_id
+    OR json_extract(NEW.snapshot_json,'$.requestSequence')<>NEW.request_sequence
+    OR json_type(NEW.snapshot_json,'$.rawByteLength')<>'integer'
+    OR json_extract(NEW.snapshot_json,'$.rawByteLength')<=1048576
+    OR json_extract(NEW.snapshot_json,'$.rawByteLength')>298844160
+    OR json_extract(NEW.snapshot_json,'$.rawSha256')<>NEW.snapshot_hash
+    OR json_type(NEW.snapshot_json,'$.rawSha256')<>'text'
+    OR json_type(NEW.snapshot_json,'$.chunkHashes')<>'array'
+    OR json_array_length(NEW.snapshot_json,'$.chunkHashes')<1
+    OR json_array_length(NEW.snapshot_json,'$.chunkHashes')<>CAST((json_extract(NEW.snapshot_json,'$.rawByteLength')+1048575)/1048576 AS INTEGER)
+    OR length(CAST(NEW.snapshot_json AS BLOB))>65536
+    THEN RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_MANIFEST_INVALID') END;
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM json_each(NEW.snapshot_json,'$.chunkHashes') AS item
+    LEFT JOIN generation_interrupted_replay_content_chunk_v2 AS chunk ON chunk.content_sha256=item.value
+    WHERE item.type<>'text' OR chunk.content_sha256 IS NULL
+      OR chunk.raw_byte_length<>MIN(1048576,json_extract(NEW.snapshot_json,'$.rawByteLength')-item.key*1048576)
+  ) THEN RAISE(ABORT,'GENERATION_V2_INTERRUPTED_REPLAY_MANIFEST_CHUNK_INVALID') END;
+END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_interrupted_replay_v2_cleanup_chunks
+AFTER DELETE ON generation_interrupted_replay_v2
+WHEN json_extract(OLD.snapshot_json,'$.interruptedReplayStorageVersion')=1
+BEGIN
+  DELETE FROM generation_interrupted_replay_content_chunk_v2
+  WHERE content_sha256 IN (SELECT value FROM json_each(OLD.snapshot_json,'$.chunkHashes'))
+    AND NOT EXISTS (
+      SELECT 1 FROM generation_interrupted_replay_v2 AS replay,
+        json_each(replay.snapshot_json,'$.chunkHashes') AS chunk
+      WHERE json_extract(replay.snapshot_json,'$.interruptedReplayStorageVersion')=1
+        AND chunk.value=content_sha256
+    );
 END;

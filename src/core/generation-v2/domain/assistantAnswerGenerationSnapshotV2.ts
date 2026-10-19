@@ -32,9 +32,10 @@ import {
   type ResolvedGenerationIntentV2,
 } from './resolvedGenerationIntentV2'
 import { compatibleBoundedJsonValueSchema } from '../../../shared/provider/openai-chat-compatible/schemas'
+import { assertEffectiveRequestPlanV2, decodeEffectiveRequestPlanV2, type EffectiveRequestPlanV2 } from '../compiler/effectiveRequestPlanV2'
 
 export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
-export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
+export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_MAX_UTF8_BYTES = 3 * 1024 * 1024
 
 export type CapabilityBindingV2 = Readonly<{
   capabilityRevision: GenerationV2Identity<'capability_revision'>
@@ -86,6 +87,7 @@ export type PersistedAssistantAnswerGenerationSnapshotV2Record = Readonly<{
   answerRootId: string
   operationId: string
   semanticIntent: unknown
+  requestPlan?: EffectiveRequestPlanV2
   resolvedConfigRevisions: readonly unknown[]
   providerBinding: unknown
   capabilityBinding: unknown
@@ -101,6 +103,7 @@ export type DecodedAssistantAnswerGenerationSnapshotV2 = Readonly<{
   answerRootId: GraphIdentity<'answer_root_id'>
   operationId: GenerationV2Identity<'operation_id'>
   semanticIntent: ResolvedGenerationIntentV2
+  requestPlan?: EffectiveRequestPlanV2
   resolvedConfigRevisions: readonly GenerationConfigRevisionEntryV2[]
   providerBinding: DecodedProviderBindingRecordV2
   capabilityBinding: CapabilityBindingV2
@@ -234,7 +237,7 @@ function decodeCapabilityBinding(value: unknown): CapabilityBindingV2 {
 function decodeAttachmentBindings(
   value: unknown,
   attachments: readonly AttachmentIntentV2[],
-  providerId: string,
+  protocolContractId: string,
 ): readonly AttachmentProviderFileBindingV2[] {
   const bindings = closedDenseArray(value).map((item) => {
     const input = closedObject(item, ['assetRevisionId', 'providerFileDescriptor'])
@@ -249,7 +252,9 @@ function decodeAttachmentBindings(
       }),
     })
   })
-  const expected = providerId === 'google_ai_studio' ? [] : attachments
+  // Inline codecs need no provider-file descriptor, but historical snapshots
+  // may retain one. Validate a retained set without removing it or changing its hash.
+  const expected = bindings.length === 0 && ['gemini-generate-content-v1beta', 'gemini-interactions-v1beta', 'openrouter-chat-completions-v1', 'openrouter-images-v1'].includes(protocolContractId) ? [] : attachments
     .filter(requiresProviderFileBindingV2)
     .map((item) => readGenerationV2Identity(item.assetRevisionId, 'asset_revision_id'))
     .sort(compareCodePoints)
@@ -380,7 +385,7 @@ type DecodedPayload = Omit<DecodedAssistantAnswerGenerationSnapshotV2, 'trust' |
 function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; projection: SnapshotPayload }> {
   const input = closedObject(value, [
     'schemaVersion', 'answerRootId', 'operationId', 'semanticIntent', 'resolvedConfigRevisions',
-    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration',
+    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration', 'requestPlan',
   ])
   if (input.schemaVersion !== 2) {
     throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
@@ -391,8 +396,10 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
   const resolvedConfigRevisions = decodeConfigRevisions(input.resolvedConfigRevisions)
   const providerBinding = decodeProviderBindingRecordV2(input.providerBinding)
   const capabilityBinding = decodeCapabilityBinding(input.capabilityBinding)
+  const requestPlan = input.requestPlan === undefined ? undefined : decodeEffectiveRequestPlanV2(input.requestPlan)
+  if (requestPlan) assertEffectiveRequestPlanV2(requestPlan, semanticIntent, providerBinding, capabilityBinding.capabilityRevision.value)
   const attachmentProviderFileBindings = decodeAttachmentBindings(
-    input.attachmentProviderFileBindings, semanticIntent.attachments, providerBinding.providerId.value,
+    input.attachmentProviderFileBindings, semanticIntent.attachments, providerBinding.protocolContractId.value,
   )
   const toolAuthority = decodeToolAuthority(input.toolAuthority, semanticIntent)
   const providerConfiguration = decodeProviderConfiguration(input.providerConfiguration ?? { kind: 'none' }, providerBinding)
@@ -401,6 +408,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
     answerRootId: answerRootId.value,
     operationId: readGenerationV2Identity(operationId, 'operation_id'),
     semanticIntent: projectGenerationIntentLayerV2(semanticIntent),
+    ...(requestPlan === undefined ? {} : { requestPlan }),
     resolvedConfigRevisions: resolvedConfigRevisions.map((item) => ({
       ownerKind: item.ownerKind,
       ownerId: item.ownerId,
@@ -439,6 +447,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
       answerRootId,
       operationId,
       semanticIntent,
+      ...(requestPlan === undefined ? {} : { requestPlan }),
       resolvedConfigRevisions,
       providerBinding,
       capabilityBinding,
@@ -481,7 +490,7 @@ export function decodeAssistantAnswerGenerationSnapshotV2(
 ): DecodedAssistantAnswerGenerationSnapshotV2 {
   const input = closedObject(value, [
     'schemaVersion', 'answerRootId', 'operationId', 'semanticIntent', 'resolvedConfigRevisions',
-    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration', 'snapshotHash',
+    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration', 'snapshotHash', 'requestPlan',
   ])
   const snapshotHash = requiredString(input, 'snapshotHash')
   const payload = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'snapshotHash'))

@@ -1,4 +1,7 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
   createGeminiGenerateContentNativeHistoryArtifactV1,
@@ -112,7 +115,10 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
         typeof row.answerRootId !== 'string' || !Number.isSafeInteger(row.requestSequence) ||
         typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string') invalid()
     let artifact: GeminiGenerateContentNativeHistoryArtifactV1
-    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(row.artifactJson)) } catch { invalid() }
+    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId, answerRootId: row.answerRootId, requestSequence: row.requestSequence as number,
+      artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch { invalid() }
     const assistant = artifact.orderedContents.at(-1)
     const functionCallCount = assistant?.role === 'model'
       ? assistant.parts.filter((part) => 'functionCall' in part).length : 0
@@ -144,6 +150,8 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     contents: readonly GeminiGenerateContentNativeContentV1[]
     attachments: HistoricalTurnAttachmentReplayV2 | null
   }> {
+    const interrupted = new GenerationInterruptedReplayV2Repo(this.db).load(context, answerRootId, 'gemini')
+    if (interrupted !== null) return { contents: interrupted as readonly GeminiGenerateContentNativeContentV1[], attachments: null }
     const artifact = this.loadLatestCompletedArtifact(answerRootId)
     // The stored artifact is cumulative (it carries every earlier included turn); this turn
     // starts at its last text-bearing user content (function responses carry no text part).
@@ -188,14 +196,15 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
         typeof row.questionId !== 'string' || typeof row.answerRootId !== 'string' || typeof row.questionBody !== 'string') invalid()
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationIdValue)
     if (projection.branchId !== row.branchId) invalid()
-    const replayContents: GeminiGenerateContentNativeContentV1[] = []
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationIdValue, 'gemini') as readonly GeminiGenerateContentNativeContentV1[] | null
+    const replayContents: GeminiGenerateContentNativeContentV1[] = [...(portable ?? [])]
     const historicalTurnAttachments: HistoricalTurnAttachmentReplayV2[] = []
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') invalid()
         replayContents.push(Object.freeze({ role: 'user' as const,
-          parts: Object.freeze([Object.freeze({ text: row.questionBody })]) }))
-      } else if (turn.mode === 'included') {
+          parts: Object.freeze([Object.freeze({ text: currentGenerationQuestionWithFallbackV2(this.db, context, operationIdValue, row.questionBody) })]) }))
+      } else if (turn.mode === 'included' && portable === null) {
         const completed = this.#completeTurnContents(context, turn.answerRootId, replayContents.length)
         if (completed.attachments) historicalTurnAttachments.push(completed.attachments)
         replayContents.push(...completed.contents)
@@ -406,22 +415,29 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       orderedContents: Object.freeze([...history.replayContents, assistantContent]),
     })
     const canonical = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1 }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash
       FROM generation_native_artifact_v2 WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
       request.answerRootId, request.requestSequence, GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
-      if (existing.artifactJson !== canonical || existing.artifactHash !== artifact.artifactHash) {
+      if (!nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+        artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+      }, canonical) ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new GeminiGenerateContentNativeHistoryV2RepoError('GENERATION_V2_GEMINI_HISTORY_LINEAGE_INVALID')
       }
       return artifact
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, canonical, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version, artifact_json,
       artifact_hash, created_at_ms, completion_scope
     ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 'request_terminal')`).run(
       request.answerRootId, request.requestSequence, request.operationId, GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
-      canonical, artifact.artifactHash, createdAtMs,
+      storedJson, artifact.artifactHash, createdAtMs,
     )
     return artifact
   }
@@ -450,26 +466,34 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     const hash = sha256PreparedBytesV2(new TextEncoder().encode(digestInput))
     const artifact = Object.freeze({ ...projection, artifactHash: hash })
     const canonical = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: 'gemini_generate_content_response_v1' }
+    const envelope = { artifactCodecVersion: 1, artifactHash: hash }
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash
       FROM generation_native_artifact_v2 WHERE answer_root_id=? AND request_sequence=?
         AND artifact_kind='gemini_generate_content_response_v1'`).get(
       request.answerRootId, request.requestSequence,
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
-      if (existing.artifactJson !== canonical || existing.artifactHash !== hash) {
+      if (!nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+        artifactCodecVersion: 1, artifactHash: existing.artifactHash as string,
+      }, canonical) ||
+          existing.artifactHash !== hash) {
         throw new GeminiGenerateContentNativeHistoryV2RepoError('GENERATION_V2_GEMINI_HISTORY_LINEAGE_INVALID')
       }
       return
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, canonical, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (answer_root_id, request_sequence,
       operation_id, artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope)
       VALUES (?, ?, ?, 'gemini_generate_content_response_v1', 1, ?, ?, ?, 'request_terminal')`).run(
-      request.answerRootId, request.requestSequence, request.operationId, canonical, hash, createdAtMs,
+      request.answerRootId, request.requestSequence, request.operationId, storedJson, hash, createdAtMs,
     )
   }
 
   private loadLatestCompletedArtifact(answerRootId: string): GeminiGenerateContentNativeHistoryArtifactV1 {
-    const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash
+    const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
+      artifact.operation_id AS operationId, artifact.request_sequence AS requestSequence
       FROM generation_native_artifact_v2 AS artifact
       JOIN generation_request_v2 AS request ON request.operation_id=artifact.operation_id AND request.request_sequence=artifact.request_sequence
       JOIN generation_operation_v2 AS operation ON operation.operation_id=artifact.operation_id
@@ -483,7 +507,10 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       throw new GeminiGenerateContentNativeHistoryV2RepoError('GENERATION_V2_GEMINI_HISTORY_NOT_FOUND')
     }
     let artifact: GeminiGenerateContentNativeHistoryArtifactV1
-    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(row.artifactJson)) } catch { invalid() }
+    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId: row.operationId as string, answerRootId, requestSequence: row.requestSequence as number,
+      artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch { invalid() }
     if (artifact.artifactHash !== row.artifactHash) invalid()
     return artifact
   }
@@ -506,7 +533,9 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
           (allowActive && row.operationState === 'streaming' && row.answerStatus === 'streaming')) ||
         typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string') invalid()
     let artifact: GeminiGenerateContentNativeHistoryArtifactV1
-    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(row.artifactJson)) } catch { invalid() }
+    try { artifact = decodeGeminiGenerateContentNativeHistoryArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId, answerRootId, requestSequence, artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch { invalid() }
     if (artifact.artifactHash !== row.artifactHash || artifact.operationId !== operationId ||
         artifact.answerRootId !== answerRootId || artifact.requestSequence !== requestSequence) invalid()
     return artifact

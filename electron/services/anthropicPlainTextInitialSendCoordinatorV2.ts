@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveAnthropicCapabilityV2 } from './anthropicGenerationAuthorityV2Service'
 import { randomUUID } from 'node:crypto'
 import { projectAnthropicCommandAttachmentsV2 } from '../../src/core/generation-v2/providers/anthropic/commandAttachmentsV2'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -216,7 +218,7 @@ export function createAnthropicPlainTextInitialSendCoordinatorV2(input: Readonly
                       })
                     },
                   })
-                },
+                }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveAnthropicCapabilityV2(modelEvidence), request.expectedCredentialRevision) },
               )
             },
           ),

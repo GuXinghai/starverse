@@ -1,4 +1,6 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonFromRowV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import { createGenericLocalOpenAIChatArtifactV1, decodeGenericLocalOpenAIChatArtifactV1,
   type GenericLocalOpenAIChatArtifactV1, type GenericLocalOpenAIChatMessageV1 } from '../../../src/core/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
 import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
@@ -41,6 +43,9 @@ export class GenericLocalOpenAIChatNativeHistoryV2Repo {
   }
   #completeTurnMessages(context: GenerationV2AuthorityTransactionContextV2, answerRootId: string): readonly GenericLocalOpenAIChatMessageV1[] {
     const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
+      artifact.operation_id AS operationId, artifact.answer_root_id AS answerRootId,
+      artifact.request_sequence AS requestSequence, artifact.artifact_kind AS artifactKind,
+      artifact.codec_version AS codecVersion,
       operation.operation_id AS operationId, operation.question_id AS questionId, questionBody.body_text AS questionBody
       FROM generation_native_artifact_v2 AS artifact
       JOIN generation_request_v2 AS request ON request.operation_id=artifact.operation_id AND request.request_sequence=artifact.request_sequence
@@ -56,7 +61,7 @@ export class GenericLocalOpenAIChatNativeHistoryV2Repo {
       throw new Error('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
     }
     let artifact: GenericLocalOpenAIChatArtifactV1
-    try { artifact = decodeGenericLocalOpenAIChatArtifactV1(JSON.parse(row.artifactJson)) } catch {
+    try { artifact = decodeGenericLocalOpenAIChatArtifactV1(JSON.parse(loadNativeArtifactJsonFromRowV2(this.db, row))) } catch {
       throw new Error('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
     }
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, row.operationId)
@@ -73,9 +78,9 @@ export class GenericLocalOpenAIChatNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     const row = this.db.prepare(`SELECT operation.branch_id AS branchId, operation.conversation_id AS conversationId,
       operation.question_id AS questionId, body.body_text AS userBody,
-      request.provider_id AS providerId, request.contract_id AS contractId
+      json_extract(snapshot.canonical_json,'$.providerBinding.providerId') AS providerId, json_extract(snapshot.canonical_json,'$.providerBinding.protocolContractId') AS contractId
       FROM generation_operation_v2 AS operation
-      JOIN generation_request_v2 AS request ON request.operation_id=operation.operation_id AND request.request_sequence=1
+      JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
       JOIN message_v2 AS question ON question.message_id=operation.question_id AND question.role='user'
       JOIN message_body_v2 AS body ON body.message_id=question.message_id WHERE operation.operation_id=?`).get(operationId) as Record<string, unknown> | undefined
     if (!row || typeof row.userBody !== 'string' || row.providerId !== 'generic_local' || row.contractId !== 'generic-local-openai-chat-completions') {
@@ -86,14 +91,16 @@ export class GenericLocalOpenAIChatNativeHistoryV2Repo {
     }
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationId)
     if (projection.branchId !== row.branchId) throw new Error('GENERATION_V2_GENERIC_LOCAL_HISTORY_STATE_INVALID')
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationId, 'generic') as readonly GenericLocalOpenAIChatMessageV1[] | null
     const replayMessages: GenericLocalOpenAIChatMessageV1[] = []
     const systemBody = this.#systemForQuestion(row.conversationId, row.questionId)
     if (systemBody !== null) replayMessages.push(Object.freeze({ role: 'system' as const, content: systemBody }))
+    replayMessages.push(...(portable ?? []))
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') throw new Error('GENERATION_V2_GENERIC_LOCAL_HISTORY_STATE_INVALID')
-        replayMessages.push(Object.freeze({ role: 'user' as const, content: row.userBody }))
-      } else if (turn.mode === 'included') replayMessages.push(...this.#completeTurnMessages(context, turn.answerRootId))
+        replayMessages.push(Object.freeze({ role: 'user' as const, content: currentGenerationQuestionWithFallbackV2(this.db, context, operationId, row.userBody) }))
+      } else if (turn.mode === 'included' && portable === null) replayMessages.push(...this.#completeTurnMessages(context, turn.answerRootId))
     }
     if (replayMessages.at(-1)?.role !== 'user') throw new Error('GENERATION_V2_GENERIC_LOCAL_HISTORY_STATE_INVALID')
     const fact = Object.freeze({ replayMessages: createGenericLocalOpenAIChatArtifactV1(replayMessages).messages, systemBody })
@@ -121,16 +128,23 @@ export class GenericLocalOpenAIChatNativeHistoryV2Repo {
     }
     const artifact = createGenericLocalOpenAIChatArtifactV1([...input.requestMessages, input.assistantMessage])
     const artifactJson = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: input.request.operationId, answerRootId: input.request.answerRootId,
+      requestSequence: input.request.requestSequence, artifactKind: ARTIFACT_KIND }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
       WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(input.request.answerRootId, input.request.requestSequence, ARTIFACT_KIND) as Record<string, unknown> | undefined
     if (existing) {
-      if (existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash) throw new Error('GENERATION_V2_GENERIC_LOCAL_HISTORY_CONFLICT')
+      if (!nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+        artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+      }, artifactJson) ||
+          existing.artifactHash !== artifact.artifactHash) throw new Error('GENERATION_V2_GENERIC_LOCAL_HISTORY_CONFLICT')
       return artifact
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, artifactJson, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (answer_root_id, request_sequence, operation_id,
       artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope)
       VALUES (?, ?, ?, ?, 1, ?, ?, ?, 'operation_terminal')`).run(input.request.answerRootId, input.request.requestSequence,
-      input.request.operationId, ARTIFACT_KIND, artifactJson, artifact.artifactHash, input.createdAtMs)
+      input.request.operationId, ARTIFACT_KIND, storedJson, artifact.artifactHash, input.createdAtMs)
     return artifact
   }
 }

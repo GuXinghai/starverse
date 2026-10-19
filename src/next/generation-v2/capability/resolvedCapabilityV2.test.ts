@@ -89,6 +89,19 @@ function runtimeRecord(overrides: Readonly<Record<string, unknown>> = {}) {
 }
 
 describe('ResolvedCapabilityV2', () => {
+  it('allows an unsupported feature to stay disabled while rejecting attempts to enable it', () => {
+    const record = draft()
+    record.evidence.push({ ...record.evidence[0]!, evidenceId: 'capability.test.rejects', effect: 'rejects' })
+    const mode = record.fields.find(field => field.path === 'reasoning.mode')!
+    mode.state = 'unsupported'; delete mode.domain; mode.evidenceIds = ['capability.test.rejects']
+    const capability = canonicalizeResolvedCapabilityV2(record)
+    expect(() => validateSemanticIntentAgainstResolvedCapabilityV2(capability,
+      decodeGenerationIntentLayerV2({ schemaVersion: 2, reasoning: { mode: 'disabled' } }))).not.toThrow()
+    expect(() => validateSemanticIntentAgainstResolvedCapabilityV2(capability,
+      decodeGenerationIntentLayerV2({ schemaVersion: 2, reasoning: { mode: 'enabled' } })))
+      .toThrow('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
+  })
+
   it('has a deterministic base revision independent of timestamps and command tools', () => {
     const first = canonicalizeResolvedCapabilityV2(draft())
     const changedEvidence = draft()

@@ -23,13 +23,18 @@ type AttachmentSemanticFieldV2 = AttachmentIntentV2 extends infer Attachment
 type ModelCapabilityRequiredSemanticPathV2 =
   | `generation.${Extract<keyof SamplingIntentV2, string>}`
   | `reasoning.${Extract<keyof Extract<ReasoningIntentV2, { mode: 'enabled' }>, string>}`
-  | `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`
+  | Exclude<`web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`, 'web.searchPrompt'>
   | `image.${Extract<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, string>}`
   | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
   | `attachments[].${AttachmentSemanticFieldV2}`
   | 'providerExtension.kind'
   | 'providerExtension.responseFormat'
   | `providerExtension.${ProviderExtensionSemanticFieldV2}`
+
+/** Request text is retained in raw intent for Rule evaluation, but is not a model capability fact. */
+export const MODEL_CAPABILITY_RAW_ONLY_SEMANTIC_PATHS_V2 = Object.freeze([
+  'web.searchPrompt',
+] as const satisfies readonly `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`[])
 
 /**
  * Canonical semantic vocabulary for model capability facts.  The vocabulary
@@ -132,7 +137,7 @@ export type ModelCapabilityDomainV2 =
   | Readonly<{ kind: 'enum'; values: readonly ModelCapabilityScalarV2[] }>
   | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
   | Readonly<{ kind: 'enum_list'; values: readonly ModelCapabilityScalarV2[]; maxItems: number }>
-  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean; excludedValues?: readonly number[] }>
+  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean; includedValues?: readonly number[]; excludedValues?: readonly number[] }>
   | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
   | Readonly<{ kind: 'identity_list'; maxItems: number }>
   | Readonly<{ kind: 'approximate_location'; maxFieldLength: number }>
@@ -152,6 +157,8 @@ export type ModelCapabilityConstraintV2 = Readonly<{
   kind: 'requires_value' | 'forbids_value'
   path: ModelCapabilitySemanticPathV2
   values: readonly ModelCapabilityScalarV2[]
+  /** Restrict this constraint to these values of the field that owns it. */
+  whenValues?: readonly ModelCapabilityScalarV2[]
 }>
 
 export type ModelCapabilityEvidenceKindV2 =

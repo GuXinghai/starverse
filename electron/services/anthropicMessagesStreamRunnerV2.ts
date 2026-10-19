@@ -1,3 +1,5 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
+import type { InterruptedNativeSnapshotV1 } from '../../src/core/generation-v2/providers/interruptedReplayV1'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -30,6 +32,14 @@ import {
 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 const MAX_WIRE_BYTES = 64 * 1_024 * 1_024
 
@@ -79,6 +89,34 @@ function failureMessage(error: unknown): string {
     : 'Anthropic generation failed.'
 }
 
+function normalizeAnthropicTerminalSnapshot(value: unknown): AnthropicProviderNativeSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_RESPONSE_INVALID')
+  }
+  const snapshot = value as Record<string, unknown>
+  const usage = snapshot.usage
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage) || Object.getPrototypeOf(usage) !== Object.prototype) {
+    throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_RESPONSE_INVALID')
+  }
+  // The Messages SSE terminal delta commonly sends only output_tokens. Store a
+  // closed, complete provider snapshot so restart materialization uses the same
+  // strict native artifact codec as the live path.
+  const rawUsage = usage as Record<string, unknown>
+  const completeUsage = Object.freeze({
+    ...rawUsage,
+    cache_creation: rawUsage.cache_creation ?? null,
+    cache_creation_input_tokens: rawUsage.cache_creation_input_tokens ?? null,
+    cache_read_input_tokens: rawUsage.cache_read_input_tokens ?? null,
+    inference_geo: rawUsage.inference_geo ?? null,
+    output_tokens_details: rawUsage.output_tokens_details ?? null,
+    server_tool_use: rawUsage.server_tool_use ?? null,
+    service_tier: rawUsage.service_tier ?? null,
+  })
+  const normalized = Object.freeze({ ...snapshot, usage: completeUsage }) as AnthropicProviderNativeSnapshot
+  createAnthropicNativeHistoryArtifactV1(normalized)
+  return normalized
+}
+
 export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
@@ -118,6 +156,20 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
         throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_AUTHORITY_INVALID')
       }
     })
+  }
+
+  const interruptedSnapshots = new WeakMap<GenerationTextCommandResultV2, InterruptedNativeSnapshotV1>()
+  function persistInterrupted(context: Parameters<GenerationInterruptedReplayV2Repo['insert']>[0], command: GenerationTextCommandResultV2) {
+    const native = interruptedSnapshots.get(command)
+    if (!native) return
+    const bytes = command.preparedRequest.body.copyBytes()
+    try {
+      new GenerationInterruptedReplayV2Repo(input.db).insert(context, {
+        answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence, protocol: 'anthropic',
+        requestBody: JSON.parse(new TextDecoder().decode(bytes)), native,
+      })
+    } finally { bytes.fill(0) }
   }
 
   function finalize(
@@ -169,11 +221,14 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
           }, at)
           historyRepo.insertRequestTerminalArtifact(context, terminalExecution, terminalRequest, artifact, at)
         }
+        if (resultState === 'awaiting_tool') persistInterrupted(context, command)
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
+        persistInterrupted(context, command)
       }
     })
+    interruptedSnapshots.delete(command)
     const terminal = Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
@@ -242,10 +297,12 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
         }
         accept(stream.push(item.value))
       }
-      const snapshot = stream.finish()
+      const snapshot = normalizeAnthropicTerminalSnapshot(stream.finish())
+      persistGenerationNativeCompletionReceiptV2(input.db, command, snapshot, nowMs())
       completed = true
       return snapshot
     } finally {
+      interruptedSnapshots.set(command, stream.interruptedSnapshot())
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         if (!completed) {
@@ -255,6 +312,21 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
       }
     }
   }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'anthropic-messages-2023-06-01', (_receipt, command, value) => {
+    const nativeSnapshot = normalizeAnthropicTerminalSnapshot(value)
+    const artifact = createAnthropicNativeHistoryArtifactV1(nativeSnapshot)
+    const items = JSON.parse(JSON.stringify(artifact.assistantMessage.content)) as Readonly<Record<string, unknown>>[]
+    interruptedSnapshots.set(command, Object.freeze({ items: Object.freeze(items),
+      completeIndexes: Object.freeze(items.map((_, index) => index)), text: '', complete: true }))
+    return finalize(command, 'completed', nativeSnapshot, null, null, 'mid_stream')
+  }, (command, value) => {
+    const artifact = createAnthropicNativeHistoryArtifactV1(normalizeAnthropicTerminalSnapshot(value))
+    const tools = command.execution.snapshot.semanticIntent.tools ?? { mode: 'disabled' as const }
+    if (artifact.stopReason === 'tool_use' && tools.mode !== 'enabled') {
+      throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_RESPONSE_INVALID')
+    }
+  })
 
   return Object.freeze({
     run: async (
@@ -339,8 +411,15 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
             })
           }
         }
-        return finalize(command, 'completed', nativeSnapshot, null, null, 'mid_stream')
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command, nativeResult: nativeSnapshot, nowMs,
+          materialize: () => finalize(command, 'completed', nativeSnapshot, null, null, 'mid_stream'),
+        })
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
         const code = cancelled ? 'user_cancelled' : terminalCode(error, scope.timedOut())
         const message = cancelled ? 'Generation cancelled by user.' : failureMessage(error)

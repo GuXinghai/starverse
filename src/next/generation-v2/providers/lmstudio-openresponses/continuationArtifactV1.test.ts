@@ -170,7 +170,11 @@ describe('LM Studio OpenResponses V1 continuation artifact', () => {
   })
 
   it('rejects replay bodies whose escaped serialized bytes exceed the wire limit', () => {
-    const escaping = '\u0000'.repeat(3_500_000)
+    expect(() => buildLmStudioOpenResponsesReplayInputV1({
+      priorArtifact: null,
+      clientItems: [{role: 'user', content: [{type: 'input_text', text: '\u0000'.repeat(3_500_000)}]}],
+    })).not.toThrow()
+    const escaping = '\u0000'.repeat(4 * 1024 * 1024)
     expect(() => buildLmStudioOpenResponsesReplayInputV1({
       priorArtifact: null,
       clientItems: [{ role: 'user', content: [{ type: 'input_text', text: escaping }] }],

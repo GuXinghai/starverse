@@ -236,6 +236,7 @@ export class GenerationConfigV2Repo {
     context: GenerationV2AuthorityTransactionContextV2,
     conversationId: string,
     expectedRevisionSet?: unknown,
+    target?: import('../../../src/core/generation-v2/config/targetThinkingPreferencesV2').ThinkingTargetV2,
   ): ResolvedGenerationConfigAuthorityV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     ConversationGraphV2Identity.create('conversation_id', conversationId)
@@ -258,7 +259,7 @@ export class GenerationConfigV2Repo {
     if (expectedRevisionSet !== undefined) this.assertExpectedRevisionSet(expectedRevisionSet, revisionSet)
     const authority = Object.freeze({
       trust: 'resolved_generation_config_authority' as const,
-      semanticIntent: mergeGenerationConfigLayersV2(facts.map((fact) => fact.semanticLayer)),
+      semanticIntent: mergeGenerationConfigLayersV2(facts.map((fact) => fact.semanticLayer), target),
       revisionSet,
     })
     resolvedAuthorities.add(authority)

@@ -11,7 +11,7 @@ describe('SourcePriorityConfigV1Repo', () => {
     try {
       const repo = new SourcePriorityConfigV1Repo(db, () => 42)
       const initial = repo.get()
-      expect(initial.config.priorities).toEqual({ provider_native: 3, models_dev: 2, capability_rule: 1 })
+      expect(initial.config.priorities).toEqual({ provider_native: 3, models_dev: 1, capability_rule: 2 })
       expect(repo.compareAndSet(initial.config.sourcePriorityConfigRevision, initial.config.priorities))
         .toEqual(initial)
 

@@ -10,6 +10,7 @@ import { MATERIALIZED_CAPABILITY_RULE_COVERAGE_MANIFEST_V1 } from
 import { PROVIDER_AUTHORITY_REGISTRY_REVISION_V1 } from
   '../../../src/core/generation-v2/model-facts/providerAuthorityRegistryV1'
 import { CapabilityRuleCoreV1Repo } from './capabilityRuleCoreV1Repo'
+import { CapabilityRuleCoreV2Repo } from './capabilityRuleCoreV2Repo'
 import {
   CanonicalModelFactSourceV1Repo,
   type CanonicalModelFactStagedSourceResultV1,
@@ -67,16 +68,33 @@ function parseOwnerSnapshots(value: unknown): PreparedCapabilityRuleMaterializat
     if (Object.keys(candidate).sort().join('\0') !== ['ownerId', 'ownership', 'snapshotRevision'].sort().join('\0') ||
         (candidate.ownership !== 'cloud' && candidate.ownership !== 'user') ||
         typeof candidate.ownerId !== 'string') invalid()
+    const revision = candidate.snapshotRevision
+    if (typeof revision !== 'string' ||
+        (!revision.startsWith('capability-rule-owner-snapshot-v1:') &&
+          !revision.startsWith('capability-rule-owner-snapshot-v2:'))) invalid()
     return Object.freeze({ ownership: candidate.ownership, ownerId: candidate.ownerId,
-      snapshotRevision: bounded(candidate.snapshotRevision, 'capability-rule-owner-snapshot-v1:') })
+      snapshotRevision: bounded(revision, revision.startsWith('capability-rule-owner-snapshot-v2:')
+        ? 'capability-rule-owner-snapshot-v2:' : 'capability-rule-owner-snapshot-v1:') })
   }).sort((left, right) => `${left.ownership}\0${left.ownerId}`.localeCompare(
     `${right.ownership}\0${right.ownerId}`, 'en'))
-  if (new Set(entries.map((entry) => `${entry.ownership}\0${entry.ownerId}`)).size !== entries.length) invalid()
-  return Object.freeze(entries)
+  const deduplicated: typeof entries = []
+  for (const entry of entries) {
+    const index = deduplicated.findIndex(current => current.ownership === entry.ownership && current.ownerId === entry.ownerId)
+    if (index < 0) deduplicated.push(entry)
+    else {
+      const current = deduplicated[index]!
+      const currentIsV2 = current.snapshotRevision.startsWith('capability-rule-owner-snapshot-v2:')
+      const entryIsV2 = entry.snapshotRevision.startsWith('capability-rule-owner-snapshot-v2:')
+      if (currentIsV2 === entryIsV2) invalid()
+      if (entryIsV2) deduplicated[index] = entry
+    }
+  }
+  return Object.freeze(deduplicated)
 }
 
 export class CapabilityRuleMaterializationV1Repo {
   readonly #ruleRepo: CapabilityRuleCoreV1Repo
+  readonly #ruleV2Repo: CapabilityRuleCoreV2Repo
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
   #savepointSequence = 0
 
@@ -85,6 +103,7 @@ export class CapabilityRuleMaterializationV1Repo {
     private readonly nowMs: () => number = Date.now,
   ) {
     this.#ruleRepo = new CapabilityRuleCoreV1Repo(db, nowMs)
+    this.#ruleV2Repo = new CapabilityRuleCoreV2Repo(db, nowMs)
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
   }
 
@@ -144,11 +163,19 @@ export class CapabilityRuleMaterializationV1Repo {
         throw new CapabilityRuleMaterializationV1RepoError(
           'GENERATION_V2_CAPABILITY_RULE_MATERIALIZATION_STAGE_STALE')
       }
-      const currentOwnerSnapshots = this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => Object.freeze({
+      const currentOwnerSnapshotsV1 = this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => Object.freeze({
         ownership: snapshot.projected.definition.ownership,
         ownerId: snapshot.projected.definition.ownerId,
         snapshotRevision: snapshot.projected.snapshotRevision,
       }))
+      const currentOwnerSnapshotsV2 = this.#ruleV2Repo.listOwnershipSnapshots().map((snapshot) => Object.freeze({
+        ownership: snapshot.projected.definition.ownership,
+        ownerId: snapshot.projected.definition.ownerId,
+        snapshotRevision: snapshot.projected.snapshotRevision,
+      }))
+      const currentOwnerSnapshots = parseOwnerSnapshots(stableSerializeProviderRequestV2([
+        ...currentOwnerSnapshotsV1, ...currentOwnerSnapshotsV2,
+      ]))
       if (stableSerializeProviderRequestV2(currentOwnerSnapshots) !== serializedOwnerSnapshots) {
         throw new CapabilityRuleMaterializationV1RepoError(
           'GENERATION_V2_CAPABILITY_RULE_MATERIALIZATION_STAGE_STALE')

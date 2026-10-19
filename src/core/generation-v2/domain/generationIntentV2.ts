@@ -21,8 +21,48 @@ export type SamplingIntentV2 = Readonly<{
   repetitionPenalty?: number
 }>
 
+export const REQUESTED_PARAMETER_KEYS_V2 = [
+  'temperature', 'topP', 'topK', 'minP', 'topA', 'frequencyPenalty', 'presencePenalty',
+  'repetitionPenalty', 'seed', 'maxOutputTokens', 'stopSequences', 'reasoningEffort',
+  'reasoningSummary', 'thinkingEnabled', 'thinkingBudget', 'thinkingLevel', 'includeThoughts',
+  'thoughtSummaryMode', 'googleSearch', 'imageSearch', 'verbosity',
+] as const
+
+export type RequestedParameterKeyV2 = typeof REQUESTED_PARAMETER_KEYS_V2[number]
+export type RequestedParameterSourceV2 = 'conversation' | 'project' | 'global'
+export type RequestedParameterValueByKeyV2 = Readonly<{
+  temperature: number
+  topP: number
+  topK: number
+  minP: number
+  topA: number
+  frequencyPenalty: number
+  presencePenalty: number
+  repetitionPenalty: number
+  seed: number
+  maxOutputTokens: number
+  stopSequences: readonly string[]
+  reasoningEffort: string
+  reasoningSummary: string
+  thinkingEnabled: boolean
+  thinkingBudget: number
+  thinkingLevel: string
+  includeThoughts: boolean
+  thoughtSummaryMode: string
+  googleSearch: boolean
+  imageSearch: boolean
+  verbosity: string
+}>
+export type RequestedParameterEntryV2<K extends RequestedParameterKeyV2 = RequestedParameterKeyV2> = Readonly<
+  | { mode: 'custom'; value: RequestedParameterValueByKeyV2[K]; source?: RequestedParameterSourceV2 }
+  | { mode: 'omit'; source?: RequestedParameterSourceV2 }
+>
+export type RequestedParametersV2 = Readonly<{
+  [K in RequestedParameterKeyV2]?: RequestedParameterEntryV2<K>
+}>
+
 export type ReasoningIntentV2 =
-  | Readonly<{ mode: 'disabled' }>
+  | Readonly<{ mode: 'disabled'; effort?: string }>
   | Readonly<{
       mode: 'enabled'
       effort?: string
@@ -31,10 +71,11 @@ export type ReasoningIntentV2 =
     }>
 
 export type WebSearchIntentV2 =
-  | Readonly<{ mode: 'disabled' }>
+  | Readonly<{ mode: 'disabled'; searchPrompt?: string }>
   | Readonly<{
       mode: 'provider_search'
       types: readonly ('web' | 'image')[]
+      searchPrompt?: string
       engine?: 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity'
       maxResults?: number
       maxTotalResults?: number
@@ -111,6 +152,8 @@ export type UrlReferenceAttachmentIntentV2 = Readonly<{
 
 export type AttachmentIntentV2 = ManagedFileAttachmentIntentV2 | UrlReferenceAttachmentIntentV2
 
+export type AnthropicThinkingModeV2 = 'model_recommended' | 'provider_default' | 'adaptive' | 'manual' | 'disabled'
+
 /**
  * A provider-file binding is an immutable server-side handle to a managed
  * revision.  It is needed both for a file selected as-is and for the PDF
@@ -128,6 +171,7 @@ export function requiresProviderFileBindingV2(
 }
 
 export type ProviderSemanticExtensionV2 =
+  | Readonly<{ kind: 'gemini_interactions'; thinkingLevel?: string }>
   | Readonly<{ kind: 'none' }>
   | Readonly<{
       kind: 'openrouter_chat'
@@ -147,13 +191,13 @@ export type ProviderSemanticExtensionV2 =
   | Readonly<{
       kind: 'anthropic_messages'
       thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
-      thinkingMode: 'model_recommended' | 'adaptive'
+      thinkingMode: Exclude<AnthropicThinkingModeV2, 'manual'>
       manualThinkingBudgetTokens?: never
     }>
   | Readonly<{
       kind: 'anthropic_messages'
       thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
-      thinkingMode: 'manual'
+      thinkingMode: Extract<AnthropicThinkingModeV2, 'manual'>
       manualThinkingBudgetTokens: number
     }>
   | Readonly<{
@@ -202,6 +246,7 @@ export type GenerationIntentLayerV2 = Readonly<{
   tools?: ToolPolicyIntentV2
   attachments?: readonly AttachmentIntentV2[]
   providerExtension?: ProviderSemanticExtensionV2
+  requestedParameters?: RequestedParametersV2
 }>
 
 export class GenerationIntentV2Error extends Error {
@@ -422,11 +467,67 @@ function decodeSampling(value: unknown): SamplingIntentV2 {
   })
 }
 
+function decodeRequestedParameters(value: unknown): RequestedParametersV2 {
+  const keys = [...REQUESTED_PARAMETER_KEYS_V2]
+  const input = closedObject(value, keys)
+  const result: Record<string, unknown> = {}
+  const integerKeys = new Set<RequestedParameterKeyV2>(['topK', 'seed', 'maxOutputTokens', 'thinkingBudget'])
+  const booleanKeys = new Set<RequestedParameterKeyV2>(['thinkingEnabled', 'includeThoughts', 'googleSearch', 'imageSearch'])
+  const stringKeys = new Set<RequestedParameterKeyV2>([
+    'reasoningEffort', 'reasoningSummary', 'thinkingLevel', 'thoughtSummaryMode', 'verbosity',
+  ])
+
+  for (const key of REQUESTED_PARAMETER_KEYS_V2) {
+    if (!Object.hasOwn(input, key)) continue
+    const entry = closedObject(input[key], ['mode', 'value', 'source'])
+    const source = optionalEnum(entry, 'source', ['conversation', 'project', 'global'])
+    if (entry.mode === 'omit') {
+      if (Object.keys(entry).some(field => field !== 'mode' && field !== 'source')) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      result[key] = Object.freeze({ mode: 'omit', ...(source === undefined ? {} : { source }) })
+      continue
+    }
+    if (entry.mode !== 'custom' || !Object.hasOwn(entry, 'value')) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+
+    const raw = entry.value
+    let decoded: unknown
+    if (key === 'stopSequences') {
+      const values = closedDenseArray(raw)
+      if (values.some(item => typeof item !== 'string' || item.length === 0 || item.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      if (new Set(values).size !== values.length) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_DUPLICATE_VALUE')
+      decoded = Object.freeze([...values])
+    } else if (booleanKeys.has(key)) {
+      if (typeof raw !== 'boolean') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      decoded = raw
+    } else if (stringKeys.has(key)) {
+      if (typeof raw !== 'string' || raw.length === 0 || raw.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 || /[\u0000-\u001f\u007f]/u.test(raw)) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      decoded = raw
+    } else {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || integerKeys.has(key) && !Number.isSafeInteger(raw)) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      if (key === 'thinkingBudget' && raw < -1 || key === 'maxOutputTokens' && raw < 1 || key === 'topK' && raw < 0) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      decoded = raw
+    }
+    result[key] = Object.freeze({ mode: 'custom', value: decoded, ...(source === undefined ? {} : { source }) })
+  }
+  return Object.freeze(result) as RequestedParametersV2
+}
+
 function decodeReasoning(value: unknown): ReasoningIntentV2 {
   const input = closedObject(value, ['mode', 'effort', 'summary', 'exclude'])
   if (input.mode === 'disabled') {
-    if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
-    return Object.freeze({ mode: 'disabled' })
+    if (Object.keys(input).some(key => key !== 'mode' && key !== 'effort')) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    return compact({ mode: 'disabled' as const, effort: optionalBoundedString(input, 'effort') })
   }
   if (input.mode !== 'enabled') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   if (input.exclude !== undefined && typeof input.exclude !== 'boolean') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
@@ -441,11 +542,12 @@ function decodeReasoning(value: unknown): ReasoningIntentV2 {
 function decodeWeb(value: unknown): WebSearchIntentV2 {
   const input = closedObject(value, [
     'mode', 'types', 'engine', 'maxResults', 'maxTotalResults', 'searchContextSize',
-    'maxCharacters', 'userLocation', 'allowedDomains', 'excludedDomains',
+    'maxCharacters', 'userLocation', 'allowedDomains', 'excludedDomains', 'searchPrompt',
   ])
+  const searchPrompt = optionalBoundedString(input, 'searchPrompt')
   if (input.mode === 'disabled') {
-    if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
-    return Object.freeze({ mode: 'disabled' })
+    if (Object.keys(input).some(key => key !== 'mode' && key !== 'searchPrompt')) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    return compact({ mode: 'disabled' as const, searchPrompt })
   }
   const inputTypes = input.types === undefined ? [] : closedDenseArray(input.types)
   if (input.mode !== 'provider_search' || inputTypes.length === 0 ||
@@ -489,6 +591,7 @@ function decodeWeb(value: unknown): WebSearchIntentV2 {
   return compact({
     mode: 'provider_search' as const,
     types: Object.freeze(types),
+    searchPrompt,
     engine: optionalEnum(input, 'engine', ['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity']),
     maxResults,
     maxTotalResults,
@@ -644,6 +747,11 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     'thinkingDisplay', 'thinkingMode', 'manualThinkingBudgetTokens',
     'thinkingLevel', 'thinkingBudget', 'includeThoughts', 'responseFormat',
   ])
+  if (input.kind === 'gemini_interactions') {
+    if (Object.keys(input).some(key => !['kind', 'thinkingLevel'].includes(key))) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    const thinkingLevel = optionalBoundedString(input, 'thinkingLevel')
+    return Object.freeze({ kind: 'gemini_interactions', ...(thinkingLevel === undefined ? {} : { thinkingLevel }) })
+  }
   if (input.kind === 'none') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ kind: 'none' })
@@ -680,7 +788,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     }) as ProviderSemanticExtensionV2
   }
   if (input.kind === 'anthropic_messages') {
-    const thinkingMode = optionalEnum(input, 'thinkingMode', ['model_recommended', 'manual', 'adaptive'])
+    const thinkingMode = optionalEnum(input, 'thinkingMode', ['model_recommended', 'provider_default', 'manual', 'adaptive', 'disabled'])
     const manualThinkingBudgetTokens = optionalPositiveInteger(input, 'manualThinkingBudgetTokens')
     const hasExpectedKeys = thinkingMode === 'manual'
       ? Object.keys(input).length === 4 && manualThinkingBudgetTokens !== undefined
@@ -740,7 +848,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
 }
 
 export function decodeGenerationIntentLayerV2(value: unknown): GenerationIntentLayerV2 {
-  const input = closedObject(value, ['schemaVersion', 'generation', 'reasoning', 'web', 'image', 'tools', 'attachments', 'providerExtension'])
+  const input = closedObject(value, ['schemaVersion', 'generation', 'reasoning', 'web', 'image', 'tools', 'attachments', 'providerExtension', 'requestedParameters'])
   if (input.schemaVersion !== 2) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   const attachments = input.attachments === undefined ? undefined : (() => {
     const values = closedDenseArray(input.attachments).map(decodeAttachment)
@@ -759,5 +867,6 @@ export function decodeGenerationIntentLayerV2(value: unknown): GenerationIntentL
     tools: input.tools === undefined ? undefined : decodeTools(input.tools),
     attachments,
     providerExtension: input.providerExtension === undefined ? undefined : decodeProviderExtension(input.providerExtension),
+    requestedParameters: input.requestedParameters === undefined ? undefined : decodeRequestedParameters(input.requestedParameters),
   })
 }

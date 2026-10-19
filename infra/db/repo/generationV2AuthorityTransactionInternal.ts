@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { withRequestAdaptationScopeV2 } from '../../../src/core/generation-v2/compiler/requestAdaptationV2'
 
 export type GenerationV2AuthorityTransactionContextV2 = Readonly<{
   trust: 'generation_v2_authority_transaction_context'
@@ -139,12 +140,14 @@ export function runGenerationV2AuthorityTransactionOnOwnedConnectionV2<T>(
   const transaction = db.transaction(() => {
     state.active = true
     try {
-      const result = use(context)
-      if (hasThenMember(result)) {
-        throw new GenerationV2AuthorityTransactionError('GENERATION_V2_AUTHORITY_TRANSACTION_ASYNC_CALLBACK')
-      }
-      for (const participant of state.participants) participant.preCommit()
-      return result
+      return withRequestAdaptationScopeV2(() => {
+        const result = use(context)
+        if (hasThenMember(result)) {
+          throw new GenerationV2AuthorityTransactionError('GENERATION_V2_AUTHORITY_TRANSACTION_ASYNC_CALLBACK')
+        }
+        for (const participant of state.participants) participant.preCommit()
+        return result
+      })
     } finally {
       state.active = false
     }

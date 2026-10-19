@@ -6,6 +6,7 @@ import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import {
   CLOUD_RULES_RELEASE_ASSET_NAME_V1,
   computeCloudRulesContentRevisionV1,
+  computeCloudRulesContentRevisionV2,
   validateCloudRulesReleasePublicationV1,
 } from '../../src/core/generation-v2/capability-rules/cloudRulesReleaseV1'
 import { buildAuthoritativeModelSubjectSetV1 } from
@@ -18,6 +19,8 @@ import {
 } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import { CapabilityRuleCoreV1Repo } from '../../infra/db/repo/capabilityRuleCoreV1Repo'
+import { CapabilityRuleCoreV2Repo } from '../../infra/db/repo/capabilityRuleCoreV2Repo'
+import { readGenerationRequestRulesV2 } from '../../infra/db/repo/generationRequestRulesV2Repo'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import { CAPABILITY_RULE_MATERIALIZATION_RULE_STORE_ID_V1 } from
   './capabilityRuleMaterializationSchedulerV1Service'
@@ -66,12 +69,57 @@ function candidate(version: string, configured: 'default' | 'on' | 'off' = 'defa
     rawAssetSha256: createHash('sha256').update(version).digest('hex'), fetchedAtMs: 10 })
 }
 
+function candidateV2(version: string) {
+  const packs = [{ schemaVersion: 2, packId: 'pack.reasoning', displayName: 'Reasoning',
+    description: null, priority: 5, mode: 'no_control', target: 'enabled', rules: [{
+      ruleId: 'rule.reasoning-v2', label: null, description: null, priority: 8, configured: 'default',
+      providerAuthorityId: 'openai', endpointProfileId: 'openai-default',
+      selector: { kind: 'exact', nativeModelIds: ['gpt-test'] }, evidence: null,
+      category: 'reasoning', when: { kind: 'eq', path: 'target.protocolContractId', value: 'openai-models-v1' },
+      effect: { kind: 'registered_operation', operationId: 'reasoning_openai',
+        parameters: { samplingBehavior: 'preserve' } },
+      decisionKey: 'reasoning.effort', dependencies: [],
+    }] }]
+  const publication = validateCloudRulesReleasePublicationV1({ release: {
+    id: Number(version.replaceAll('.', '')) + 300, tag_name: `cloud-rules-schema2-v${version}`,
+    html_url: `https://github.com/GuXinghai/starverse/releases/tag/cloud-rules-schema2-v${version}`,
+    name: version, body: null, draft: false, prerelease: false,
+    published_at: '2026-09-21T00:00:00.000Z', assets: [{ id: 400,
+      name: CLOUD_RULES_RELEASE_ASSET_NAME_V1, state: 'uploaded',
+      url: 'https://api.github.com/repos/GuXinghai/starverse/releases/assets/400',
+      browser_download_url: 'https://github.com/GuXinghai/starverse/releases/download/x/y',
+      size: 100, digest: null }],
+  }, document: { schemaVersion: 2, releaseVersion: version,
+    contentRevision: computeCloudRulesContentRevisionV2(packs), packs } })
+  return prepareCloudRulesCandidateV1({ publication,
+    rawAssetSha256: createHash('sha256').update(version).digest('hex'), fetchedAtMs: 10 })
+}
+
 function publish(db: BetterSqlite3.Database, prepared: ReturnType<typeof candidate>, checkedAtMs: number) {
   return new CloudRulesDistributionV1Repo(db, () => checkedAtMs)
     .publishSuccessfulCheck({ checkedAtMs, candidate: prepared })
 }
 
 describe('CloudRulesApplicationV1Service', () => {
+  it('applies, indexes, and round-trips a V2 Cloud release with exact subject binding', async () => {
+    const db = database()
+    try {
+      const prepared = candidateV2('2.0.0')
+      publish(db, prepared, 10)
+      const subjects = subjectSet()
+      const service = new CloudRulesApplicationV1Service(db, { readCurrent: async () => subjects }, () => 20)
+      const result = await service.applyBootstrapCandidate()
+      expect(result?.applied.document.schemaVersion).toBe(2)
+      expect(new CapabilityRuleCoreV2Repo(db).readOwnershipSnapshot({ ownership: 'cloud', ownerId: 'official' })
+        ?.projected.definition.packs[0]!.rules[0]!.effect.kind).toBe('registered_operation')
+      expect(new CapabilityRuleCoreV1Repo(db).readOwnershipSnapshot({ ownership: 'cloud', ownerId: 'official' }))
+        .toBeNull()
+      expect(readGenerationRequestRulesV2(db, { providerAuthorityId: 'openai',
+        endpointProfileId: 'openai-default', nativeModelId: 'gpt-test' }).rules[0]?.definition.ruleId)
+        .toBe('rule.reasoning-v2')
+    } finally { db.close() }
+  })
+
   it('signals actual committed bootstrap once, skips the null result, and preserves success when delivery throws', async () => {
     const db = database()
     try {

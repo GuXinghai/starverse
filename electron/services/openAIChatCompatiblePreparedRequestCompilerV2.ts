@@ -4,11 +4,12 @@ import { isOpenAIChatCompatibleRequestHistoryFactForContextV2, type OpenAIChatCo
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
-import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
+import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2, type PreparedProviderRequestWireValueAssertionV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
 import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
 import { ImmutablePreparedBodyV2 } from '../../src/core/generation-v2/compiler/stableSerialize'
 import { buildCompatibleChatRequest, type CompatibleRequestFieldSettings } from '../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import { validateApiRequestBodyV2 } from '../../src/core/generation-v2/contracts/apiRequestBodyContractV2'
 import type { CompatibleJsonValue, CompatibleReasoningControlState } from '../../src/shared/provider/openai-chat-compatible/request/messageTypes'
 import { compatibleAuthDescriptorSchema, compatibleInlinePolicyConfigSchema, compatibleReasoningMappingConfigSchema, compatibleRequestFieldMappingConfigSchema, compatibleRequestProfileConfigSchema, compatibleResponseProfileConfigSchema } from '../../src/shared/provider/openai-chat-compatible/schemas'
 import { readOpenAIChatCompatibleChatEndpointV2 } from '../../src/core/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
@@ -47,7 +48,7 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const binding = snapshot.providerBinding
   const provenance = snapshot.providerConfiguration
   if (binding.providerId.value !== 'openai_compatible' || binding.protocolContractId.value !== 'openai_chat_compatible' ||
@@ -99,9 +100,17 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     encodingKind: 'identity' | 'structural' | 'omitted'
     evidence: string
   }>
+  const identityWireAssertions: PreparedProviderRequestWireValueAssertionV2[] = []
+  const nativeFieldForMapping = (sourceField: 'reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget'): string | null => {
+    const targetPath = requestMappings.find((mapping) => mapping.sourceField === sourceField)?.targetPath
+    if (!targetPath) return null
+    return `compat:${targetPath.map((segment) => typeof segment === 'number' ? `[${segment}]` : encodeURIComponent(segment)).join('/')}`
+  }
   const setField = (key: keyof CompatibleRequestFieldSettings, path: string, value: CompatibleJsonValue) => {
     fields[key] = { state: 'explicit', value } as CompatibleRequestFieldSettings[typeof key]
-    ledgerEntries.push({ kind: 'consumed', path, disposition: 'encoded', nativeField: String(key), encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+    const nativeField = String(key)
+    ledgerEntries.push({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+    identityWireAssertions.push({ semanticPath: path, nativeField, value })
   }
   const generation = snapshot.semanticIntent.generation
   if (generation.maxOutputTokens !== undefined) setField('max_tokens', 'generation.maxOutputTokens', generation.maxOutputTokens)
@@ -121,11 +130,14 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
           reasoning_effort: { state: 'explicit' as const, value: snapshot.semanticIntent.reasoning.effort },
         }),
       })
+  const reasoningEnabledPath = nativeFieldForMapping('reasoning_enabled')
   ledgerEntries.push(snapshot.semanticIntent.reasoning.mode === 'disabled'
-    ? { kind: 'consumed', path: 'reasoning.mode', disposition: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'encoded' : 'accepted_no_wire', nativeField: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'reasoning_enabled' : null, encodingKind: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'structural' : 'omitted', evidence: 'openai_chat_compatible' }
-    : { kind: 'consumed', path: 'reasoning.mode', disposition: 'encoded', nativeField: 'reasoning_enabled', encodingKind: 'structural', evidence: 'openai_chat_compatible' })
+    ? { kind: 'consumed', path: 'reasoning.mode', disposition: reasoningEnabledPath ? 'encoded' : 'accepted_no_wire', nativeField: reasoningEnabledPath, encodingKind: reasoningEnabledPath ? 'structural' : 'omitted', evidence: 'openai_chat_compatible' }
+    : { kind: 'consumed', path: 'reasoning.mode', disposition: 'encoded', nativeField: reasoningEnabledPath ?? 'reasoning_enabled', encodingKind: 'structural', evidence: 'openai_chat_compatible' })
   if (snapshot.semanticIntent.reasoning.mode === 'enabled' && snapshot.semanticIntent.reasoning.effort !== undefined) {
-    ledgerEntries.push({ kind: 'consumed', path: 'reasoning.effort', disposition: 'encoded', nativeField: 'reasoning_effort', encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+    const nativeField = nativeFieldForMapping('reasoning_effort') ?? 'reasoning_effort'
+    ledgerEntries.push({ kind: 'consumed', path: 'reasoning.effort', disposition: 'encoded', nativeField, encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+    identityWireAssertions.push({ semanticPath: 'reasoning.effort', nativeField, value: snapshot.semanticIntent.reasoning.effort })
   }
   const semantic = { fields, reasoningControls, ledgerEntries }
   let built: ReturnType<typeof buildCompatibleChatRequest>
@@ -133,7 +145,10 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     built = buildCompatibleChatRequest({ modelId: binding.modelId.value, messages: input.history.replayMessages, stream: true,
       profile: requestProfile, fields: semantic.fields, reasoningControls: semantic.reasoningControls,
       requestMappings, ...(provenance.extraBody === null ? {} : { extraBody: provenance.extraBody as never }),
-      historyReasoningReplay: { policy: reasoningMapping.replay, entries: input.history.reasoningReplay } })
+      historyReasoningReplay: { policy: reasoningMapping.replay, entries: input.history.reasoningReplay } },
+      binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
+    validateApiRequestBodyV2(binding.providerId.value, binding.operation, built.body,
+      snapshot.requestPlan?.resolution?.bodySchemaRevision)
   } catch { return fail('GENERATION_V2_OPENAI_COMPATIBLE_COMPILER_CONFIG_INVALID') }
   const mappingEntries = built.diagnostics.map((item) => ({ kind: 'consumed' as const,
     path: `compatible.ownership.${item.path.map(String).join('.')}`, disposition: 'accepted_no_wire' as const,
@@ -147,5 +162,6 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     credentialScopeId: binding.credentialScopeId.value, contractId: 'openai_chat_compatible', modelId: binding.modelId.value,
     effectiveEndpointId: input.endpoint.providerInstanceId, endpoint: readOpenAIChatCompatibleChatEndpointV2(input.endpoint),
     headersPlan, body: ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(built.body, 20 * 1024 * 1024), ledger,
+    requestPlan: snapshot.requestPlan, identitySemanticSource: snapshot.semanticIntent, identityWireAssertions,
     capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

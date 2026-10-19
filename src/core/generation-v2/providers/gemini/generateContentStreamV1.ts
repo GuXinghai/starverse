@@ -1,4 +1,5 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 import {
   decodeGeminiGenerateContentNativeContentV1,
   GeminiGenerateContentNativeHistoryV1Error,
@@ -7,7 +8,7 @@ import {
 } from './generateContentNativeHistoryV1'
 
 export const GEMINI_GENERATE_CONTENT_STREAM_MAX_WIRE_BYTES_V1 = 64 * 1_024 * 1_024
-export const GEMINI_GENERATE_CONTENT_STREAM_MAX_NATIVE_BYTES_V1 = 20 * 1_024 * 1_024
+export const GEMINI_GENERATE_CONTENT_STREAM_MAX_NATIVE_BYTES_V1 = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
 const MAX_PENDING_FRAME_BYTES = 8 * 1_024 * 1_024
 
 export type GeminiGenerateContentVisibleDeltaV1 = Readonly<
@@ -123,6 +124,25 @@ function describeNativeContentShape(value: unknown): Readonly<Record<string, unk
       })
     })),
   })
+}
+
+function decodeGeminiGenerateContentStreamDeltaContentV1(
+  value: unknown,
+): GeminiGenerateContentNativeContentV1 | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new GeminiGenerateContentNativeHistoryV1Error('GENERATION_V2_GEMINI_HISTORY_INVALID')
+  }
+  const input = value as Readonly<Record<string, unknown>>
+  const hasParts = Object.prototype.hasOwnProperty.call(input, 'parts')
+  if (Object.keys(input).some((key) => !['role', 'parts'].includes(key)) || input.role !== 'model') {
+    throw new GeminiGenerateContentNativeHistoryV1Error('GENERATION_V2_GEMINI_HISTORY_INVALID')
+  }
+  if (!hasParts) return undefined
+  if (!Array.isArray(input.parts) || input.parts.length > 1024) {
+    throw new GeminiGenerateContentNativeHistoryV1Error('GENERATION_V2_GEMINI_HISTORY_INVALID')
+  }
+  if (input.parts.length === 0) return undefined
+  return decodeGeminiGenerateContentNativeContentV1(value)
 }
 
 export class GeminiGenerateContentSseDecoderV1 {
@@ -242,9 +262,9 @@ export class GeminiGenerateContentStreamAssemblerV1 {
       }
     }
     if (candidate.content === undefined) return Object.freeze([])
-    let content: GeminiGenerateContentNativeContentV1
+    let content: GeminiGenerateContentNativeContentV1 | undefined
     try {
-      content = decodeGeminiGenerateContentNativeContentV1(candidate.content)
+      content = decodeGeminiGenerateContentStreamDeltaContentV1(candidate.content)
     } catch (error) {
       if (!(error instanceof GeminiGenerateContentNativeHistoryV1Error)) throw error
       return fail('GENERATION_V2_GEMINI_STREAM_INVALID', Object.freeze({
@@ -256,7 +276,7 @@ export class GeminiGenerateContentStreamAssemblerV1 {
         rawChunk: null,
       }))
     }
-    if (content.role !== 'model') return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
+    if (content === undefined) return Object.freeze([])
     const visible: GeminiGenerateContentVisibleDeltaV1[] = []
     for (const part of content.parts) {
       this.#consume(part)
@@ -283,6 +303,12 @@ export class GeminiGenerateContentStreamAssemblerV1 {
       }))
     }
     return Object.freeze(visible)
+  }
+
+  interruptedSnapshot() {
+    return { items: JSON.parse(JSON.stringify(this.#parts)) as Readonly<Record<string, unknown>>[],
+      completeIndexes: this.#parts.map((_, index) => index).filter(index => this.#finishReason !== undefined || 'thoughtSignature' in this.#parts[index]),
+      text: '', complete: this.#finishReason === 'STOP' }
   }
 
   finish(): GeminiGenerateContentStreamResultV1 {
@@ -352,6 +378,8 @@ export class GeminiGenerateContentChatStreamV1 {
   push(bytes: Uint8Array): readonly GeminiGenerateContentVisibleDeltaV1[] {
     return Object.freeze(this.#decoder.push(bytes).flatMap((event) => this.#assembler.push(event)))
   }
+
+  interruptedSnapshot() { return this.#assembler.interruptedSnapshot() }
 
   finish(): GeminiGenerateContentStreamResultV1 {
     for (const event of this.#decoder.finish()) this.#assembler.push(event)

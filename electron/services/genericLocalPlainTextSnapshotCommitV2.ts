@@ -56,7 +56,8 @@ export function commitGenericLocalCurrentSnapshotV2(input: Readonly<{ context: G
   input.capabilityRepo.insertCanonical(input.context, goal3Snapshot.canonicalJson, input.pending.createdAtMs)
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({ schemaVersion: 2,
     answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
-    semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent), resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
+    semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }), resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: projectDecodedProviderBindingRecordV2(binding), capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value,
       evidenceDigest: goal3Snapshot.evidenceDigest.value, semanticFieldsDigest: goal3Snapshot.semanticFieldsDigest.value,
       snapshotHash: goal3Snapshot.snapshotHash.value }, attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' } }))

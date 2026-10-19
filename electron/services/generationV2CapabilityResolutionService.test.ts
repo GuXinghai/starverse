@@ -250,6 +250,37 @@ describe('Generation V2 capability resolution scope', () => {
   })
 
   it.each([
+    ['google_ai_studio', 'gemini-generate-content-v1beta'],
+    ['openai_responses', 'openai-responses-v1'],
+    ['deepseek', 'deepseek-stable-chat-v1'],
+  ] as const)('resolves %s text with structured-output facts without claiming an unimplemented encoder', async (providerKey, protocolId) => {
+    const registry = ProviderCatalogAuthorityRegistryV2.get(providerKey)!
+    const nativeModelId = 'structured-test-model'
+    seedCloudCatalog(db, providerKey, [nativeModelId])
+    const subject = catalogSubjects(providerKey, [nativeModelId])[0]!.subject
+    seedMaterializedCapabilityRulesForTestV1(db, { subjectCandidates: catalogSubjects(providerKey, [nativeModelId]),
+      ownershipSnapshots: [cloudSnapshot([
+        exactRule({ ruleId: 'structured-output-support', ...subject,
+          path: 'structuredOutput.support', value: { kind: 'support', value: 'supported' } }),
+        exactRule({ ruleId: 'temperature-support', ...subject,
+          path: 'sampling.temperature.support', value: { kind: 'support', value: 'supported' } }),
+        exactRule({ ruleId: 'top-p-default', ...subject,
+          path: 'sampling.topP.providerDefault', value: { kind: 'decimal', value: 0.8 } }),
+      ])] })
+    const service = createGenerationV2CapabilityResolutionService({ db, credentialService: cloudCredentialService(),
+      openAICompatibleCredentialService: {} as never })
+    const result = await service.resolve({ providerId: registry.executionProviderId, modelId: nativeModelId,
+      credentialRevision: 1, credentialScopeId: cloudScope, endpointProfileId: registry.endpointProfileId,
+      protocolId, operation: 'text' } as never)
+    expect(result.resolvedCapability.modelFacts.fields.find(field => field.path === 'providerExtension.responseFormat')?.state).toBe('unknown')
+    expect(result.resolvedCapability.modelFacts.fields.find(field => field.path === 'generation.temperature')?.state).toBe('supported')
+    expect(result.resolvedCapability.modelFacts.fields.find(field => field.path === 'generation.topP')?.defaultValue).toBe(0.8)
+    const stored = db.prepare('SELECT resolved_json FROM resolved_model_facts_snapshot_v1 WHERE native_model_id=?').get(nativeModelId) as { resolved_json: string }
+    expect(JSON.parse(stored.resolved_json).fields.find((field: any) => field.path === 'structuredOutput.support').selectedValue)
+      .toEqual({ kind: 'support', value: 'supported' })
+  })
+
+  it.each([
     { providerKey: 'google_ai_studio' as const, providerId: 'google_ai_studio', endpointProfileId: 'gemini-developer-api-v1beta',
       protocolId: 'gemini-generate-content-v1beta', known: 'gemini-3.6-flash', path: 'reasoning.effort',
       expectedDomain: { kind: 'enum', values: ['high', 'low', 'medium', 'minimal'] }, expectedDefault: 'medium' },

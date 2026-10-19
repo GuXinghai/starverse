@@ -80,7 +80,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const toolRegistry = input.toolRegistry ?? null
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace']
         .includes(operation.actionKind) ||
@@ -255,7 +255,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
       })),
       ...(compiledToolChoice === undefined ? {} : { toolChoice: compiledToolChoice }),
     }),
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   if ([...nativeFields.entries()].some(([wireKey, value]) =>
     !equalValue(requestWireValue(compilation.nativeRequest, wireKey), value))) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
@@ -283,6 +283,13 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compilation.preparedBody,
     ledger,
+    requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
+    identityWireAssertions: dispositions.flatMap((disposition) =>
+      disposition.outcome === 'encoded' && disposition.encodingKind === 'identity' &&
+        disposition.wireKey !== undefined && disposition.value !== undefined
+        ? [{ semanticPath: disposition.semanticPath, nativeField: disposition.wireKey, value: disposition.value }]
+        : []),
     capabilityRevision: capability.revision.value,
     encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,

@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { createHash, randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -124,6 +126,8 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
           return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution: raced, projection, preparedRequest,
             request: requests.replayPrepared(context, raced, preparedRequest) }) }
         const pending = pendingForCurrent(context, command, nowMs())
+        const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint, credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
+        const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding, resolvedAt: new Date(pending.createdAtMs).toISOString(), mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
         return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
           projectGenerationCommandAttachmentsV2(command.kind === 'openai_chat_compatible_regenerate' ? readRegenerateSourceAttachmentsV2({ db: input.db, context: context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }) : command.commandAttachments), undefined, (facts) => {
             const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
@@ -143,7 +147,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
               : graph.getGenerationReplayProjectionInTransaction(context, command.operationId.value)
             return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle, projection, preparedRequest,
               request: requests.createPrepared(context, persisted.bundle, preparedRequest) })
-          })
+          }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolvedCapabilityFromRuntimeSnapshotV2(capability), credential.credentialRevision) })
       })
     } catch (error) { const winner = replay(command, action); if (winner) return winner; throw error }
   }

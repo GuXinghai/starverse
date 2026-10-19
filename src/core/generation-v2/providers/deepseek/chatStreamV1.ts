@@ -1,5 +1,6 @@
 import {  } from '@/shared/encoding/binaryEncoding'
-import type { DeepSeekNativeAssistantMessageV1, DeepSeekNativeFunctionToolCallV1 } from './nativeMessagesV1'
+import { decodeDeepSeekNativeMessageV1, type DeepSeekNativeAssistantMessageV1, type DeepSeekNativeFunctionToolCallV1 } from './nativeMessagesV1'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export type DeepSeekStableFinishReasonV1 =
   | 'stop'
@@ -49,7 +50,7 @@ export type DeepSeekStableSseEventV1 =
   | Readonly<{ type: 'done' }>
   | Readonly<{ type: 'comment'; text: string }>
 
-export const DEEPSEEK_STABLE_STREAM_MAX_NATIVE_OUTPUT_BYTES_V1 = 20 * 1_024 * 1_024
+export const DEEPSEEK_STABLE_STREAM_MAX_NATIVE_OUTPUT_BYTES_V1 = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
 export const DEEPSEEK_STABLE_SSE_MAX_PENDING_FRAME_BYTES_V1 = 8 * 1_024 * 1_024
 const SSE_DECODE_SLICE_BYTES = 64 * 1_024
 
@@ -100,6 +101,46 @@ const streamResults = new WeakSet<object>()
 
 export function isDeepSeekStableStreamResultV1(value: unknown): value is DeepSeekStableStreamResultV1 {
   return Boolean(value && typeof value === 'object' && streamResults.has(value))
+}
+
+/** Re-issues a previously parsed terminal result after bounded receipt decoding. */
+export function restoreDeepSeekStableStreamResultV1(value: unknown): DeepSeekStableStreamResultV1 {
+  const input = closedObject(value, [
+    'assistantMessage', 'generatedWithThinking', 'finishReason', 'usage', 'responseMetadata',
+  ], ['assistantMessage', 'generatedWithThinking', 'finishReason', 'usage', 'responseMetadata'], '$')
+  if (input.generatedWithThinking !== 'enabled' && input.generatedWithThinking !== 'disabled' ||
+      typeof input.finishReason !== 'string' || !FINISH_REASONS.has(input.finishReason as DeepSeekStableFinishReasonV1)) {
+    throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
+  }
+  const assistantMessage = decodeDeepSeekNativeMessageV1(input.assistantMessage)
+  if (assistantMessage.role !== 'assistant') throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
+  const usage = decodeUsage(input.usage)
+  if (!usage) throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_TERMINAL_INVALID')
+  const metadata = closedObject(input.responseMetadata, ['id', 'model', 'created', 'systemFingerprint'],
+    ['id', 'model', 'created', 'systemFingerprint'], '$.responseMetadata')
+  if (typeof metadata.id !== 'string' || metadata.id.length === 0 || typeof metadata.model !== 'string' ||
+      metadata.model.length === 0 || typeof metadata.systemFingerprint !== 'string' ||
+      metadata.systemFingerprint.length === 0) {
+    throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
+  }
+  const created = nonNegativeInteger(metadata.created)
+  const toolCalls = assistantMessage.tool_calls ?? []
+  if ((input.finishReason === 'tool_calls') !== (toolCalls.length > 0) ||
+      (input.generatedWithThinking === 'enabled' && toolCalls.length > 0 &&
+        (!assistantMessage.reasoning_content || assistantMessage.reasoning_content.length === 0))) {
+    throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_TERMINAL_INVALID')
+  }
+  const result = Object.freeze({
+    assistantMessage,
+    generatedWithThinking: input.generatedWithThinking,
+    finishReason: input.finishReason as DeepSeekStableFinishReasonV1,
+    usage,
+    responseMetadata: Object.freeze({
+      id: metadata.id, model: metadata.model, created, systemFingerprint: metadata.systemFingerprint,
+    }),
+  })
+  streamResults.add(result)
+  return result
 }
 
 function closedObject(
@@ -358,6 +399,13 @@ export class DeepSeekStableChatStreamAssemblerV1 {
       ...(usage ? { usage } : {}),
     })
     return result
+  }
+
+  interruptedSnapshot() {
+    return { items: [{ role: 'assistant', content: this.#state.content, reasoning_content: this.#state.reasoningContent,
+      tool_calls: JSON.parse(JSON.stringify([...this.#state.toolCalls.entries()])) }],
+      completeIndexes: this.#state.finishReason ? [0] : [], text: this.#state.content,
+      complete: this.#state.finishReason === 'stop' || this.#state.finishReason === 'tool_calls' }
   }
 
   acceptDone(): DeepSeekStableStreamResultV1 {

@@ -17,6 +17,7 @@ import {
 } from '../../infra/db/repo/cloudRulesDistributionV1Repo'
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
 import type { ProviderFetch } from '../net/providerHttpTransport'
+import { classifyProviderHttpTransportDiagnostic } from '../net/providerHttpTransport'
 
 export const CLOUD_RULES_GITHUB_RELEASES_LISTING_URL_V1 =
   `https://api.github.com/repos/${CLOUD_RULES_OFFICIAL_REPOSITORY_V1}/releases?per_page=100&page=1` as const
@@ -24,6 +25,13 @@ export const CLOUD_RULES_RELEASES_API_URL_V1 = CLOUD_RULES_GITHUB_RELEASES_LISTI
 export const CLOUD_RULES_RELEASES_LIST_PAGE_SIZE_V1 = 100 as const
 export const CLOUD_RULES_DEFAULT_REFRESH_CADENCE_MS_V1 = 24 * 60 * 60 * 1_000
 export const CLOUD_RULES_DEFAULT_TIMEOUT_MS_V1 = 30_000
+export const CLOUD_RULES_FAILURE_RETRY_MS_V1 = 60_000
+export type CloudRulesFetchDiagnosticV1 = Readonly<{
+  stage: 'request' | 'response_body' | 'http' | 'validation' | 'application'
+  hostname: string | null
+  code: string
+  httpStatus?: number
+}>
 
 const CLOUD_RULES_RELEASES_LIST_PATH_V1 =
   `/repos/${CLOUD_RULES_OFFICIAL_REPOSITORY_V1}/releases`
@@ -71,7 +79,7 @@ export type CloudRulesCandidateRefreshResultV1 =
   }>
 
 class CloudRulesCandidateRefreshError extends Error {
-  constructor(readonly code: CloudRulesCandidateRefreshFailureCodeV1) {
+  constructor(readonly code: CloudRulesCandidateRefreshFailureCodeV1, readonly diagnostic?: CloudRulesFetchDiagnosticV1) {
     super(code)
     this.name = 'CloudRulesCandidateRefreshError'
   }
@@ -188,12 +196,15 @@ async function fetchFollowingRedirects(input: Readonly<{
         method: 'GET',
         headers,
         redirect: 'manual',
+        credentials: 'omit',
         cache: 'no-store',
         signal: input.signal,
       })
     } catch (error) {
       if (input.signal.aborted) throw error
-      fail('CLOUD_RULES_FETCH_FAILED')
+      throw new CloudRulesCandidateRefreshError('CLOUD_RULES_FETCH_FAILED', {
+        stage: 'request', hostname: current.hostname, code: classifyProviderHttpTransportDiagnostic(error),
+      })
     }
 
     if (response.url) {
@@ -201,6 +212,11 @@ async function fetchFollowingRedirects(input: Readonly<{
       if (responseUrl.href !== currentHref) fail('CLOUD_RULES_REDIRECT_LOCATION_INVALID')
     }
 
+    if (!response.ok && !REDIRECT_STATUSES_V1.has(response.status)) {
+      throw new CloudRulesCandidateRefreshError('CLOUD_RULES_HTTP_INVALID', {
+        stage: 'http', hostname: current.hostname, code: 'HTTP_NON_SUCCESS', httpStatus: response.status,
+      })
+    }
     if (!REDIRECT_STATUSES_V1.has(response.status)) return response
     const location = response.headers.get('location')
     if (location === null || location.trim() === '') fail('CLOUD_RULES_REDIRECT_LOCATION_INVALID')
@@ -221,8 +237,11 @@ async function fetchFollowingRedirects(input: Readonly<{
 async function readResponseBytes(response: Response): Promise<Uint8Array> {
   try {
     return new Uint8Array(await response.arrayBuffer())
-  } catch {
-    fail('CLOUD_RULES_FETCH_FAILED')
+  } catch (error) {
+    throw new CloudRulesCandidateRefreshError('CLOUD_RULES_FETCH_FAILED', {
+      stage: 'response_body', hostname: response.url ? new URL(response.url).hostname : null,
+      code: classifyProviderHttpTransportDiagnostic(error),
+    })
   }
 }
 
@@ -297,6 +316,7 @@ export class CloudRulesCandidateRefreshV1 {
   private activeController: AbortController | null = null
   private scheduledRefresh: ReturnType<typeof setTimeout> | null = null
   private started = false
+  private consecutiveFailures = 0
 
   constructor(private readonly input: Readonly<{
     db: BetterSqlite3.Database
@@ -304,6 +324,8 @@ export class CloudRulesCandidateRefreshV1 {
     nowMs?: () => number
     refreshCadenceMs?: number
     timeoutMs?: number
+    afterSuccessfulCheck?: () => Promise<void>
+    onDiagnostic?: (diagnostic: CloudRulesFetchDiagnosticV1) => void
   }>) {
     this.repo = new CloudRulesDistributionV1Repo(input.db, input.nowMs ?? Date.now)
     this.applicationRepo = new CloudRulesApplicationV1Repo(input.db, input.nowMs ?? Date.now)
@@ -324,10 +346,27 @@ export class CloudRulesCandidateRefreshV1 {
     return this.#refresh(true)
   }
 
+  /** Proxy recovery bypasses the failed check's backoff, while sharing its in-flight request. */
+  networkRecovered(): Promise<CloudRulesCandidateRefreshResultV1> {
+    return this.checkNow()
+  }
+
+  private cadence(state: CloudRulesDistributionStateV1): number {
+    return state.lastFailureCode === null ? this.refreshCadenceMs
+      : Math.min(this.refreshCadenceMs, CLOUD_RULES_FAILURE_RETRY_MS_V1 * 2 ** Math.max(0, Math.min(this.consecutiveFailures - 1, 4)))
+  }
+
+  private async afterSuccessfulCheck(): Promise<void> {
+    try { await this.input.afterSuccessfulCheck?.() }
+    catch (error) { this.input.onDiagnostic?.({ stage: 'application', hostname: null,
+      code: error instanceof Error ? error.message : 'CLOUD_RULES_APPLICATION_FAILED' }) }
+  }
+
   #refresh(force: boolean): Promise<CloudRulesCandidateRefreshResultV1> {
     if (this.inFlight) return this.inFlight
     const promise = this.refreshIfDueOnce(force).finally(() => {
       if (this.inFlight === promise) this.inFlight = null
+      if (this.started) this.scheduleNextRefresh()
     })
     this.inFlight = promise
     return promise
@@ -348,18 +387,14 @@ export class CloudRulesCandidateRefreshV1 {
   }
 
   private async runScheduledRefresh(): Promise<CloudRulesCandidateRefreshResultV1> {
-    try {
-      return await this.refreshIfDue()
-    } finally {
-      if (this.started) this.scheduleNextRefresh()
-    }
+    return this.refreshIfDue()
   }
 
   private scheduleNextRefresh(): void {
     if (this.scheduledRefresh !== null) clearTimeout(this.scheduledRefresh)
     const state = this.repo.readState()
     const now = this.nowMs()
-    const dueAt = (state.lastAttemptedAtMs ?? now) + this.refreshCadenceMs
+    const dueAt = (state.lastAttemptedAtMs ?? now) + this.cadence(state)
     const delay = Math.max(0, dueAt - now)
     this.scheduledRefresh = setTimeout(() => {
       this.scheduledRefresh = null
@@ -371,7 +406,8 @@ export class CloudRulesCandidateRefreshV1 {
     const attemptedAtMs = this.nowMs()
     const current = this.repo.readState()
     if (!force && current.lastAttemptedAtMs !== null &&
-        attemptedAtMs - current.lastAttemptedAtMs < this.refreshCadenceMs) {
+        attemptedAtMs - current.lastAttemptedAtMs < this.cadence(current)) {
+      await this.afterSuccessfulCheck()
       return toSuccess('not_due', current)
     }
 
@@ -386,11 +422,14 @@ export class CloudRulesCandidateRefreshV1 {
     try {
       const release = await this.discoverHighestRelease(controller.signal)
       if (release === null) {
-        return toSuccess('refreshed', this.repo.publishSuccessfulCheck({
+        const state = this.repo.publishSuccessfulCheck({
           checkedAtMs: attemptedAtMs,
           candidate: null,
           suppressCandidate: this.applicationRepo.readPolicy().pin !== null,
-        }))
+        })
+        this.consecutiveFailures = 0
+        await this.afterSuccessfulCheck()
+        return toSuccess('refreshed', state)
       }
 
       const asset = selectCloudRulesReleaseAssetV1(release)
@@ -411,16 +450,22 @@ export class CloudRulesCandidateRefreshV1 {
         rawAssetSha256,
         fetchedAtMs: attemptedAtMs,
       })
-      return toSuccess('refreshed', this.repo.publishSuccessfulCheck({
+      const state = this.repo.publishSuccessfulCheck({
         checkedAtMs: attemptedAtMs,
         candidate,
         suppressCandidate: this.applicationRepo.readPolicy().pin !== null,
         // Same-version repair still goes through the full release/asset/document validation
         // above and the version ledger binding inside publishSuccessfulCheck.
         appliedSnapshotInvalid: this.applicationRepo.readAppliedIntegrity() === 'invalid',
-      }))
+      })
+      this.consecutiveFailures = 0
+      await this.afterSuccessfulCheck()
+      return toSuccess('refreshed', state)
     } catch (error) {
       const code = mapFailureCode(error, controller.signal, timedOut)
+      this.consecutiveFailures++
+      this.input.onDiagnostic?.(error instanceof CloudRulesCandidateRefreshError && error.diagnostic
+        ? error.diagnostic : { stage: 'validation', hostname: null, code })
       try {
         this.repo.recordFailure({ attemptedAtMs, failureCode: code })
       } catch {

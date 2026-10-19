@@ -161,6 +161,32 @@ describe('GenerationCommandFactsAuthorityV2', () => {
     } finally { db.close() }
   })
 
+  it('rejects new raw request fields before the legacy-compatible path when model facts are absent', () => {
+    const db = createDb()
+    try {
+      const configRepo = new GenerationConfigV2Repo(db)
+      const attachmentRepo = new AttachmentAssetV2Repo(db)
+      let calls = 0
+      for (const layer of [
+        { requestedParameters: { temperature: { mode: 'custom', value: 0.5 } } },
+        { web: { mode: 'disabled', searchPrompt: 'search this' } },
+      ]) {
+        const project = configRepo.getScope('project', 'project:1')
+        configRepo.compareAndSetScope('project', 'project:1', project.configRevision.value, {
+          schemaVersion: 2,
+          ...layer,
+        })
+        expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+          withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
+            'conversation:1', [], undefined, () => { calls += 1 }, {
+              operationId: 'operation:raw-request-field', capability: {} as never,
+            }),
+        )).toThrow('GENERATION_V2_COMMAND_FACTS_INVALID')
+      }
+      expect(calls).toBe(0)
+    } finally { db.close() }
+  })
+
   it('fails atomically before bundle exposure when any attachment fact is missing, retired or mismatched', () => {
     const db = createDb()
     try {

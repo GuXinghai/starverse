@@ -3,6 +3,7 @@ import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { readOriginalGenerationAttachmentsV2 } from '../../infra/db/repo/portableGenerationHistoryV2'
 import { ComposerDraftV2Repo } from '../../infra/db/repo/composerDraftV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
@@ -243,7 +244,9 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
         AND answer.answer_root_id=answer.message_id`).get(answerRootId,conversationId,questionId) as {canonicalJson?:unknown}|undefined
     if(!row||typeof row.canonicalJson!=='string')throw new Error('GENERATION_V2_ANSWER_SNAPSHOT_NOT_FOUND')
     const snapshot=decodeAssistantAnswerGenerationSnapshotJsonV2(row.canonicalJson)
-    const attachments=projectAnswerSnapshotAttachmentIntentsV2(snapshot)
+    const attachments=projectAnswerSnapshotAttachmentIntentsV2({ semanticIntent: {
+      ...snapshot.semanticIntent, attachments: readOriginalGenerationAttachmentsV2(input.db,snapshot),
+    } })
     return drafts.openEdit({conversationId,branchId:text(raw.branchId),expectedRevision:revision(raw.expectedRevision),draftText:raw.draftText,
       questionId,answerRootId,attachments})
   }))

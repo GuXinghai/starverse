@@ -47,7 +47,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     )
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const binding = snapshot.providerBinding
   const selector = binding.endpointBinding.kind === 'pinned' ? binding.endpointBinding.selector : null
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
@@ -123,7 +123,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     wireFields,
     ...(intent.image.stream === undefined ? {} : { stream: intent.image.stream }),
     inputReferences,
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = attachmentRequirements.map((requirement, index) => Object.freeze({
     semanticPath: requirement.semanticPath,
     requirement,
@@ -153,6 +153,12 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compiled.preparedBody,
     ledger,
+    requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
+    identityWireAssertions: wireFields.flatMap((field) => {
+      const disposition = dispositions.find((candidate) => candidate.wireKey === field.wireKey && candidate.encodingKind === 'identity')
+      return disposition ? [{ semanticPath: disposition.semanticPath, nativeField: field.wireKey, value: field.value }] : []
+    }),
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,

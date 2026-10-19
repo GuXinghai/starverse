@@ -120,6 +120,40 @@ CREATE INDEX IF NOT EXISTS capability_rule_core_subject_v1
 CREATE INDEX IF NOT EXISTS capability_rule_core_pack_v1
   ON capability_rule_core_v1(ownership, owner_id, pack_id, priority DESC, updated_at_ms DESC, rule_id);
 
+-- Request Rule V2: shared rule persistence and request-bound publication tables.
+-- Rule V2 retains its complete typed definition so predicates and effects can be
+-- decoded and revision checked without projecting them into the V1 assertion row.
+CREATE TABLE IF NOT EXISTS capability_rule_owner_snapshot_v2 (
+  ownership TEXT NOT NULL CHECK (ownership IN ('cloud', 'user')),
+  owner_id TEXT NOT NULL CHECK (
+    length(owner_id) BETWEEN 1 AND 256
+    AND owner_id NOT GLOB '*[^A-Za-z0-9._:/-]*'
+  ),
+  snapshot_revision TEXT NOT NULL CHECK (
+    length(snapshot_revision) BETWEEN 65 AND 128
+    AND snapshot_revision GLOB 'capability-rule-owner-snapshot-v2:*'
+  ),
+  content_digest TEXT NOT NULL CHECK (
+    length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  snapshot_json TEXT NOT NULL CHECK (
+    length(CAST(snapshot_json AS BLOB)) BETWEEN 2 AND 16 * 1024 * 1024
+    AND json_valid(snapshot_json)
+    AND json_type(snapshot_json) = 'object'
+    AND json_extract(snapshot_json, '$.schemaVersion') = 2
+    AND json_extract(snapshot_json, '$.ownership') = ownership
+    AND json_extract(snapshot_json, '$.ownerId') = owner_id
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  PRIMARY KEY (ownership, owner_id),
+  UNIQUE (snapshot_revision),
+  UNIQUE (ownership, owner_id, content_digest)
+);
+
+CREATE INDEX IF NOT EXISTS capability_rule_owner_snapshot_v2_order
+  ON capability_rule_owner_snapshot_v2(ownership, owner_id);
+
 CREATE TRIGGER IF NOT EXISTS capability_rule_owner_snapshot_identity_immutable_v1
 BEFORE UPDATE OF ownership, owner_id ON capability_rule_owner_snapshot_v1
 BEGIN
@@ -429,3 +463,80 @@ CREATE TABLE IF NOT EXISTS user_capability_rule_note_state_v1 (
   note_revision INTEGER NOT NULL CHECK (note_revision >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
 );
+
+-- A separate V2 draft namespace keeps an existing V1 draft readable and intact.
+CREATE TABLE IF NOT EXISTS user_capability_rule_editing_session_v2 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 256),
+  owner_id TEXT NOT NULL CHECK (length(owner_id) BETWEEN 1 AND 256),
+  base_snapshot_revision TEXT,
+  base_content_digest TEXT NOT NULL CHECK (length(base_content_digest) = 64
+    AND base_content_digest NOT GLOB '*[^0-9a-f]*'),
+  draft_revision INTEGER NOT NULL CHECK (draft_revision >= 1),
+  draft_snapshot_revision TEXT NOT NULL CHECK (
+    length(draft_snapshot_revision) BETWEEN 65 AND 128
+    AND draft_snapshot_revision GLOB 'capability-rule-owner-snapshot-v2:*'
+  ),
+  draft_content_digest TEXT NOT NULL CHECK (length(draft_content_digest) = 64
+    AND draft_content_digest NOT GLOB '*[^0-9a-f]*'),
+  draft_snapshot_json TEXT NOT NULL CHECK (
+    length(CAST(draft_snapshot_json AS BLOB)) BETWEEN 2 AND 16 * 1024 * 1024
+    AND json_valid(draft_snapshot_json)
+    AND json_type(draft_snapshot_json) = 'object'
+    AND json_extract(draft_snapshot_json, '$.schemaVersion') = 2
+  ),
+  draft_notes_json TEXT NOT NULL CHECK (
+    length(CAST(draft_notes_json AS BLOB)) BETWEEN 2 AND 4 * 1024 * 1024
+    AND json_valid(draft_notes_json)
+    AND json_type(draft_notes_json) = 'array'
+  ),
+  legacy_v1_source_json TEXT CHECK (
+    legacy_v1_source_json IS NULL OR (
+      length(CAST(legacy_v1_source_json AS BLOB)) BETWEEN 2 AND 65536
+      AND json_valid(legacy_v1_source_json)
+      AND json_type(legacy_v1_source_json) = 'object'
+      AND json_extract(legacy_v1_source_json, '$.schemaVersion') = 1
+    )
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms)
+);
+
+CREATE TABLE IF NOT EXISTS user_capability_rule_note_v2 (
+  owner_id TEXT NOT NULL CHECK (length(owner_id) BETWEEN 1 AND 256),
+  rule_id TEXT NOT NULL CHECK (length(rule_id) BETWEEN 1 AND 256),
+  note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 16384),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  PRIMARY KEY (owner_id, rule_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_capability_rule_note_state_v2 (
+  owner_id TEXT PRIMARY KEY CHECK (length(owner_id) BETWEEN 1 AND 256),
+  note_revision INTEGER NOT NULL CHECK (note_revision >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS generation_request_rule_publication_v2 (
+  publication_revision TEXT PRIMARY KEY,
+  owner_snapshot_revisions_json TEXT NOT NULL CHECK(json_valid(owner_snapshot_revisions_json)),
+  authoritative_subject_set_revision TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL CHECK(created_at_ms >= 0)
+);
+CREATE TABLE IF NOT EXISTS generation_request_rule_subject_v2 (
+  publication_revision TEXT NOT NULL REFERENCES generation_request_rule_publication_v2(publication_revision),
+  provider_authority_id TEXT NOT NULL,
+  endpoint_profile_id TEXT NOT NULL,
+  native_model_id TEXT NOT NULL,
+  bundle_revision TEXT NOT NULL,
+  bundle_json TEXT NOT NULL CHECK(json_valid(bundle_json) AND json_type(bundle_json) = 'object'),
+  PRIMARY KEY(publication_revision, provider_authority_id, endpoint_profile_id, native_model_id)
+);
+CREATE TABLE IF NOT EXISTS generation_request_rule_current_v2 (
+  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+  publication_revision TEXT NOT NULL REFERENCES generation_request_rule_publication_v2(publication_revision)
+);
+CREATE TRIGGER IF NOT EXISTS generation_request_rule_publication_v2_immutable
+BEFORE UPDATE ON generation_request_rule_publication_v2 BEGIN SELECT RAISE(ABORT, 'REQUEST_RULE_PUBLICATION_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS generation_request_rule_subject_v2_immutable
+BEFORE UPDATE ON generation_request_rule_subject_v2 BEGIN SELECT RAISE(ABORT, 'REQUEST_RULE_SUBJECT_IMMUTABLE'); END;

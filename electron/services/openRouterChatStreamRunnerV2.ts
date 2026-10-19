@@ -1,3 +1,5 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
+import type { InterruptedNativeSnapshotV1 } from '../../src/core/generation-v2/providers/interruptedReplayV1'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -5,8 +7,9 @@ import { OpenRouterNativeHistoryV2Repo } from '../../infra/db/repo/openRouterNat
 import { OpenRouterChatTerminalArtifactV2Repo } from '../../infra/db/repo/openRouterChatTerminalArtifactV2Repo'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
-import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2, type GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { readBoundedResponseBodyV2 } from '../net/boundedResponseBodyV2'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
@@ -17,13 +20,22 @@ import {
   OpenRouterChatStreamAssemblerV1,
   type OpenRouterChatStreamResultV1,
 } from '../../src/core/generation-v2/providers/openrouter/chatStreamV1'
-import { completeOpenRouterNativeHistoryV1, completeOpenRouterProjectedNativeHistoryV1 } from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
+import { completeOpenRouterNativeHistoryV1, completeOpenRouterProjectedNativeHistoryV1,
+  decodeOpenRouterNativeMessageV1 } from '../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
 import { createOpenRouterChatTerminalArtifactV1 } from '../../src/core/generation-v2/providers/openrouter/terminalArtifactV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { classifyProviderHttpTransportDiagnostic, ProviderHttpTransportError } from '../net/providerHttpTransport'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 
 export function formatOpenRouterChatTransportFailureMessage(error: unknown, responseReceived: boolean): string {
@@ -129,6 +141,81 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
     })
   }
 
+  const interruptedSnapshots = new WeakMap<GenerationTextCommandResultV2, InterruptedNativeSnapshotV1>()
+
+  function completeNativeHistory(
+    context: GenerationV2AuthorityTransactionContextV2,
+    command: GenerationTextCommandResultV2,
+    assistantMessage: unknown,
+  ) {
+    const history = historyRepo.loadPersistedRequestHistory(
+      context, command.preparedRequest.operationId, command.preparedRequest.requestSequence,
+    )
+    const clientMessages = exactClientMessages(
+      command,
+      history.projectedPrefixMessages ?? history.priorArtifact?.orderedMessages ?? [],
+    )
+    return history.projectedPrefixMessages === null
+      ? completeOpenRouterNativeHistoryV1({
+        priorArtifact: history.priorArtifact, clientMessages, assistantMessage,
+      })
+      : completeOpenRouterProjectedNativeHistoryV1({
+        projectedPrefixMessages: history.projectedPrefixMessages, clientMessages, assistantMessage,
+      })
+  }
+
+  function assertOpenRouterCompletionResult(value: unknown): OpenRouterChatStreamResultV1 {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID')
+    }
+    const raw = value as Record<string, unknown>
+    let assistantMessage: Readonly<Record<string, unknown>>
+    try { assistantMessage = decodeOpenRouterNativeMessageV1(raw.assistantMessage) } catch {
+      throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID')
+    }
+    if (assistantMessage.role !== 'assistant' || typeof raw.responseId !== 'string' ||
+        typeof raw.model !== 'string' || typeof raw.finishReason !== 'string' ||
+        (raw.provider !== null && typeof raw.provider !== 'string') ||
+        (raw.usage !== null && (!raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage)))) {
+      throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID')
+    }
+    return Object.freeze({ ...raw, assistantMessage }) as OpenRouterChatStreamResultV1
+  }
+
+  function validateOpenRouterCompletion(
+    command: GenerationTextCommandResultV2,
+    value: unknown,
+  ): OpenRouterChatStreamResultV1 {
+    const result = assertOpenRouterCompletionResult(value)
+    createOpenRouterChatTerminalArtifactV1(result)
+    const calls = result.assistantMessage.tool_calls
+    if (Array.isArray(calls) && calls.length > 0 && command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID')
+    }
+    return result
+  }
+
+  function setInterruptedSnapshot(command: GenerationTextCommandResultV2, result: OpenRouterChatStreamResultV1): void {
+    const items = JSON.parse(JSON.stringify([result.assistantMessage])) as Readonly<Record<string, unknown>>[]
+    const content = result.assistantMessage.content
+    interruptedSnapshots.set(command, Object.freeze({ items: Object.freeze(items), completeIndexes: Object.freeze([0]),
+      text: typeof content === 'string' ? content : '',
+      complete: result.finishReason === 'stop' || result.finishReason === 'tool_calls' }))
+  }
+
+  function persistInterrupted(context: Parameters<GenerationInterruptedReplayV2Repo['insert']>[0], command: GenerationTextCommandResultV2) {
+    const native = interruptedSnapshots.get(command)
+    if (!native) return
+    const bytes = command.preparedRequest.body.copyBytes()
+    try {
+      new GenerationInterruptedReplayV2Repo(input.db).insert(context, {
+        answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence, protocol: 'openrouter',
+        requestBody: JSON.parse(new TextDecoder().decode(bytes)), native,
+      })
+    } finally { bytes.fill(0) }
+  }
+
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -153,20 +240,7 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
       const terminalRequest = requestRepo.terminalize(context, request, state, at)
       if (state === 'completed') {
         if (!stream) throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID')
-        const history = historyRepo.loadPersistedRequestHistory(
-          context, command.preparedRequest.operationId, command.preparedRequest.requestSequence,
-        )
-        const clientMessages = exactClientMessages(
-          command,
-          history.projectedPrefixMessages ?? history.priorArtifact?.orderedMessages ?? [],
-        )
-        const artifact = history.projectedPrefixMessages === null
-          ? completeOpenRouterNativeHistoryV1({
-            priorArtifact: history.priorArtifact, clientMessages, assistantMessage: stream.assistantMessage,
-          })
-          : completeOpenRouterProjectedNativeHistoryV1({
-            projectedPrefixMessages: history.projectedPrefixMessages, clientMessages, assistantMessage: stream.assistantMessage,
-          })
+        const artifact = completeNativeHistory(context, command, stream.assistantMessage)
         const terminalArtifact = createOpenRouterChatTerminalArtifactV1(stream)
         const nativeToolCalls = stream.assistantMessage.tool_calls
         if (Array.isArray(nativeToolCalls) && nativeToolCalls.length > 0) {
@@ -184,11 +258,14 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
           historyRepo.persistTerminalArtifact(context, terminalExecution, terminalRequest, artifact, at)
           terminalArtifactRepo.insertRequestTerminal(context, terminalExecution, terminalRequest, terminalArtifact, at)
         }
+        if (resultState === 'awaiting_tool') persistInterrupted(context, command)
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
+        persistInterrupted(context, command)
       }
     })
+    interruptedSnapshots.delete(command)
     const result = Object.freeze({ operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId, state: resultState, errorCode, errorMessage })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'terminal', ...result })
@@ -212,28 +289,16 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
     const providerRequestId = response.headers.get('x-generation-id')
     if (response.status !== 200 || !response.body ||
         contentType?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/event-stream') {
-      let payload = new Uint8Array()
-      if (response.body) {
-        const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0
-        try {
-          while (true) {
-            const item = await reader.read()
-            if (item.done) break
-            total += item.value.byteLength
-            if (total > 8 * 1024 * 1024) throw new Error('RAW_DEBUG_PROVIDER_ERROR_LIMIT_EXCEEDED')
-            chunks.push(item.value)
-          }
-          payload = new Uint8Array(total); let offset = 0
-          for (const chunk of chunks) { payload.set(chunk, offset); offset += chunk.byteLength }
-        } finally { try { await reader.cancel() } catch { /* best effort */ }; reader.releaseLock() }
-      }
+      const body = await readBoundedResponseBodyV2(response, 8 * 1024 * 1024)
       try { input.rawGenerationRequestStore?.tryPersistProviderError(rawContext, {
         phase: 'http_response', httpStatus: response.status, contentType,
-        providerRequestId, payload,
-      }) } catch { /* Raw Debug is non-fatal. */ } finally { payload.fill(0) }
+        providerRequestId, payload: body.bytes,
+      }) } catch { /* Raw Debug is non-fatal. */ } finally { body.bytes.fill(0) }
+      const statusDetail = `http_status:${response.status}`
+      const bodyDetail = body.truncated ? `;response_body_truncated_after_${body.bytes.byteLength}_bytes` : ''
       throw new OpenRouterChatStreamRunnerV2Error(response.status === 200
         ? 'GENERATION_V2_OPENROUTER_CHAT_RUNNER_RESPONSE_INVALID' : 'GENERATION_V2_OPENROUTER_CHAT_RUNNER_HTTP_FAILED',
-      response.status === 200 ? 'invalid_response_contract' : `http_status:${response.status}`)
+      response.status === 200 ? `invalid_response_contract;${statusDetail}${bodyDetail}` : `${statusDetail}${bodyDetail}`)
     }
     const decoder = new OpenRouterChatSseDecoderV1(); const assembler = new OpenRouterChatStreamAssemblerV1()
     const reader = response.body.getReader()
@@ -281,8 +346,11 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
         accept(decoder.push(item.value))
       }
       accept(decoder.finish())
-      return assembler.finish()
+      const result = assembler.finish()
+      persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
+      return result
     } finally {
+      interruptedSnapshots.set(command, assembler.interruptedSnapshot())
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* best effort */ }
@@ -290,6 +358,14 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
       }
     }
   }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'openrouter-chat-completions-v1', (_receipt, command, value) => {
+    const result = assertOpenRouterCompletionResult(value)
+    setInterruptedSnapshot(command, result)
+    return finalize(command, 'completed', result, null, null, 'mid_stream')
+  }, (command, value) => {
+    validateOpenRouterCompletion(command, value)
+  })
 
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal): Promise<OpenRouterChatStreamRunResultV2> => {
@@ -334,8 +410,15 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
             return receive(command, response, scope.signal, () => { started = true })
           },
         })
-        return finalize(command, 'completed', stream, null, null, 'mid_stream')
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command, nativeResult: stream, nowMs,
+          materialize: () => finalize(command, 'completed', stream, null, null, 'mid_stream'),
+        })
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
         const code = cancelled ? 'user_cancelled' : scope.timedOut()
           ? 'GENERATION_V2_OPENROUTER_CHAT_RUNNER_TIMEOUT'

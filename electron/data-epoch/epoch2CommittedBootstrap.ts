@@ -1,3 +1,4 @@
+import { registerGenerationHistoryByteReaderV2 } from '../../infra/db/repo/portableGenerationHistoryV2'
 import BetterSqlite3 from 'better-sqlite3'
 import {
   createEpoch2RuntimeCredentialService,
@@ -144,9 +145,14 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
       if (closed || !activeDatabase.open) throw new Error('EPOCH2_BOOTSTRAP_RUNTIME_CLOSED')
       activeDatabaseFileAuthority.verifyPathIdentity()
     }
+    const unregisterHistoryReader = registerGenerationHistoryByteReaderV2(activeDatabase, revision => {
+      assertCurrent()
+      return attachmentBlobStore.readRevisionBytes(revision)
+    })
     const close = async () => {
       if (closePromise) return closePromise
       closed = true
+      unregisterHistoryReader()
       closePromise = (async () => {
         await openAICompatibleCredentialService!.close()
         await activeCredentialService.close()

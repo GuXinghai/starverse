@@ -1,18 +1,26 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 import {
   decodeLmStudioOpenResponsesClientItemsV1,
   decodeLmStudioOpenResponsesReplayItemsV1,
   decodeLmStudioOpenResponsesReturnedItemsV1,
   LMSTUDIO_OPENRESPONSES_MAX_REPLAY_ITEMS_V1,
+  LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1,
+  LMSTUDIO_OPENRESPONSES_RESPONSE_DECODE_LIMITS_V1,
+  type LmStudioOpenResponsesNativeItemDecodeLimitsV1,
   type LmStudioOpenResponsesClientItemV1,
   type LmStudioOpenResponsesReplayItemV1,
 } from './nativeItemsV1'
 
 export const LMSTUDIO_OPENRESPONSES_ARTIFACT_KIND_V1 = 'lmstudio_openresponses_native_items' as const
 export const LMSTUDIO_OPENRESPONSES_ARTIFACT_CODEC_VERSION_V1 = 1 as const
-export const LMSTUDIO_OPENRESPONSES_MAX_REPLAY_SERIALIZED_BYTES_V1 = 20 * 1_024 * 1_024
-export const LMSTUDIO_OPENRESPONSES_MAX_ARTIFACT_BYTES_V1 = 20 * 1_024 * 1_024
+export const LMSTUDIO_OPENRESPONSES_MAX_REPLAY_SERIALIZED_BYTES_V1 = 24 * 1_024 * 1_024
+export const LMSTUDIO_OPENRESPONSES_MAX_ARTIFACT_BYTES_V1 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
+const artifactDecodeLimits: LmStudioOpenResponsesNativeItemDecodeLimitsV1 = Object.freeze({
+  maxItemStringBytes: GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1,
+  maxReplayStringBytes: GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1,
+})
 
 export type LmStudioOpenResponsesContinuationArtifactV1 = Readonly<{
   schemaVersion: 1
@@ -114,7 +122,7 @@ function createArtifact(input: Readonly<{
   orderedItems: unknown
 }>): LmStudioOpenResponsesContinuationArtifactV1 {
   const requestSequence = safeSequence(input.requestSequence)
-  const orderedItems = decodeLmStudioOpenResponsesReplayItemsV1(input.orderedItems)
+  const orderedItems = decodeLmStudioOpenResponsesReplayItemsV1(input.orderedItems, artifactDecodeLimits)
   validateSequence(orderedItems)
   const semanticProjection = projection({ requestSequence, orderedItems })
   const artifact: LmStudioOpenResponsesContinuationArtifactV1 = Object.freeze({
@@ -185,14 +193,15 @@ export function buildLmStudioOpenResponsesReplayInputV1(input: Readonly<{
   clientItems: unknown
 }>): readonly LmStudioOpenResponsesReplayItemV1[] {
   const prior = requireArtifact(input.priorArtifact)
-  const clientItems = decodeLmStudioOpenResponsesClientItemsV1(input.clientItems)
+  const clientItems = decodeLmStudioOpenResponsesClientItemsV1(
+    input.clientItems, LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1)
   const combined = [...(prior?.orderedItems ?? []), ...clientItems]
   if (combined.length > LMSTUDIO_OPENRESPONSES_MAX_REPLAY_ITEMS_V1) {
     throw new LmStudioOpenResponsesContinuationArtifactV1Error(
       'GENERATION_V2_LMSTUDIO_CONTINUATION_LIMIT_EXCEEDED',
     )
   }
-  const replay = decodeLmStudioOpenResponsesReplayItemsV1(combined)
+  const replay = decodeLmStudioOpenResponsesReplayItemsV1(combined, LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1)
   validateSequence(replay)
   if (new TextEncoder().encode(stableSerializeProviderRequestV2(replay)).byteLength >
       LMSTUDIO_OPENRESPONSES_MAX_REPLAY_SERIALIZED_BYTES_V1) {
@@ -220,7 +229,8 @@ export function completeLmStudioOpenResponsesRequestV1(input: Readonly<{
     priorArtifact: prior,
     clientItems: input.clientItems,
   })
-  const returned = decodeLmStudioOpenResponsesReturnedItemsV1(input.returnedItems)
+  const returned = decodeLmStudioOpenResponsesReturnedItemsV1(
+    input.returnedItems, LMSTUDIO_OPENRESPONSES_RESPONSE_DECODE_LIMITS_V1)
   return createArtifact({ requestSequence, orderedItems: [...replay, ...returned] })
 }
 
@@ -228,14 +238,15 @@ export function completeLmStudioOpenResponsesProjectedRequestV1(input: Readonly<
   replayItems: unknown
   returnedItems: unknown
 }>): LmStudioOpenResponsesContinuationArtifactV1 {
-  const replay = decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems)
+  const replay = decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems, LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1)
   validateSequence(replay)
-  const returned = decodeLmStudioOpenResponsesReturnedItemsV1(input.returnedItems)
+  const returned = decodeLmStudioOpenResponsesReturnedItemsV1(
+    input.returnedItems, LMSTUDIO_OPENRESPONSES_RESPONSE_DECODE_LIMITS_V1)
   return createArtifact({ requestSequence: 1, orderedItems: [...replay, ...returned] })
 }
 
 export function projectLmStudioOpenResponsesClientItemsV1(
   items: readonly LmStudioOpenResponsesClientItemV1[],
 ): readonly LmStudioOpenResponsesClientItemV1[] {
-  return decodeLmStudioOpenResponsesClientItemsV1(items)
+  return decodeLmStudioOpenResponsesClientItemsV1(items, LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1)
 }

@@ -36,10 +36,18 @@ export function registerNetworkProxyIpc(input: Readonly<{
   controller: ProductNetworkProxyV2Controller
   probe?: ReturnType<typeof createNetworkProxyDraftProbe>
   authorize?: (event: unknown) => boolean
+  onApplicationReady?: () => void
 }>): readonly string[] {
   const register: RegisterInvoke = (channel, handler) => input.registerInvoke(channel, (event: unknown, ...args: unknown[]) => {
     if (input.authorize && !input.authorize(event)) throw new Error('proxy_ipc_sender_invalid')
-    return handler(event, ...args)
+    const result = handler(event, ...args)
+    if (['network-proxy:update-settings', 'network-proxy:reset-settings', 'network-proxy:reapply-settings', 'network-proxy:update-configuration'].includes(channel)) {
+      return Promise.resolve(result).then(value => {
+        if (input.controller.getState().status === 'ready') input.onApplicationReady?.()
+        return value
+      })
+    }
+    return result
   })
   const scopeOf = (payload: unknown): NetworkProxyScope => {
     const scope = payload && typeof payload === 'object' ? (payload as { scope?: unknown }).scope : undefined

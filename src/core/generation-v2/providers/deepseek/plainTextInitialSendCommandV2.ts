@@ -1,3 +1,5 @@
+import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
+import { decodeGenerationCommandAttachmentsV2, projectGenerationCommandAttachmentsV2 } from '../../domain/commandAttachmentsV2'
 import {
   sha256PreparedBytesV2,
   stableSerializeProviderRequestBoundedV2,
@@ -28,7 +30,7 @@ export type DeepSeekPlainTextInitialSendCommandV2 = Readonly<{
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
   modelId: Identity<'model_id'>
-  commandAttachments: readonly []
+  commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string
   requestFingerprint: string
 }>
@@ -69,10 +71,7 @@ export function decodeDeepSeekPlainTextInitialSendCommandV2(
 ): DeepSeekPlainTextInitialSendCommandV2 {
   try {
     const input = closedObject(value)
-    const attachments = input.commandAttachments
-    if (!Array.isArray(attachments) || attachments.length !== 0 || Reflect.ownKeys(attachments).length !== 1) {
-      throw new Error('attachments')
-    }
+    const commandAttachments = decodeGenerationCommandAttachmentsV2(input.commandAttachments)
     const operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
     const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
     const expectedHeadMessageId = input.expectedHeadMessageId === null ? null :
@@ -81,8 +80,8 @@ export function decodeDeepSeekPlainTextInitialSendCommandV2(
     const userBody = requiredString(input.userBody)
     if (new TextEncoder().encode(userBody).byteLength > MAX_USER_BODY_BYTES) throw new Error('body')
     const projection = Object.freeze({
-      schemaVersion: 1,
-      kind: 'deepseek_plain_text_initial_send',
+      schemaVersion: 1 as const,
+      kind: 'deepseek_plain_text_initial_send' as const,
       operationId: operationId.value,
       branchId: branchId.value,
       expectedHeadMessageId: expectedHeadMessageId?.value ?? null,
@@ -90,7 +89,7 @@ export function decodeDeepSeekPlainTextInitialSendCommandV2(
       providerId: 'deepseek',
       endpointProfileId: 'deepseek-stable-api-v1',
       modelId: modelId.value,
-      commandAttachments: Object.freeze([]),
+      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
@@ -101,7 +100,7 @@ export function decodeDeepSeekPlainTextInitialSendCommandV2(
       providerId: GenerationV2Identity.create('provider_id', 'deepseek'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'deepseek-stable-api-v1'),
       modelId,
-      commandAttachments: Object.freeze([]) as readonly [],
+      commandAttachments,
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })

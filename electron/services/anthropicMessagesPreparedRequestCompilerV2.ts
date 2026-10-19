@@ -143,7 +143,7 @@ function encodeAnthropicAttachmentBlockV2(input: Readonly<{
     if (!input.attachmentBlobStore) throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
     const bytes = input.attachmentBlobStore.readRevisionBytes(revision)
     try {
-      if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
+      if (attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion) && revision.blob.mime.startsWith('text/')) {
         return Object.freeze({ type: 'document' as const, source: Object.freeze({
           type: 'text' as const, media_type: 'text/plain' as const,
           data: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
@@ -154,7 +154,7 @@ function encodeAnthropicAttachmentBlockV2(input: Readonly<{
           type: 'base64' as const, media_type: revision.blob.mime, data: Buffer.from(bytes).toString('base64'),
         }) })
       }
-      if (attachment.sendAs === 'converted_document' && attachment.conversion === 'plain_text' && revision.blob.mime === 'text/plain') {
+      if (attachment.sendAs === 'converted_document' && attachment.conversion === 'plain_text' && revision.blob.mime.startsWith('text/')) {
         return Object.freeze({ type: 'document' as const, source: Object.freeze({ type: 'content' as const,
           content: Object.freeze([{ type: 'text' as const, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }]),
         }) })
@@ -200,7 +200,7 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
   }
 
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const tools = snapshot.semanticIntent.tools ?? { mode: 'disabled' as const }
   if (tools.mode === 'enabled') {
     if (!input.toolRegistry || snapshot.toolAuthority.kind !== 'registry' ||
@@ -291,12 +291,13 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     : appendAttachmentBlocks(historicalMessages, attachmentBlocks)
   const compilation = compileAnthropicMessagesRequestV1({
     modelId: binding.modelId.value,
+    encoderRevision: capability.encoderRevision,
     intent: snapshot.semanticIntent,
     ...(input.history.system === null ? {} : { system: input.history.system }),
     messages,
     ...(allNativeTools === undefined ? {} : { tools: allNativeTools }),
     ...(nativeToolChoice === undefined ? {} : { toolChoice: nativeToolChoice }),
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   if (compilation.issues.length > 0 || !compilation.nativeRequest || !compilation.preparedBody) {
     throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
   }
@@ -341,6 +342,13 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     ),
     body: compilation.preparedBody,
     ledger,
+    requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
+    identityWireAssertions: compilation.dispositions.flatMap((disposition) =>
+      disposition.outcome === 'encoded' && disposition.encodingKind === 'identity' &&
+        disposition.wireKey !== undefined && disposition.value !== undefined
+        ? [{ semanticPath: disposition.semanticPath, nativeField: disposition.wireKey, value: disposition.value }]
+        : []),
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,

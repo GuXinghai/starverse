@@ -1,4 +1,6 @@
 import { ImmutablePreparedBodyV2 } from '../../compiler/stableSerialize'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 
 type GeminiInteractionsImageSizeV1 = '512' | '1K' | '2K' | '4K'
 
@@ -44,13 +46,14 @@ function record(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>
 }
 
-export function compileGeminiInteractionsRequestV1(inputValue: unknown): Readonly<{
+export function compileGeminiInteractionsRequestV1(inputValue: unknown, operation: ProviderContractOperationV2 = 'image_generate', bodySchemaRevision?: string): Readonly<{
   classification: 'gemini_interactions_v1beta_request_compilation_non_executable'
   executionAuthority: 'none'
   nativeRequest: GeminiInteractionsRequestV1
   preparedBody: ImmutablePreparedBodyV2
 }> {
   const input = record(inputValue)
+  const skipPolicyRanges = bodySchemaRevision !== undefined
   const allowed = ['model', 'prompt', 'outputMode', 'image', 'generation', 'reasoning', 'webTypes']
   if (Object.keys(input).some((key) => !allowed.includes(key)) || typeof input.model !== 'string' ||
       typeof input.prompt !== 'string' || input.prompt.length === 0) {
@@ -78,9 +81,9 @@ export function compileGeminiInteractionsRequestV1(inputValue: unknown): Readonl
   })
   const generation: Readonly<Record<string, unknown>> = input.generation === undefined ? Object.freeze({}) : record(input.generation)
   if (Object.keys(generation).some((key) => !['temperature', 'topP', 'maxOutputTokens', 'stop'].includes(key)) ||
-      (generation.temperature !== undefined && (typeof generation.temperature !== 'number' || !Number.isFinite(generation.temperature) || generation.temperature < 0 || generation.temperature > 2)) ||
-      (generation.topP !== undefined && (typeof generation.topP !== 'number' || !Number.isFinite(generation.topP) || generation.topP < 0 || generation.topP > 1)) ||
-      (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || (generation.maxOutputTokens as number) < 0)) ||
+      (generation.temperature !== undefined && (typeof generation.temperature !== 'number' || !Number.isFinite(generation.temperature) || (!skipPolicyRanges && (generation.temperature < 0 || generation.temperature > 2)))) ||
+      (generation.topP !== undefined && (typeof generation.topP !== 'number' || !Number.isFinite(generation.topP) || (!skipPolicyRanges && (generation.topP < 0 || generation.topP > 1)))) ||
+      (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || (!skipPolicyRanges && (generation.maxOutputTokens as number) < 0))) ||
       (generation.stop !== undefined && (!Array.isArray(generation.stop) ||
         generation.stop.some((item: unknown) => typeof item !== 'string' || !item.trim())))) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
@@ -118,6 +121,7 @@ export function compileGeminiInteractionsRequestV1(inputValue: unknown): Readonl
     ...(Object.keys(generationConfig).length === 0 ? {} : { generation_config: generationConfig }),
     ...(tools.length === 0 ? {} : { tools }),
   })
+  validateApiRequestBodyV2('google_ai_studio', operation, nativeRequest, bodySchemaRevision)
   let preparedBody: ImmutablePreparedBodyV2
   try {
     preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(nativeRequest, GEMINI_INTERACTIONS_REQUEST_MAX_BYTES_V1)

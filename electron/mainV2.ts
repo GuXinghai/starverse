@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron'
+import { normalizeProjectDuplicatePolicy } from '../src/shared/settings/projectDuplicatePolicy'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { checkConfigIntegrity, checkTotalSize, CURRENT_CONFIG_VERSION, migrateConfig, validateAndCleanConfig } from './config/configSchema'
@@ -198,6 +199,14 @@ export async function startMainV2(): Promise<void> {
   const cloudRulesCandidateRefresh = new CloudRulesCandidateRefreshV1({
   db: runtime.epoch2.database,
   fetchImpl: cloudFetch,
+  onDiagnostic: (diagnostic) => console.warn('[cloud-rules-candidate-v1] diagnostic', diagnostic),
+  afterSuccessfulCheck: async () => {
+    const result = await applyBootstrapCapabilityRulesWithInvalidationV1({
+      applyBootstrapCandidate: () => cloudRulesApplication.applyBootstrapCandidate(),
+      notify: notifyModelFactsSemanticInvalidated,
+    })
+    if (result) console.info('[cloud-rules-application-v1] bootstrap applied')
+  },
   })
   const cloudRulesSubjectSet = new AuthoritativeModelSubjectSetV1Service(
   runtime.epoch2.database,
@@ -214,14 +223,6 @@ export async function startMainV2(): Promise<void> {
   void cloudRulesCandidateRefresh.start().then((result) => {
     if (!result.ok) console.warn('[cloud-rules-candidate-v1] refresh failed', { code: result.code })
   }).catch(() => console.warn('[cloud-rules-candidate-v1] refresh failed', { code: 'UNEXPECTED_REFRESH_FAILURE' }))
-    .finally(() => applyBootstrapCapabilityRulesWithInvalidationV1({
-      applyBootstrapCandidate: () => cloudRulesApplication.applyBootstrapCandidate(),
-      notify: notifyModelFactsSemanticInvalidated,
-    }).then((result) => {
-      if (result) console.info('[cloud-rules-application-v1] bootstrap applied')
-    }).catch((error: unknown) => console.warn('[cloud-rules-application-v1] bootstrap failed', {
-      code: error instanceof Error ? error.message : 'UNEXPECTED_BOOTSTRAP_FAILURE',
-    })))
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
   const magikaProcessRunner = createMagikaUtilityProcessRunner()
@@ -258,6 +259,7 @@ export async function startMainV2(): Promise<void> {
   }
   setGenerationTotalTimeoutSourceV2(createStoreBackedGenerationTotalTimeoutSourceV2(store))
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
+  getProjectDuplicatePolicy: () => normalizeProjectDuplicatePolicy(store.get('generationV2UiPreferences.projectDuplicatePolicy')),
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
   notifyModelFactsSemanticInvalidated, registerActiveWorkSource: shutdownCoordinator.registerSource })
   registerGenerationV2CloudCapabilityRulesIpc({ registerInvoke, refresh: cloudRulesCandidateRefresh,
@@ -265,6 +267,7 @@ export async function startMainV2(): Promise<void> {
     applicationRepo: new CloudRulesApplicationV1Repo(runtime.epoch2.database),
     distributionRepo: new CloudRulesDistributionV1Repo(runtime.epoch2.database), notifyModelFactsSemanticInvalidated })
   registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController, probe: proxyDraftProbe,
+    onApplicationReady: () => { void cloudRulesCandidateRefresh.networkRecovered().catch(() => undefined) },
     authorize: (event) => isTrustedProxyIpcSender(event, mainWindowLifecycle.getWindow()?.webContents ?? null) })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,

@@ -12,6 +12,13 @@ import {
   inspectGenerationV2SchemaBundle,
   installGenerationV2SchemaInActiveTransaction,
   resetModelCatalogNamespaceV2InActiveTransaction,
+  upgradeGeminiThinkingSemanticsInActiveTransaction,
+  GEMINI_THINKING_SEMANTIC_PREDECESSOR_DIGEST_V2,
+  upgradeRequestContractSchemaInActiveTransaction,
+  upgradeRequestRulesSchemaInActiveTransaction,
+  upgradeOpenAIImageOutputSchemaInActiveTransaction,
+  REQUEST_CONTRACT_PREDECESSOR_DIGEST_V2,
+  PRE_CAPACITY_REQUEST_CONTRACT_SCHEMA_DIGEST_V2,
 } from './schemaComposerV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from './testSchemaV2'
 
@@ -21,6 +28,107 @@ function createDb() {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2Schema(db, root)
   return db
+}
+
+function createPreRequestContractDb(digest = REQUEST_CONTRACT_PREDECESSOR_DIGEST_V2) {
+  const db = createDb()
+  restorePreImageToolTrigger(db)
+  removeRequestRulesV2FixtureObjects(db)
+  // Reconstruct the pinned predecessor, including its original CHECK bounds.
+  const objects = db.prepare(`SELECT type,name FROM sqlite_master WHERE
+    name LIKE 'trg_generation_native_completion_receipt_v2_%'
+    OR name LIKE 'trg_generation_native_artifact_content_chunk_v2_%'
+    OR name='trg_generation_native_artifact_v2_cleanup_chunks'
+    OR name LIKE 'trg_generation_interrupted_replay_content_chunk_v2_%'
+    OR name IN ('trg_generation_interrupted_replay_v2_chunk_manifest','trg_generation_interrupted_replay_v2_cleanup_chunks')`).all() as Array<{type: string; name: string}>
+  for (const object of objects) db.exec(`DROP TRIGGER "${object.name}"`)
+  db.exec('DROP TABLE generation_native_completion_receipt_v2')
+  db.exec('DROP TABLE generation_native_artifact_content_chunk_v2')
+  db.exec('DROP TABLE generation_interrupted_replay_content_chunk_v2')
+  const schemaVersion = db.pragma('schema_version', {simple: true}) as number
+  try {
+    db.unsafeMode(true)
+    db.pragma('writable_schema=ON')
+    for (const [name, from, to] of [
+      ['generation_request_v2', 'prepared_body_byte_length BETWEEN 2 AND 29360128', 'prepared_body_byte_length BETWEEN 2 AND 20971520'],
+      ['assistant_generation_snapshot_v2', 'length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 3145728', 'length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 1048576'],
+      ['message_body_v2', 'length(CAST(body_text AS BLOB)) <= 67108864', 'length(CAST(body_text AS BLOB)) <= 20971520'],
+    ]) {
+      const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as {sql: string}
+      db.prepare("UPDATE sqlite_master SET sql=? WHERE type='table' AND name=?").run(row.sql.replace(from!, to!), name)
+    }
+  } finally { db.pragma('writable_schema=OFF'); db.unsafeMode(false) }
+  db.pragma(`schema_version=${schemaVersion+1}`)
+  db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?,object_projection_digest=?')
+    .run(digest, installedProjectionDigest(db))
+  return db
+}
+
+function createPreCapacityRequestContractDb() {
+  const db = createDb()
+  restorePreImageToolTrigger(db)
+  removeRequestRulesV2FixtureObjects(db)
+  const objects = db.prepare(`SELECT type,name FROM sqlite_master WHERE
+    name LIKE 'trg_generation_interrupted_replay_content_chunk_v2_%'
+    OR name IN ('trg_generation_interrupted_replay_v2_chunk_manifest','trg_generation_interrupted_replay_v2_cleanup_chunks')`).all() as Array<{type: string; name: string}>
+  for (const object of objects) db.exec(`DROP TRIGGER "${object.name}"`)
+  db.exec('DROP TABLE generation_interrupted_replay_content_chunk_v2')
+  const schemaVersion = db.pragma('schema_version', {simple: true}) as number
+  try {
+    db.unsafeMode(true)
+    db.pragma('writable_schema=ON')
+    const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_body_v2'").get() as {sql: string}
+    const oldSql = row.sql.replace('length(CAST(body_text AS BLOB)) <= 67108864', 'length(CAST(body_text AS BLOB)) <= 20971520')
+    if (oldSql === row.sql) throw new Error('fixture body capacity not found')
+    db.prepare("UPDATE sqlite_master SET sql=? WHERE type='table' AND name='message_body_v2'").run(oldSql)
+    const receipt = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='generation_native_completion_receipt_v2'").get() as {sql: string}
+    const oldReceiptSql = receipt.sql.replace('BETWEEN 4 AND 328204288', 'BETWEEN 4 AND 164626432')
+    if (oldReceiptSql === receipt.sql) throw new Error('fixture receipt capacity not found')
+    db.prepare("UPDATE sqlite_master SET sql=? WHERE type='table' AND name='generation_native_completion_receipt_v2'").run(oldReceiptSql)
+  } finally { db.pragma('writable_schema=OFF'); db.unsafeMode(false) }
+  db.pragma(`schema_version=${schemaVersion+1}`)
+  db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?,object_projection_digest=?')
+    .run(PRE_CAPACITY_REQUEST_CONTRACT_SCHEMA_DIGEST_V2, installedProjectionDigest(db))
+  return db
+}
+
+function removeRequestRulesV2FixtureObjects(db: BetterSqlite3.Database): void {
+  for (const table of ['generation_request_rule_current_v2', 'generation_request_rule_subject_v2',
+    'generation_request_rule_publication_v2', 'user_capability_rule_note_v2', 'user_capability_rule_note_state_v2',
+    'user_capability_rule_editing_session_v2', 'capability_rule_owner_snapshot_v2']) db.exec(`DROP TABLE ${table}`)
+}
+
+function preImageToolSql(sql: string): string {
+  const predecessor = sql.replace(
+    /      -- OpenAI Responses generated image tool V1: scoped text-operation exception\.[\s\S]*?      -- End OpenAI Responses generated image tool V1\./u,
+    "      AND json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'image_generate'",
+  )
+  expect(predecessor).not.toBe(sql)
+  return predecessor
+}
+
+function restorePreImageToolTrigger(db: BetterSqlite3.Database): void {
+  const trigger = db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_generation_image_output_v2_validate_insert'").get() as { sql: string }
+  const predecessor = preImageToolSql(trigger.sql)
+  db.exec('DROP TRIGGER trg_generation_image_output_v2_validate_insert')
+  db.exec(predecessor)
+}
+
+function createPreImageToolDb(): BetterSqlite3.Database {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-before-image-tool-'))
+  const target = path.join(directory, 'infra', 'db', 'v2')
+  fs.mkdirSync(target, { recursive: true })
+  const db = new BetterSqlite3(':memory:')
+  try {
+    for (const file of fs.readdirSync(path.join(root, 'infra', 'db', 'v2')).filter(file => file.endsWith('.sql'))) {
+      const sql = fs.readFileSync(path.join(root, 'infra', 'db', 'v2', file), 'utf8')
+      fs.writeFileSync(path.join(target, file), file === 'generationExecutionSchema.sql' ? preImageToolSql(sql) : sql)
+    }
+    const bundle = applyGenerationV2Schema(db, directory)
+    db.prepare("INSERT INTO app_meta_v2 VALUES (1,2,'test.starverse',?,?,1)").run('8'.repeat(64), bundle.schemaDigest)
+    return db
+  } catch (error) { db.close(); throw error }
+  finally { fs.rmSync(directory, { recursive: true, force: true }) }
 }
 
 function installedProjectionDigest(db: BetterSqlite3.Database): string {
@@ -65,6 +173,157 @@ function seedGraph(db: BetterSqlite3.Database) {
 }
 
 describe('Generation V2 schema composer and core conversation graph', () => {
+  it('upgrades only the reviewed intact semantic predecessor and preserves application data', () => {
+    const db = createPreRequestContractDb(GEMINI_THINKING_SEMANTIC_PREDECESSOR_DIGEST_V2)
+    try {
+      seedGraph(db)
+      const before = db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()
+      const old = GEMINI_THINKING_SEMANTIC_PREDECESSOR_DIGEST_V2
+      db.prepare("INSERT INTO app_meta_v2 VALUES (1,2,'test.starverse',?,?,1)").run('8'.repeat(64), old)
+      db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?').run(old)
+      let checked = false
+      db.transaction(() => {
+        upgradeGeminiThinkingSemanticsInActiveTransaction(db, root, bundle => {
+        expect(bundle.schemaDigest).toBe(old)
+        expect(db.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({ schema_digest: old })
+        checked = true
+        })
+        upgradeRequestContractSchemaInActiveTransaction(db, root, () => undefined)
+        upgradeRequestRulesSchemaInActiveTransaction(db, root, () => undefined)
+        upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => undefined)
+      }).immediate()
+      expect(checked).toBe(true)
+      expect(db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()).toEqual(before)
+      expect(db.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({ schema_digest: inspectGenerationV2SchemaBundle(root).schemaDigest })
+      expect(() => db.prepare('UPDATE app_meta_v2 SET created_at_ms=2').run()).toThrow()
+    } finally { db.close() }
+  })
+  it('rejects a tampered semantic predecessor before invoking identity authority or updating metadata', () => {
+    const db = createPreRequestContractDb(GEMINI_THINKING_SEMANTIC_PREDECESSOR_DIGEST_V2)
+    try {
+      const old = GEMINI_THINKING_SEMANTIC_PREDECESSOR_DIGEST_V2
+      db.prepare("INSERT INTO app_meta_v2 VALUES (1,2,'test.starverse',?,?,1)").run('8'.repeat(64), old)
+      db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?').run(old)
+      db.exec('CREATE TABLE unexpected_semantic_upgrade(value TEXT)')
+      expect(() => db.transaction(() => upgradeGeminiThinkingSemanticsInActiveTransaction(db, root, () => { throw new Error('identity must not be invoked') })).immediate()).toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
+      expect(db.prepare('SELECT schema_digest FROM app_meta_v2').get()).toEqual({ schema_digest: old })
+    } finally { db.close() }
+  })
+  it('upgrades the request contract atomically without changing existing graph rows', () => {
+    const db = createPreRequestContractDb()
+    try {
+      seedGraph(db)
+      db.prepare("INSERT INTO app_meta_v2 VALUES (1,2,'test.starverse',?,?,1)")
+        .run('8'.repeat(64), REQUEST_CONTRACT_PREDECESSOR_DIGEST_V2)
+      const before = db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()
+      expect(() => db.transaction(() => {
+        upgradeRequestContractSchemaInActiveTransaction(db, root, () => { throw new Error('identity rejected') })
+      }).immediate()).toThrow('identity rejected')
+      expect(db.prepare('SELECT schema_digest FROM generation_v2_schema_manifest').get())
+        .toEqual({schema_digest: REQUEST_CONTRACT_PREDECESSOR_DIGEST_V2})
+      db.transaction(() => upgradeRequestContractSchemaInActiveTransaction(db, root, () => undefined)).immediate()
+      db.transaction(() => upgradeRequestRulesSchemaInActiveTransaction(db, root, () => undefined)).immediate()
+      db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => undefined)).immediate()
+      expect(db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()).toEqual(before)
+      expect(db.pragma('foreign_key_check')).toEqual([])
+      expect(db.pragma('integrity_check', {simple: true})).toBe('ok')
+      expect(db.pragma('writable_schema', {simple: true})).toBe(0)
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE name='generation_native_completion_receipt_v2'").get()).toBeDefined()
+      expect(() => db.transaction(() => upgradeRequestContractSchemaInActiveTransaction(db, root, () => undefined)).immediate()).not.toThrow()
+    } finally { db.close() }
+  })
+  it('widens assistant bodies and installs checkpoint chunks from the exact current request-contract bundle', () => {
+    const db = createPreCapacityRequestContractDb()
+    try {
+      seedGraph(db)
+      const before = db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()
+      db.prepare("INSERT INTO app_meta_v2 VALUES (1,2,'test.starverse',?,?,1)")
+        .run('8'.repeat(64), PRE_CAPACITY_REQUEST_CONTRACT_SCHEMA_DIGEST_V2)
+      let checked = false
+      db.transaction(() => upgradeRequestContractSchemaInActiveTransaction(db, root, bundle => {
+        expect(bundle.schemaDigest).toBe(PRE_CAPACITY_REQUEST_CONTRACT_SCHEMA_DIGEST_V2)
+        checked = true
+      })).immediate()
+      db.transaction(() => upgradeRequestRulesSchemaInActiveTransaction(db, root, () => undefined)).immediate()
+      db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => undefined)).immediate()
+      expect(checked).toBe(true)
+      expect(db.prepare('SELECT * FROM message_v2 ORDER BY message_id').all()).toEqual(before)
+      expect(db.prepare("SELECT sql FROM sqlite_master WHERE name='message_body_v2'").get())
+        .toMatchObject({sql: expect.stringContaining('<= 67108864')})
+      expect(db.prepare("SELECT sql FROM sqlite_master WHERE name='generation_native_completion_receipt_v2'").get())
+        .toMatchObject({sql: expect.stringContaining('BETWEEN 4 AND 328204288')})
+      expect(db.prepare("SELECT 1 FROM sqlite_master WHERE name='generation_interrupted_replay_content_chunk_v2'").get())
+        .toBeDefined()
+      expect(db.prepare('SELECT schema_digest FROM app_meta_v2').get())
+        .toEqual({schema_digest: inspectGenerationV2SchemaBundle(root).schemaDigest})
+      expect(db.pragma('foreign_key_check')).toEqual([])
+      expect(db.pragma('integrity_check', {simple: true})).toBe('ok')
+    } finally { db.close() }
+  })
+  it('upgrades the intact image-tool predecessor without changing existing graph, draft or blob data and is idempotent', () => {
+    const db = createPreImageToolDb()
+    try {
+      seedGraph(db)
+      db.prepare("INSERT INTO composer_draft_v2(conversation_id,draft_text,draft_mode,editing_source_question_id,revision,updated_at_ms) VALUES('conversation:1','keep image draft','compose',NULL,7,9)").run()
+      const sha256 = '7'.repeat(64)
+      db.prepare('INSERT INTO file_blob_v2 VALUES (?, ?, ?, ?, ?, ?)')
+        .run(`blob-v2:${sha256}`, sha256, 1, 'image/png', `sha256/77/${sha256}`, 4)
+      const tables = ['project_v2', 'conversation_v2', 'branch_v2', 'message_v2', 'message_body_v2', 'composer_draft_v2', 'file_blob_v2']
+      const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())
+      const oldMeta = db.prepare('SELECT * FROM app_meta_v2').get() as Record<string, unknown>
+      let checks = 0
+      db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, previous => {
+        checks += 1
+        expect(previous.schemaDigest).toBe(oldMeta.schema_digest)
+        expect(previous.schemaDigest).not.toBe(inspectGenerationV2SchemaBundle(root).schemaDigest)
+      })).immediate()
+      expect(checks).toBe(1)
+      expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toEqual(before)
+      const current = inspectGenerationV2SchemaBundle(root)
+      expect(db.prepare('SELECT * FROM app_meta_v2').get()).toEqual({ ...oldMeta, schema_digest: current.schemaDigest })
+      expect(db.prepare('SELECT schema_digest FROM generation_v2_schema_manifest').get()).toEqual({ schema_digest: current.schemaDigest })
+      expect(db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_generation_image_output_v2_validate_insert'").get())
+        .toMatchObject({ sql: expect.stringContaining("request.provider_id = 'openai_responses'") })
+      expect(() => db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => {
+        throw new Error('current bundle must not invoke predecessor authority')
+      })).immediate()).not.toThrow()
+      expect(() => applyGenerationV2Schema(db, root)).not.toThrow()
+      expect(db.pragma('foreign_key_check')).toEqual([])
+      expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
+      expect(() => db.prepare('UPDATE app_meta_v2 SET created_at_ms=2').run()).toThrow('GENERATION_V2_APP_META_IMMUTABLE')
+    } finally { db.close() }
+  })
+
+  it('rolls back the image-tool trigger and metadata when predecessor identity is rejected', () => {
+    const db = createPreImageToolDb()
+    try {
+      seedGraph(db)
+      const before = db.serialize()
+      expect(() => db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => {
+        throw new Error('image predecessor identity rejected')
+      })).immediate()).toThrow('image predecessor identity rejected')
+      expect(db.serialize()).toEqual(before)
+      expect(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => undefined))
+        .toThrow('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+    } finally { db.close() }
+  })
+
+  it('rejects a self-consistent tampered image-tool predecessor before identity authority or migration', () => {
+    const db = createPreImageToolDb()
+    try {
+      seedGraph(db)
+      db.exec('CREATE TABLE unexpected_image_upgrade(value TEXT)')
+      db.prepare('UPDATE generation_v2_schema_manifest SET object_projection_digest=?').run(installedProjectionDigest(db))
+      const before = db.serialize()
+      let called = false
+      expect(() => db.transaction(() => upgradeOpenAIImageOutputSchemaInActiveTransaction(db, root, () => {
+        called = true
+      })).immediate()).toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
+      expect(called).toBe(false)
+      expect(db.serialize()).toEqual(before)
+    } finally { db.close() }
+  })
+
   it('requires and preserves the bootstrap coordinator transaction boundary', () => {
     const db = new BetterSqlite3(':memory:')
     try {
@@ -437,8 +696,11 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       seedGraph(db)
       expect(() => db.prepare("DELETE FROM message_body_v2 WHERE message_id='answer:1'").run())
         .toThrow('GENERATION_V2_GRAPH_MESSAGE_BODY_REQUIRED')
+      const largeAssistantBody = 'x'.repeat(20 * 1024 * 1024 + 1)
       expect(() => db.prepare('UPDATE message_body_v2 SET body_text = ? WHERE message_id = ?')
-        .run('x'.repeat(20 * 1024 * 1024 + 1), 'answer:1')).toThrow(/CHECK constraint failed/u)
+        .run(largeAssistantBody, 'answer:1')).not.toThrow()
+      expect(db.prepare('SELECT length(CAST(body_text AS BLOB)) AS bytes FROM message_body_v2 WHERE message_id=?')
+        .get('answer:1')).toEqual({bytes: Buffer.byteLength(largeAssistantBody, 'utf8')})
       expect(() => db.prepare("DELETE FROM message_v2 WHERE message_id='answer:2'").run())
         .toThrow('GENERATION_V2_GRAPH_HIDE_DELETE_FORBIDDEN')
       expect(db.prepare("SELECT 1 AS present FROM message_body_v2 WHERE message_id='answer:2'").get())

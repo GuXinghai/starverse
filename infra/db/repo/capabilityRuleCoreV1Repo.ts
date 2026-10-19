@@ -321,6 +321,25 @@ export class CapabilityRuleCoreV1Repo {
     })
   }
 
+  /** Removes a superseded V1 owner row while preserving compare-and-swap semantics. */
+  deleteOwnershipSnapshot(input: Readonly<{
+    ownership: CapabilityRuleOwnershipV1
+    ownerId: string
+    expectedSnapshotRevision: string | null
+  }>): boolean {
+    const ownerId = identity(input.ownerId)
+    return this.runImmediate(() => {
+      const current = this.readOwnershipSnapshot({ ownership: input.ownership, ownerId })
+      if ((current?.projected.snapshotRevision ?? null) !== input.expectedSnapshotRevision) {
+        throw new CapabilityRuleCoreV1RepoError('GENERATION_V2_CAPABILITY_RULE_CORE_STALE_REVISION')
+      }
+      if (!current) return false
+      this.db.prepare(`DELETE FROM capability_rule_owner_snapshot_v1 WHERE ownership=? AND owner_id=?`)
+        .run(input.ownership, ownerId)
+      return true
+    })
+  }
+
   /**
    * Installs a snapshot that was fully validated and serialized before the caller's write
    * transaction. This is the short-transaction entry point used by atomic Cloud Apply.

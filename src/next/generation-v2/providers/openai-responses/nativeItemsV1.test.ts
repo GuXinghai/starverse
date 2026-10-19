@@ -81,10 +81,18 @@ describe('OpenAI Responses V1 native replay items', () => {
     ])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_DIRECTION_INVALID')
   })
 
-  it('rejects missing encrypted reasoning, transient terminal items and unsupported native variants', () => {
-    expect(() => decodeOpenAIResponsesReturnedItemsV1([{
-      id: 'rs_1', type: 'reasoning', summary: [],
-    }])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_SHAPE')
+  it('preserves absent, null and empty wire ciphertext without accepting malformed values', () => {
+    const item = { id: 'rs_1', type: 'reasoning', summary: [] }
+    for (const value of [item, { ...item, encrypted_content: null }, { ...item, encrypted_content: '' }]) {
+      expect(decodeOpenAIResponsesReturnedItemsV1([value])).toEqual([value])
+    }
+    for (const encrypted_content of [123, {}, []]) {
+      expect(() => decodeOpenAIResponsesReturnedItemsV1([{ ...item, encrypted_content }]))
+        .toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+    }
+  })
+
+  it('rejects transient terminal items and unsupported native variants', () => {
     expect(() => decodeOpenAIResponsesReturnedItemsV1([{
       id: 'msg_1', type: 'message', role: 'assistant', status: 'in_progress',
       content: [{ type: 'output_text', text: '', annotations: [], logprobs: [] }],

@@ -14,6 +14,9 @@ import {
   type ResolvedCapabilityV2,
 } from './resolvedCapabilityV2'
 import { projectCanonicalModelFactsV2 } from './canonicalModelFactsV2'
+import type { BoundRequestRulesV2 } from '../capability-rules/boundRequestRulesV2'
+import type { ResolvedModelFactsV1 } from '../model-facts/resolvedModelFactsV1'
+import type { SourcePriorityConfigV1 } from '../model-facts/sourcePriorityConfigV1'
 
 export type GenerationCapabilityProviderIdV2 =
   | 'openrouter'
@@ -67,6 +70,7 @@ export type ResolvedCapabilityV2Wire = Readonly<{
 export type GenerationCapabilityResolutionResultV2 = Readonly<{
   resolvedCapability: ResolvedCapabilityV2Wire
   controlsProjection: GenerationControlsProjectionV2
+  requestRulePreview?: Readonly<{ bundle: BoundRequestRulesV2; baseFacts: ResolvedModelFactsV1; sourcePriority: SourcePriorityConfigV1 }>
 }>
 
 export class GenerationCapabilityResolutionV2Error extends Error {

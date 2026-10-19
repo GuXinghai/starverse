@@ -9,12 +9,14 @@ export type GeminiThinkingCapability = Readonly<{
   matchedRule: string | null
   allowDynamic: boolean
   allowOff: boolean
+  required?: boolean
+  defaultEnabled?: boolean
 }> & (
   | Readonly<{ thinkingSupported: 'unsupported'; kind: 'unsupported'; controlKind: null; reason: string }>
   | Readonly<{ thinkingSupported: 'supported'; kind: 'level'; controlKind: 'level'; levels: readonly string[];
       defaultLevel: string; highIsDynamic: true; reason: 'mapped_level' }>
   | Readonly<{ thinkingSupported: 'supported'; kind: 'budget'; controlKind: 'budget'; minBudget: number;
-      maxBudget: number; defaultBudgetMode: 'dynamic' | 'off'; reason: 'mapped_budget' }>
+      maxBudget: number; defaultBudgetMode: 'dynamic' | 'off'; excludedBudgets?: readonly number[]; reason: 'mapped_budget' }>
   | Readonly<{ thinkingSupported: 'supported'; kind: 'default-only'; controlKind: 'default-only';
       reason: 'supported_unmapped' }>
 )

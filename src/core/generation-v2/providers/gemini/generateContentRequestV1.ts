@@ -1,5 +1,7 @@
 import { ImmutablePreparedBodyV2, stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 import {
   decodeGeminiGenerateContentNativeContentV1,
   type GeminiGenerateContentNativeContentV1,
@@ -60,15 +62,15 @@ function record(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>
 }
 
-function number(value: unknown, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+function number(value: unknown, min: number, max: number, skipPolicyRange = false): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (!skipPolicyRange && (value < min || value > max))) {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
   return value
 }
 
-function integer(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): number {
-  if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) {
+function integer(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER, skipPolicyRange = false): number {
+  if (!Number.isSafeInteger(value) || (!skipPolicyRange && ((value as number) < min || (value as number) > max))) {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
   return value as number
@@ -84,7 +86,7 @@ function cloneSchema(value: unknown): Readonly<Record<string, unknown>> {
   }
 }
 
-export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Readonly<{
+export function compileGeminiGenerateContentRequestV1(inputValue: unknown, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): Readonly<{
   classification: 'gemini_generate_content_v1beta_request_compilation_non_executable'
   executionAuthority: 'none'
   nativeRequest: GeminiGenerateContentRequestV1
@@ -108,6 +110,7 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
   if (contents.length === 0) throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
 
   const generation = input.generation === undefined ? {} : record(input.generation)
+  const skipPolicyRanges = bodySchemaRevision !== undefined
   const allowedGeneration = ['temperature', 'topP', 'topK', 'maxOutputTokens', 'stopSequences', 'presencePenalty', 'frequencyPenalty', 'seed', 'responseMimeType']
   if (Object.keys(generation).some((key) => !allowedGeneration.includes(key))) {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_UNSUPPORTED')
@@ -129,7 +132,8 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
   if (reasoning.mode !== 'disabled' && reasoning.mode !== 'enabled') {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
-  if (reasoning.mode === 'disabled' && Object.keys(reasoning).some((key) => key !== 'mode')) {
+  if (reasoning.mode === 'disabled' && (Object.keys(reasoning).some((key) => !['mode', 'thinkingBudget', 'includeThoughts'].includes(key)) ||
+      reasoning.thinkingBudget !== undefined && reasoning.thinkingBudget !== 0)) {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
   if (reasoning.mode === 'enabled' && Object.keys(reasoning).some((key) =>
@@ -182,20 +186,20 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
 
-  const thinkingConfig = reasoning.mode === 'enabled' ? Object.freeze({
-    ...(reasoning.thinkingBudget === undefined ? {} : { thinkingBudget: integer(reasoning.thinkingBudget, -1) }),
+  const thinkingConfig = Object.freeze({
+    ...(reasoning.thinkingBudget === undefined ? {} : { thinkingBudget: integer(reasoning.thinkingBudget, -1, Number.MAX_SAFE_INTEGER, skipPolicyRanges) }),
     ...(reasoning.thinkingLevel === undefined ? {} : { thinkingLevel: reasoning.thinkingLevel as string }),
     ...(reasoning.includeThoughts === undefined ? {} : { includeThoughts: reasoning.includeThoughts as boolean }),
-  }) : null
+  })
   const generationConfig = Object.freeze({
-    ...(generation.temperature === undefined ? {} : { temperature: number(generation.temperature, 0, 2) }),
-    ...(generation.topP === undefined ? {} : { topP: number(generation.topP, 0, 1) }),
-    ...(generation.topK === undefined ? {} : { topK: integer(generation.topK, 1) }),
-    ...(generation.maxOutputTokens === undefined ? {} : { maxOutputTokens: integer(generation.maxOutputTokens, 1) }),
+    ...(generation.temperature === undefined ? {} : { temperature: number(generation.temperature, 0, 2, skipPolicyRanges) }),
+    ...(generation.topP === undefined ? {} : { topP: number(generation.topP, 0, 1, skipPolicyRanges) }),
+    ...(generation.topK === undefined ? {} : { topK: integer(generation.topK, 1, Number.MAX_SAFE_INTEGER, skipPolicyRanges) }),
+    ...(generation.maxOutputTokens === undefined ? {} : { maxOutputTokens: integer(generation.maxOutputTokens, 1, Number.MAX_SAFE_INTEGER, skipPolicyRanges) }),
     ...(stopSequences ? { stopSequences } : {}),
-    ...(generation.presencePenalty === undefined ? {} : { presencePenalty: number(generation.presencePenalty, -2, 1.999999999) }),
-    ...(generation.frequencyPenalty === undefined ? {} : { frequencyPenalty: number(generation.frequencyPenalty, -2, 1.999999999) }),
-    ...(generation.seed === undefined ? {} : { seed: integer(generation.seed, 0) }),
+    ...(generation.presencePenalty === undefined ? {} : { presencePenalty: number(generation.presencePenalty, -2, 1.999999999, skipPolicyRanges) }),
+    ...(generation.frequencyPenalty === undefined ? {} : { frequencyPenalty: number(generation.frequencyPenalty, -2, 1.999999999, skipPolicyRanges) }),
+    ...(generation.seed === undefined ? {} : { seed: integer(generation.seed, 0, Number.MAX_SAFE_INTEGER, skipPolicyRanges) }),
     ...(generation.responseMimeType === undefined ? {} : { responseMimeType: generation.responseMimeType as 'text/plain' | 'application/json' }),
     ...(thinkingConfig && Object.keys(thinkingConfig).length > 0 ? { thinkingConfig } : {}),
   })
@@ -220,6 +224,7 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
       ...(toolChoice.mode === 'named' ? { allowedFunctionNames: Object.freeze([toolChoice.name as string]) } : {}),
     }) }) } : {}),
   })
+  validateApiRequestBodyV2('google_ai_studio', operation, nativeRequest, bodySchemaRevision)
   let preparedBody: ImmutablePreparedBodyV2
   try {
     preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(

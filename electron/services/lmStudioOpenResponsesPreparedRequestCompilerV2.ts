@@ -9,6 +9,8 @@ import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-
 import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { compileLmStudioOpenResponsesRequestV1 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
 import { readLmStudioOpenResponsesEndpointV2 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { REQUEST_RULE_RESOLVER_REVISION_V2 } from '../../src/core/generation-v2/compiler/resolvedInvocationV2'
 /* eslint-enable no-restricted-imports */
 
 export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
@@ -24,7 +26,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const binding = snapshot.providerBinding
   if (binding.providerId.value !== 'lmstudio' || binding.protocolContractId.value !== 'lmstudio-openresponses' ||
       binding.endpointProfileId.value !== input.profile.endpointProfileId || binding.credentialScopeId.value !== input.profile.credentialScopeId ||
@@ -34,6 +36,8 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
       input.profile.protocolContractId !== 'lmstudio-openresponses') throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_BINDING_INVALID')
   const intent = snapshot.semanticIntent
   const tools = intent.tools
+  const ruleResolution = snapshot.requestPlan?.resolution
+  const frozenToolDefinitions = ruleResolution?.toolDefinitions
   if (tools.mode === 'enabled') {
     if (snapshot.toolAuthority.kind !== 'registry' ||
         !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context) ||
@@ -41,18 +45,31 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
         input.toolRegistry.registry.definitionsDigest !== snapshot.toolAuthority.toolDefinitionsDigest.value ||
         input.toolRegistry.selectedDefinitions.length !== tools.allowedToolIds.length ||
         input.toolRegistry.selectedDefinitions.some((tool, index) => tool.toolId !== tools.allowedToolIds[index].value) ||
+        (ruleResolution?.resolverRevision === REQUEST_RULE_RESOLVER_REVISION_V2 && frozenToolDefinitions === undefined) ||
+        (frozenToolDefinitions !== undefined && (frozenToolDefinitions.registryRevision !== input.toolRegistry.registry.revision ||
+          frozenToolDefinitions.definitionsDigest !== input.toolRegistry.registry.definitionsDigest ||
+          stableSerializeProviderRequestV2(frozenToolDefinitions.definitions.map((entry) => entry.sourceDefinition)) !==
+            stableSerializeProviderRequestV2(input.toolRegistry.selectedDefinitions) ||
+          stableSerializeProviderRequestV2(frozenToolDefinitions.definitions.map((entry) => entry.sourceDefinition.toolId)) !==
+            stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value)))) ||
         !['omitted', 'none', 'required'].includes(tools.toolChoice.mode)) {
       throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_AUTHORITY_INVALID')
     }
-  } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null) {
+  } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null || frozenToolDefinitions !== undefined) {
     throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_AUTHORITY_INVALID')
   }
-  const functionTools = input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
-    type: 'function' as const, name: tool.function.name,
-    ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
-    parameters: tool.function.parameters ?? Object.freeze({ type: 'object', properties: Object.freeze({}), additionalProperties: false }),
-    strict: true as const,
-  }))
+  const functionTools = frozenToolDefinitions !== undefined
+    ? frozenToolDefinitions.definitions.map(({ effectiveDefinition }) => Object.freeze({
+      type: 'function' as const, name: effectiveDefinition.function.name,
+      ...(effectiveDefinition.function.description === undefined ? {} : { description: effectiveDefinition.function.description }),
+      parameters: effectiveDefinition.function.parameters!, strict: effectiveDefinition.function.strict!,
+    }))
+    : input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
+      type: 'function' as const, name: tool.function.name,
+      ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
+      parameters: tool.function.parameters ?? Object.freeze({ type: 'object', properties: Object.freeze({}), additionalProperties: false }),
+      strict: true as const,
+    }))
   const toolChoice = tools.mode === 'enabled' && tools.toolChoice.mode !== 'omitted'
     ? tools.toolChoice.mode as 'none' | 'required'
     : undefined
@@ -68,7 +85,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(functionTools === undefined ? {} : { tools: functionTools }),
     ...(toolChoice === undefined ? {} : { toolChoice }),
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const generationLedger = [
     ['temperature', 'temperature'], ['topP', 'top_p'], ['maxOutputTokens', 'max_output_tokens'],
     ['frequencyPenalty', 'frequency_penalty'], ['presencePenalty', 'presence_penalty'],
@@ -98,6 +115,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     endpointProfileId: input.profile.endpointProfileId, credentialScopeId: input.profile.credentialScopeId,
     contractId: 'lmstudio-openresponses', modelId: binding.modelId.value,
     effectiveEndpointId: input.profile.endpointProfileId, endpoint: readLmStudioOpenResponsesEndpointV2(input.profile),
-    headersPlan: createNoCredentialHeaderPlanV2(), body: compiled.preparedBody, ledger,
+    headersPlan: createNoCredentialHeaderPlanV2(), body: compiled.preparedBody, ledger, requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
     capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

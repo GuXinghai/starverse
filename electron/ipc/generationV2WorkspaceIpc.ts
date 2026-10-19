@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { normalizeProjectDuplicatePolicy } from '../../src/shared/settings/projectDuplicatePolicy'
+import type { ProjectDuplicatePolicy, ProjectNameMutationResult } from '../../src/shared/settings/projectDuplicatePolicy'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { ConversationReadV2Repo } from '../../infra/db/repo/conversationReadV2Repo'
@@ -67,6 +69,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   runtimeRegistry: Pick<GenerationOperationRuntimeRegistryV2,
     'runWithBranchQuiesced' | 'runWithConversationQuiesced' | 'runWithProjectQuiesced'>
   nowMs?: () => number
+  getProjectDuplicatePolicy?: () => ProjectDuplicatePolicy
 }>): readonly string[] {
   const nowMs = input.nowMs ?? Date.now
   const graph = new ConversationGraphV2Repo(input.db)
@@ -77,6 +80,22 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   const config = new GenerationConfigV2Repo(input.db, nowMs)
   const systemTemplate = new SystemChatTemplateV2Repo(input.db, nowMs)
   const routePreference = new ConversationRoutePreferenceV2Repo(input.db, nowMs)
+  function projectNamePayload(payload: unknown, keys: readonly string[]) {
+    const withConfirmation = !!payload && Object.prototype.hasOwnProperty.call(payload, 'confirmDuplicate')
+    const raw = object(payload, withConfirmation ? [...keys, 'confirmDuplicate'] : keys)
+    if (withConfirmation && typeof raw.confirmDuplicate !== 'boolean') throw new Error('invalid')
+    return raw
+  }
+  function duplicateResult(name: string, projectId: string | null, confirmed: boolean): ProjectNameMutationResult | null {
+    const policy = normalizeProjectDuplicatePolicy(input.getProjectDuplicatePolicy?.())
+    if (policy === 'allow' || (policy === 'ask' && confirmed)) return null
+    const duplicate = input.db.prepare(`SELECT 1 FROM project_v2 AS project
+      WHERE project.name=? AND (? IS NULL OR project.project_id<>?)
+      AND NOT EXISTS (SELECT 1 FROM system_chat_template_v2 AS template
+        JOIN conversation_v2 AS conversation ON conversation.conversation_id=template.conversation_id
+        WHERE conversation.project_id=project.project_id) LIMIT 1`).get(name, projectId, projectId)
+    return duplicate ? Object.freeze({ status: 'duplicate', policy }) : null
+  }
   const safe = (fn: (payload: unknown) => unknown | Promise<unknown>) => async (_event: unknown, payload?: unknown) => {
     try { return Object.freeze({ ok: true, value: await fn(payload) }) } catch (error) {
       return Object.freeze({ ok: false, code: error instanceof Error ? error.message : 'GENERATION_V2_WORKSPACE_COMMAND_FAILED' })
@@ -140,16 +159,26 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       configRevision: fact.configRevision.value, semanticLayer: projectGenerationConfigLayerV2(fact.semanticLayer) })
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[7], safe((payload) => {
-    const raw = object(payload, ['name'])
+    const raw = projectNamePayload(payload, ['name'])
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      const id = graph.createProject(context, { projectId: `project:${randomUUID()}`, name: text(raw.name, 4096), createdAtMs: nowMs() })
-      return Object.freeze({ projectId: id.value })
+      const name = text(raw.name, 4096)
+      const duplicate = duplicateResult(name, null, raw.confirmDuplicate === true)
+      if (duplicate) return duplicate
+      const id = graph.createProject(context, { projectId: `project:${randomUUID()}`, name, createdAtMs: nowMs() })
+      return Object.freeze({ status: 'saved', projectId: id.value })
     })
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[8], safe((payload) => {
-    const raw = object(payload, ['projectId', 'name'])
+    const raw = projectNamePayload(payload, ['projectId', 'name'])
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      workspace.renameProject(context, { projectId: text(raw.projectId), name: text(raw.name, 4096), updatedAtMs: nowMs() }); return true
+      const projectId = text(raw.projectId)
+      const name = text(raw.name, 4096)
+      const current = input.db.prepare('SELECT name FROM project_v2 WHERE project_id=?').get(projectId) as { name: string } | undefined
+      if (current?.name === name) return Object.freeze({ status: 'saved', projectId })
+      const duplicate = duplicateResult(name, projectId, raw.confirmDuplicate === true)
+      if (duplicate) return duplicate
+      workspace.renameProject(context, { projectId, name, updatedAtMs: nowMs() })
+      return Object.freeze({ status: 'saved', projectId })
     })
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[9], safe((payload) => {

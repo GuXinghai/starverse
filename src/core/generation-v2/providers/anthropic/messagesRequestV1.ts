@@ -3,6 +3,9 @@ import {
   StableSerializeV2Error,
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
+import { isAnthropicLegacyThinkingEncoderRevisionV2 } from '../../capability/encodingCoverageRegistryV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 import type { ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
 import {
   ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1,
@@ -316,13 +319,13 @@ function decodeToolResultBlock(value: unknown): AnthropicMessagesToolResultBlock
     ...(block.is_error === undefined ? {} : { is_error: block.is_error }),
   })
 }
-function decodeTools(value: unknown): readonly AnthropicMessagesToolDefinitionV1[] {
+function decodeTools(value: unknown, skipNumericPolicy = false): readonly AnthropicMessagesToolDefinitionV1[] {
   return Object.freeze(denseArray(value, 128).map((raw) => {
     const discriminator = closedObject(raw, ['type', 'name', 'description', 'input_schema', 'cache_control', 'max_uses',
       'allowed_domains', 'blocked_domains', 'user_location'], ['name'])
     if (discriminator.type === 'web_search_20250305') {
       if (discriminator.name !== 'web_search' || (discriminator.max_uses !== undefined &&
-          (!Number.isSafeInteger(discriminator.max_uses) || (discriminator.max_uses as number) < 1)) ||
+          (!Number.isSafeInteger(discriminator.max_uses) || (!skipNumericPolicy && (discriminator.max_uses as number) < 1))) ||
           (discriminator.allowed_domains !== undefined && !Array.isArray(discriminator.allowed_domains)) ||
           (discriminator.blocked_domains !== undefined && !Array.isArray(discriminator.blocked_domains))) {
         return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
@@ -389,7 +392,12 @@ function decodeMessages(value: unknown): readonly AnthropicMessagesRequestMessag
   }))
 }
 
-function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, modelId: string): EncodedAnthropicMessagesIntentV1 {
+function encodeAnthropicMessagesIntentV1(
+  intent: ResolvedGenerationIntentV2,
+  modelId: string,
+  legacyDisabledThinkingOmission: boolean,
+  skipNumericPolicy = false,
+): EncodedAnthropicMessagesIntentV1 {
   const request: EncodedAnthropicMessagesIntentV1['request'] = {}
   const dispositions: AnthropicMessagesIntentDispositionV1[] = []
   const issues: AnthropicMessagesEncodingIssueV1[] = []
@@ -414,30 +422,53 @@ function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, mod
   }
   if (intent.providerExtension.kind === 'none' || intent.providerExtension.kind !== 'anthropic_messages') {
     rejected('providerExtension.kind', 'ANTHROPIC_PROVIDER_EXTENSION_UNSUPPORTED')
-  } else if (intent.reasoning.mode === 'disabled') {
-    accepted('providerExtension.kind'); accepted('providerExtension.thinkingDisplay'); accepted('providerExtension.thinkingMode')
-    if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) accepted('providerExtension.manualThinkingBudgetTokens')
   } else {
     accepted('providerExtension.kind')
     const display = intent.providerExtension.thinkingDisplay === 'provider_default' ? undefined : intent.providerExtension.thinkingDisplay
-    if (intent.providerExtension.thinkingMode === 'model_recommended') accepted('providerExtension.thinkingMode')
-    else {
-      request.thinking = intent.providerExtension.thinkingMode === 'manual'
-        ? { type: 'enabled', ...(intent.providerExtension.manualThinkingBudgetTokens === undefined ? {} : { budgetTokens: intent.providerExtension.manualThinkingBudgetTokens }), ...(display === undefined ? {} : { display }) }
+    const mode = intent.providerExtension.thinkingMode
+    const manualBudgetTokens = 'manualThinkingBudgetTokens' in intent.providerExtension
+      ? intent.providerExtension.manualThinkingBudgetTokens : undefined
+    const preserveLegacyDisabledOmission = legacyDisabledThinkingOmission && intent.reasoning.mode === 'disabled'
+    if (preserveLegacyDisabledOmission) {
+      accepted('providerExtension.thinkingMode')
+      accepted('providerExtension.thinkingDisplay')
+      if (manualBudgetTokens !== undefined) accepted('providerExtension.manualThinkingBudgetTokens')
+    } else if ((mode === 'disabled' && intent.reasoning.mode !== 'disabled') ||
+        (mode !== 'disabled' && mode !== 'model_recommended' && mode !== 'provider_default' && intent.reasoning.mode === 'disabled')) {
+      rejected('providerExtension.thinkingMode', 'ANTHROPIC_RESOLVED_THINKING_MODE_MISMATCH', 'thinking.type')
+    } else if (mode === 'model_recommended' || mode === 'provider_default') {
+      accepted('providerExtension.thinkingMode')
+    } else if (mode === 'disabled') {
+      request.thinking = { type: 'disabled' }
+      encoded('providerExtension.thinkingMode', 'thinking.type', 'disabled', 'structural')
+    } else {
+      request.thinking = mode === 'manual'
+        ? { type: 'enabled', ...(manualBudgetTokens === undefined ? {} : { budgetTokens: manualBudgetTokens }), ...(display === undefined ? {} : { display }) }
         : { type: 'adaptive', ...(display === undefined ? {} : { display }) }
-      encoded('providerExtension.thinkingMode', 'thinking.type', request.thinking?.type, 'structural')
-      if (intent.providerExtension.thinkingMode === 'manual') {
-        if (intent.providerExtension.manualThinkingBudgetTokens === undefined) rejected('providerExtension.manualThinkingBudgetTokens', 'ANTHROPIC_MANUAL_THINKING_BUDGET_REQUIRED')
-        else if (intent.providerExtension.manualThinkingBudgetTokens < 1_024 ||
-            (request.maxTokens !== undefined && intent.providerExtension.manualThinkingBudgetTokens >= request.maxTokens)) {
-          rejected('providerExtension.manualThinkingBudgetTokens', intent.providerExtension.manualThinkingBudgetTokens < 1_024
+      encoded('providerExtension.thinkingMode', 'thinking.type', request.thinking.type, 'structural')
+      if (mode === 'manual') {
+        if (manualBudgetTokens === undefined && !skipNumericPolicy) rejected('providerExtension.manualThinkingBudgetTokens', 'ANTHROPIC_MANUAL_THINKING_BUDGET_REQUIRED')
+        else if (manualBudgetTokens === undefined) accepted('providerExtension.manualThinkingBudgetTokens')
+        else if (!skipNumericPolicy && (manualBudgetTokens < 1_024 ||
+            (request.maxTokens !== undefined && manualBudgetTokens >= request.maxTokens))) {
+          rejected('providerExtension.manualThinkingBudgetTokens', manualBudgetTokens < 1_024
             ? 'ANTHROPIC_MANUAL_THINKING_BUDGET_BELOW_MINIMUM' : 'ANTHROPIC_MANUAL_THINKING_BUDGET_NOT_BELOW_MAX_TOKENS', 'thinking.budget_tokens')
           delete request.thinking
-        } else encoded('providerExtension.manualThinkingBudgetTokens', 'thinking.budget_tokens', intent.providerExtension.manualThinkingBudgetTokens)
+        } else encoded('providerExtension.manualThinkingBudgetTokens', 'thinking.budget_tokens', manualBudgetTokens)
+      } else if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) {
+        rejected('providerExtension.manualThinkingBudgetTokens', 'ANTHROPIC_MANUAL_THINKING_BUDGET_UNSUPPORTED')
       }
     }
-    if (intent.providerExtension.thinkingDisplay === 'provider_default') accepted('providerExtension.thinkingDisplay')
-    else encoded('providerExtension.thinkingDisplay', 'thinking.display', intent.providerExtension.thinkingDisplay)
+    if (!preserveLegacyDisabledOmission) {
+      if (request.thinking && request.thinking.type !== 'disabled') {
+        if (intent.providerExtension.thinkingDisplay === 'provider_default') accepted('providerExtension.thinkingDisplay')
+        else encoded('providerExtension.thinkingDisplay', 'thinking.display', intent.providerExtension.thinkingDisplay)
+      } else if (intent.providerExtension.thinkingDisplay === 'provider_default') {
+        accepted('providerExtension.thinkingDisplay')
+      } else {
+        rejected('providerExtension.thinkingDisplay', 'ANTHROPIC_THINKING_DISPLAY_REQUIRES_ACTIVE_THINKING', 'thinking.display')
+      }
+    }
   }
   if (!dispositions.some((entry) => entry.semanticPath === 'reasoning.mode')) {
     accepted('reasoning.mode')
@@ -446,7 +477,7 @@ function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, mod
     if (intent.reasoning.effort !== undefined) { request.effort = intent.reasoning.effort; encoded('reasoning.effort', 'output_config.effort', request.effort) }
     if (intent.reasoning.summary !== undefined) rejected('reasoning.summary', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
     if (intent.reasoning.exclude !== undefined) rejected('reasoning.exclude', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
-  }
+  } else if (intent.reasoning.effort !== undefined) accepted('reasoning.effort')
   if (intent.web.mode === 'disabled') accepted('web.mode')
   else if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') { rejected('web.mode', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools'); rejected('web.types', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools') }
   else {
@@ -487,20 +518,24 @@ function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, mod
   return Object.freeze({ request: Object.freeze(request), dispositions: Object.freeze(dispositions), issues: Object.freeze(issues) })
 }
 
-export function compileAnthropicMessagesRequestV1(value: unknown): AnthropicMessagesRequestCompilationV1 {
-  const input = closedObject(value, ['modelId', 'intent', 'messages', 'system', 'tools', 'toolChoice'], ['modelId', 'intent', 'messages'])
+export function compileAnthropicMessagesRequestV1(value: unknown, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): AnthropicMessagesRequestCompilationV1 {
+  const input = closedObject(value, ['modelId', 'intent', 'messages', 'system', 'tools', 'toolChoice', 'encoderRevision'], ['modelId', 'intent', 'messages'])
   if (typeof input.modelId !== 'string' || input.modelId.length === 0) {
     return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
   }
   const messages = decodeMessages(input.messages)
   const system = input.system === undefined ? undefined : nonEmptyString(input.system)
-  const tools = input.tools === undefined ? undefined : decodeTools(input.tools)
+  const skipNumericPolicy = bodySchemaRevision !== undefined
+  const tools = input.tools === undefined ? undefined : decodeTools(input.tools, skipNumericPolicy)
   if (tools !== undefined && new Set(tools.map((tool) => tool.name)).size !== tools.length) {
     return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
   }
   if (input.toolChoice !== undefined && tools === undefined) return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
   const toolChoice = input.toolChoice === undefined ? undefined : decodeToolChoice(input.toolChoice, new Set(tools!.map((tool) => tool.name)))
-  const projection = encodeAnthropicMessagesIntentV1(input.intent as ResolvedGenerationIntentV2, input.modelId)
+  const legacyDisabledThinkingOmission = typeof input.encoderRevision === 'string' &&
+    isAnthropicLegacyThinkingEncoderRevisionV2(input.encoderRevision)
+  const projection = encodeAnthropicMessagesIntentV1(input.intent as ResolvedGenerationIntentV2, input.modelId,
+    legacyDisabledThinkingOmission, skipNumericPolicy)
   const base = {
     classification: 'anthropic_messages_request_compilation_non_executable' as const,
     executionAuthority: 'none' as const,
@@ -529,6 +564,7 @@ export function compileAnthropicMessagesRequestV1(value: unknown): AnthropicMess
     ...(tools === undefined ? {} : { tools }),
     ...(toolChoice === undefined ? {} : { tool_choice: toolChoice }),
   })
+  validateApiRequestBodyV2('anthropic', operation, nativeRequest, bodySchemaRevision)
   let preparedBody: ImmutablePreparedBodyV2
   try {
     preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(nativeRequest, ANTHROPIC_MESSAGES_REQUEST_MAX_BYTES_V1)

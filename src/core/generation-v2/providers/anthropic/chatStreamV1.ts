@@ -2,13 +2,18 @@ import {  } from '@/shared/encoding/binaryEncoding'
 import { createAnthropicMessagesNativeContentAccumulator } from '@/core/provider/anthropic/anthropicMessagesNativeContentAccumulator'
 import {
   assertFinalAnthropicProviderNativeSnapshot,
-  MAX_ANTHROPIC_NATIVE_SNAPSHOT_BYTES,
   type AnthropicProviderNativeSnapshot,
+  type AnthropicProviderNativeSnapshotCapacityV1,
 } from '@/core/provider/anthropic/anthropicProviderNativeContent'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
-export const ANTHROPIC_MESSAGES_SSE_MAX_PENDING_FRAME_BYTES_V1 = 8 * 1_024 * 1_024
-export const ANTHROPIC_MESSAGES_STREAM_MAX_AGGREGATE_BYTES_V1 = MAX_ANTHROPIC_NATIVE_SNAPSHOT_BYTES
-const MAX_WIRE_BYTES = 32 * 1_024 * 1_024
+export const ANTHROPIC_MESSAGES_SSE_MAX_PENDING_FRAME_BYTES_V1 = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
+export const ANTHROPIC_MESSAGES_STREAM_MAX_AGGREGATE_BYTES_V1 = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
+const MAX_WIRE_BYTES = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
+const ANTHROPIC_V2_SNAPSHOT_CAPACITY: AnthropicProviderNativeSnapshotCapacityV1 = Object.freeze({
+  maxBlockBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+  maxSnapshotBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+})
 
 const EVENT_TYPES = new Set([
   'message_start', 'content_block_start', 'content_block_delta', 'content_block_stop',
@@ -88,7 +93,11 @@ export class AnthropicMessagesNamedSseDecoderV1 {
     if (this.#wireBytes > MAX_WIRE_BYTES) return fail('GENERATION_V2_ANTHROPIC_STREAM_LIMIT_EXCEEDED')
     try {
       this.#append(this.#decoder.decode(bytes, { stream: true }))
-      return this.#drain()
+      const events = this.#drain()
+      if (new TextEncoder().encode(this.#buffer).byteLength > ANTHROPIC_MESSAGES_SSE_MAX_PENDING_FRAME_BYTES_V1) {
+        return fail('GENERATION_V2_ANTHROPIC_STREAM_LIMIT_EXCEEDED')
+      }
+      return events
     } catch (error) {
       if (error instanceof AnthropicMessagesChatStreamV1Error) throw error
       return fail('GENERATION_V2_ANTHROPIC_SSE_INVALID')
@@ -105,6 +114,9 @@ export class AnthropicMessagesNamedSseDecoderV1 {
         this.#trailingCr = false
       }
       const events = this.#drain()
+      if (new TextEncoder().encode(this.#buffer).byteLength > ANTHROPIC_MESSAGES_SSE_MAX_PENDING_FRAME_BYTES_V1) {
+        return fail('GENERATION_V2_ANTHROPIC_STREAM_LIMIT_EXCEEDED')
+      }
       if (this.#buffer.length !== 0) return fail('GENERATION_V2_ANTHROPIC_SSE_PREMATURE_EOF')
       return events
     } catch (error) {
@@ -123,9 +135,6 @@ export class AnthropicMessagesNamedSseDecoderV1 {
       this.#trailingCr = true
     }
     this.#buffer += text.replace(/\r\n?|\n/gu, '\n')
-    if (new TextEncoder().encode(this.#buffer).byteLength > ANTHROPIC_MESSAGES_SSE_MAX_PENDING_FRAME_BYTES_V1) {
-      return fail('GENERATION_V2_ANTHROPIC_STREAM_LIMIT_EXCEEDED')
-    }
   }
 
   #drain(): readonly AnthropicMessagesNamedSseEventV1[] {
@@ -203,7 +212,9 @@ export class AnthropicMessagesStreamAssemblerV1 {
         nonEmptyString(message.model)
         usage(message.usage, 'input_tokens')
         this.#messageStarted = true
-        this.#accumulator = createAnthropicMessagesNativeContentAccumulator({ messageId })
+        this.#accumulator = createAnthropicMessagesNativeContentAccumulator({
+          messageId, capacity: ANTHROPIC_V2_SNAPSHOT_CAPACITY, emitIntermediateSnapshots: false,
+        })
         this.#accumulator.ingestEvent(value)
         return
       }
@@ -278,7 +289,7 @@ export class AnthropicMessagesStreamAssemblerV1 {
         if (!upsert || upsert.type !== 'message.provider_native_content_upsert') {
           return fail('GENERATION_V2_ANTHROPIC_STREAM_TERMINAL_INVALID')
         }
-        try { this.#snapshot = assertFinalAnthropicProviderNativeSnapshot(upsert.snapshot) } catch {
+        try { this.#snapshot = assertFinalAnthropicProviderNativeSnapshot(upsert.snapshot, ANTHROPIC_V2_SNAPSHOT_CAPACITY) } catch {
           return fail('GENERATION_V2_ANTHROPIC_STREAM_TERMINAL_INVALID')
         }
         this.#messageStopped = true
@@ -287,6 +298,12 @@ export class AnthropicMessagesStreamAssemblerV1 {
       default:
         return fail('GENERATION_V2_ANTHROPIC_STREAM_INVALID_EVENT')
     }
+  }
+
+  interruptedSnapshot() {
+    const items = this.#accumulator?.snapshot()?.content ?? []
+    return { items: JSON.parse(JSON.stringify(items)) as Readonly<Record<string, unknown>>[],
+      completeIndexes: [...this.#closedBlocks], text: '', complete: this.#messageStopped }
   }
 
   finish(): AnthropicProviderNativeSnapshot {
@@ -320,6 +337,8 @@ export class AnthropicMessagesChatStreamV1 {
     }
     return Object.freeze(visible)
   }
+
+  interruptedSnapshot() { return this.#assembler.interruptedSnapshot() }
 
   finish(): AnthropicProviderNativeSnapshot {
     for (const event of this.#decoder.finish()) this.#assembler.push(event)

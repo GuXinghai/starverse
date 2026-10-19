@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveOpenAIResponsesCapabilityV2 } from './openAIResponsesGenerationAuthorityV2Service'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -150,7 +152,7 @@ export function createOpenAIResponsesPlainTextRegenerateCoordinatorV2(input: Rea
                     preparedRequest, request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest),
                   })
                 },
-              })},
+              })}, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveOpenAIResponsesCapabilityV2(modelEvidence), request.expectedCredentialRevision) },
             )
           }),
         })

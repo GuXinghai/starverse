@@ -11,6 +11,8 @@ import type { AuthoritativeModelSubjectSetV1 } from
 import { buildCapabilityRuleSourceScopeIdV1 } from
   '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
+import { listCapabilityRuleOwnershipSnapshotsV2 } from '../repo/capabilityRuleCoreV2Repo'
+import { prepareGenerationRequestRulesPublicationV2, writeGenerationRequestRulesPublicationV2 } from '../repo/generationRequestRulesV2Repo'
 import { CapabilityRuleMaterializationV1Repo,
   type CapabilityRuleMaterializationStageResultV1 } from
   '../repo/capabilityRuleMaterializationV1Repo'
@@ -27,6 +29,7 @@ export interface AuthoritativeModelSubjectSetReaderV1 {
  * stagePrepared performs only revision revalidation plus immutable writes and pointer replacement.
  */
 export class CapabilityRuleMaterializationV1Service {
+  readonly #db: BetterSqlite3.Database
   readonly #ruleRepo: CapabilityRuleCoreV1Repo
   readonly #stageRepo: CapabilityRuleMaterializationV1Repo
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
@@ -36,6 +39,7 @@ export class CapabilityRuleMaterializationV1Service {
     private readonly subjectSetReader: AuthoritativeModelSubjectSetReaderV1,
     nowMs: () => number = Date.now,
   ) {
+    this.#db = db
     this.#ruleRepo = new CapabilityRuleCoreV1Repo(db, nowMs)
     this.#stageRepo = new CapabilityRuleMaterializationV1Repo(db, nowMs)
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
@@ -46,7 +50,10 @@ export class CapabilityRuleMaterializationV1Service {
     defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1
   }>): Promise<PreparedCapabilityRuleMaterializationV1 | null> {
     const subjectSet = await this.subjectSetReader.readCurrent()
-    const ownershipSnapshots = this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => snapshot.projected)
+    const v2 = listCapabilityRuleOwnershipSnapshotsV2(this.#db).map(value => value.projected)
+    const ownershipSnapshots = [...this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => snapshot.projected)
+      .filter(value => !v2.some(next => next.definition.ownership === value.definition.ownership &&
+        next.definition.ownerId === value.definition.ownerId)), ...v2]
     const sourceScopeId = buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId })
     const definitionSet = projectCapabilityRuleDefinitionSetV1({ ownershipSnapshots,
       defaultActivationPolicies: input.defaultActivationPolicies })
@@ -77,6 +84,8 @@ export class CapabilityRuleMaterializationV1Service {
     fetchedAtMs: number
     lastAttemptedAtMs?: number
   }>): Promise<CanonicalModelFactStagedSourcePromotionResultV1> {
+    const requestRules = prepareGenerationRequestRulesPublicationV2(this.#db, await this.subjectSetReader.readCurrent(),
+      undefined, undefined, input.defaultActivationPolicies)
     const sourceScopeId = buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId })
     const expectedMaterializationRevision = this.#stageRepo.readStage(sourceScopeId)
       ?.materializationRevision ?? null
@@ -86,19 +95,25 @@ export class CapabilityRuleMaterializationV1Service {
       if (!currentStage) {
         throw new Error('GENERATION_V2_CANONICAL_MODEL_FACT_SOURCE_STALE_CURRENT')
       }
-      return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+      return this.#db.transaction(() => {
+        writeGenerationRequestRulesPublicationV2(this.#db, requestRules)
+        return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
         sourceScopeId, canonicalSourceRevision: currentStage.canonicalSourceRevision,
         expectedCurrentRevision: input.expectedActiveSourceRevision,
         fetchedAtMs: input.fetchedAtMs,
         ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
-      })
+        })
+      })()
     }
     const staged = await this.stagePrepared({ prepared, expectedMaterializationRevision })
-    return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
+    return this.#db.transaction(() => {
+      writeGenerationRequestRulesPublicationV2(this.#db, requestRules)
+      return this.#sourceRepo.promoteStagedCompleteSourceRevision({ sourceKind: 'capability_rule',
       sourceScopeId, canonicalSourceRevision: staged.stage.canonicalSourceRevision,
       expectedCurrentRevision: input.expectedActiveSourceRevision,
       fetchedAtMs: input.fetchedAtMs,
       ...(input.lastAttemptedAtMs === undefined ? {} : { lastAttemptedAtMs: input.lastAttemptedAtMs }),
-    })
+      })
+    })()
   }
 }

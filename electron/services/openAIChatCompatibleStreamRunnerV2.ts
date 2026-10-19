@@ -1,3 +1,4 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
 import { session } from 'electron'
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -23,6 +24,14 @@ import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { readOpenAICompatibleJsonResponseBytesV2 } from './openAIChatCompatibleResponseBodyV2'
 import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 
@@ -40,6 +49,8 @@ function errorFromTerminal(event: Extract<CompatibleWireEvent, { kind: 'terminal
 function responseRouteProvenanceId(operationId: string): string {
   return `ocp_route_${createHash('sha256').update(operationId, 'utf8').digest('hex')}`
 }
+
+const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
 
 export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
@@ -81,6 +92,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
         : null
       graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, terminalContent, nowMs())
       const terminalExecution = executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, nowMs())
+      if (state !== 'completed') { new GenerationInterruptedReplayV2Repo(input.db).insertLocalCheckpoint(context, { answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId, requestSequence: command.preparedRequest.requestSequence, protocol: 'openai_compatible', requestBody: JSON.parse(command.preparedRequest.body.copyUtf8Text()), wireEvents: receivedLocalWireFacts.get(command) ?? [] }) }
       if (state === 'completed' && result) {
         const fact = historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
         historyRepo.persistCompletedArtifact({ context, execution: terminalExecution, request: terminalRequest,
@@ -104,8 +116,9 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
     return Object.freeze({ operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId, state, errorCode, errorMessage })
   }
   function consume(events: readonly CompatibleWireEvent[], assembler: OpenAIChatCompatibleResponseAssemblerV2, reasoning: CompatibleChatResponseCoordinator | null,
-    visible: { value: string }, checkpoint: GenerationBodyCheckpointV2): void {
+    visible: { value: string }, checkpoint: GenerationBodyCheckpointV2, command: GenerationTextCommandResultV2): void {
     for (const event of events) {
+      receivedLocalWireFacts.get(command)!.push(event)
       if (event.kind === 'terminal') { reasoning?.apply(event); const code = errorFromTerminal(event); if (code) throw new Error(code); continue }
       reasoning?.apply(event)
       const delta = assembler.push(event)
@@ -137,12 +150,59 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
     headers.set('content-type', 'application/json')
     return headers
   }
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'openai_chat_compatible', (_receipt, command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    const envelope = value as Record<string, unknown>
+    if (envelope.kind !== 'openai_chat_compatible_completion_v1' || !envelope.result ||
+        typeof envelope.result !== 'object' || Array.isArray(envelope.result) || !Array.isArray(envelope.discovery)) {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    }
+    const raw = envelope.result as Record<string, unknown>
+    const message = raw.assistantMessage
+    if (!message || typeof message !== 'object' || Array.isArray(message) ||
+        (message as Record<string, unknown>).role !== 'assistant' ||
+        ((message as Record<string, unknown>).content !== null && typeof (message as Record<string, unknown>).content !== 'string') ||
+        (message as Record<string, unknown>).tool_calls !== undefined || typeof raw.responseId !== 'string' ||
+        typeof raw.model !== 'string' || typeof raw.finishReason !== 'string' ||
+        (raw.usage !== null && (!raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage)))) {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    }
+    let reasoning: Readonly<{ reasoning: string; hasCompleteToolChain: boolean }> | null = null
+    if (envelope.assistantReasoning !== null) {
+      if (!envelope.assistantReasoning || typeof envelope.assistantReasoning !== 'object' || Array.isArray(envelope.assistantReasoning) ||
+          typeof (envelope.assistantReasoning as Record<string, unknown>).reasoning !== 'string' ||
+          (envelope.assistantReasoning as Record<string, unknown>).hasCompleteToolChain !== false) {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+      }
+      reasoning = envelope.assistantReasoning as Readonly<{ reasoning: string; hasCompleteToolChain: boolean }>
+    }
+    return terminal(command, 'completed', envelope.result as OpenAIChatCompatibleStreamResultV2, null, null,
+      'mid_stream', reasoning, envelope.discovery as readonly CompatibleDiscoveryObservation[])
+  }, (_command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    const envelope = value as Record<string, unknown>
+    const raw = envelope.result
+    if (envelope.kind !== 'openai_chat_compatible_completion_v1' || !raw || typeof raw !== 'object' ||
+        Array.isArray(raw) || !Array.isArray(envelope.discovery)) {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    }
+    const result = raw as Record<string, unknown>
+    const message = result.assistantMessage
+    if (!message || typeof message !== 'object' || Array.isArray(message) ||
+        (message as Record<string, unknown>).role !== 'assistant' ||
+        ((message as Record<string, unknown>).content !== null && typeof (message as Record<string, unknown>).content !== 'string') ||
+        (message as Record<string, unknown>).tool_calls !== undefined || typeof result.responseId !== 'string' ||
+        typeof result.model !== 'string' || typeof result.finishReason !== 'string' ||
+        (result.usage !== null && (!result.usage || typeof result.usage !== 'object' || Array.isArray(result.usage)))) {
+      throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
+    }
+  })
   return Object.freeze({ run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal) => {
     if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
         command.preparedRequest.providerId !== 'openai_compatible' || command.preparedRequest.contractId !== 'openai_chat_compatible') {
       throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_AUTHORITY_INVALID')
     }
-    begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); const visible = { value: '' }; let started = false
+    receivedLocalWireFacts.set(command, []); begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); const visible = { value: '' }; let started = false
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible.value,
       streamProjectionSink: input.streamProjectionSink, nowMs,
@@ -159,20 +219,33 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       const assembler = new OpenAIChatCompatibleResponseAssemblerV2(); const reasoning = createReasoningCoordinator(command); const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
       if (contentType.includes('text/event-stream')) {
         const parser = new CompatibleSseWireParser({ expectedChoiceCount: 1 }); const reader = response.body.getReader()
-        try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, visible, checkpoint) }
-          consume(parser.finish(), assembler, reasoning, visible, checkpoint)
+        try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, visible, checkpoint, command) }
+          consume(parser.finish(), assembler, reasoning, visible, checkpoint, command)
         } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       } else if (contentType.includes('application/json')) {
-        const bytes = await readOpenAICompatibleJsonResponseBytesV2(response); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint) } finally { bytes.fill(0) }
+        const bytes = await readOpenAICompatibleJsonResponseBytesV2(response); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint, command) } finally { bytes.fill(0) }
       } else throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_CONTENT_TYPE_INVALID')
       const result = assembler.finish()
       // result.model is reported provenance; a mismatch with the requested model ID is not a failure
-      if (result.assistantMessage.tool_calls?.length) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_TOOL_CONTINUATION_UNAVAILABLE')
-      checkpoint.flush()
       const reasoningState = reasoning?.reasoningStates()[0]?.state
       const replay = reasoningState?.value ? { reasoning: reasoningState.value, hasCompleteToolChain: false } : null
-      return terminal(command, 'completed', result, null, null, 'mid_stream', replay, reasoning?.discoveryObservations() ?? [])
+      const discovery = reasoning?.discoveryObservations() ?? []
+      const receiptResult = Object.freeze({ kind: 'openai_chat_compatible_completion_v1', result,
+        assistantReasoning: replay, discovery })
+      persistGenerationNativeCompletionReceiptV2(input.db, command, receiptResult, nowMs())
+      if (result.assistantMessage.tool_calls?.length) {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_TOOL_CONTINUATION_UNAVAILABLE')
+      }
+      checkpoint.flush()
+      return materializeNewGenerationNativeCompletionV2({
+        db: input.db, command, nativeResult: receiptResult, nowMs,
+        materialize: () => terminal(command, 'completed', result, null, null, 'mid_stream', replay, discovery),
+      })
     } catch (error) {
+      if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+      if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+        throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+      }
       let failure: unknown = error
       try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
       const cancelled = signal?.aborted === true && !scope.timedOut()
@@ -180,6 +253,6 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
         : failure instanceof Error ? failure.message : 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code, cancelled ? 'Generation cancelled by user.' : code,
         started ? 'mid_stream' : 'pre_stream')
-    } finally { checkpoint.dispose(); scope.dispose() }
+    } finally { receivedLocalWireFacts.delete(command); checkpoint.dispose(); scope.dispose() }
   } })
 }

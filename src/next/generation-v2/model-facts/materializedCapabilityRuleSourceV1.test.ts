@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { projectCapabilityRuleOwnershipSnapshotV1 } from
   '../../../core/generation-v2/capability-rules/capabilityRuleCoreV1'
 import { buildAuthoritativeModelSubjectSetV1 } from '../../../core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
-import { prepareCapabilityRuleMaterializationV1 } from '../../../core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+import { createMaterializedCapabilityRuleSourceAdapterV1, prepareCapabilityRuleMaterializationV1 } from '../../../core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
+import { buildEnumerableSourcePublicationV1 } from '../../../core/generation-v2/model-facts/sourceSnapshotBuilderV1'
+import type { RawPayloadRefV1 } from '../../../core/generation-v2/model-facts/canonicalSourceFactsV1'
 
 const proof = (scopeId: string) => Object.freeze({ kind: 'provider_native_catalog' as const,
   providerKey: 'openai_responses', scopeId, credentialScopeId: 'credential-scope-v2:test',
@@ -32,6 +34,35 @@ function projectedSnapshot(rules: readonly unknown[]) {
 }
 
 describe('Materialized Capability Rule Source V1', () => {
+  it('validates and projects a source once per publication without changing facts or reusing another snapshot', () => {
+    const subjectSet = buildAuthoritativeModelSubjectSetV1([
+      { subject: subject('gpt-5'), proof: proof('scope:a') },
+      { subject: subject('gpt-5-mini'), proof: proof('scope:a') },
+    ])
+    const prepare = (value: 'supported' | 'unsupported') => prepareCapabilityRuleMaterializationV1({
+      sourceScopeId: 'capability-rules:test', subjectSet,
+      ownershipSnapshots: [projectedSnapshot([rule({ ruleId: 'rule.exact',
+        selector: { kind: 'exact', nativeModelIds: ['gpt-5', 'gpt-5-mini'] }, value })])],
+      defaultActivationPolicies: { cloud: 'enabled', user: 'enabled' },
+    })
+    const first = prepare('supported'), next = prepare('unsupported')
+    const payloads = new Map([first, next].map(item => [item.rawPayload.ref.storeId, item.rawPayload.persistedPayload]))
+    const readRawPayload = vi.fn((ref: RawPayloadRefV1) => {
+      const payload = payloads.get(ref.storeId)
+      if (!payload) throw new Error('unrecognized immutable payload')
+      return payload
+    })
+    const adapter = createMaterializedCapabilityRuleSourceAdapterV1({ rawPayloadReader: { readRawPayload } })
+    const publication = buildEnumerableSourcePublicationV1({ adapter, rawSnapshot: first.rawSnapshot })
+    expect(publication).toEqual(first.publication)
+    expect(readRawPayload).toHaveBeenCalledTimes(1)
+    const changed = buildEnumerableSourcePublicationV1({ adapter, rawSnapshot: next.rawSnapshot })
+    expect(changed).toEqual(next.publication)
+    expect(readRawPayload).toHaveBeenCalledTimes(2)
+    expect(changed.subjectFacts[0]?.payload.outcomes[0]?.effectiveAssertion?.value)
+      .toEqual({ kind: 'support', value: 'unsupported' })
+  })
+
   it('materializes exact and constrained regex rules only onto authoritative exact subjects', () => {
     const subjectSet = buildAuthoritativeModelSubjectSetV1([
       { subject: subject('gpt-5'), proof: proof('scope:a') },

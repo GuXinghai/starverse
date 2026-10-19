@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import {
   compatibleBoundedJsonValueSchema,
   compatibleObjectPathSchema,
@@ -19,6 +18,7 @@ import type {
   CompatibleRequestMessage,
 } from './messageTypes'
 import type { CompatibleReasoningReplayPolicy } from '../reasoning/reasoningTypes'
+import { compatibleWireMessageSchemaV2, validateCompatibleChatRequestBodyV2 } from './compatibleChatRequestBodySchemaV2'
 
 export type CompatibleStandardFieldName =
   | 'temperature' | 'top_p' | 'max_tokens' | 'max_completion_tokens' | 'stop' | 'seed'
@@ -55,24 +55,6 @@ const INTERNAL_ONLY_PATHS = [
   'responseProfileId', 'routeProvenanceId', 'baseUrl', 'headers', 'query', 'auth', 'apiKey',
 ]
 
-const contentPartSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }).strict(),
-  z.object({
-    type: z.literal('image_url'),
-    image_url: z.object({ url: z.string(), detail: z.enum(['auto', 'low', 'high']).optional() }).strict(),
-  }).strict(),
-])
-const contentSchema = z.union([z.string(), z.array(contentPartSchema)])
-const toolCallSchema = z.object({
-  id: z.string(), type: z.literal('function'),
-  function: z.object({ name: z.string(), arguments: z.string() }).strict(),
-}).strict()
-const wireMessageSchema = z.discriminatedUnion('role', [
-  z.object({ role: z.enum(['system', 'developer', 'user']), content: contentSchema }).strict(),
-  z.object({ role: z.literal('assistant'), content: contentSchema.nullable(), tool_calls: z.array(toolCallSchema).optional() }).strict(),
-  z.object({ role: z.literal('tool'), tool_call_id: z.string(), content: z.string() }).strict(),
-])
-
 export function buildCompatibleChatRequest(input: Readonly<{
   modelId: string
   messages: readonly CompatibleRequestMessage[]
@@ -86,7 +68,11 @@ export function buildCompatibleChatRequest(input: Readonly<{
     policy: CompatibleReasoningReplayPolicy
     entries: readonly CompatibleHistoryReasoningReplay[]
   }>
-}>): CompatibleRequestBuildResult {
+}>, operation: 'text' = 'text', bodySchemaRevision?: string): CompatibleRequestBuildResult {
+  if (operation !== 'text' || (bodySchemaRevision !== undefined && typeof bodySchemaRevision !== 'string')) {
+    throw new Error('compatible_request_body_contract_invalid')
+  }
+  const skipPolicyRanges = bodySchemaRevision !== undefined
   const model = compatibleModelIdSchema.parse(input.modelId)
   const profile = compatibleRequestProfileConfigSchema.parse(input.profile)
   const allowedDefaults = new Set([...STANDARD_FIELDS, 'reasoning_enabled', 'reasoning_effort', 'reasoning_budget'])
@@ -117,7 +103,7 @@ export function buildCompatibleChatRequest(input: Readonly<{
     if (!setting || setting.state === 'unset') continue
     const rawValue = setting.state === 'explicit' ? setting.value : (profile.defaults as Record<string, unknown>)[name]
     if (rawValue === undefined) throw new Error(`compatible_request_profile_default_missing:${name}`)
-    const value = validateStandardField(name, rawValue)
+    const value = validateStandardField(name, rawValue, skipPolicyRanges)
     body[name] = value
     diagnostics.push(owned([name], 'builder', setting.state))
   }
@@ -175,7 +161,7 @@ export function buildCompatibleChatRequest(input: Readonly<{
     diagnostics.push(...paths.map((path) => owned(path, 'extra_body', 'explicit')))
   }
 
-  const validated = assertCompatibleWireJson(body)
+  const validated = validateCompatibleChatRequestBodyV2(body)
   const serialized = stableStringify(validated)
   return Object.freeze({
     body: Object.freeze(validated),
@@ -228,7 +214,7 @@ function validateMessages(messages: readonly CompatibleRequestMessage[]): readon
       }
     }
   }
-  const parsed = wireMessageSchema.array().min(1).max(512).safeParse(messages)
+  const parsed = compatibleWireMessageSchemaV2.array().min(1).max(512).safeParse(messages)
   if (!parsed.success) throw new Error('compatible_request_messages_invalid')
   const toolCalls = new Set<string>()
   const toolResults = new Set<string>()
@@ -291,13 +277,28 @@ function validateContent(content: CompatibleRequestMessage['content'], role: Exc
   }
 }
 
-function validateStandardField(name: CompatibleStandardFieldName, raw: unknown): CompatibleJsonValue {
+function validateStandardField(name: CompatibleStandardFieldName, raw: unknown, skipPolicyRanges = false): CompatibleJsonValue {
   const value = compatibleBoundedJsonValueSchema.parse(raw) as CompatibleJsonValue
-  if (name === 'temperature' || name === 'top_p') assertNumber(value, 0, name === 'temperature' ? 2 : 1)
-  if (name === 'frequency_penalty' || name === 'presence_penalty') assertNumber(value, -2, 2)
-  if (name === 'seed') assertInteger(value, -2_147_483_648, 2_147_483_647)
-  if (name === 'max_tokens' || name === 'max_completion_tokens') assertInteger(value, 1, 2_147_483_647)
-  if (name === 'n') assertInteger(value, 1, 16)
+  if (name === 'temperature' || name === 'top_p') {
+    if (skipPolicyRanges) assertFiniteNumber(value)
+    else assertNumber(value, 0, name === 'temperature' ? 2 : 1)
+  }
+  if (name === 'frequency_penalty' || name === 'presence_penalty') {
+    if (skipPolicyRanges) assertFiniteNumber(value)
+    else assertNumber(value, -2, 2)
+  }
+  if (name === 'seed') {
+    if (skipPolicyRanges) assertSafeInteger(value)
+    else assertInteger(value, -2_147_483_648, 2_147_483_647)
+  }
+  if (name === 'max_tokens' || name === 'max_completion_tokens') {
+    if (skipPolicyRanges) assertSafeInteger(value)
+    else assertInteger(value, 1, 2_147_483_647)
+  }
+  if (name === 'n') {
+    if (skipPolicyRanges) assertSafeInteger(value)
+    else assertInteger(value, 1, 16)
+  }
   if (name === 'user' && (typeof value !== 'string' || value.length > 256)) throw new Error(`compatible_request_field_invalid:${name}`)
   if (name === 'stop' && !(typeof value === 'string' && value.length <= 1024 || (Array.isArray(value) && value.length <= 4 && value.every((item) => typeof item === 'string' && item.length <= 1024)))) {
     throw new Error(`compatible_request_field_invalid:${name}`)
@@ -356,6 +357,14 @@ function validateResponseFormat(value: CompatibleJsonValue): void {
 
 function assertNumber(value: CompatibleJsonValue, min: number, max: number): void {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new Error('compatible_request_field_invalid')
+}
+
+function assertFiniteNumber(value: CompatibleJsonValue): void {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('compatible_request_field_invalid')
+}
+
+function assertSafeInteger(value: CompatibleJsonValue): void {
+  if (!Number.isSafeInteger(value)) throw new Error('compatible_request_field_invalid')
 }
 
 function assertInteger(value: CompatibleJsonValue, min: number, max: number): void {
@@ -444,31 +453,6 @@ function assertCompatibleExtraBody(
 
 function stableStringify(value: CompatibleJsonValue): string {
   return JSON.stringify(sortJson(value))
-}
-
-function assertCompatibleWireJson(value: Record<string, CompatibleJsonValue>): Record<string, CompatibleJsonValue> {
-  let nodes = 0
-  const visit = (candidate: CompatibleJsonValue, depth: number): void => {
-    nodes += 1
-    if (nodes > 100_000 || depth > 32) throw new Error('compatible_request_body_overflow')
-    if (candidate === null || typeof candidate === 'boolean' || typeof candidate === 'string') return
-    if (typeof candidate === 'number') {
-      if (!Number.isFinite(candidate)) throw new Error('compatible_request_body_invalid')
-      return
-    }
-    if (Array.isArray(candidate)) {
-      for (const item of candidate) visit(item, depth + 1)
-      return
-    }
-    if (Object.getPrototypeOf(candidate) !== Object.prototype) throw new Error('compatible_request_body_invalid')
-    for (const [key, child] of Object.entries(candidate)) {
-      if (key === '__proto__' || key === 'prototype' || key === 'constructor') throw new Error('compatible_request_body_invalid')
-      visit(child, depth + 1)
-    }
-  }
-  visit(value, 0)
-  if (utf8ByteLength(stableStringify(value)) > 2 * 1024 * 1024) throw new Error('compatible_request_body_overflow')
-  return value
 }
 
 function utf8ByteLength(value: string): number {

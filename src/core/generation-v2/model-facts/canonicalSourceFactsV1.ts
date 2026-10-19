@@ -9,6 +9,7 @@ export const CANONICAL_MODEL_FACT_PATHS_V1 = Object.freeze([
   'limits.contextWindow.maxTokens',
   'limits.input.maxTokens',
   'limits.output.maxTokens',
+  'limits.output.providerDefaultTokens',
   'modalities.input',
   'modalities.output',
   'input.attachments.support',
@@ -21,6 +22,25 @@ export const CANONICAL_MODEL_FACT_PATHS_V1 = Object.freeze([
   'reasoning.effort.providerDefault',
   'reasoning.budgetTokens.support',
   'reasoning.budgetTokens.domain',
+  'anthropic.messages.thinking.acceptedTypes',
+  'anthropic.messages.thinking.omittedBehavior',
+  'anthropic.messages.thinking.recommendedMode',
+  'anthropic.messages.thinking.manualBudgetDomain',
+  'anthropic.messages.thinking.disabledAllowedEfforts',
+  'anthropic.messages.thinking.required',
+  'anthropic.messages.thinking.defaultDisplay',
+  'gemini.generateContent.text.thinkingBudget.domain',
+  'gemini.generateContent.text.thinkingBudget.providerDefault',
+  'gemini.generateContent.text.thinkingLevel.nativeValues',
+  'gemini.generateContent.text.thinkingLevel.providerDefault',
+  'gemini.generateContent.text.thinking.required',
+  'gemini.generateContent.text.thinking.defaultEnabled',
+  'gemini.generateContent.text.thinking.includeThoughts.support',
+  'gemini.interactions.imageGenerate.thinkingLevel.nativeValues',
+  'gemini.interactions.imageGenerate.thinkingLevel.providerDefault',
+  'gemini.interactions.imageGenerate.thinking.required',
+  'gemini.interactions.imageGenerate.thinking.defaultEnabled',
+  'gemini.interactions.imageGenerate.thinking.summaries.support',
   'generation.effort.nativeValues',
   'generation.effort.providerDefault',
   'sampling.temperature.support',
@@ -246,6 +266,7 @@ const VALUE_KIND_BY_PATH: Readonly<Record<CanonicalSemanticPathV1, CanonicalFact
   'limits.contextWindow.maxTokens': 'integer',
   'limits.input.maxTokens': 'integer',
   'limits.output.maxTokens': 'integer',
+  'limits.output.providerDefaultTokens': 'integer',
   'modalities.input': 'media_kind_set',
   'modalities.output': 'media_kind_set',
   'input.attachments.support': 'support',
@@ -258,6 +279,25 @@ const VALUE_KIND_BY_PATH: Readonly<Record<CanonicalSemanticPathV1, CanonicalFact
   'reasoning.effort.providerDefault': 'native_string',
   'reasoning.budgetTokens.support': 'support',
   'reasoning.budgetTokens.domain': 'integer_domain',
+  'anthropic.messages.thinking.acceptedTypes': 'native_string_set',
+  'anthropic.messages.thinking.omittedBehavior': 'native_string',
+  'anthropic.messages.thinking.recommendedMode': 'native_string',
+  'anthropic.messages.thinking.manualBudgetDomain': 'integer_domain',
+  'anthropic.messages.thinking.disabledAllowedEfforts': 'native_string_set',
+  'anthropic.messages.thinking.required': 'boolean',
+  'anthropic.messages.thinking.defaultDisplay': 'native_string',
+  'gemini.generateContent.text.thinkingBudget.domain': 'integer_domain',
+  'gemini.generateContent.text.thinkingBudget.providerDefault': 'integer',
+  'gemini.generateContent.text.thinkingLevel.nativeValues': 'native_string_set',
+  'gemini.generateContent.text.thinkingLevel.providerDefault': 'native_string',
+  'gemini.generateContent.text.thinking.required': 'boolean',
+  'gemini.generateContent.text.thinking.defaultEnabled': 'boolean',
+  'gemini.generateContent.text.thinking.includeThoughts.support': 'support',
+  'gemini.interactions.imageGenerate.thinkingLevel.nativeValues': 'native_string_set',
+  'gemini.interactions.imageGenerate.thinkingLevel.providerDefault': 'native_string',
+  'gemini.interactions.imageGenerate.thinking.required': 'boolean',
+  'gemini.interactions.imageGenerate.thinking.defaultEnabled': 'boolean',
+  'gemini.interactions.imageGenerate.thinking.summaries.support': 'support',
   'generation.effort.nativeValues': 'native_string_set',
   'generation.effort.providerDefault': 'native_string',
   'sampling.temperature.support': 'support',
@@ -752,6 +792,41 @@ export const CANONICAL_MODEL_FACT_ONTOLOGY_SCHEMA_DIGEST_V1 = canonicalSourceFac
   ontologyVersion: CANONICAL_MODEL_FACT_ONTOLOGY_VERSION_V1,
   paths: CANONICAL_MODEL_FACT_PATHS_V1,
   valueKinds: VALUE_KIND_BY_PATH,
+  mediaKinds: CANONICAL_MEDIA_KINDS_V1,
+  operationKinds: CANONICAL_OPERATION_KINDS_V1,
+})
+
+const PRE_REQUEST_CONTRACT_FACTS_V1 = {
+  ontologyVersion: CANONICAL_MODEL_FACT_ONTOLOGY_VERSION_V1,
+  paths: CANONICAL_MODEL_FACT_PATHS_V1.filter(path => !path.startsWith('anthropic.messages.thinking.') &&
+    path !== 'limits.output.providerDefaultTokens'),
+  valueKinds: Object.fromEntries(Object.entries(VALUE_KIND_BY_PATH).filter(([path]) =>
+    !path.startsWith('anthropic.messages.thinking.') && path !== 'limits.output.providerDefaultTokens')),
+  mediaKinds: CANONICAL_MEDIA_KINDS_V1,
+  operationKinds: CANONICAL_OPERATION_KINDS_V1,
+}
+
+/** Reviewed predecessor ontology before exact Anthropic thinking facts were added. */
+export const PRE_REQUEST_CONTRACT_ONTOLOGY_SCHEMA_DIGEST_V1 = canonicalSourceFactDigestV1(PRE_REQUEST_CONTRACT_FACTS_V1)
+
+/** Reviewed predecessor grammar, used only by strict epoch upgrade verification. */
+export const PRE_GEMINI_THINKING_ONTOLOGY_SCHEMA_DIGEST_V1 = canonicalSourceFactDigestV1({
+  ontologyVersion: CANONICAL_MODEL_FACT_ONTOLOGY_VERSION_V1,
+  paths: CANONICAL_MODEL_FACT_PATHS_V1.filter(path => !path.startsWith('gemini.') &&
+    !path.startsWith('anthropic.messages.thinking.') && path !== 'limits.output.providerDefaultTokens'),
+  valueKinds: Object.fromEntries(Object.entries(VALUE_KIND_BY_PATH).filter(([path]) =>
+    !path.startsWith('gemini.') && !path.startsWith('anthropic.messages.thinking.') &&
+    path !== 'limits.output.providerDefaultTokens')),
+  mediaKinds: CANONICAL_MEDIA_KINDS_V1,
+  operationKinds: CANONICAL_OPERATION_KINDS_V1,
+})
+
+/** Reviewed ontology immediately before the explicit provider output default limit was added. */
+export const PRE_RULE_V2_ONTOLOGY_SCHEMA_DIGEST_V1 = canonicalSourceFactDigestV1({
+  ontologyVersion: CANONICAL_MODEL_FACT_ONTOLOGY_VERSION_V1,
+  paths: CANONICAL_MODEL_FACT_PATHS_V1.filter(path => path !== 'limits.output.providerDefaultTokens'),
+  valueKinds: Object.fromEntries(Object.entries(VALUE_KIND_BY_PATH)
+    .filter(([path]) => path !== 'limits.output.providerDefaultTokens')),
   mediaKinds: CANONICAL_MEDIA_KINDS_V1,
   operationKinds: CANONICAL_OPERATION_KINDS_V1,
 })

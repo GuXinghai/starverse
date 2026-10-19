@@ -11,9 +11,15 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
 import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
+import { defaultConversationTitleV2 } from './defaultConversationTitleV2'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
+import {
+  GENERATION_REQUEST_BODY_DEFAULT_MAX_BYTES_V1,
+  GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+} from '../../../src/core/generation-v2/capacity/generationCapacityV1'
 
-const MAX_BODY_BYTES = 20 * 1024 * 1024
+const MAX_USER_BODY_BYTES = GENERATION_REQUEST_BODY_DEFAULT_MAX_BYTES_V1
+const MAX_ASSISTANT_BODY_BYTES = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
 
 export class ConversationGraphV2RepoError extends Error {
   constructor(readonly code:
@@ -225,9 +231,10 @@ export class ConversationGraphV2Repo {
     const projectId = ConversationGraphV2Identity.create('project_id', requiredString(input.projectId))
     const conversationId = ConversationGraphV2Identity.create('conversation_id', requiredString(input.conversationId))
     const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
-    const title = boundedText(input.title, 16384)
+    const requestedTitle = boundedText(input.title, 16384)
     const branchName = input.branchName === null ? null : boundedText(input.branchName, 4096)
     const createdAtMs = safeTime(input.createdAtMs)
+    const title = requestedTitle.trim() ? requestedTitle : defaultConversationTitleV2(createdAtMs)
     try {
       this.#db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
         .run(conversationId.value, projectId.value, title, createdAtMs, createdAtMs)
@@ -248,7 +255,7 @@ export class ConversationGraphV2Repo {
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
     const expectedHead = input.expectedHeadMessageId === null ? null :
       ConversationGraphV2Identity.create('message_id', requiredString(input.expectedHeadMessageId))
-    const userBody = boundedText(input.userBody, MAX_BODY_BYTES)
+    const userBody = boundedText(input.userBody, MAX_USER_BODY_BYTES)
     const createdAtMs = safeTime(input.createdAtMs)
     const branch = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
       branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs,
@@ -428,7 +435,7 @@ export class ConversationGraphV2Repo {
     )
     const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
-    const userBody = boundedText(input.userBody, MAX_BODY_BYTES)
+    const userBody = boundedText(input.userBody, MAX_USER_BODY_BYTES)
     const createdAtMs = safeTime(input.createdAtMs)
     const route = new BranchRouteResolverV2(this.#db).resolve(sourceBranchId.value)
     if (route.headMessageId !== expectedHeadMessageId.value) {
@@ -826,8 +833,8 @@ export class ConversationGraphV2Repo {
   ): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', answerRootIdValue)
-    const expected = boundedText(expectedBody, MAX_BODY_BYTES)
-    const next = boundedText(nextBody, MAX_BODY_BYTES)
+    const expected = boundedText(expectedBody, MAX_ASSISTANT_BODY_BYTES)
+    const next = boundedText(nextBody, MAX_ASSISTANT_BODY_BYTES)
     const at = safeTime(updatedAtMs)
     const result = this.#db.prepare(`UPDATE message_body_v2 SET body_text=?
       WHERE message_id=? AND body_text=? AND EXISTS (
@@ -858,7 +865,7 @@ export class ConversationGraphV2Repo {
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', answerRootIdValue)
     const at = safeTime(updatedAtMs)
     if (status === 'completed') {
-      const body = boundedText(finalBody, MAX_BODY_BYTES)
+      const body = boundedText(finalBody, MAX_ASSISTANT_BODY_BYTES)
       const bodyResult = this.#db.prepare(`UPDATE message_body_v2 SET body_text=?
         WHERE message_id=? AND EXISTS (
           SELECT 1 FROM message_v2 AS answer WHERE answer.message_id=message_body_v2.message_id

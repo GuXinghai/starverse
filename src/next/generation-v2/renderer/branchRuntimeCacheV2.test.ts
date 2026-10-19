@@ -32,6 +32,14 @@ function snapshot(input: Readonly<{
 }
 
 describe('BranchRuntimeCacheV2', () => {
+  it('retains generated image revisions on a background branch and rejects older snapshots', () => {
+    const cache = new BranchRuntimeCacheV2()
+    const base = snapshot({ operationId: 'image', branchId: 'background', status: 'generating', sequence: 2 })
+    const images = [{ outputIndex: 0, assetId: 'asset:image', assetRevisionId: 'revision:2', mime: 'image/png' }]
+    cache.upsert({ ...base, images }, 'foreground')
+    cache.upsert({ ...base, lastSequence: 1, images: [] }, 'foreground')
+    expect(cache.get('background')?.images).toEqual(images)
+  })
   it('updates inactive branches by operation binding and restores their latest overlay on return', () => {
     let now = 10
     const cache = new BranchRuntimeCacheV2(() => now)

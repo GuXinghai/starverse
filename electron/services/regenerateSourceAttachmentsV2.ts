@@ -1,3 +1,4 @@
+import { readOriginalGenerationAttachmentsV2 } from '../../infra/db/repo/portableGenerationHistoryV2'
 import type BetterSqlite3 from 'better-sqlite3'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2,
@@ -23,7 +24,7 @@ export function readRegenerateSourceAttachmentsV2(input: Readonly<{
     const source = new GenerationExecutionV2Repo(input.db).findOperationInTransaction(context, row.operationId)
     if (!source || source.operation.targetAnswerId.value !== input.sourceAnswerId ||
         source.operation.questionId.value !== input.questionId) throw new Error('GENERATION_V2_REGENERATE_SOURCE_INVALID')
-    return source.snapshot.semanticIntent.attachments
+    return readOriginalGenerationAttachmentsV2(input.db, source.snapshot)
   }
   return input.context ? read(input.context) : runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, read)
 }

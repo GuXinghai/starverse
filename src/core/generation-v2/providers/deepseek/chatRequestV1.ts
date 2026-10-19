@@ -4,6 +4,8 @@ import {
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 import {
   buildDeepSeekNativeRequestHistoryV2,
   buildDeepSeekProjectedNativeRequestHistoryV2,
@@ -109,8 +111,8 @@ function denseArray(value: unknown, max: number, allowEmpty = false): readonly u
   }))
 }
 
-function finiteNumber(value: unknown, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+function finiteNumber(value: unknown, min: number, max: number, skipPolicyRange = false): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (!skipPolicyRange && (value < min || value > max))) {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
   return value
@@ -134,14 +136,14 @@ function decodeThinking(value: unknown): Readonly<{ type: DeepSeekThinkingModeV1
   })
 }
 
-function decodeGeneration(value: unknown): ClosedObject {
+function decodeGeneration(value: unknown, skipPolicyRanges = false): ClosedObject {
   if (value === undefined) return Object.freeze({})
   const input = closedObject(
     value,
     ['maxTokens', 'stop', 'temperature', 'topP', 'frequencyPenalty', 'presencePenalty', 'responseFormat'],
     [],
   )
-  if (input.maxTokens !== undefined && (!Number.isSafeInteger(input.maxTokens) || (input.maxTokens as number) < 1)) {
+  if (input.maxTokens !== undefined && (!Number.isSafeInteger(input.maxTokens) || (!skipPolicyRanges && (input.maxTokens as number) < 1))) {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
   let stopValue: string | readonly string[] | undefined
@@ -152,11 +154,11 @@ function decodeGeneration(value: unknown): ClosedObject {
     }
     stopValue = typeof input.stop === 'string' ? input.stop : Object.freeze([...stop] as string[])
   }
-  if (input.temperature !== undefined) finiteNumber(input.temperature, 0, 2)
-  if (input.topP !== undefined) finiteNumber(input.topP, 0, 1)
+  if (input.temperature !== undefined) finiteNumber(input.temperature, 0, 2, skipPolicyRanges)
+  if (input.topP !== undefined) finiteNumber(input.topP, 0, 1, skipPolicyRanges)
   if (input.frequencyPenalty !== undefined || input.presencePenalty !== undefined) {
-    if (input.frequencyPenalty !== undefined) finiteNumber(input.frequencyPenalty, -2, 2)
-    if (input.presencePenalty !== undefined) finiteNumber(input.presencePenalty, -2, 2)
+    if (input.frequencyPenalty !== undefined) finiteNumber(input.frequencyPenalty, -2, 2, skipPolicyRanges)
+    if (input.presencePenalty !== undefined) finiteNumber(input.presencePenalty, -2, 2, skipPolicyRanges)
   }
   if (input.responseFormat !== undefined && input.responseFormat !== 'text' && input.responseFormat !== 'json_object') {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
@@ -239,7 +241,7 @@ function decodeToolChoice(value: unknown, toolNames: ReadonlySet<string>): DeepS
   return Object.freeze({ type: 'function', function: Object.freeze({ name: fn.name }) })
 }
 
-export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSeekStableChatCompilationV1 {
+export function compileDeepSeekStableChatRequestV1(inputValue: unknown, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): DeepSeekStableChatCompilationV1 {
   const input = closedObject(
     inputValue,
     ['model', 'priorArtifact', 'clientEntries', 'replayEntries', 'thinking', 'generation', 'tools', 'toolChoice'],
@@ -249,7 +251,7 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
   const thinking = decodeThinking(input.thinking)
-  const generation = decodeGeneration(input.generation)
+  const generation = decodeGeneration(input.generation, bodySchemaRevision !== undefined)
   const tools = decodeTools(input.tools)
   const toolChoice = decodeToolChoice(input.toolChoice, new Set(tools?.map((tool) => tool.function.name) ?? []))
   const messages = input.replayEntries === undefined
@@ -288,6 +290,7 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
     ...(tools === undefined ? {} : { tools }),
     ...(toolChoice === undefined ? {} : { tool_choice: toolChoice }),
   })
+  validateApiRequestBodyV2('deepseek', operation, nativeRequest, bodySchemaRevision)
   let preparedBody: ImmutablePreparedBodyV2
   try {
     preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(

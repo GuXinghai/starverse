@@ -3,9 +3,10 @@ import {
   type GenerationIntentLayerV2,
 } from '../domain/generationIntentV2'
 import { projectGenerationIntentLayerV2 } from '../domain/generationIntentProjectionV2'
+import { decodeTargetThinkingPreferencesV2, type TargetThinkingPreferencesV2 } from './targetThinkingPreferencesV2'
 
 export type GenerationConfigLayerV2 = Omit<GenerationIntentLayerV2, 'attachments'> &
-  Readonly<{ attachments?: never }>
+  Readonly<{ attachments?: never; targetThinkingPreferences?: TargetThinkingPreferencesV2 }>
 
 export class GenerationConfigLayerV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_CONFIG_ATTACHMENTS_NOT_SCOPE_CONFIG') {
@@ -15,14 +16,16 @@ export class GenerationConfigLayerV2Error extends Error {
 }
 
 export function decodeGenerationConfigLayerV2(value: unknown): GenerationConfigLayerV2 {
-  const decoded = decodeGenerationIntentLayerV2(value)
+  const raw = value as Record<string, unknown>
+  const { targetThinkingPreferences, ...intent } = raw ?? {}
+  const decoded = decodeGenerationIntentLayerV2(intent)
   if (decoded.attachments !== undefined) {
     throw new GenerationConfigLayerV2Error('GENERATION_V2_CONFIG_ATTACHMENTS_NOT_SCOPE_CONFIG')
   }
   const { attachments: _attachments, ...configLayer } = decoded
-  return Object.freeze(configLayer)
+  return Object.freeze({ ...configLayer, ...(targetThinkingPreferences === undefined ? {} : { targetThinkingPreferences: decodeTargetThinkingPreferencesV2(targetThinkingPreferences) }) })
 }
 
 export function projectGenerationConfigLayerV2(value: GenerationConfigLayerV2): Readonly<Record<string, unknown>> {
-  return projectGenerationIntentLayerV2(value)
+  return { ...projectGenerationIntentLayerV2(value), ...(value.targetThinkingPreferences === undefined ? {} : { targetThinkingPreferences: value.targetThinkingPreferences }) }
 }

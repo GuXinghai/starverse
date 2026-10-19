@@ -9,6 +9,7 @@ import { validateWebSearchProtocolParametersV2 } from '../../src/core/generation
 import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../src/core/generation-v2/domain/generationIntentV2'
 import { OPENAI_RESPONSES_ARTIFACT_KIND_V2 } from '../../src/core/generation-v2/providers/openai-responses/continuationArtifactV2'
 import { compileOpenAIResponsesRequestV1, type OpenAIResponsesToolV1 } from '../../src/core/generation-v2/providers/openai-responses/responsesRequestV1'
+import { isOpenAILegacyReasoningEncoderRevisionV2 } from '../../src/core/generation-v2/capability/encodingCoverageRegistryV2'
 import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/core/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../infra/generation-v2/semanticCapabilityValidatorV2'
@@ -20,6 +21,7 @@ import {
   type PreparedProviderRequestV2,
 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization/canonicalJsonV2'
+import { REQUEST_RULE_RESOLVER_REVISION_V2 } from '../../src/core/generation-v2/compiler/resolvedInvocationV2'
 
 export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:
@@ -39,7 +41,7 @@ type OpenAIResponsesCompilerToolInputV2 = Exclude<OpenAIResponsesToolV1, {type:'
 }>
 type EncodedOpenAIResponsesIntentV2 = Readonly<{
   reasoning?: Readonly<{ effort?: string; summary?: string; mode?: 'standard' | 'pro'; context?: 'auto' | 'current_turn' | 'all_turns' }>
-  generation: Readonly<{ maxOutputTokens?: number; verbosity?: string }>
+  generation: Readonly<{ maxOutputTokens?: number; temperature?: number; topP?: number; verbosity?: string }>
   tools?: readonly OpenAIResponsesCompilerToolInputV2[]
   maxToolCalls?: number
   parallelToolCalls?: boolean
@@ -55,11 +57,13 @@ type EncodedOpenAIResponsesIntentV2 = Readonly<{
 }>
 
 function isOpenAIResponsesEncodedAttachmentV2(attachment: AttachmentIntentV2): boolean {
-  return requiresProviderFileBindingV2(attachment) ||
+  return (attachment.kind === 'managed_file' && attachment.include && attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
+    requiresProviderFileBindingV2(attachment) ||
     (attachment.kind === 'url_reference' && attachment.include && attachment.mediaKind === 'image')
 }
 
-function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundleV2['snapshot']['semanticIntent']): EncodedOpenAIResponsesIntentV2 {
+function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundleV2['snapshot']['semanticIntent'],
+  encoderRevision: string): EncodedOpenAIResponsesIntentV2 {
   const dispositions: Array<EncodedOpenAIResponsesIntentV2['dispositions'][number]> = []
   const issues: string[] = []
   const contract = 'openai-responses-api-contract-20260715'
@@ -69,23 +73,35 @@ function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundl
     issues.push(semanticPath)
     dispositions.push(Object.freeze({ semanticPath, outcome: 'rejected' as const, ...(wireKey === undefined ? {} : { wireKey }), evidence: contract }))
   }
-  const generation: { maxOutputTokens?: number; verbosity?: string } = {}
+  const generation: { maxOutputTokens?: number; temperature?: number; topP?: number; verbosity?: string } = {}
   for (const [key, value] of Object.entries(intent.generation)) {
     if (value === undefined) continue
     if (key === 'maxOutputTokens') { generation.maxOutputTokens = value as number; encode('generation.maxOutputTokens', 'max_output_tokens') }
+    else if (key === 'temperature') { generation.temperature = value as number; encode('generation.temperature', 'temperature') }
+    else if (key === 'topP') { generation.topP = value as number; encode('generation.topP', 'top_p') }
     else reject(`generation.${key}`)
   }
+  const legacyReasoningOmission = isOpenAILegacyReasoningEncoderRevisionV2(encoderRevision)
   let reasoning: { effort?: string; summary?: string; mode?: 'standard' | 'pro'; context?: 'auto' | 'current_turn' | 'all_turns' } | undefined
-  if (intent.reasoning.mode === 'disabled') accept('reasoning.mode')
-  else {
-    encode('reasoning.mode', 'reasoning', 'structural')
+  if (intent.reasoning.mode === 'disabled') {
+    if (legacyReasoningOmission || intent.reasoning.effort !== 'none') {
+      accept('reasoning.mode')
+      if (intent.reasoning.effort !== undefined) accept('reasoning.effort')
+    } else {
+      reasoning = { effort: 'none' }
+      encode('reasoning.mode', 'reasoning', 'structural')
+      encode('reasoning.effort', 'reasoning.effort')
+    }
+  } else {
     reasoning = intent.providerExtension.kind === 'openai_responses'
       ? { ...(intent.providerExtension.reasoningMode === undefined ? {} : { mode: intent.providerExtension.reasoningMode }) }
       : {}
-    if (intent.reasoning.effort !== undefined) { reasoning.effort = intent.reasoning.effort; encode('reasoning.effort', 'reasoning.effort') }
+    if (intent.reasoning.effort !== undefined) {
+      if (intent.reasoning.effort === 'none') accept('reasoning.effort')
+      else { reasoning.effort = intent.reasoning.effort; encode('reasoning.effort', 'reasoning.effort') }
+    }
     if (intent.reasoning.summary !== undefined) { reasoning.summary = intent.reasoning.summary; encode('reasoning.summary', 'reasoning.summary') }
     if (intent.reasoning.exclude !== undefined) reject('reasoning.exclude')
-    if (Object.keys(reasoning).length === 0) reasoning = undefined
   }
   const tools: OpenAIResponsesCompilerToolInputV2[] = []
   if (intent.web.mode === 'disabled') accept('web.mode')
@@ -121,13 +137,13 @@ function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundl
     if (included.length === 0) {
       accept('attachments[].include'); accept('attachments[].sendAs'); accept('attachments[].conversion')
     } else if (included.every(isOpenAIResponsesEncodedAttachmentV2)) {
-      encode('attachments[].include', 'input[].content[].input_file|input_image', 'structural')
-      encode('attachments[].sendAs', 'input[].content[].input_file|input_image', 'structural')
-      encode('attachments[].conversion', 'input[].content[].input_file|input_image', 'structural')
+      encode('attachments[].include', 'input[].content[].type', 'structural')
+      encode('attachments[].sendAs', 'input[].content[].type', 'structural')
+      encode('attachments[].conversion', 'input[].content[].type', 'structural')
     } else {
-      reject('attachments[].include', 'input[].content[].input_file|input_image')
-      reject('attachments[].sendAs', 'input[].content[].input_file|input_image')
-      reject('attachments[].conversion', 'input[].content[].input_file|input_image')
+      reject('attachments[].include', 'input[].content[].type')
+      reject('attachments[].sendAs', 'input[].content[].type')
+      reject('attachments[].conversion', 'input[].content[].type')
     }
     accept('attachments[].assetId'); accept('attachments[].assetRevisionId'); accept('attachments[].assetSha256')
   }
@@ -158,6 +174,10 @@ function encodeOpenAIResponsesIntentV2(intent: GenerationExecutionOperationBundl
       reject('providerExtension.includeThoughts')
     }
   }
+  if (intent.reasoning.mode === 'enabled') {
+    if (reasoning && Object.keys(reasoning).length > 0) encode('reasoning.mode', 'reasoning', 'structural')
+    else { accept('reasoning.mode'); reasoning = undefined }
+  }
   if (new Set(dispositions.map((entry) => entry.semanticPath)).size !== dispositions.length) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
   }
@@ -182,7 +202,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   if (!['initial_send', 'retry_as_new', 'retry_replace', 'regenerate_question', 'edit_resend'].includes(operation.actionKind) ||
       operation.operationId.value !== input.history.operationId.value ||
       operation.targetAnswerId.value !== input.history.answerRootId.value ||
@@ -206,6 +226,8 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID')
   }
   const tools = snapshot.semanticIntent.tools
+  const ruleResolution = snapshot.requestPlan?.resolution
+  const frozenToolDefinitions = ruleResolution?.toolDefinitions
   try {
     validateWebSearchProtocolParametersV2({providerId:binding.providerId.value,protocolContractId:binding.protocolContractId.value,operation:binding.operation},snapshot.semanticIntent.web)
   } catch {
@@ -217,13 +239,20 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
         input.toolRegistry.registry.revision !== snapshot.toolAuthority.toolRegistryRevision.value ||
         input.toolRegistry.registry.definitionsDigest !== snapshot.toolAuthority.toolDefinitionsDigest.value ||
         stableSerializeProviderRequestV2(input.toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
-          stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value))) {
+          stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value)) ||
+        (ruleResolution?.resolverRevision === REQUEST_RULE_RESOLVER_REVISION_V2 && frozenToolDefinitions === undefined) ||
+        (frozenToolDefinitions !== undefined && (frozenToolDefinitions.registryRevision !== input.toolRegistry.registry.revision ||
+          frozenToolDefinitions.definitionsDigest !== input.toolRegistry.registry.definitionsDigest ||
+          stableSerializeProviderRequestV2(frozenToolDefinitions.definitions.map((entry) => entry.sourceDefinition)) !==
+            stableSerializeProviderRequestV2(input.toolRegistry.selectedDefinitions) ||
+          stableSerializeProviderRequestV2(frozenToolDefinitions.definitions.map((entry) => entry.sourceDefinition.toolId)) !==
+            stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value))))) {
       throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
     }
-  } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null) {
+  } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null || frozenToolDefinitions !== undefined) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
-  const encodedIntent = encodeOpenAIResponsesIntentV2(snapshot.semanticIntent)
+  const encodedIntent = encodeOpenAIResponsesIntentV2(snapshot.semanticIntent, capability.encoderRevision)
   if (encodedIntent.issues.length > 0) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
   }
@@ -237,11 +266,17 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
       toolChoice = Object.freeze({ type: 'function', name: selected.function.name })
     } else toolChoice = semanticToolChoice.mode
   }
-  const functionTools = input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
-    type: 'function' as const, name: tool.function.name,
-    ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
-    parameters: tool.function.parameters ?? Object.freeze({}), strict: tool.function.strict ?? true,
-  })) ?? []
+  const functionTools = frozenToolDefinitions !== undefined
+    ? frozenToolDefinitions.definitions.map(({ effectiveDefinition }) => Object.freeze({
+      type: 'function' as const, name: effectiveDefinition.function.name,
+      ...(effectiveDefinition.function.description === undefined ? {} : { description: effectiveDefinition.function.description }),
+      parameters: effectiveDefinition.function.parameters!, strict: effectiveDefinition.function.strict!,
+    }))
+    : input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
+      type: 'function' as const, name: tool.function.name,
+      ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
+      parameters: tool.function.parameters ?? Object.freeze({}), strict: tool.function.strict ?? true,
+    })) ?? []
   const compiled = compileOpenAIResponsesRequestV1({
     model: binding.modelId.value,
     ...(input.history.projectedPrefixItems === null
@@ -256,7 +291,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     ...(encodedIntent.maxToolCalls === undefined ? {} : { maxToolCalls: encodedIntent.maxToolCalls }),
     ...(encodedIntent.parallelToolCalls === undefined ? {} : { parallelToolCalls: encodedIntent.parallelToolCalls }),
     ...(encodedIntent.serviceTier === undefined ? {} : { serviceTier: encodedIntent.serviceTier }),
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const attachmentRequirements = createPreparedAttachmentRequirementsV2(snapshot.semanticIntent.attachments)
   const latestUser = [...compiled.nativeRequest.input].reverse().find((item) => 'role' in item && item.role === 'user')
   const wireFiles = latestUser && 'content' in latestUser
@@ -285,6 +320,8 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     endpoint: new URL(profile.descriptor.responsesPath, profile.descriptor.apiOrigin).toString(),
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compiled.preparedBody, ledger, attachmentRequirements, attachmentEncodingProofs,
+    requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
     capabilityRevision: capability.revision.value,
     encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,

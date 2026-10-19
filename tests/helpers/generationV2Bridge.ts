@@ -63,7 +63,7 @@ export function createGenerationV2TestBridge() {
   const credentialStatus = (profileId: string) => ({
     ok: true as const,
     status: {
-      configured: true,
+      apiKeyConfigured: true,
       credentialRevision: 1,
       credentialScopeId: `credential-scope:${profileId}`,
       profileId,
@@ -165,9 +165,9 @@ export function createGenerationV2TestBridge() {
     credentials: {
       openRouter: credentialBridge('openrouter-first-party-v1'),
       openAIResponses: credentialBridge('openai-responses-v1'),
-      googleAIStudio: credentialBridge('google-ai-studio-v1'),
+      googleAIStudio: credentialBridge('gemini-developer-api-v1beta'),
       anthropic: credentialBridge('anthropic-messages-v1'),
-      deepSeek: credentialBridge('deepseek-stable-v1'),
+      deepSeek: credentialBridge('deepseek-stable-chat-v1'),
     },
     localRuntime: {
       lmStudio: {
@@ -249,7 +249,7 @@ export function createGenerationV2TestBridge() {
         return ok(routePreference)
       }),
       clearConversationRoutePreference: vi.fn(async () => { routePreference = null; return ok(null) }),
-      createProject: vi.fn(async () => ok({ projectId })), renameProject: vi.fn(async () => ok({})),
+      createProject: vi.fn(async () => ok({ status: 'saved', projectId })), renameProject: vi.fn(async () => ok({ status: 'saved', projectId })),
       deleteProject: vi.fn(async () => ok({})), createConversation: vi.fn(async () => ok({ conversationId, branchId })),
       renameConversation: vi.fn(async () => ok({})), moveConversation: vi.fn(async () => ok({})),
       deleteConversation: vi.fn(async () => ok({})), forkBranch: vi.fn(async () => ok({ branchId })),

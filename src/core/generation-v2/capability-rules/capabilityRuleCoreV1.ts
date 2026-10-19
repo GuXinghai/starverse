@@ -185,7 +185,7 @@ function sortedUnique(values: unknown, maximum: number): readonly string[] {
   return Object.freeze(decoded)
 }
 
-function decodeSelector(value: unknown): CapabilityRuleSelectorV1 {
+export function decodeCapabilityRuleSelectorV1(value: unknown): CapabilityRuleSelectorV1 {
   if (!plainObject(value) || (value.kind !== 'exact' && value.kind !== 'regex')) invalid()
   if (value.kind === 'exact') {
     exactKeys(value, ['kind', 'nativeModelIds'])
@@ -247,7 +247,7 @@ function decodeDerivation(value: unknown): CapabilityRuleDerivationV1 | null {
     inputEvidenceRefs: optionalStringList(value.inputEvidenceRefs) })
 }
 
-function decodeEvidence(value: unknown): CapabilityRuleEvidenceV1 | null {
+export function decodeCapabilityRuleEvidenceV1(value: unknown): CapabilityRuleEvidenceV1 | null {
   if (value === null) return null
   if (!plainObject(value)) invalid()
   exactKeys(value, ['evidenceSourceRef', 'evidenceKind', 'evidenceNote', 'identityEvidenceKind',
@@ -299,9 +299,9 @@ export function decodeCapabilityRuleCoreRuleV1(value: unknown): CapabilityRuleCo
     configured: value.configured,
     providerAuthorityId: identifier(value.providerAuthorityId),
     endpointProfileId: identityValue(value.endpointProfileId),
-    selector: decodeSelector(value.selector),
+    selector: decodeCapabilityRuleSelectorV1(value.selector),
     assertion: decodeAssertion(value.assertion),
-    evidence: decodeEvidence(value.evidence),
+    evidence: decodeCapabilityRuleEvidenceV1(value.evidence),
   })
 }
 

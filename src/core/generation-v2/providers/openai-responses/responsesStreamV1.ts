@@ -2,8 +2,11 @@ import { utf8ByteLength } from '@/shared/encoding/binaryEncoding'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import {
   decodeOpenAIResponsesReturnedItemsV1,
+  selectOpenAIResponsesReplayItemsV1,
+  OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1,
   type OpenAIResponsesReturnedItemV1,
 } from './nativeItemsV1'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 const MAX_EVENT_BYTES = 24 * 1024 * 1024
 const MAX_STREAM_BYTES = 64 * 1024 * 1024
@@ -13,8 +16,10 @@ const RESPONSE_FIELDS = new Set([
   'parallel_tool_calls', 'previous_response_id', 'prompt', 'prompt_cache_key', 'prompt_cache_retention',
   'reasoning', 'safety_identifier', 'service_tier', 'store', 'temperature', 'text', 'tool_choice',
   'tools', 'top_logprobs', 'top_p', 'truncation', 'usage', 'user', 'metadata', 'billing',
+  'access_programs', 'moderation', 'frequency_penalty', 'presence_penalty', 'tool_usage',
 ])
 const SUPPORTED_EVENT_TYPES = new Set([
+  'keepalive',
   'response.created', 'response.queued', 'response.in_progress', 'response.completed', 'response.failed',
   'response.incomplete', 'response.output_item.added', 'response.output_item.done',
   'response.content_part.added', 'response.content_part.done', 'response.output_text.annotation.added',
@@ -70,6 +75,58 @@ export function isOpenAIResponsesTerminalResultV1(
   return Boolean(value && typeof value === 'object' && terminalResults.has(value))
 }
 
+/** Re-issues any validated provider terminal after bounded receipt decoding. */
+export function restoreOpenAIResponsesTerminalResultV1(value: unknown): OpenAIResponsesTerminalResultV1 {
+  const input = closedObject(value, new Set([
+    'terminalKind', 'responseId', 'model', 'createdAt', 'completedAt', 'output', 'visibleText',
+    'reasoningSummaryText', 'usage', 'error', 'incompleteReason',
+  ]))
+  if (Object.keys(input).sort().join('\0') !== [
+    'terminalKind', 'responseId', 'model', 'createdAt', 'completedAt', 'output', 'visibleText',
+    'reasoningSummaryText', 'usage', 'error', 'incompleteReason',
+  ].sort().join('\0') ||
+      (input.terminalKind !== 'completed' && input.terminalKind !== 'failed' && input.terminalKind !== 'incomplete') ||
+      !Array.isArray(input.output)) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+  const output = decodeOpenAIResponsesReturnedItemsV1(input.output, OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1)
+  const visibleText = output.flatMap((item) => item.type === 'message'
+    ? item.content.map((part) => part.type === 'output_text' ? part.text : part.refusal) : []).join('')
+  const reasoningSummaryText = output.flatMap((item) => item.type === 'reasoning'
+    ? item.summary.map((part) => part.text) : []).join('')
+  if (visibleText !== input.visibleText || reasoningSummaryText !== input.reasoningSummaryText) {
+    return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+  }
+  const error = input.error === null ? null : (() => {
+    const item = closedObject(input.error, new Set(['code', 'message']))
+    if (Object.keys(item).length !== 2) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+    return Object.freeze({ code: boundedString(item.code), message: boundedString(item.message) })
+  })()
+  const incompleteReason = input.incompleteReason === null ? null : boundedString(input.incompleteReason)
+  if ((input.terminalKind === 'completed' && (error !== null || incompleteReason !== null)) ||
+      (input.terminalKind === 'failed' && (error === null || incompleteReason !== null)) ||
+      (input.terminalKind === 'incomplete' && (error !== null || incompleteReason === null))) {
+    return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+  }
+  const readUsage = (raw: unknown): OpenAIResponsesUsageV1 | null => {
+    if (raw === null) return null
+    const item = closedObject(raw, new Set(['inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens', 'reasoningTokens']))
+    if (Object.keys(item).length !== 5) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+    const optional = (v: unknown) => v === null ? null : nonnegativeInteger(v)
+    return Object.freeze({
+      inputTokens: nonnegativeInteger(item.inputTokens), outputTokens: nonnegativeInteger(item.outputTokens),
+      totalTokens: nonnegativeInteger(item.totalTokens), cachedInputTokens: optional(item.cachedInputTokens),
+      reasoningTokens: optional(item.reasoningTokens),
+    })
+  }
+  const responseId = boundedString(input.responseId)
+  const model = boundedString(input.model)
+  const createdAt = nonnegativeInteger(input.createdAt)
+  const completedAt = optionalInteger(input.completedAt)
+  const result = Object.freeze({ terminalKind: input.terminalKind, responseId, model, createdAt, completedAt,
+    output, visibleText, reasoningSummaryText, usage: readUsage(input.usage), error, incompleteReason })
+  terminalResults.add(result)
+  return result
+}
+
 export class OpenAIResponsesStreamV1Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENAI_STREAM_INVALID_SSE'
@@ -77,10 +134,16 @@ export class OpenAIResponsesStreamV1Error extends Error {
     | 'GENERATION_V2_OPENAI_STREAM_INVALID_EVENT'
     | 'GENERATION_V2_OPENAI_STREAM_SEQUENCE_INVALID'
     | 'GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID'
-    | 'GENERATION_V2_OPENAI_STREAM_INCONSISTENT') {
+    | 'GENERATION_V2_OPENAI_STREAM_INCONSISTENT',
+    readonly diagnostic: Readonly<{ stage: string; eventType: string | null; rawFrameExcerpt: string }> | null = null) {
     super(code)
     this.name = 'OpenAIResponsesStreamV1Error'
   }
+}
+
+function streamDiagnostic(stage: string, value: ClosedObject) {
+  return Object.freeze({ stage, eventType: typeof value.type === 'string' ? value.type : null,
+    rawFrameExcerpt: JSON.stringify(value).slice(0, 8192) })
 }
 
 function fail(code: OpenAIResponsesStreamV1Error['code']): never {
@@ -119,8 +182,17 @@ export class OpenAIResponsesTypedSseDecoderV1 {
   #wireBytes = 0
   #lastSequence: number | null = null
   #finished = false
+  #lastFrame: ClosedObject | null = null
+  #parsedEvents: OpenAIResponsesStreamEventV1[] = []
+
+  takeParsedEventsAfterError(): readonly OpenAIResponsesStreamEventV1[] {
+    const events = Object.freeze(this.#parsedEvents)
+    this.#parsedEvents = []
+    return events
+  }
 
   #events(text: string): OpenAIResponsesStreamEventV1[] {
+    this.#lastFrame = null
     this.#buffer += text.replace(/\r\n?/gu, '\n')
     if (utf8ByteLength(this.#buffer) > MAX_EVENT_BYTES) return fail('GENERATION_V2_OPENAI_STREAM_LIMIT_EXCEEDED')
     const output: OpenAIResponsesStreamEventV1[] = []
@@ -144,6 +216,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
       let parsed: unknown
       try { parsed = JSON.parse(dataText) } catch { return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE') }
       const value = closedObject(parsed)
+      this.#lastFrame = value
       if (value.type !== eventName || typeof value.type !== 'string' || !SUPPORTED_EVENT_TYPES.has(eventName)) {
         return fail('GENERATION_V2_OPENAI_STREAM_INVALID_EVENT')
       }
@@ -152,24 +225,33 @@ export class OpenAIResponsesTypedSseDecoderV1 {
         return fail('GENERATION_V2_OPENAI_STREAM_SEQUENCE_INVALID')
       }
       this.#lastSequence = sequence
-      output.push(Object.freeze({ type: eventName, sequenceNumber: sequence, value }))
+      const event = Object.freeze({ type: eventName, sequenceNumber: sequence, value })
+      output.push(event)
+      this.#parsedEvents.push(event)
     }
     return output
   }
 
   push(bytes: Uint8Array): readonly OpenAIResponsesStreamEventV1[] {
+    this.#parsedEvents = []
     if (this.#finished || !ArrayBuffer.isView(bytes) || Object.prototype.toString.call(bytes) !== '[object Uint8Array]') {
       return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     }
     this.#wireBytes += bytes.byteLength
     if (this.#wireBytes > MAX_STREAM_BYTES) return fail('GENERATION_V2_OPENAI_STREAM_LIMIT_EXCEEDED')
-    try { return Object.freeze(this.#events(this.#decoder.decode(bytes, { stream: true }))) } catch (error) {
-      if (error instanceof OpenAIResponsesStreamV1Error) throw error
+    try {
+      const events = Object.freeze(this.#events(this.#decoder.decode(bytes, { stream: true })))
+      this.#parsedEvents = []
+      return events
+    } catch (error) {
+      if (error instanceof OpenAIResponsesStreamV1Error) throw new OpenAIResponsesStreamV1Error(error.code,
+        this.#lastFrame ? streamDiagnostic('decode', this.#lastFrame) : null)
       return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     }
   }
 
   finish(): readonly OpenAIResponsesStreamEventV1[] {
+    this.#parsedEvents = []
     if (this.#finished) return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     this.#finished = true
     let events: OpenAIResponsesStreamEventV1[]
@@ -178,6 +260,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
       return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     }
     if (this.#buffer.length !== 0) return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
+    this.#parsedEvents = []
     return Object.freeze(events)
   }
 }
@@ -190,9 +273,10 @@ function usage(value: unknown): OpenAIResponsesUsageV1 | null {
   if (value === null) return null
   const input = closedObject(value, new Set(['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details']))
   const inputDetails = input.input_tokens_details === undefined || input.input_tokens_details === null
-    ? null : closedObject(input.input_tokens_details, new Set(['cached_tokens']))
+    ? null : closedObject(input.input_tokens_details, new Set(['cached_tokens', 'cache_write_tokens']))
   const outputDetails = input.output_tokens_details === undefined || input.output_tokens_details === null
     ? null : closedObject(input.output_tokens_details, new Set(['reasoning_tokens']))
+  if (inputDetails?.cache_write_tokens !== undefined) nonnegativeInteger(inputDetails.cache_write_tokens)
   const result = Object.freeze({
     inputTokens: nonnegativeInteger(input.input_tokens),
     outputTokens: nonnegativeInteger(input.output_tokens),
@@ -223,7 +307,10 @@ function terminal(event: OpenAIResponsesStreamEventV1): OpenAIResponsesTerminalR
   }
   if (!Array.isArray(response.output)) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
   let output: readonly OpenAIResponsesReturnedItemV1[]
-  try { output = decodeOpenAIResponsesReturnedItemsV1(response.output) } catch {
+  try { output = decodeOpenAIResponsesReturnedItemsV1(response.output, {
+    maxItemStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+    maxReplayStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+  }) } catch {
     return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
   }
   const visibleText = output.flatMap((item) => item.type === 'message'
@@ -251,10 +338,21 @@ export class OpenAIResponsesStreamAssemblerV1 {
   #visibleText = ''
   #reasoningSummaryText = ''
   #terminal: OpenAIResponsesTerminalResultV1 | null = null
+  #terminalFact: OpenAIResponsesTerminalResultV1 | null = null
+  #replayOutput: readonly OpenAIResponsesReturnedItemV1[] | null = null
+  readonly #receivedItems = new Map<number, Readonly<Record<string, unknown>>>()
   readonly #doneItems = new Map<number, OpenAIResponsesReturnedItemV1>()
 
   push(event: OpenAIResponsesStreamEventV1): void {
-    if (this.#terminal) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+    try { this.#accept(event) } catch (error) {
+      if (error instanceof OpenAIResponsesStreamV1Error) throw new OpenAIResponsesStreamV1Error(error.code,
+        streamDiagnostic('assemble', event.value))
+      throw error
+    }
+  }
+
+  #accept(event: OpenAIResponsesStreamEventV1): void {
+    if (this.#terminalFact) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
     if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta' ||
         event.type === 'response.reasoning_summary_text.delta') {
       const delta = boundedString(event.value.delta, true)
@@ -262,11 +360,18 @@ export class OpenAIResponsesStreamAssemblerV1 {
       else this.#reasoningSummaryText += delta
       return
     }
+    if (event.type === 'response.output_item.added') {
+      this.#receivedItems.set(nonnegativeInteger(event.value.output_index), closedObject(event.value.item))
+      return
+    }
     if (event.type === 'response.output_item.done') {
       const index = nonnegativeInteger(event.value.output_index)
       if (this.#doneItems.has(index)) return fail('GENERATION_V2_OPENAI_STREAM_INCONSISTENT')
       let item: OpenAIResponsesReturnedItemV1
-      try { [item] = decodeOpenAIResponsesReturnedItemsV1([event.value.item]) } catch {
+      try { [item] = decodeOpenAIResponsesReturnedItemsV1([event.value.item], {
+        maxItemStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+        maxReplayStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+      }) } catch {
         return fail('GENERATION_V2_OPENAI_STREAM_INVALID_EVENT')
       }
       this.#doneItems.set(index, item)
@@ -274,8 +379,21 @@ export class OpenAIResponsesStreamAssemblerV1 {
     }
     if (event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete') {
       const result = terminal(event)
+      this.#terminalFact = result
+      const replayOutput = [...result.output]
       for (const [index, item] of this.#doneItems) {
-        if (stableSerializeProviderRequestV2(result.output[index]) !== stableSerializeProviderRequestV2(item)) {
+        const finalItem = result.output[index]
+        // Failed/incomplete responses may omit items already completed before the failure.
+        if (!finalItem && result.terminalKind !== 'completed') continue
+        if (item.type === 'reasoning' && finalItem?.type === 'reasoning') {
+          const { encrypted_content: doneCipher, ...doneFields } = item
+          const { encrypted_content: _terminalCipher, ...terminalFields } = finalItem
+          if (stableSerializeProviderRequestV2(doneFields) !== stableSerializeProviderRequestV2(terminalFields)) {
+            return fail('GENERATION_V2_OPENAI_STREAM_INCONSISTENT')
+          }
+          // output_item.done is the streaming replay authority. Never use added ciphertext.
+          replayOutput[index] = typeof doneCipher === 'string' && doneCipher.length > 0 ? item : finalItem
+        } else if (!finalItem || stableSerializeProviderRequestV2(finalItem) !== stableSerializeProviderRequestV2(item)) {
           return fail('GENERATION_V2_OPENAI_STREAM_INCONSISTENT')
         }
       }
@@ -284,13 +402,31 @@ export class OpenAIResponsesStreamAssemblerV1 {
         return fail('GENERATION_V2_OPENAI_STREAM_INCONSISTENT')
       }
       this.#terminal = result
+      this.#replayOutput = Object.freeze(replayOutput)
       return
     }
     if (!NON_AUTHORITATIVE_EVENT_TYPES.has(event.type)) return fail('GENERATION_V2_OPENAI_STREAM_INVALID_EVENT')
   }
 
+  interruptedSnapshot() {
+    if (this.#terminal?.terminalKind === 'completed') return {
+      items: JSON.parse(JSON.stringify(this.#replayOutput)) as Readonly<Record<string, unknown>>[],
+      completeIndexes: this.#terminal.output.map((_, index) => index), text: this.#terminal.visibleText,
+      reasoningSummaryText: this.#terminal.reasoningSummaryText, complete: true,
+      terminalFact: this.#terminalFact!,
+    }
+    const entries = [...new Map([...this.#receivedItems, ...this.#doneItems])].sort(([a], [b]) => a - b)
+    return { items: entries.map(([, item]) => JSON.parse(JSON.stringify(item)) as Readonly<Record<string, unknown>>),
+      completeIndexes: entries.flatMap(([index], position) => this.#doneItems.has(index) ? [position] : []), text: this.#visibleText, reasoningSummaryText: this.#reasoningSummaryText, complete: false,
+      ...(this.#terminalFact ? { terminalFact: this.#terminalFact } : {}) }
+  }
+
   readVisibleText(): string { return this.#visibleText }
   readReasoningSummaryText(): string { return this.#reasoningSummaryText }
+  readReplayOutput(): readonly OpenAIResponsesReturnedItemV1[] {
+    if (!this.#terminal || !this.#replayOutput) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
+    return selectOpenAIResponsesReplayItemsV1(this.#replayOutput)
+  }
   finish(): OpenAIResponsesTerminalResultV1 {
     if (!this.#terminal) return fail('GENERATION_V2_OPENAI_STREAM_TERMINAL_INVALID')
     return this.#terminal

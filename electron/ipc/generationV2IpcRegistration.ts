@@ -1,4 +1,5 @@
 import type { RegisterInvoke } from './types'
+import type { ProjectDuplicatePolicy } from '../../src/shared/settings/projectDuplicatePolicy'
 import type { Epoch2CommittedRuntime } from '../data-epoch/epoch2CommittedBootstrap'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { createAnthropicGenerationV2Runtime } from '../services/anthropicGenerationV2Runtime'
@@ -47,8 +48,11 @@ import type { ModelFactsSemanticInvalidationNotifierV1 } from '../services/model
  * Epoch-2 registration boundary for every reviewed generation runtime.
  * Each provider/operation keeps explicit IPC channels and an independent typed runtime.
  */
+import { createGenerationNativeCompletionRecoveryWorkSourceV2, recoverPendingGenerationNativeCompletionsV2 } from '../services/generationNativeCompletionV2'
+
 export function registerGenerationV2Ipc(input: Readonly<{
   registerInvoke: RegisterInvoke
+  getProjectDuplicatePolicy?: () => ProjectDuplicatePolicy
   epoch2: Epoch2CommittedRuntime
   rawGenerationRequestStore?: RawGenerationRequestStore
   cloudFetch: ProviderFetch
@@ -63,6 +67,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
     rawGenerationRequestStore: input.rawGenerationRequestStore,
     fetchImpl: input.cloudFetch })
   const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
+  input.registerActiveWorkSource?.(createGenerationNativeCompletionRecoveryWorkSourceV2(input.epoch2.database))
   input.registerActiveWorkSource?.({ name: 'generation-v2-runtime', activeCount: () => runtimeRegistry.countActive(),
     quiesce: () => runtimeRegistry.quiesceForShutdown(), seal: () => runtimeRegistry.seal() })
   const subjectSetService = new AuthoritativeModelSubjectSetV1Service(input.epoch2.database,
@@ -89,7 +94,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
       db: input.epoch2.database, notifyModelFactsSemanticInvalidated: input.notifyModelFactsSemanticInvalidated }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
-      runtimeRegistry }),
+      runtimeRegistry, getProjectDuplicatePolicy: input.getProjectDuplicatePolicy }),
     ...registerGenerationV2ModelPreferencesIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
     ...registerGenerationV2CredentialSettingsIpc({ registerInvoke: input.registerInvoke,
       credentialService: input.epoch2.credentialService, onCommittedSubjectMutation: notifyCommittedSubjectMutation }),
@@ -153,6 +158,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
         ...common, attachmentBlobStore: input.epoch2.attachmentBlobStore,
         streamProjectionSink }) }),
   ]
+  recoverPendingGenerationNativeCompletionsV2(input.epoch2.database)
   void materializationScheduler.schedule().catch(() => undefined)
   return Object.freeze(channels)
 }

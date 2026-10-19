@@ -10,12 +10,22 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
-import { decodeOpenRouterImageBufferedResponseV1, OpenRouterImageSingleResultAssemblerV1, OpenRouterImageSseDecoderV1, type OpenRouterImageSingleResultV1 } from '../../src/core/generation-v2/providers/openrouter-images/imageStreamV1'
+import { readBoundedResponseBodyV2 } from '../net/boundedResponseBodyV2'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../src/core/generation-v2/capacity/generationCapacityV1'
+import { decodeOpenRouterImageBufferedResponseV1, OpenRouterImageSingleResultAssemblerV1, OpenRouterImageSseDecoderV1,
+  restoreOpenRouterImageSingleResultV1, type OpenRouterImageSingleResultV1 } from '../../src/core/generation-v2/providers/openrouter-images/imageStreamV1'
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { OpenRouterImageInitialSendResultV2 } from './openRouterImageInitialSendCoordinatorV2'
 import type { OpenRouterImageActionResultV2 } from './openRouterImageActionCoordinatorV2'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
@@ -64,9 +74,13 @@ async function readResult(response: Response): Promise<OpenRouterImageSingleResu
     throw new OpenRouterImageInitialStreamRunnerV2Error('GENERATION_V2_OPENROUTER_IMAGE_RUNNER_RESPONSE_INVALID')
   }
   let payload: unknown
-  try { payload = JSON.parse(await response.text()) } catch {
+  const body = await readBoundedResponseBodyV2(response, GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1)
+  try {
+    if (body.truncated) throw new Error('GENERATION_V2_OPENROUTER_IMAGE_RUNNER_RESPONSE_TOO_LARGE')
+    payload = JSON.parse(new TextDecoder().decode(body.bytes))
+  } catch {
     throw new OpenRouterImageInitialStreamRunnerV2Error('GENERATION_V2_OPENROUTER_IMAGE_RUNNER_RESPONSE_INVALID')
-  }
+  } finally { body.bytes.fill(0) }
   return decodeOpenRouterImageBufferedResponseV1(payload)
 }
 
@@ -161,6 +175,14 @@ export function createOpenRouterImageInitialStreamRunnerV2(input: Readonly<{
     })
   }
 
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'openrouter-images-v1', (_receipt, command, value) => {
+    const result = restoreOpenRouterImageSingleResultV1(value)
+    terminal({ preparedRequest: command.preparedRequest, execution: command.execution, request: command.request },
+      'completed', result, null, null)
+  }, (_command, value) => {
+    restoreOpenRouterImageSingleResultV1(value)
+  })
+
   return Object.freeze({
     run: async (command: OpenRouterImageGenerationCommandResultV2, signal?: AbortSignal) => {
       if (command.kind !== 'created' || !command.preparedRequest || !isPreparedProviderRequestV2(command.preparedRequest) ||
@@ -202,8 +224,15 @@ export function createOpenRouterImageInitialStreamRunnerV2(input: Readonly<{
             return readResult(response)
           },
         })
-        terminal(created, 'completed', result, null, null)
+        materializeNewGenerationNativeCompletionV2({
+          db: input.db, command: created, nativeResult: result, nowMs,
+          materialize: () => terminal(created, 'completed', result, null, null),
+        })
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, created.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, created, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
         const code = cancelled ? 'user_cancelled' : scope.timedOut()
           ? 'GENERATION_V2_OPENROUTER_IMAGE_RUNNER_TIMEOUT'

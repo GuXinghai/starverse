@@ -112,13 +112,62 @@ function seedPreservedData(db:BetterSqlite3.Database) {
     route:new ConversationRoutePreferenceV2Repo(db).get('conversation:delete')}
 }
 
-function workspaceHandlers(db:BetterSqlite3.Database) {
+function workspaceHandlers(db:BetterSqlite3.Database, getProjectDuplicatePolicy?: () => 'allow' | 'deny' | 'ask') {
   const handlers=new Map<string,IpcInvokeHandler>()
-  registerGenerationV2WorkspaceIpc({registerInvoke:(channel,handler)=>handlers.set(channel,handler),db,nowMs:()=>100,
+  registerGenerationV2WorkspaceIpc({registerInvoke:(channel,handler)=>handlers.set(channel,handler),db,nowMs:()=>100,getProjectDuplicatePolicy,
     runtimeRegistry:{runWithBranchQuiesced:async(_id,action)=>action(),runWithConversationQuiesced:async(_id,action)=>action(),
       runWithProjectQuiesced:async(_id,action)=>action()}})
   return handlers
 }
+
+describe('generation V2 workspace project duplicate policy', () => {
+  it.each(['allow', 'deny', 'ask'] as const)('enforces %s for create and rename, including confirmation', async (policy) => {
+    const db = createDb()
+    try {
+      const handlers = workspaceHandlers(db, () => policy)
+      const create = (name: string, confirmDuplicate = false) => handlers.get('generation-v2:workspace:create-project')!({}, { name, confirmDuplicate })
+      const rename = (name: string, confirmDuplicate = false) => handlers.get('generation-v2:workspace:rename-project')!({}, { projectId: 'project:other', name, confirmDuplicate })
+      const other = await create('Other') as any
+      expect(other).toMatchObject({ ok: true, value: { status: 'saved' } })
+      // Give the rename target an explicit stable ID independent of the generated create ID.
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context => new ConversationGraphV2Repo(db).createProject(context,
+        { projectId: 'project:other', name: 'Rename target', createdAtMs: 50 }))
+      for (const confirmed of [false, true]) {
+        const expected = policy === 'allow' || (policy === 'ask' && confirmed)
+          ? { ok: true, value: { status: 'saved', projectId: expect.any(String) } }
+          : { ok: true, value: { status: 'duplicate', policy } }
+        const count = db.prepare('SELECT count(*) AS n FROM project_v2').get() as { n: number }
+        expect(await create('Project', confirmed)).toEqual(expected)
+        expect((db.prepare('SELECT count(*) AS n FROM project_v2').get() as { n: number }).n).toBe(count.n + (expected.value.status === 'saved' ? 1 : 0))
+        expect(await rename('Project', confirmed)).toEqual(expected)
+      }
+    } finally { db.close() }
+  })
+
+  it('defaults to ask, excludes self and the system inbox, and rechecks policy after confirmation', async () => {
+    const db = createDb()
+    try {
+      const defaultHandlers = workspaceHandlers(db)
+      expect(await defaultHandlers.get('generation-v2:workspace:create-project')!({}, { name: 'Project' }))
+        .toEqual({ ok: true, value: { status: 'duplicate', policy: 'ask' } })
+      expect(await defaultHandlers.get('generation-v2:workspace:rename-project')!({}, { projectId: 'project:1', name: 'Project' }))
+        .toEqual({ ok: true, value: { status: 'saved', projectId: 'project:1' } })
+      let policy: 'ask' | 'deny' = 'ask'
+      const handlers = workspaceHandlers(db, () => policy)
+      expect(await handlers.get('generation-v2:workspace:create-project')!({}, { name: 'Older Inbox' }))
+        .toMatchObject({ ok: true, value: { status: 'saved' } })
+      policy = 'deny'
+      expect(await handlers.get('generation-v2:workspace:create-project')!({}, { name: 'Project', confirmDuplicate: true }))
+        .toEqual({ ok: true, value: { status: 'duplicate', policy: 'deny' } })
+      expect(await handlers.get('generation-v2:workspace:create-project')!({}, { name: 'Project', confirmDuplicate: 'true' }))
+        .toEqual({ ok: false, code: 'invalid' })
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context => new ConversationGraphV2Repo(db).createProject(context,
+        { projectId: 'project:historical-duplicate', name: 'Project', createdAtMs: 50 }))
+      expect(await handlers.get('generation-v2:workspace:rename-project')!({}, { projectId: 'project:1', name: 'Project' }))
+        .toEqual({ ok: true, value: { status: 'saved', projectId: 'project:1' } })
+    } finally { db.close() }
+  })
+})
 
 describe('generation V2 workspace IPC conversation deletion', () => {
   it('opens and cancels a durable edit through the real IPC contract without mutating a destination conversation',async()=>{

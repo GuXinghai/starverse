@@ -17,6 +17,10 @@ import {
   decodeGenerationExecutionProviderId,
   type GenerationExecutionProviderId,
 } from '../../../src/core/generation-v2/domain/generationExecutionProviderId'
+import {
+  GENERATION_REQUEST_BODY_GLOBAL_MAX_BYTES_V1,
+  generationRequestBodyMaxBytesForContractV1,
+} from '../../../src/core/generation-v2/capacity/generationCapacityV1'
 
 type GenerationRequestStateInternalV2 = 'prepared' | 'streaming' | 'completed' | 'failed' | 'cancelled'
 
@@ -375,7 +379,9 @@ export class GenerationRequestV2Repo {
     const bounded512 = [prepared.providerId, prepared.endpointProfileId, prepared.credentialScopeId,
       prepared.contractId, prepared.capabilityRevision]
     if (bounded512.some((value) => value.length > 512) || prepared.modelId.length > 4_096 ||
-        prepared.effectiveEndpointId.length > 4_096 || prepared.bodyByteLength > 20 * 1_024 * 1_024 ||
+        prepared.effectiveEndpointId.length > 4_096 ||
+        prepared.bodyByteLength > GENERATION_REQUEST_BODY_GLOBAL_MAX_BYTES_V1 ||
+        prepared.bodyByteLength > generationRequestBodyMaxBytesForContractV1(prepared.contractId) ||
         (binding.endpointBinding.kind === 'provider_managed_set' &&
           !binding.endpointBinding.descriptors.some((descriptor) =>
             descriptor.endpointId.value === prepared.effectiveEndpointId))) {

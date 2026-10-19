@@ -4,14 +4,18 @@ import {
   decodeOpenAIResponsesClientItemsV1,
   decodeOpenAIResponsesReplayItemsV1,
   decodeOpenAIResponsesReturnedItemsV1,
+  selectOpenAIResponsesReplayItemsV1,
+  OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1,
+  OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1,
   OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1,
   type OpenAIResponsesClientItemV1,
   type OpenAIResponsesReplayItemV1,
 } from './nativeItemsV1'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export const OPENAI_RESPONSES_ARTIFACT_KIND_V2 = 'openai_responses_ordered_native_items_v2' as const
 export const OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2 = 2 as const
-export const OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V2 = 20 * 1_024 * 1_024
+export const OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V2 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 export type OpenAIResponsesContinuationArtifactV2 = Readonly<{
   schemaVersion: 2
@@ -37,6 +41,10 @@ export class OpenAIResponsesContinuationArtifactV2Error extends Error {
 }
 
 const artifacts = new WeakSet<object>()
+const artifactDecodeLimits = Object.freeze({
+  maxItemStringBytes: GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1,
+  maxReplayStringBytes: GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1,
+})
 
 function fail(code: OpenAIResponsesContinuationArtifactV2Error['code']): never {
   throw new OpenAIResponsesContinuationArtifactV2Error(code)
@@ -117,7 +125,7 @@ function createArtifact(input: Readonly<{
 }>): OpenAIResponsesContinuationArtifactV2 {
   const lineageDepth = sequence(input.lineageDepth)
   const decodedParentHash = parentHash(input.parentArtifactHash)
-  const orderedItems = decodeOpenAIResponsesReplayItemsV1(input.orderedItems)
+  const orderedItems = decodeOpenAIResponsesReplayItemsV1(input.orderedItems, artifactDecodeLimits)
   validateSequence(orderedItems)
   const projection = semanticProjection({ lineageDepth, parentArtifactHash: decodedParentHash, orderedItems })
   const artifact = Object.freeze({ ...projection, artifactHash: hash(projection) })
@@ -180,12 +188,13 @@ export function buildOpenAIResponsesReplayInputV1(input: Readonly<{
   clientItems: unknown
 }>): readonly OpenAIResponsesReplayItemV1[] {
   const prior = requireArtifact(input.priorArtifact)
-  const clientItems = decodeOpenAIResponsesClientItemsV1(input.clientItems)
+  const clientItems = decodeOpenAIResponsesClientItemsV1(input.clientItems, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1)
   const combined = [...(prior?.orderedItems ?? []), ...clientItems]
   if (combined.length > OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_LIMIT_EXCEEDED')
   }
-  const replay = decodeOpenAIResponsesReplayItemsV1(combined)
+  const replay = selectOpenAIResponsesReplayItemsV1(decodeOpenAIResponsesReplayItemsV1(
+    combined, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1))
   validateSequence(replay)
   return replay
 }
@@ -202,7 +211,8 @@ export function completeOpenAIResponsesRequestV2(input: Readonly<{
     return fail('GENERATION_V2_OPENAI_CONTINUATION_SEQUENCE_INVALID')
   }
   const replay = buildOpenAIResponsesReplayInputV1({ priorArtifact: prior, clientItems: input.clientItems })
-  const returned = decodeOpenAIResponsesReturnedItemsV1(input.returnedItems)
+  const returned = selectOpenAIResponsesReplayItemsV1(decodeOpenAIResponsesReturnedItemsV1(
+    input.returnedItems, OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1))
   return createArtifact({
     lineageDepth,
     parentArtifactHash: prior?.artifactHash ?? null,
@@ -215,9 +225,11 @@ export function completeOpenAIResponsesProjectedRequestV2(input: Readonly<{
   clientItems: unknown
   returnedItems: unknown
 }>): OpenAIResponsesContinuationArtifactV2 {
-  const prefix = decodeOpenAIResponsesReplayItemsV1(input.projectedPrefixItems)
-  const clientItems = decodeOpenAIResponsesClientItemsV1(input.clientItems)
-  const returnedItems = decodeOpenAIResponsesReturnedItemsV1(input.returnedItems)
+  const prefix = selectOpenAIResponsesReplayItemsV1(decodeOpenAIResponsesReplayItemsV1(
+    input.projectedPrefixItems, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1))
+  const clientItems = decodeOpenAIResponsesClientItemsV1(input.clientItems, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1)
+  const returnedItems = selectOpenAIResponsesReplayItemsV1(decodeOpenAIResponsesReturnedItemsV1(
+    input.returnedItems, OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1))
   return createArtifact({ lineageDepth: 1, parentArtifactHash: null,
     orderedItems: [...prefix, ...clientItems, ...returnedItems] })
 }
@@ -225,5 +237,5 @@ export function completeOpenAIResponsesProjectedRequestV2(input: Readonly<{
 export function projectOpenAIResponsesClientItemsV1(
   items: readonly OpenAIResponsesClientItemV1[],
 ): readonly OpenAIResponsesClientItemV1[] {
-  return decodeOpenAIResponsesClientItemsV1(items)
+  return decodeOpenAIResponsesClientItemsV1(items, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1)
 }

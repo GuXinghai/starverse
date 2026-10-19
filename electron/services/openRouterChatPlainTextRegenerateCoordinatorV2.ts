@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveOpenRouterChatCapabilityV2 } from './openRouterChatGenerationAuthorityV2Service'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -82,7 +84,7 @@ export function createOpenRouterChatPlainTextRegenerateCoordinatorV2(input: Read
                   return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle,
                     projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
                     request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
-                } }) })
+                } }) }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveOpenRouterChatCapabilityV2(modelEvidence), request.expectedCredentialRevision) })
         }) })
     } catch (error) { const winner = replay(command); if (winner) return winner; throw error }
   } })

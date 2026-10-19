@@ -262,6 +262,17 @@ describe('registerStoreIpc', () => {
     expect(store.get('generationV2UiPreferences')).toEqual({ warnOnQuitWithActiveWork: false })
   })
 
+  it('persists only allow/deny/ask for the project duplicate policy', async () => {
+    const { handlers, store } = registerHandlers()
+    const set = handlers.get('store-set')!
+    const key = 'generationV2UiPreferences.projectDuplicatePolicy'
+    for (const bad of [true, false, 'on', null, {}, undefined]) expect(await set({}, key, bad)).toBe(false)
+    for (const policy of ['allow', 'deny', 'ask']) {
+      expect(await set({}, key, policy)).toBe(true)
+      expect(store.get('generationV2UiPreferences')).toEqual({ projectDuplicatePolicy: policy })
+    }
+  })
+
   it('merges concurrent UI preference leaf writes into one retained namespace', async () => {
     const { handlers, store } = registerHandlers()
     const set = handlers.get('store-set')!

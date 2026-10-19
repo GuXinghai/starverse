@@ -46,8 +46,8 @@ export class GeminiGenerateContentPreparedRequestCompilerV2Error extends Error {
 
 const evidence = 'gemini-generate-content-v1beta'
 const GEMINI_INLINE_DATA_MAX_BYTES_V2 = 4 * 1024 * 1024
-function consumed(path: string, nativeField: string): SemanticConsumptionLedgerEntryV2 {
-  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind: 'structural', evidence })
+function consumed(path: string, nativeField: string, encodingKind: 'identity' | 'structural' = 'identity'): SemanticConsumptionLedgerEntryV2 {
+  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind, evidence })
 }
 function accepted(path: string): SemanticConsumptionLedgerEntryV2 {
   return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence })
@@ -67,7 +67,7 @@ function encodeGeminiAttachmentPartV2(
   return attachmentRepo.withSynchronousSnapshotReferenceAuthority(context, attachment, (authority) => {
     const bytes = attachmentBlobStore.readRevisionBytes(authority.revision)
     try {
-      if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && authority.revision.blob.mime.startsWith('text/')) {
+      if (attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion) && authority.revision.blob.mime.startsWith('text/')) {
         return Object.freeze({ text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) })
       }
       if (attachment.sendAs === 'image_reference' && attachment.conversion === 'none' &&
@@ -102,7 +102,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const toolRegistry = input.toolRegistry ?? null
   const binding = snapshot.providerBinding
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
@@ -142,25 +142,26 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
   const thinkingBudget = extension.kind === 'gemini_generate_content' && extension.thinkingMode === 'budget'
     ? extension.thinkingBudget : null
   const reasoning = intent.reasoning.mode === 'disabled'
-    ? Object.freeze({ mode: 'disabled' as const })
+    ? Object.freeze({ mode: 'disabled' as const,
+        ...(thinkingBudget === 0 ? { thinkingBudget: 0 } : {}),
+        ...(extension.kind !== 'gemini_generate_content' || extension.includeThoughts === 'provider_default' ? {} : { includeThoughts: extension.includeThoughts === 'enabled' }) })
     : (() => {
         if (intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined ||
             extension.kind !== 'gemini_generate_content' ||
             extension.thinkingMode === 'default' && intent.reasoning.effort !== undefined ||
-            extension.thinkingMode === 'level' && intent.reasoning.effort === undefined ||
             extension.thinkingMode === 'budget' && thinkingBudget === null) {
           throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
         }
         return Object.freeze({ mode: 'enabled' as const,
           ...(extension.thinkingMode === 'budget' ? { thinkingBudget: thinkingBudget! } :
-            extension.thinkingMode === 'level' ? { thinkingLevel: intent.reasoning.effort } : {}),
+            extension.thinkingMode === 'level' ? { thinkingLevel: extension.thinkingLevel } : {}),
           ...(extension.includeThoughts === 'provider_default' ? {} : { includeThoughts: extension.includeThoughts === 'enabled' }) })
       })()
   const webSearch = intent.web.mode === 'provider_search'
   if (intent.image.mode !== 'disabled' ||
       extension.kind !== 'gemini_generate_content' ||
-      (intent.reasoning.mode === 'disabled' && (extension.thinkingMode !== 'default' ||
-        extension.includeThoughts !== 'provider_default')) ||
+      (intent.reasoning.mode === 'disabled' && extension.thinkingMode !== 'default' &&
+        !(extension.thinkingMode === 'budget' && extension.thinkingBudget === 0)) ||
       (webSearch && (intent.web.types.length !== 1 || intent.web.types[0] !== 'web' ||
         intent.web.engine !== undefined || intent.web.maxResults !== undefined || intent.web.maxTotalResults !== undefined ||
         intent.web.searchContextSize !== undefined || intent.web.maxCharacters !== undefined ||
@@ -168,21 +169,22 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
   }
   const ledger: SemanticConsumptionLedgerEntryV2[] = [
-    reasoning.mode === 'enabled' ? consumed('reasoning.mode', 'generationConfig.thinkingConfig') : accepted('reasoning.mode'),
+    ('thinkingBudget' in reasoning || 'thinkingLevel' in reasoning || 'includeThoughts' in reasoning)
+      ? consumed('reasoning.mode', 'generationConfig.thinkingConfig', 'structural') : accepted('reasoning.mode'),
     ...(reasoning.mode === 'enabled' && intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined
-      ? [consumed('reasoning.effort', 'generationConfig.thinkingConfig')] : [accepted('reasoning.effort')]),
-    webSearch ? consumed('web.mode', 'tools.googleSearch') : accepted('web.mode'), accepted('image.mode'),
-    toolsEnabled ? consumed('tools.mode', 'tools.functionDeclarations') : accepted('tools.mode'),
+      ? [consumed('reasoning.effort', 'generationConfig.thinkingConfig', 'structural')] : [accepted('reasoning.effort')]),
+    webSearch ? consumed('web.mode', 'tools[].googleSearch', 'structural') : accepted('web.mode'), accepted('image.mode'),
+    toolsEnabled ? consumed('tools.mode', 'tools[].functionDeclarations', 'structural') : accepted('tools.mode'),
     accepted('providerExtension.kind'),
     reasoning.mode === 'enabled' && extension.thinkingMode !== 'default'
-      ? consumed('providerExtension.thinkingMode', 'generationConfig.thinkingConfig')
+      ? consumed('providerExtension.thinkingMode', 'generationConfig.thinkingConfig', 'structural')
       : accepted('providerExtension.thinkingMode'),
     ...(extension.thinkingMode === 'level'
       ? [consumed('providerExtension.thinkingLevel', 'generationConfig.thinkingConfig.thinkingLevel')] : []),
     ...(extension.thinkingMode === 'budget'
       ? [consumed('providerExtension.thinkingBudget', 'generationConfig.thinkingConfig.thinkingBudget')] : []),
     extension.includeThoughts === 'provider_default' ? accepted('providerExtension.includeThoughts')
-      : consumed('providerExtension.includeThoughts', 'generationConfig.thinkingConfig.includeThoughts'),
+      : consumed('providerExtension.includeThoughts', 'generationConfig.thinkingConfig.includeThoughts', 'structural'),
   ]
   const generation: Record<string, unknown> = {}
   const fields = Object.freeze({ maxOutputTokens: 'maxOutputTokens', temperature: 'temperature', topP: 'topP',
@@ -275,7 +277,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
       ...(tool.function.parameters === undefined ? {} : { parameters: tool.function.parameters }),
     })) }),
     toolChoice,
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const endpoint = resolveGeminiDeveloperApiEndpointV2(readGeminiDeveloperApiContractV2(), {
     surfaceId: 'gemini-generate-content-v1beta', modelId: binding.modelId.value,
   })
@@ -292,7 +294,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     endpoint: endpoint.url,
     headersPlan: createGoogleApiKeyHeaderPlanV2(),
     body: compilation.preparedBody,
-    ledger: createSemanticConsumptionLedgerV2(ledger),
+    ledger: createSemanticConsumptionLedgerV2(ledger), requestPlan: snapshot.requestPlan, identitySemanticSource: snapshot.semanticIntent,
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,

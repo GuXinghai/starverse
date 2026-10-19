@@ -186,6 +186,7 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
     })),
@@ -348,6 +349,7 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
     })),
@@ -375,7 +377,7 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
     createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.actionKind !== 'regenerate_question' ||
-      execution.bundle.operation.sourceAnswerId !== null ||
+      execution.bundle.operation.sourceAnswerId?.value !== pendingSourceAnswerIdV2(input.pending)?.value ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
@@ -450,6 +452,7 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
     })),
@@ -472,7 +475,7 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.actionKind !== 'edit_resend' ||
-      execution.bundle.operation.sourceAnswerId !== null ||
+      execution.bundle.operation.sourceAnswerId?.value !== pendingSourceAnswerIdV2(input.pending)?.value ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }

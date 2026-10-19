@@ -1,3 +1,4 @@
+/** Frozen mixed API-surface identity input retained for legacy provider bindings. New request-body shape authority is ApiRequestBodyContractV2; endpoint/auth/version authority is EndpointTransportDefinitionV2. */
 export type OpenAIResponsesApiSurfaceIdV2 =
   | 'openai-responses-v1'
   | 'openai-models-v1'

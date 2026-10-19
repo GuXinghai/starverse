@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_message_v2_answer_group
 
 CREATE TABLE IF NOT EXISTS message_body_v2 (
   message_id TEXT PRIMARY KEY REFERENCES message_v2(message_id) ON DELETE CASCADE,
-  body_text TEXT NOT NULL CHECK (length(CAST(body_text AS BLOB)) <= 20971520)
+  body_text TEXT NOT NULL CHECK (length(CAST(body_text AS BLOB)) <= 67108864)
 );
 
 CREATE TRIGGER IF NOT EXISTS trg_message_v2_create_body

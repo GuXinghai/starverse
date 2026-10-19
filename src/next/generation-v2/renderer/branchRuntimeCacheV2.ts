@@ -9,6 +9,7 @@ export type BranchRuntimeCacheEntryV2 = Readonly<{
   status: 'generating' | 'completed' | 'failed' | 'cancelled'
   body: string
   reasoning: readonly Readonly<Record<string, unknown>>[]
+  images: GenerationOperationRuntimeSnapshotV2['images']
   lastSequence: number
   errorFact: ProviderFailureV2 | null
   lastAccessedAt: number
@@ -23,6 +24,7 @@ function estimateBytes(snapshot: GenerationOperationRuntimeSnapshotV2): number {
   try {
     structuredBytes = new TextEncoder().encode(JSON.stringify({
       reasoning: snapshot.reasoning,
+      images: snapshot.images,
       errorFact: snapshot.errorFact,
     })).byteLength
   } catch {
@@ -113,6 +115,7 @@ export class BranchRuntimeCacheV2 {
       status: snapshot.status,
       body: snapshot.body,
       reasoning: snapshot.reasoning,
+      images: snapshot.images,
       lastSequence: snapshot.lastSequence,
       errorFact: snapshot.errorFact,
       lastAccessedAt: this.#lastAccessedAt.get(snapshot.binding.branchId) ?? this.nowMs(),

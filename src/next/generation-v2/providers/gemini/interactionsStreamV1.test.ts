@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { createGeminiInteractionsImageTerminalArtifactV2, serializeGeminiInteractionsImageTerminalArtifactV2 } from '../../../../core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { stableSerializeProviderRequestV2 } from '../../../../core/generation-v2/compiler/stableSerialize'
 import { sha256Hex } from '../../../../shared/crypto/sha256Hex'
-import { createGeminiInteractionsImageTerminalArtifactV2, serializeGeminiInteractionsImageTerminalArtifactV2 } from '../../../../core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
-  GeminiInteractionsImageStreamV1Error } from '../../../../core/generation-v2/providers/gemini/interactionsStreamV1'
+  GeminiInteractionsImageStreamV1Error, type GeminiInteractionsImageNativeEventV1 } from '../../../../core/generation-v2/providers/gemini/interactionsStreamV1'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../../../core/generation-v2/capacity/generationCapacityV1'
 
 function sse(events: readonly unknown[]): Uint8Array {
   const frames = events.map((event) => `data: ${typeof event === 'string' ? event : JSON.stringify(event)}\n\n`).join('')
@@ -95,7 +96,8 @@ describe('Gemini Interactions image SSE V1', () => {
     expect(() => decode([
       { event_type: 'interaction.created', interaction: { model: interaction.model } },
       { event_type: 'interaction.completed', interaction: { id: 'interaction:terminal' } }, '[DONE]',
-    ])).toThrow(expect.objectContaining({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT' }))
+    ])).toThrow(expect.objectContaining({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+      fieldPath: 'interaction.status', diagnosticReason: 'missing_required_field' }))
   })
 
   it.each([
@@ -125,9 +127,9 @@ describe('Gemini Interactions image SSE V1', () => {
       { event_type: 'interaction.created', interaction: { model: interaction.model } },
       { event_type: 'interaction.completed', interaction: { id: {}, status: 'completed' } }, '[DONE]',
     ], 'interaction.id'],
-  ] as const)('rejects an explicit invalid %s', (_name, events, _fieldPath) => {
+  ] as const)('rejects an explicit invalid %s', (_name, events, fieldPath) => {
     expect(() => decode(events)).toThrow(expect.objectContaining({
-      code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+      code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT', fieldPath, diagnosticReason: 'invalid_string',
     }))
   })
 
@@ -168,6 +170,153 @@ describe('Gemini Interactions image SSE V1', () => {
     ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
   })
 
+  it('accepts optional continuation metadata and a partial completed interaction without model', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model,
+        status: 'in_progress', continuation_token: 'opaque-token' } },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { id: interaction.id, status: 'completed' } }, '[DONE]',
+    ])
+    expect(result.model).toBe(interaction.model)
+    expect(new TextDecoder().decode(result.bytes)).toBe('image')
+  })
+
+  it.each(['interaction.created', 'interaction.completed'])('still rejects a supplied wrong model in %s', event_type => {
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, status: 'in_progress',
+        model: event_type === 'interaction.created' ? 'other-model' : interaction.model } },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { ...interaction, model: 'other-model' } }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  })
+
+  it('attaches the failing event and a bounded frame even for generic shape validation errors', () => {
+    const raw = { event_type: 'step.delta', index: 'bad', delta: { type: 'image', data: 'x'.repeat(20_000) } }
+    try {
+      new GeminiInteractionsImageSseDecoderV1().push(officialSse([raw]))
+      throw new Error('expected invalid event')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+        eventType: 'step.delta', stepType: 'image', rawEvent: raw, diagnosticStage: 'frame_decode',
+        fieldPath: 'index', diagnosticReason: 'invalid_index' })
+      expect((error as GeminiInteractionsImageStreamV1Error).rawFrameExcerpt).toContain('"index":"bad"')
+      expect((error as GeminiInteractionsImageStreamV1Error).rawFrameExcerpt!.length).toBeLessThanOrEqual(8192)
+    }
+  })
+
+  it.each([
+    ['additional field', { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=' }, future_field: true },
+      'future_field', 'unexpected_field'],
+    ['missing field', { event_type: 'step.delta', index: 0 }, 'delta', 'missing_required_field'],
+    ['nested index type', { event_type: 'step.delta', index: { value: 0 }, delta: { type: 'image', data: 'aW1hZ2U=' } },
+      'index', 'invalid_index'],
+  ] as const)('pinpoints an INVALID_EVENT %s without recording field values', (_name, raw, fieldPath, reason) => {
+    try {
+      new GeminiInteractionsImageSseDecoderV1().push(officialSse([raw]))
+      throw new Error('expected invalid event')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+        diagnosticStage: 'frame_decode', fieldPath, diagnosticReason: reason })
+      expect((error as GeminiInteractionsImageStreamV1Error).diagnosticReason).not.toContain('0')
+    }
+  })
+
+  it('labels invalid joined Base64 as stream-finish context instead of blaming the last frame', () => {
+    try {
+      decode([
+        { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
+        { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+        { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'AA=A', mime_type: 'image/png' } },
+        { event_type: 'step.stop', index: 0 },
+        { event_type: 'interaction.completed', interaction }, '[DONE]',
+      ])
+      throw new Error('expected invalid image encoding')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+        diagnosticStage: 'stream_finish', fieldPath: 'image.data', diagnosticReason: 'invalid_base64',
+        rawEvent: null, eventType: null, stepType: null, rawFrameExcerpt: null,
+        diagnosticContext: { contextKind: 'stream_snapshot', acceptedEventCount: 6, lastAcceptedEventType: 'done' } })
+    }
+  })
+
+  it('labels assembler shape failures separately from frame decoding', () => {
+    const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-image')
+    assembler.push({ eventType: 'interaction.created', canonicalJson: '{}', raw: {
+      event_type: 'interaction.created', interaction: { id: interaction.id, status: 'in_progress' },
+    } })
+    const invalidStepStart = {
+      eventType: 'step.start', canonicalJson: '{"event_type":"step.start","index":"bad"}',
+      raw: { event_type: 'step.start', index: 'bad', step: { type: 'model_output' } },
+    } as unknown as GeminiInteractionsImageNativeEventV1
+    expect(() => assembler.push(invalidStepStart)).toThrow(expect.objectContaining({
+      code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT', diagnosticStage: 'event_assembly',
+      fieldPath: 'index', diagnosticReason: 'invalid_index',
+      diagnosticContext: { contextKind: 'failing_frame', eventType: 'step.start' },
+    }))
+  })
+
+  it('preserves legal events before a bad tail and lets the caller take them once', () => {
+    const prefix = { event_type: 'interaction.created', interaction: {
+      id: interaction.id, model: interaction.model, status: 'in_progress',
+    } }
+    const badTail = { event_type: 'step.delta', index: 'bad', delta: { type: 'image', data: 'aW1hZ2U=' } }
+    const decoder = new GeminiInteractionsImageSseDecoderV1()
+    let sameChunkError: unknown
+    try { decoder.push(officialSse([prefix, badTail])) } catch (error) { sameChunkError = error }
+    expect(sameChunkError).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+      diagnosticStage: 'frame_decode', fieldPath: 'index', diagnosticReason: 'invalid_index' })
+    const sameChunkPrefix = decoder.takeParsedEventsAfterError()
+    expect(Object.isFrozen(sameChunkPrefix)).toBe(true)
+    expect(sameChunkPrefix.map((event) => event.eventType)).toEqual(['interaction.created'])
+    expect(decoder.takeParsedEventsAfterError()).toEqual([])
+    expect(sameChunkError).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT' })
+
+    const splitDecoder = new GeminiInteractionsImageSseDecoderV1()
+    const splitFirstChunk = splitDecoder.push(officialSse([prefix]))
+    expect(splitDecoder.takeParsedEventsAfterError()).toEqual([])
+    let splitChunkError: unknown
+    try { splitDecoder.push(officialSse([badTail])) } catch (error) { splitChunkError = error }
+    expect(splitChunkError).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+      diagnosticStage: 'frame_decode', fieldPath: 'index', diagnosticReason: 'invalid_index' })
+    const splitChunkPrefix = splitDecoder.takeParsedEventsAfterError()
+    expect([...splitFirstChunk, ...splitChunkPrefix]).toEqual(sameChunkPrefix)
+    expect(splitDecoder.takeParsedEventsAfterError()).toEqual([])
+  })
+
+  it('labels EOF without DONE as stream-finish context and keeps frame parse errors distinct', () => {
+    const raw = { event_type: 'interaction.created', interaction: {
+      id: interaction.id, model: interaction.model, status: 'in_progress',
+    } }
+    const missingDone = new GeminiInteractionsImageSseDecoderV1()
+    missingDone.push(officialSse([raw], '\n', false))
+    let finishError: unknown
+    try { missingDone.finish() } catch (error) { finishError = error }
+    expect(finishError).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID',
+      diagnosticStage: 'stream_finish', diagnosticReason: 'stream_incomplete_or_invalid',
+      rawEvent: null, eventType: null, rawFrameExcerpt: null,
+      diagnosticContext: { contextKind: 'stream_snapshot', acceptedEventCount: 1, doneSeen: false } })
+    expect(missingDone.takeParsedEventsAfterError().map((event) => event.eventType)).toEqual(['interaction.created'])
+    expect(missingDone.takeParsedEventsAfterError()).toEqual([])
+
+    const malformedAtEof = new GeminiInteractionsImageSseDecoderV1()
+    malformedAtEof.push(new TextEncoder().encode('event: step.delta\ndata: {invalid-json}'))
+    let frameError: unknown
+    try { malformedAtEof.finish() } catch (error) { frameError = error }
+    expect(frameError).toMatchObject({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE',
+      diagnosticStage: 'frame_decode', eventType: 'step.delta', rawEvent: null,
+      rawFrameExcerpt: 'event: step.delta\ndata: {invalid-json}' })
+  })
+
+  it('retains a bounded invalid JSON frame without fabricating a parsed event', () => {
+    const frame = 'event: step.delta\ndata: {invalid-json}\n\n'
+    expect(() => new GeminiInteractionsImageSseDecoderV1().push(new TextEncoder().encode(frame)))
+      .toThrow(expect.objectContaining({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE',
+        eventType: 'step.delta', rawEvent: null, rawFrameExcerpt: frame.trimEnd() }))
+  })
   it.each(['', 'AA=A', 'A===', '!AAA', 'AB=='])('rejects malformed or noncanonical image encoding %j', data => {
     expect(() => decode([
       { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
@@ -180,9 +329,9 @@ describe('Gemini Interactions image SSE V1', () => {
 
   it('retains the wire size ceiling before parsing', () => {
     const decoder = new GeminiInteractionsImageSseDecoderV1()
-    expect(() => decoder.push(new Uint8Array(48 * 1024 * 1024 + 1)))
+    expect(() => decoder.push(new Uint8Array(GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 + 1)))
       .toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_LIMIT_EXCEEDED')
-  })
+  }, 30_000)
 
   it('decodes only after joining image pieces split inside a Base64 quantum', () => {
     const result = decode([
@@ -243,20 +392,20 @@ describe('Gemini Interactions image SSE V1', () => {
     expect(() => decode([
       { event_type: 'interaction.created', interaction: { id: interaction.id, status: 'in_progress' } },
       '[DONE]',
-    ])).toThrow(new GeminiInteractionsImageStreamV1Error('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID'))
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
   })
 
   it('parses the official event/data stream with text and image deltas', () => {
     const result = decodeWithBytes(officialSse([
       { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
       { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
-      { event_type: 'step.delta', index: 0, delta: { type: 'text', text: '千里' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'text', text: '鍗冮噷' } },
       { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/jpeg' } },
-      { event_type: 'step.delta', index: 0, delta: { type: 'text', text: '江山' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'text', text: '姹熷北' } },
       { event_type: 'step.stop', index: 0 },
       { event_type: 'interaction.completed', interaction }, '[DONE]',
     ]))
-    expect(result.text).toBe('千里江山')
+    expect(result.text).toBe('鍗冮噷姹熷北')
     expect(new TextDecoder().decode(result.bytes)).toBe('image')
     expect(result.events.map((event) => event.eventType)).toEqual([
       'interaction.created', 'step.start', 'step.delta', 'step.delta', 'step.delta', 'step.stop', 'interaction.completed', 'done',
@@ -293,7 +442,7 @@ describe('Gemini Interactions image SSE V1', () => {
       .toBe('interaction.created')
     const mismatch = new GeminiInteractionsImageSseDecoderV1()
     expect(() => mismatch.push(new TextEncoder().encode('event: step.delta\ndata: {"event_type":"step.stop","index":0}\n\n')))
-      .toThrow(new GeminiInteractionsImageStreamV1Error('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_EVENT_MISMATCH'))
+      .toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_EVENT_MISMATCH')
   })
 
   it('keeps provider stream errors distinct from invalid SSE and validates terminal frames', () => {
@@ -303,7 +452,7 @@ describe('Gemini Interactions image SSE V1', () => {
       'event: done\ndata: [DONE]\n\n'))
     expect(events.map((event) => event.eventType)).toEqual(['error', 'done'])
     expect(() => new GeminiInteractionsImageSseDecoderV1().push(new TextEncoder().encode('event: step.delta\ndata: {bad}\n\n')))
-      .toThrow(new GeminiInteractionsImageStreamV1Error('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE'))
+      .toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
     const truncated = new GeminiInteractionsImageSseDecoderV1()
     truncated.push(new TextEncoder().encode('event: interaction.created\ndata: {"event_type":"interaction.created"}'))
     expect(() => truncated.finish()).toThrow()

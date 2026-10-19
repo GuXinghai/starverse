@@ -114,4 +114,72 @@ describe('GeminiGenerateContentStreamAssemblerV1 diagnostics', () => {
       { text: '', thoughtSignature: 'provider-signature' },
     ])
   })
+
+  it('accepts role-only and empty-parts content deltas without losing prior reasoning', () => {
+    for (const emptyContent of [{ role: 'model' }, { role: 'model', parts: [] }]) {
+      const assembler = new GeminiGenerateContentStreamAssemblerV1()
+      assembler.push(chunk({
+        candidates: [{
+          index: 0,
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'answer text' },
+              { text: 'reasoning', thought: true, thoughtSignature: 'sig-reasoning' },
+              { functionCall: { name: 'lookup', args: { query: 'star' } }, thoughtSignature: 'sig-call' },
+            ],
+          },
+        }],
+      }))
+
+      expect(assembler.push(chunk({ candidates: [{ index: 0, content: emptyContent }] }))).toEqual([])
+      expect(assembler.push(chunk({
+        candidates: [{ index: 0, content: emptyContent, finishReason: 'STOP', finishMessage: 'complete' }],
+      }))).toEqual([])
+
+      const result = assembler.finish()
+      expect(result.finishReason).toBe('STOP')
+      expect(result.finishMessage).toBe('complete')
+      expect(result.assistantContent).toEqual({
+        role: 'model',
+        parts: [
+          { text: 'answer text' },
+          { text: 'reasoning', thought: true, thoughtSignature: 'sig-reasoning' },
+          { functionCall: { name: 'lookup', args: { query: 'star' } }, thoughtSignature: 'sig-call' },
+        ],
+      })
+    }
+  })
+
+  it('keeps the no-result boundary when a stream contains only empty content envelopes', () => {
+    const assembler = new GeminiGenerateContentStreamAssemblerV1()
+    assembler.push(chunk({ candidates: [{ index: 0, content: { role: 'model' } }] }))
+    assembler.push(chunk({
+      candidates: [{ index: 0, content: { role: 'model', parts: [] }, finishReason: 'STOP' }],
+    }))
+
+    expect(() => assembler.finish()).toThrowError(expect.objectContaining({
+      code: 'GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID',
+    }))
+  })
+
+  it('rejects malformed streamed content roles, parts, and envelope keys', () => {
+    for (const content of [
+      { role: 'user' },
+      { role: 'model', parts: 'not-an-array' },
+      { role: 'model', parts: [], unexpected: true },
+    ]) {
+      const assembler = new GeminiGenerateContentStreamAssemblerV1()
+      expect(() => assembler.push(chunk({ candidates: [{ index: 0, content }] }))).toThrowError(
+        expect.objectContaining({
+          code: 'GENERATION_V2_GEMINI_STREAM_INVALID',
+          diagnostic: expect.objectContaining({
+            reason: 'native_content_invalid',
+            field: 'candidates[0].content',
+            rawChunk: null,
+          }),
+        }),
+      )
+    }
+  })
 })

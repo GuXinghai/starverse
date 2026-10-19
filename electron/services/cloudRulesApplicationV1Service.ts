@@ -8,7 +8,9 @@ import { applyCloudRulesActivationOverridesV1,
   CLOUD_RULES_LKG_INTEGRITY_STALE_REASON_V1,
   type CloudRulesActivationOverrideV1 } from
   '../../src/core/generation-v2/capability-rules/cloudRulesActivationOverlayV1'
-import { prepareCapabilityRuleMaterializationV1 } from
+import { applyCloudRulesActivationOverridesV2 } from
+  '../../src/core/generation-v2/capability-rules/cloudRulesActivationOverlayV2'
+import { prepareCapabilityRuleMaterializationV1, mergeCapabilityRuleOwnershipSnapshotsV1V2 } from
   '../../src/core/generation-v2/model-facts/materializedCapabilityRuleSourceV1'
 import type { AuthoritativeModelSubjectSetV1 } from
   '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
@@ -18,6 +20,10 @@ import {
   CapabilityRuleCoreV1Repo,
   prepareCapabilityRuleOwnershipSnapshotWriteV1,
 } from '../../infra/db/repo/capabilityRuleCoreV1Repo'
+import { CapabilityRuleCoreV2Repo, prepareCapabilityRuleOwnershipSnapshotWriteV2 } from
+  '../../infra/db/repo/capabilityRuleCoreV2Repo'
+import { prepareGenerationRequestRulesPublicationV2, writeGenerationRequestRulesPublicationV2 } from
+  '../../infra/db/repo/generationRequestRulesV2Repo'
 import { CapabilityRuleMaterializationV1Repo } from
   '../../infra/db/repo/capabilityRuleMaterializationV1Repo'
 import { CanonicalModelFactSourceV1Repo } from
@@ -61,7 +67,6 @@ type PreparedInstallV1 = Readonly<{
   expectedCandidateRecordRevision: string | null
   expectedAppliedRecordRevision: number | null
   expectedAppliedContentRevision: string | null
-  expectedCloudCoreRevision: string | null
   expectedOverrideRevision: number
   expectedMaterializationRevision: string | null
   expectedActiveSourceRevision: string | null
@@ -70,7 +75,11 @@ type PreparedInstallV1 = Readonly<{
   consumeCandidate: boolean
   pinTarget: boolean
   retainedOverrides: ReturnType<typeof applyCloudRulesActivationOverridesV1>['retainedOverrides']
-  coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1>
+  expectedLegacyCloudCoreRevision: string | null
+  expectedV2CloudCoreRevision: string | null
+  coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1> |
+    ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2>
+  requestRulesPublication: ReturnType<typeof prepareGenerationRequestRulesPublicationV2>
   materialization: ReturnType<typeof prepareCapabilityRuleMaterializationV1>
 }>
 
@@ -78,10 +87,13 @@ type PreparedActivationOverrideV1 = Readonly<{
   expectedAppliedRecordRevision: number
   expectedOverrideRevision: number
   expectedCloudCoreRevision: string | null
+  expectedV2CloudCoreRevision: string | null
   expectedMaterializationRevision: string | null
   expectedActiveSourceRevision: string | null
   retainedOverrides: readonly CloudRulesActivationOverrideV1[]
-  coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1>
+  coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1> |
+    ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2>
+  requestRulesPublication: ReturnType<typeof prepareGenerationRequestRulesPublicationV2>
   materialization: ReturnType<typeof prepareCapabilityRuleMaterializationV1>
 }>
 
@@ -102,6 +114,7 @@ export class CloudRulesApplicationV1Service {
   readonly #distributionRepo: CloudRulesDistributionV1Repo
   readonly #applicationRepo: CloudRulesApplicationV1Repo
   readonly #coreRepo: CapabilityRuleCoreV1Repo
+  readonly #coreV2Repo: CapabilityRuleCoreV2Repo
   readonly #materializationRepo: CapabilityRuleMaterializationV1Repo
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
   readonly #sourceScopeId = buildCapabilityRuleSourceScopeIdV1({
@@ -116,6 +129,7 @@ export class CloudRulesApplicationV1Service {
     this.#distributionRepo = new CloudRulesDistributionV1Repo(db, nowMs)
     this.#applicationRepo = new CloudRulesApplicationV1Repo(db, nowMs)
     this.#coreRepo = new CapabilityRuleCoreV1Repo(db, nowMs)
+    this.#coreV2Repo = new CapabilityRuleCoreV2Repo(db, nowMs)
     this.#materializationRepo = new CapabilityRuleMaterializationV1Repo(db, nowMs)
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
   }
@@ -130,14 +144,17 @@ export class CloudRulesApplicationV1Service {
    * are intentionally returned separately, so the renderer cannot mistake the
    * immutable release document for effective local activation. */
   readActiveProjection(): Readonly<{
-    activeSnapshot: ReturnType<CapabilityRuleCoreV1Repo['readOwnershipSnapshot']>
+    activeSnapshot: ReturnType<CapabilityRuleCoreV1Repo['readOwnershipSnapshot']> |
+      ReturnType<CapabilityRuleCoreV2Repo['readOwnershipSnapshot']>
   }> {
     const application = this.#applicationRepo.readState()
     if (application.appliedIntegrity !== 'valid' || application.applied === null) {
       return Object.freeze({ activeSnapshot: null })
     }
-    return Object.freeze({ activeSnapshot: this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
-      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 }) })
+    const identity = { ownership: 'cloud' as const, ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 }
+    return Object.freeze({ activeSnapshot: application.applied.document.schemaVersion === 2
+      ? this.#coreV2Repo.readOwnershipSnapshot(identity)
+      : this.#coreRepo.readOwnershipSnapshot(identity) })
   }
 
   async applyCandidate(input: Readonly<{
@@ -203,29 +220,54 @@ export class CloudRulesApplicationV1Service {
     if (application.appliedIntegrity !== 'valid' || !application.applied ||
         application.appliedRecordRevision !== input.expectedAppliedRecordRevision ||
         application.overrides.revision !== input.expectedOverrideRevision) this.#stale()
-    const overlay = applyCloudRulesActivationOverridesV1({ document: application.applied.document,
-      overrides: input.overrides })
-    const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
-      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
-    const ownershipSnapshots = this.#coreRepo.listOwnershipSnapshots()
-      .filter((snapshot) => !(snapshot.projected.definition.ownership === 'cloud' &&
-        snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
-      .map((snapshot) => snapshot.projected)
-    const coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(overlay.ownershipSnapshot)
-    ownershipSnapshots.push(coreWrite.projected)
     const subjectSet = await this.subjectSetReader.readCurrent()
+    const identity = { ownership: 'cloud' as const, ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 }
+    const currentLegacyCloud = this.#coreRepo.readOwnershipSnapshot(identity)
+    const currentV2Cloud = this.#coreV2Repo.readOwnershipSnapshot(identity)
+    const document = application.applied.document
+    let overlay: ReturnType<typeof applyCloudRulesActivationOverridesV1> |
+      ReturnType<typeof applyCloudRulesActivationOverridesV2>
+    let coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1> |
+      ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2>
+    let requestRulesPublication: ReturnType<typeof prepareGenerationRequestRulesPublicationV2>
+    if (document.schemaVersion === 2) {
+      const v2Overlay = applyCloudRulesActivationOverridesV2({ document, overrides: input.overrides })
+      overlay = v2Overlay
+      coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV2(v2Overlay.ownershipSnapshot)
+      requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db, subjectSet,
+        v2Overlay.ownershipSnapshot, undefined,
+        CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
+    } else {
+      const v1Overlay = applyCloudRulesActivationOverridesV1({ document, overrides: input.overrides })
+      overlay = v1Overlay
+      coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(v1Overlay.ownershipSnapshot)
+      requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db, subjectSet,
+        undefined, identity, CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
+    }
+    const ownershipSnapshots = mergeCapabilityRuleOwnershipSnapshotsV1V2([
+      ...this.#coreRepo.listOwnershipSnapshots()
+        .filter(snapshot => !(snapshot.projected.definition.ownership === 'cloud' &&
+          snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
+        .map(snapshot => snapshot.projected),
+      ...this.#coreV2Repo.listOwnershipSnapshots()
+        .filter(snapshot => !(snapshot.projected.definition.ownership === 'cloud' &&
+          snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
+        .map(snapshot => snapshot.projected),
+      coreWrite.projected,
+    ])
     const materialization = prepareCapabilityRuleMaterializationV1({ sourceScopeId: this.#sourceScopeId,
       subjectSet, ownershipSnapshots,
       defaultActivationPolicies: CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1 })
     const prepared: PreparedActivationOverrideV1 = Object.freeze({
       expectedAppliedRecordRevision: input.expectedAppliedRecordRevision,
       expectedOverrideRevision: input.expectedOverrideRevision,
-      expectedCloudCoreRevision: currentCloud?.projected.snapshotRevision ?? null,
+      expectedCloudCoreRevision: currentLegacyCloud?.projected.snapshotRevision ?? null,
+      expectedV2CloudCoreRevision: currentV2Cloud?.projected.snapshotRevision ?? null,
       expectedMaterializationRevision: this.#materializationRepo.readStage(this.#sourceScopeId)
         ?.materializationRevision ?? null,
       expectedActiveSourceRevision: this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
         ?.currentSourceRevision ?? null,
-      retainedOverrides: overlay.retainedOverrides, coreWrite, materialization,
+      retainedOverrides: overlay.retainedOverrides, coreWrite, requestRulesPublication, materialization,
     })
     const currentSubjectSet = await this.subjectSetReader.readCurrent()
     if (currentSubjectSet.subjectSetRevision !== prepared.materialization.authoritativeSubjectSetRevision) {
@@ -236,17 +278,29 @@ export class CloudRulesApplicationV1Service {
       const currentApplication = this.#applicationRepo.readState()
       const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
         ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
+      const currentV2Cloud = this.#coreV2Repo.readOwnershipSnapshot({ ownership: 'cloud',
+        ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
       const currentStage = this.#materializationRepo.readStage(this.#sourceScopeId)
       const currentSource = this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
       if (currentApplication.appliedIntegrity !== 'valid' ||
           currentApplication.appliedRecordRevision !== prepared.expectedAppliedRecordRevision ||
           currentApplication.overrides.revision !== prepared.expectedOverrideRevision ||
           (currentCloud?.projected.snapshotRevision ?? null) !== prepared.expectedCloudCoreRevision ||
+          (currentV2Cloud?.projected.snapshotRevision ?? null) !== prepared.expectedV2CloudCoreRevision ||
           (currentStage?.materializationRevision ?? null) !== prepared.expectedMaterializationRevision ||
           (currentSource?.currentSourceRevision ?? null) !== prepared.expectedActiveSourceRevision) this.#stale()
-      this.#coreRepo.replacePreparedOwnershipSnapshot({
-        expectedSnapshotRevision: prepared.expectedCloudCoreRevision, prepared: prepared.coreWrite,
-      })
+      if (currentApplication.applied!.document.schemaVersion === 1) {
+        this.#coreRepo.replacePreparedOwnershipSnapshot({ expectedSnapshotRevision: prepared.expectedCloudCoreRevision,
+          prepared: prepared.coreWrite as ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1> })
+        this.#coreV2Repo.deleteOwnershipSnapshot({ ...identity,
+          expectedSnapshotRevision: prepared.expectedV2CloudCoreRevision })
+      } else {
+        this.#coreV2Repo.replacePreparedOwnershipSnapshot({ expectedSnapshotRevision: prepared.expectedV2CloudCoreRevision,
+          prepared: prepared.coreWrite as ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2> })
+        this.#coreRepo.deleteOwnershipSnapshot({ ...identity,
+          expectedSnapshotRevision: prepared.expectedCloudCoreRevision })
+      }
+      writeGenerationRequestRulesPublicationV2(this.db, prepared.requestRulesPublication)
       const staged = this.#materializationRepo.stagePrepared({ prepared: prepared.materialization,
         expectedMaterializationRevision: prepared.expectedMaterializationRevision,
         currentAuthoritativeSubjectSetRevision: currentSubjectSet.subjectSetRevision })
@@ -284,17 +338,42 @@ export class CloudRulesApplicationV1Service {
           (application.appliedIntegrity === 'invalid' ? distribution.appliedContentRevision : null))) this.#stale()
 
     const target = targetFromSnapshot(input.target)
-    const overlay = applyCloudRulesActivationOverridesV1({ document: target.document,
-      overrides: application.overrides.overrides })
-    const coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(overlay.ownershipSnapshot)
-    const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
-      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
-    const ownershipSnapshots = this.#coreRepo.listOwnershipSnapshots()
-      .filter((snapshot) => !(snapshot.projected.definition.ownership === 'cloud' &&
-        snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
-      .map((snapshot) => snapshot.projected)
-    ownershipSnapshots.push(coreWrite.projected)
     const subjectSet = await this.subjectSetReader.readCurrent()
+    const identity = { ownership: 'cloud' as const, ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 }
+    const currentLegacyCloud = this.#coreRepo.readOwnershipSnapshot(identity)
+    const currentV2Cloud = this.#coreV2Repo.readOwnershipSnapshot(identity)
+    let overlay: ReturnType<typeof applyCloudRulesActivationOverridesV1> |
+      ReturnType<typeof applyCloudRulesActivationOverridesV2>
+    let coreWrite: ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1> |
+      ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2>
+    let requestRulesPublication: ReturnType<typeof prepareGenerationRequestRulesPublicationV2>
+    if (target.document.schemaVersion === 2) {
+      const v2Overlay = applyCloudRulesActivationOverridesV2({ document: target.document,
+        overrides: application.overrides.overrides })
+      overlay = v2Overlay
+      coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV2(v2Overlay.ownershipSnapshot)
+      requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db, subjectSet,
+        v2Overlay.ownershipSnapshot, undefined,
+        CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
+    } else {
+      const v1Overlay = applyCloudRulesActivationOverridesV1({ document: target.document,
+        overrides: application.overrides.overrides })
+      overlay = v1Overlay
+      coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(v1Overlay.ownershipSnapshot)
+      requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db, subjectSet,
+        undefined, identity, CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
+    }
+    const ownershipSnapshots = mergeCapabilityRuleOwnershipSnapshotsV1V2([
+      ...this.#coreRepo.listOwnershipSnapshots()
+        .filter(snapshot => !(snapshot.projected.definition.ownership === 'cloud' &&
+          snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
+        .map(snapshot => snapshot.projected),
+      ...this.#coreV2Repo.listOwnershipSnapshots()
+        .filter(snapshot => !(snapshot.projected.definition.ownership === 'cloud' &&
+          snapshot.projected.definition.ownerId === CLOUD_RULES_OFFICIAL_OWNER_ID_V1))
+        .map(snapshot => snapshot.projected),
+      coreWrite.projected,
+    ])
     const materialization = prepareCapabilityRuleMaterializationV1({
       sourceScopeId: this.#sourceScopeId,
       subjectSet,
@@ -304,7 +383,8 @@ export class CloudRulesApplicationV1Service {
     return Object.freeze({ target, expectedCandidateRecordRevision: input.expectedCandidateRecordRevision,
       expectedAppliedRecordRevision: input.expectedAppliedRecordRevision,
       expectedAppliedContentRevision: distribution.appliedContentRevision,
-      expectedCloudCoreRevision: currentCloud?.projected.snapshotRevision ?? null,
+      expectedLegacyCloudCoreRevision: currentLegacyCloud?.projected.snapshotRevision ?? null,
+      expectedV2CloudCoreRevision: currentV2Cloud?.projected.snapshotRevision ?? null,
       expectedOverrideRevision: application.overrides.revision,
       expectedMaterializationRevision: this.#materializationRepo.readStage(this.#sourceScopeId)
         ?.materializationRevision ?? null,
@@ -315,7 +395,7 @@ export class CloudRulesApplicationV1Service {
       }),
       eventKind: input.eventKind, consumeCandidate: input.consumeCandidate,
       pinTarget: input.pinTarget, retainedOverrides: overlay.retainedOverrides,
-      coreWrite, materialization })
+      coreWrite, requestRulesPublication, materialization })
   }
 
   async #commit(prepared: PreparedInstallV1): Promise<CloudRulesApplicationResultV1> {
@@ -331,6 +411,8 @@ export class CloudRulesApplicationV1Service {
       const application = this.#applicationRepo.readState()
       const currentCloud = this.#coreRepo.readOwnershipSnapshot({ ownership: 'cloud',
         ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
+      const currentV2Cloud = this.#coreV2Repo.readOwnershipSnapshot({ ownership: 'cloud',
+        ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1 })
       const currentStage = this.#materializationRepo.readStage(this.#sourceScopeId)
       const currentSource = this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
       if ((distribution.candidate?.candidateRecordRevision ?? null) !==
@@ -338,14 +420,29 @@ export class CloudRulesApplicationV1Service {
           distribution.appliedContentRevision !== prepared.expectedAppliedContentRevision ||
           application.appliedRecordRevision !== prepared.expectedAppliedRecordRevision ||
           application.overrides.revision !== prepared.expectedOverrideRevision ||
-          (currentCloud?.projected.snapshotRevision ?? null) !== prepared.expectedCloudCoreRevision ||
+          (currentCloud?.projected.snapshotRevision ?? null) !== prepared.expectedLegacyCloudCoreRevision ||
+          (currentV2Cloud?.projected.snapshotRevision ?? null) !== prepared.expectedV2CloudCoreRevision ||
           (currentStage?.materializationRevision ?? null) !== prepared.expectedMaterializationRevision ||
           (currentSource?.currentSourceRevision ?? null) !== prepared.expectedActiveSourceRevision) this.#stale()
 
-      this.#coreRepo.replacePreparedOwnershipSnapshot({
-        expectedSnapshotRevision: prepared.expectedCloudCoreRevision,
-        prepared: prepared.coreWrite,
-      })
+      if (prepared.target.document.schemaVersion === 1) {
+        this.#coreRepo.replacePreparedOwnershipSnapshot({
+          expectedSnapshotRevision: prepared.expectedLegacyCloudCoreRevision,
+          prepared: prepared.coreWrite as ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV1>,
+        })
+        this.#coreV2Repo.deleteOwnershipSnapshot({ ownership: 'cloud',
+          ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
+          expectedSnapshotRevision: prepared.expectedV2CloudCoreRevision })
+      } else {
+        this.#coreV2Repo.replacePreparedOwnershipSnapshot({
+          expectedSnapshotRevision: prepared.expectedV2CloudCoreRevision,
+          prepared: prepared.coreWrite as ReturnType<typeof prepareCapabilityRuleOwnershipSnapshotWriteV2>,
+        })
+        this.#coreRepo.deleteOwnershipSnapshot({ ownership: 'cloud',
+          ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
+          expectedSnapshotRevision: prepared.expectedLegacyCloudCoreRevision })
+      }
+      writeGenerationRequestRulesPublicationV2(this.db, prepared.requestRulesPublication)
       const staged = this.#materializationRepo.stagePrepared({
         prepared: prepared.materialization,
         expectedMaterializationRevision: prepared.expectedMaterializationRevision,

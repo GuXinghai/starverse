@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
   OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2,
+  OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2,
   OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2,
   evaluateOpenRouterImageCandidatesV2,
   resolveOpenRouterImageSelectionInputV2,
@@ -128,8 +129,9 @@ describe('OpenRouter Images V2 intent capability projection', () => {
     ])
     expect(new Set([
       ...OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2,
+      ...OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2,
       ...OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2,
-    ]).size).toBe(8)
+    ]).size).toBe(9)
   })
 
   it('rejects image combinations that the API would otherwise ignore or conflict', () => {

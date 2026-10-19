@@ -5,6 +5,19 @@ import { compileOpenAIResponsesRequestV1 } from '../../../../core/generation-v2/
 const user = (text: string) => ({ role: 'user', content: [{ type: 'input_text', text }] })
 
 describe('OpenAI Responses V1 exact-body compiler', () => {
+  it('keeps incomplete wire reasoning out of explicit replay without changing the source facts', () => {
+    const replayItems = [user('first'),
+      { id: 'absent', type: 'reasoning', summary: [] },
+      { id: 'null', type: 'reasoning', summary: [], encrypted_content: null },
+      { id: 'empty', type: 'reasoning', summary: [], encrypted_content: '' },
+      { id: 'partial', type: 'reasoning', summary: [], encrypted_content: 'partial', status: 'incomplete' },
+      { id: 'complete', type: 'reasoning', summary: [], encrypted_content: 'opaque' }, user('next')]
+    const source = JSON.stringify(replayItems)
+    const result = compileOpenAIResponsesRequestV1({ model: 'gpt-6-luna', replayItems })
+    expect(result.nativeRequest.input).toEqual([replayItems[0], replayItems[5], replayItems[6]])
+    expect(result.nativeRequest).toMatchObject({ store: false, include: ['reasoning.encrypted_content'] })
+    expect(JSON.stringify(replayItems)).toBe(source)
+  })
   it('compiles stateless streaming with complete supported semantic fields and no hidden fallback', () => {
     const result = compileOpenAIResponsesRequestV1({
       model: 'gpt-5.4', priorArtifact: null, clientItems: [user('draw and research')],

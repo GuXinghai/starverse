@@ -176,6 +176,7 @@ export function authorizeResolvedCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   catalogAuthority?: unknown
   continuation: PersistedRuntimeContinuationCapabilityV2
+  encoderRevision?: string
 }>): ResolvedCapabilityV2 {
   try {
     const modelFacts = canonicalizeModelFactsV2(projectCanonicalModelFactsDraftV2(input.modelFacts))
@@ -185,7 +186,7 @@ export function authorizeResolvedCapabilityV2(input: Readonly<{
     try {
       encodingCoverage = assertEncodingCoverageForResolvedFieldsV2({ providerId: input.binding.providerId.value,
         protocolContractId: input.binding.protocolContractId.value, operation: input.binding.operation,
-        fields: modelFacts.fields })
+        fields: modelFacts.fields, encoderRevision: input.encoderRevision })
     } catch (error) {
       if (error instanceof EncodingCoverageRegistryV2Error) {
         throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
@@ -238,7 +239,7 @@ export function canonicalizeResolvedCapabilityV2(value: unknown): ResolvedCapabi
 
 export function resolvedCapabilityFromRuntimeSnapshotV2(snapshot: DecodedRuntimeCapabilitySnapshotV2): ResolvedCapabilityV2 {
   if (!snapshot || snapshot.executionAuthority !== 'none' || snapshot.trust !== 'decoded_unverified') invalid()
-  const capability = canonicalizeResolvedCapabilityV2({ binding: projectDecodedProviderBindingRecordV2(snapshot.binding),
+  const currentCapability = canonicalizeResolvedCapabilityV2({ binding: projectDecodedProviderBindingRecordV2(snapshot.binding),
     ...(snapshot.catalogAuthority ? { catalogAuthority: snapshot.catalogAuthority } : {}),
     evidence: snapshot.evidence.map((item) => ({ evidenceId: item.evidenceId, kind: item.kind, effect: item.effect,
       sourceRef: item.sourceRef, verifiedAt: item.verifiedAt, contentDigest: item.contentDigest.value })),
@@ -246,6 +247,9 @@ export function resolvedCapabilityFromRuntimeSnapshotV2(snapshot: DecodedRuntime
       ? { capabilityRevision: snapshot.revision.value } : {}),
     ...(snapshot.modelFactsResolution === undefined ? {} : { modelFactsResolution: snapshot.modelFactsResolution }),
     fields: snapshot.fields, continuation: snapshot.continuation })
+  const capability = authorizeResolvedCapabilityV2({ modelFacts: currentCapability.modelFacts,
+    modelFactsResolution: currentCapability.modelFactsResolution, binding: snapshot.binding,
+    catalogAuthority: snapshot.catalogAuthority, continuation: snapshot.continuation, encoderRevision: snapshot.encoderRevision })
   if (capability.modelFacts.capabilityRevision !== snapshot.revision.value ||
       capability.executionContext.encodingCoverage.encoderRevision !== snapshot.encoderRevision) {
     throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_STALE')
@@ -270,7 +274,7 @@ export function runtimeSnapshotRecordFromResolvedCapabilityV2(input: Readonly<{
     evidence: facts.evidence.map((item) => ({ evidenceId: item.evidenceId, kind: item.kind, effect: item.effect,
       sourceRef: item.sourceRef, verifiedAt: item.verifiedAt, contentDigest: item.contentDigest.value })),
     fields: facts.fields, tools: input.tools, continuation: execution.continuation,
-    ...(input.capability.modelFactsResolution ? { modelFactsResolution: input.capability.modelFactsResolution } : {}) })
+    ...(input.capability.modelFactsResolution ? { modelFactsResolution: input.capability.modelFactsResolution } : {}) }, execution.encodingCoverage.encoderRevision)
   if (record.revision !== facts.capabilityRevision || record.encoderRevision !== execution.encodingCoverage.encoderRevision) {
     throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_STALE')
   }
@@ -304,7 +308,7 @@ function scalar(value: unknown): ModelCapabilityScalarV2 | undefined {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : undefined
 }
 
-function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): boolean {
+export function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): boolean {
   if (!domain) return false
   if (domain.kind === 'boolean') return typeof value === 'boolean'
   if (domain.kind === 'identity') return typeof value === 'string' || Boolean(value && typeof value === 'object' &&
@@ -315,8 +319,7 @@ function contains(domain: ModelCapabilityDomainV2 | undefined, value: unknown): 
     domain.types.includes((value as { type?: unknown }).type as never))
   if (domain.kind === 'enum_list') return Array.isArray(value) && value.length <= domain.maxItems &&
     value.every((item) => scalar(item) !== undefined && domain.values.includes(item as ModelCapabilityScalarV2))
-  if (domain.kind === 'range') return typeof value === 'number' && Number.isFinite(value) && value >= domain.min &&
-    value <= domain.max && (!domain.integer || Number.isSafeInteger(value)) &&
+  if (domain.kind === 'range') return typeof value === 'number' && Number.isFinite(value) && (value >= domain.min && value <= domain.max || domain.includedValues?.includes(value) === true) && (!domain.integer || Number.isSafeInteger(value)) &&
     !domain.excludedValues?.includes(value)
   if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems &&
     value.every((item) => typeof item === 'string' && item.length <= domain.maxItemLength)
@@ -389,15 +392,20 @@ export function validateSemanticIntentAgainstResolvedCapabilityV2(
     lookup: (path: ModelCapabilitySemanticPathV2) => unknown) => {
     for (const [path, value] of entries) {
       const field = fields.get(path)
-      if (!field || field.state === 'unsupported' || field.state === 'conflict' || field.state === 'missing') {
+      const disabledUnsupportedMode = field?.state === 'unsupported' && value === 'disabled' &&
+        ['reasoning.mode', 'web.mode', 'image.mode', 'tools.mode'].includes(path)
+      if (!field || (field.state === 'unsupported' && !disabledUnsupportedMode) || field.state === 'conflict' || field.state === 'missing') {
         throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
       }
       if (!covered.has(path)) throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+      if (disabledUnsupportedMode) continue
       if (field.state === 'unknown') continue
       if (field.domain !== undefined && !contains(field.domain, value)) {
         throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
       }
       for (const constraint of field.constraints) {
+        const ownerValue = lookup(field.path)
+        if (constraint.whenValues !== undefined && !constraint.whenValues.includes(ownerValue as never)) continue
         const target = lookup(constraint.path)
         const matched = constraint.values.includes(target as never)
         if ((constraint.kind === 'requires_value' && !matched) ||

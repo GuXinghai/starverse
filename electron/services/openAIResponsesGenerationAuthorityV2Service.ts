@@ -210,18 +210,18 @@ function field(
     case 'attachments[].kind': return supported({ kind: 'enum', values: Object.freeze(['managed_file', 'url_reference']) })
     case 'attachments[].referenceId':
     case 'attachments[].referenceRevision':
+    case 'attachments[].urlDigest': return supported({ kind: 'identity' })
     case 'attachments[].originalUrl':
-    case 'attachments[].urlDigest': return unsupported()
+    case 'attachments[].declaredMediaType': return Object.freeze({ path, state: 'unknown', constraints: Object.freeze([]), evidenceIds: Object.freeze([`${ids.contractSupport}.url_metadata_unknown`]) })
     case 'attachments[].mediaKind': return supported({ kind: 'enum', values: Object.freeze(['image']) })
-    case 'attachments[].declaredMediaType':
-    case 'attachments[].capturedAtMs':
-    case 'attachments[].provenance': return unsupported()
+    case 'attachments[].capturedAtMs': return supported({ kind: 'range', min: 0, max: Number.MAX_SAFE_INTEGER, integer: true })
+    case 'attachments[].provenance': return supported({ kind: 'enum', values: Object.freeze(['user_supplied']) })
     case 'attachments[].assetId':
     case 'attachments[].assetRevisionId':
     case 'attachments[].assetSha256': return supported({ kind: 'identity' })
-    case 'attachments[].conversion': return supported({ kind: 'enum', values: Object.freeze(['none']) })
+    case 'attachments[].conversion': return supported({ kind: 'enum', values: Object.freeze(['none', 'pdf']) })
     case 'attachments[].include': return supported({ kind: 'boolean' })
-    case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file', 'url_reference']) })
+    case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file', 'converted_document', 'image_reference', 'url_reference']) })
     case 'generation.maxOutputTokens': return supported({ kind: 'range', min: 1, max: maxOutputTokens, integer: true }, liveSupportEvidenceId)
     case 'generation.temperature':
     case 'generation.topP': return unavailable()
@@ -266,7 +266,7 @@ function validateIntent(
 ): void {
   const intent = commandFacts.semanticIntent
   if (intent.attachments.some((attachment) => attachment.include && !isOpenAIResponsesEncodedAttachmentV1(attachment)) ||
-      commandFacts.attachmentSet.attachments.length !== intent.attachments.length ||
+      commandFacts.attachmentSet.attachments.length + commandFacts.attachmentSet.urlReferenceIntents.length !== intent.attachments.length ||
       commandFacts.attachmentSet.requiresProviderFileAuthority !==
         intent.attachments.some(requiresProviderFileBindingV2)) {
     return fail('GENERATION_V2_OPENAI_ATTACHMENT_CAPABILITY_UNAVAILABLE')
@@ -289,6 +289,8 @@ function composeCapability(input: Readonly<{
   const verifiedAt = `${definition.evidence.verifiedAt}T00:00:00.000Z`
   const visibilityEvidenceId = `openai.responses.models.visibility.${input.modelEvidence.modelsResponseDigest.value}`
   const baseEvidence = Object.freeze([
+    Object.freeze({ evidenceId: `${ids.contractSupport}.url_metadata_unknown`, kind: 'contract_invariant' as const,
+      effect: 'unknown' as const, sourceRef: 'generation-v2-user-supplied-url-metadata', verifiedAt, contentDigest: ids.contract.sha256 }),
     ...([ids.contractSupport, ids.contractReject] as const).map((evidenceId, index) => Object.freeze({
       evidenceId, kind: 'official_documentation' as const, effect: index === 0 ? 'supports' as const : 'rejects' as const,
       sourceRef: definition.evidence.provenanceUrls[0], verifiedAt, contentDigest: ids.contract.sha256,

@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveOpenRouterChatCapabilityV2 } from './openRouterChatGenerationAuthorityV2Service'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -140,7 +142,7 @@ export function createOpenRouterChatPlainTextInitialSendCoordinatorV2(input: Rea
                     })
                   },
                 })
-              },
+              }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveOpenRouterChatCapabilityV2(modelEvidence), request.expectedCredentialRevision) },
             )
           }),
         })

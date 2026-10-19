@@ -98,7 +98,7 @@ function assertPlainTextFacts(facts: GenerationCommandFactsAuthorityV2, context:
     const mime = resolved?.revision.blob.mime ?? ''
     const requiresFile = facts.attachmentSet.providerFileRequirements.some((item) => item.assetRevisionId.value === attachment.assetRevisionId.value)
     const admissible = attachment.sendAs === 'provider_file' && attachment.conversion === 'none' && requiresFile ||
-      attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && mime.startsWith('text/') ||
+      attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion) && mime.startsWith('text/') ||
       attachment.sendAs === 'image_reference' && attachment.conversion === 'none' && resolved?.revision.assetKind === 'image' && mime.startsWith('image/') ||
       attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' && mime === 'application/pdf' && requiresFile
     if (!resolved || !admissible || (requiresFile && !['provider_file', 'converted_document'].includes(attachment.sendAs))) {
@@ -195,6 +195,7 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
       answerRootId: input.pending.answerRootId.value,
       operationId: input.operationId,
       semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
       resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
         ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
       })),
@@ -298,6 +299,7 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
       answerRootId: input.pending.answerRootId.value,
       operationId: input.pending.operationId.value,
       semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
       resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
         ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
       })),

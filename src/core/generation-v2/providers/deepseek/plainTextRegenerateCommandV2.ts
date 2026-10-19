@@ -1,3 +1,5 @@
+import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
+import { decodeGenerationCommandAttachmentsV2, projectGenerationCommandAttachmentsV2 } from '../../domain/commandAttachmentsV2'
 import { sha256PreparedBytesV2, stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import {
   ConversationGraphV2Identity,
@@ -26,7 +28,7 @@ export type DeepSeekPlainTextRegenerateCommandV2 = Readonly<{
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
   modelId: Identity<'model_id'>
-  commandAttachments: readonly []
+  commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string
   requestFingerprint: string
 }>
@@ -63,8 +65,7 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
       if (typeof field !== 'string') invalid()
       return field
     }
-    const attachments = descriptors.commandAttachments.value
-    if (!Array.isArray(attachments) || attachments.length !== 0 || Reflect.ownKeys(attachments).length !== 1) invalid()
+    const commandAttachments = decodeGenerationCommandAttachmentsV2(descriptors.commandAttachments.value)
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
     const clientActionId = read('clientActionId')
     if (clientActionId !== operationId.value) invalid()
@@ -74,8 +75,8 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
     const modelId = GenerationV2Identity.create('model_id', read('modelId'))
     const projection = Object.freeze({
-      schemaVersion: 1,
-      kind: 'deepseek_plain_text_regenerate_question',
+      schemaVersion: 1 as const,
+      kind: 'deepseek_plain_text_regenerate_question' as const,
       operationId: operationId.value,
       clientActionId,
       sourceBranchId: sourceBranchId.value,
@@ -85,7 +86,7 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
       providerId: 'deepseek',
       endpointProfileId: 'deepseek-stable-api-v1',
       modelId: modelId.value,
-      commandAttachments: Object.freeze([]),
+      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
@@ -99,7 +100,7 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
       providerId: GenerationV2Identity.create('provider_id', 'deepseek'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'deepseek-stable-api-v1'),
       modelId,
-      commandAttachments: Object.freeze([]) as readonly [],
+      commandAttachments,
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })

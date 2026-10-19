@@ -318,13 +318,19 @@ function sanitizeText(value: string, path: string, redactions: ProviderFailureRe
     }
   }
   if (hasAuthorization) {
+    replace(/(["'](?:proxy-)?authorization["']\s*:\s*)(["'])(?:\\.|(?!\2)[^\\\r\n])*/giu,
+      '$1$2[redacted]', 'authorization_header')
     replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/giu, '$1[redacted]', 'authorization_header')
   }
   if (hasCredentialLabel) {
     replace(/(^|[\s"'([{,;:])((?:x-goog-api-key|x-api-key|api[_ -]?key)["']?(?:\s*[:=]\s*|\s+))(["']?)[^\s,;"'&]+/giu,
       '$1$2$3[redacted]', 'credential')
   }
-  if (hasCookie) replace(/(cookie\s*:\s*)[^\r\n]+/giu, '$1[redacted]', 'cookie')
+  if (hasCookie) {
+    replace(/(["'](?:set-cookie|cookie)["']\s*:\s*)(["'])(?:\\.|(?!\2)[^\\\r\n])*/giu,
+      '$1$2[redacted]', 'cookie')
+    replace(/(cookie\s*:\s*)[^\r\n]+/giu, '$1[redacted]', 'cookie')
+  }
   if (hasUrlCredentialShape) {
     replace(/([a-z][a-z0-9+.-]*:\/\/)([^/@\s:]+)(?::([^/@\s]+))?@/giu, '$1[redacted]@', 'url_credential')
   }
@@ -353,7 +359,7 @@ function sanitizeJsonValue(
   const output: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(object)) {
     const childPath = `${path}.${key}`
-    if (/^(?:authorization|x-api-key|x-goog-api-key|api[_-]?key|access[_-]?token|cookie|password|proxy[_-]?(?:username|password))$/iu.test(key)) {
+    if (/^(?:(?:proxy-)?authorization|x-api-key|x-goog-api-key|api[_-]?key|access[_-]?token|(?:set-)?cookie|password|proxy[_-]?(?:username|password))$/iu.test(key)) {
       output[key] = '[redacted]'
       redactions.push(Object.freeze({ path: childPath, reason: /cookie/iu.test(key) ? 'cookie' : /proxy/iu.test(key) ? 'proxy_credential' : 'credential' }))
     } else {

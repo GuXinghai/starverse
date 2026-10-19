@@ -98,7 +98,7 @@ function draft(): MutableDraft {
 
 describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
   it('includes the optional Goal 3 binding grammar in the closed codec schema digest', () => {
-    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v5-goal3-conflict-facts')
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v7-conditional-constraints-and-range-values')
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2.modelFactsResolution).toEqual(expect.objectContaining({ optional: true }))
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2).toMatch(/^[0-9a-f]{64}$/u)
   })
@@ -317,6 +317,18 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
         ? { ...field, constraints: ['reasoning.enabled == true'] }
         : field),
     })).toThrow('GENERATION_V2_CAPABILITY_INVALID_SHAPE')
+  })
+
+  it('round-trips provider sentinel values and range exclusions through the closed codec', () => {
+    const value = draft()
+    Object.assign(value.fields.find((field) => field.path === 'generation.maxOutputTokens')!, {
+      state: 'supported', domain: { kind: 'range', min: 128, max: 32768, integer: true, includedValues: [-1], excludedValues: [256] },
+      defaultValue: -1, evidenceIds: ['contract.openai.responses.v1'],
+    })
+    const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value)
+    const decoded = decodeRuntimeCapabilitySnapshotJsonV2(decodeRuntimeCapabilitySnapshotV2(record).canonicalJson)
+    expect(decoded.fields.find((field) => field.path === 'generation.maxOutputTokens')?.domain)
+      .toEqual({ kind: 'range', min: 128, max: 32768, integer: true, includedValues: [-1], excludedValues: [256] })
   })
 
   it('rejects malformed capability ranges without imposing provider bounds', () => {

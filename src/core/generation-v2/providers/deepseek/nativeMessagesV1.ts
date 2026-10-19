@@ -1,12 +1,13 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export const DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2 = 'deepseek_stable_ordered_native_messages_v2' as const
 export const DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2 = 2 as const
 export const DEEPSEEK_NATIVE_HISTORY_MAX_ENTRIES_V1 = 4_096
 export const DEEPSEEK_NATIVE_HISTORY_MAX_TOOL_CALLS_V1 = 128
 export const DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1 = 4 * 1_024 * 1_024
-export const DEEPSEEK_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1 = 20 * 1_024 * 1_024
+export const DEEPSEEK_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 export type DeepSeekNativeFunctionToolCallV1 = Readonly<{
   id: string
@@ -120,11 +121,11 @@ function denseArray(value: unknown, max: number, allowEmpty = false): readonly u
   }))
 }
 
-function stringValue(value: unknown, identifier = false): string {
-  if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1 ||
+function stringValue(value: unknown, identifier = false, maxBytes = DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1): string {
+  if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > maxBytes ||
       (identifier && (value.length === 0 || value.trim() !== value || /[\u0000-\u001f\u007f]/u.test(value)))) {
     throw new DeepSeekNativeMessagesV1Error(
-      typeof value === 'string' && new TextEncoder().encode(value).byteLength > DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1
+      typeof value === 'string' && new TextEncoder().encode(value).byteLength > maxBytes
         ? 'GENERATION_V2_DEEPSEEK_NATIVE_LIMIT_EXCEEDED'
         : 'GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE',
     )
@@ -132,22 +133,25 @@ function stringValue(value: unknown, identifier = false): string {
   return value
 }
 
-function optionalName(input: ClosedObject): Readonly<{ name?: string }> {
-  return input.name === undefined ? Object.freeze({}) : Object.freeze({ name: stringValue(input.name, true) })
+function optionalName(input: ClosedObject, maxBytes: number): Readonly<{ name?: string }> {
+  return input.name === undefined ? Object.freeze({}) : Object.freeze({ name: stringValue(input.name, true, maxBytes) })
 }
 
-function decodeToolCall(value: unknown): DeepSeekNativeFunctionToolCallV1 {
+function decodeToolCall(value: unknown, maxBytes: number): DeepSeekNativeFunctionToolCallV1 {
   const input = closedObject(value, ['id', 'type', 'function'], ['id', 'type', 'function'])
   const fn = closedObject(input.function, ['name', 'arguments'], ['name', 'arguments'])
   if (input.type !== 'function') throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
   return Object.freeze({
-    id: stringValue(input.id, true),
+    id: stringValue(input.id, true, maxBytes),
     type: 'function',
-    function: Object.freeze({ name: stringValue(fn.name, true), arguments: stringValue(fn.arguments) }),
+    function: Object.freeze({ name: stringValue(fn.name, true, maxBytes), arguments: stringValue(fn.arguments, false, maxBytes) }),
   })
 }
 
-export function decodeDeepSeekNativeMessageV1(value: unknown): DeepSeekNativeMessageV1 {
+export function decodeDeepSeekNativeMessageV1(
+  value: unknown,
+  maxStringBytes = DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1,
+): DeepSeekNativeMessageV1 {
   const discriminator = closedObject(
     value,
     ['role', 'content', 'name', 'reasoning_content', 'tool_calls', 'tool_call_id'],
@@ -157,13 +161,13 @@ export function decodeDeepSeekNativeMessageV1(value: unknown): DeepSeekNativeMes
     const input = closedObject(value, ['role', 'content', 'name'], ['role', 'content'])
     return Object.freeze({
       role: discriminator.role,
-      content: stringValue(input.content),
-      ...optionalName(input),
+      content: stringValue(input.content, false, maxStringBytes),
+      ...optionalName(input, maxStringBytes),
     })
   }
   if (discriminator.role === 'tool') {
     const input = closedObject(value, ['role', 'content', 'tool_call_id'], ['role', 'content', 'tool_call_id'])
-    return Object.freeze({ role: 'tool', content: stringValue(input.content), tool_call_id: stringValue(input.tool_call_id, true) })
+    return Object.freeze({ role: 'tool', content: stringValue(input.content, false, maxStringBytes), tool_call_id: stringValue(input.tool_call_id, true, maxStringBytes) })
   }
   if (discriminator.role === 'assistant') {
     const input = closedObject(
@@ -179,15 +183,15 @@ export function decodeDeepSeekNativeMessageV1(value: unknown): DeepSeekNativeMes
     }
     const toolCalls = input.tool_calls === undefined
       ? undefined
-      : Object.freeze(denseArray(input.tool_calls, DEEPSEEK_NATIVE_HISTORY_MAX_TOOL_CALLS_V1).map(decodeToolCall))
+      : Object.freeze(denseArray(input.tool_calls, DEEPSEEK_NATIVE_HISTORY_MAX_TOOL_CALLS_V1).map((call) => decodeToolCall(call, maxStringBytes)))
     if (toolCalls && new Set(toolCalls.map((call) => call.id)).size !== toolCalls.length) {
       throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_SEQUENCE_INVALID')
     }
     return Object.freeze({
       role: 'assistant',
-      content: input.content === null ? null : stringValue(input.content),
+      content: input.content === null ? null : stringValue(input.content, false, maxStringBytes),
       ...(input.reasoning_content !== undefined
-        ? { reasoning_content: input.reasoning_content === null ? null : stringValue(input.reasoning_content) }
+        ? { reasoning_content: input.reasoning_content === null ? null : stringValue(input.reasoning_content, false, maxStringBytes) }
         : {}),
       ...(toolCalls ? { tool_calls: toolCalls } : {}),
     })
@@ -195,9 +199,9 @@ export function decodeDeepSeekNativeMessageV1(value: unknown): DeepSeekNativeMes
   throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
 }
 
-function decodeEntry(value: unknown): DeepSeekNativeHistoryEntryV1 {
+function decodeEntry(value: unknown, maxStringBytes = DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1): DeepSeekNativeHistoryEntryV1 {
   const input = closedObject(value, ['kind', 'generatedWithThinking', 'message'], ['kind', 'message'])
-  const message = decodeDeepSeekNativeMessageV1(input.message)
+  const message = decodeDeepSeekNativeMessageV1(input.message, maxStringBytes)
   if (input.kind === 'client') {
     if (input.generatedWithThinking !== undefined || message.role === 'assistant') {
       throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
@@ -215,8 +219,12 @@ function decodeEntry(value: unknown): DeepSeekNativeHistoryEntryV1 {
   throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
 }
 
-function decodeEntries(value: unknown): readonly DeepSeekNativeHistoryEntryV1[] {
-  return Object.freeze(denseArray(value, DEEPSEEK_NATIVE_HISTORY_MAX_ENTRIES_V1, true).map(decodeEntry))
+function decodeEntries(
+  value: unknown,
+  maxStringBytes = DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1,
+): readonly DeepSeekNativeHistoryEntryV1[] {
+  return Object.freeze(denseArray(value, DEEPSEEK_NATIVE_HISTORY_MAX_ENTRIES_V1, true)
+    .map((entry) => decodeEntry(entry, maxStringBytes)))
 }
 
 function validateSequence(entries: readonly DeepSeekNativeHistoryEntryV1[], requireSettled: boolean): void {
@@ -284,7 +292,7 @@ function createArtifact(
 ): DeepSeekNativeHistoryArtifactV2 {
   const depth = safeLineageDepth(lineageDepth)
   const parentHash = parentArtifactHash(rawParentArtifactHash)
-  const entries = decodeEntries(rawEntries)
+  const entries = decodeEntries(rawEntries, GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1)
   if ((depth === 0 && (parentHash !== null || entries.length !== 0)) ||
       (depth === 1 && parentHash !== null) ||
       (depth > 1 && parentHash === null)) {

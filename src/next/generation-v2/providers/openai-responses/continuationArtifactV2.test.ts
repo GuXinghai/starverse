@@ -13,6 +13,22 @@ const reasoning = (id: string) => ({
 })
 
 describe('OpenAI Responses V1 client-managed continuation artifact', () => {
+  it('excludes unavailable or incomplete reasoning from new continuation while preserving eligible opaque items', () => {
+    const returnedItems = [
+      { id: 'absent', type: 'reasoning', summary: [] },
+      { id: 'null', type: 'reasoning', summary: [], encrypted_content: null },
+      { id: 'empty', type: 'reasoning', summary: [], encrypted_content: '' },
+      { ...reasoning('incomplete'), status: 'incomplete' }, reasoning('complete'),
+    ]
+    for (const artifact of [
+      completeOpenAIResponsesRequestV2({ priorArtifact: null, lineageDepth: 1, clientItems: [user('go')], returnedItems }),
+      completeOpenAIResponsesProjectedRequestV2({ projectedPrefixItems: [], clientItems: [user('go')], returnedItems }),
+    ]) {
+      expect(artifact.orderedItems).toEqual([user('go'), reasoning('complete')])
+      expect(decodeOpenAIResponsesContinuationArtifactV2(JSON.parse(JSON.stringify(artifact)))).toEqual(artifact)
+    }
+    expect(returnedItems).toHaveLength(5)
+  })
   it('preserves complete output items and exact order across stateless requests', () => {
     const first = completeOpenAIResponsesRequestV2({
       priorArtifact: null,

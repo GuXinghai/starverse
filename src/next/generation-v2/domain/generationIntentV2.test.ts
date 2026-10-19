@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeGenerationIntentLayerV2, readImageAspectRatioV2 } from '../../../core/generation-v2/domain/generationIntentV2'
+import { projectGenerationIntentLayerV2 } from '../../../core/generation-v2/domain/generationIntentProjectionV2'
 
 const hash = 'a'.repeat(64)
 
@@ -12,11 +13,58 @@ describe('GenerationIntentLayerV2 codec', () => {
     expect(Object.isFrozen(sparse.reasoning)).toBe(true)
   })
 
+  it('preserves every explicit raw parameter, its source, and legacy projection absence', () => {
+    const requestedParameters = {
+      temperature: { mode: 'custom', value: 0.4, source: 'global' },
+      topP: { mode: 'custom', value: 0.8, source: 'project' },
+      topK: { mode: 'custom', value: 20 },
+      minP: { mode: 'custom', value: 0.1 },
+      topA: { mode: 'custom', value: 0.2 },
+      frequencyPenalty: { mode: 'custom', value: 0.3 },
+      presencePenalty: { mode: 'custom', value: 0.4 },
+      repetitionPenalty: { mode: 'custom', value: 1.1 },
+      seed: { mode: 'custom', value: 0 },
+      maxOutputTokens: { mode: 'custom', value: 512 },
+      stopSequences: { mode: 'custom', value: ['END'] },
+      reasoningEffort: { mode: 'custom', value: 'high' },
+      reasoningSummary: { mode: 'custom', value: 'detailed' },
+      thinkingEnabled: { mode: 'custom', value: false },
+      thinkingBudget: { mode: 'custom', value: 0, source: 'project' },
+      thinkingLevel: { mode: 'custom', value: 'high', source: 'project' },
+      includeThoughts: { mode: 'custom', value: false },
+      thoughtSummaryMode: { mode: 'custom', value: 'none' },
+      googleSearch: { mode: 'custom', value: false },
+      imageSearch: { mode: 'custom', value: true },
+      verbosity: { mode: 'custom', value: 'high', source: 'global' },
+    }
+    const decoded = decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      web: { mode: 'provider_search', types: ['web'], searchPrompt: 'search only current docs' },
+      requestedParameters,
+    })
+    expect(projectGenerationIntentLayerV2(decoded)).toEqual({ schemaVersion: 2,
+      web: { mode: 'provider_search', types: ['web'], searchPrompt: 'search only current docs' }, requestedParameters })
+    const legacy = decodeGenerationIntentLayerV2({ schemaVersion: 2, generation: { temperature: 0.4 } })
+    expect(projectGenerationIntentLayerV2(legacy)).toEqual({ schemaVersion: 2, generation: { temperature: 0.4 } })
+    expect(Object.hasOwn(projectGenerationIntentLayerV2(legacy), 'requestedParameters')).toBe(false)
+  })
+
   it('preserves the current maximum reasoning effort as a semantic value', () => {
     expect(decodeGenerationIntentLayerV2({
       schemaVersion: 2,
       reasoning: { mode: 'enabled', effort: 'max' },
     }).reasoning).toEqual({ mode: 'enabled', effort: 'max' })
+  })
+
+  it('retains a disabled reasoning preference alongside its effort for capability resolution', () => {
+    expect(decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      reasoning: { mode: 'disabled', effort: 'xhigh' },
+    }).reasoning).toEqual({ mode: 'disabled', effort: 'xhigh' })
+    expect(decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      reasoning: { mode: 'disabled' },
+    }).reasoning).toEqual({ mode: 'disabled' })
   })
 
   it('preserves typed OpenAI Responses advanced semantics without a wire patch', () => {
@@ -117,7 +165,7 @@ describe('GenerationIntentLayerV2 codec', () => {
       { schemaVersion: 2, requestPatch: {} },
       { schemaVersion: 2, generation: { advancedJson: '{}' } },
       { schemaVersion: 2, reasoning: null },
-      { schemaVersion: 2, reasoning: { mode: 'disabled', effort: 'low' } },
+      { schemaVersion: 2, reasoning: { mode: 'disabled', effort: 'low', summary: 'auto' } },
       { schemaVersion: 2, providerExtension: { kind: 'unknown' } },
       { schemaVersion: 2, providerExtension: { kind: 'openrouter_images', options: [{ key: 'apiKey', value: 'secret' }] } },
       { schemaVersion: 2, generation: { temperature: undefined } },
