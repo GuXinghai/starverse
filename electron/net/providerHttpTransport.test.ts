@@ -91,6 +91,7 @@ describe('providerHttpTransport', () => {
     expect(failure).toMatchObject({ diagnosticCode: 'ERR_CONNECTION_RESET', message: 'ERR_CONNECTION_RESET' })
     expect(JSON.stringify(failure)).not.toContain('secret.invalid')
     expect(classifyProviderHttpTransportDiagnostic(new Error('arbitrary raw message'))).toBe('Error')
+    expect(classifyProviderHttpTransportDiagnostic(new ProviderHttpTransportError(failure))).toBe('ERR_CONNECTION_RESET')
   })
 
   it('reports only proxy env configured/missing status without values', () => {
