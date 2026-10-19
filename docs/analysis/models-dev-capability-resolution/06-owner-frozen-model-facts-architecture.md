@@ -1,6 +1,16 @@
 - **Lifecycle Status**: active
 - **Document Role**: owner-decision
-- **Last updated**: 2026-09-22
+- **Last updated**: 2026-10-17
+
+## Owner amendment: Request Rules V2 and API Contract scope (2026-10-17)
+
+The request-resolution and migration contract is recorded in the [Request Rules V2 migration contract](../../implementation/request-rules-v2-migration.md). It supersedes only the following earlier wording where it conflicts with the confirmed Request Rules V2 boundary:
+
+- Earlier Section 37 lists “字段名称、字段类型、允许值、条件约束、字段组合、协议 operation” as API Contract concerns. For request resolution, Sections 37/39/67 are narrowed: `APIContract` owns protocol body shape, field types, nesting, and fixed protocol-level enums. Model-specific parameter availability, defaults, supported ranges, and combinations belong to Model Facts or Request Rules. Endpoint and transport choices belong to `EndpointTransportDefinitionV2`.
+- The former bundled Rule installation and request-time selector adapter remain retired. Request Rules V2 may evaluate only closed, typed paths after the subject is bound before Send; it does not restore bundled installation, selector-time regex execution, or the old query-bound authority.
+- New-profile Model Facts source-priority defaults are Provider Native `3`, Capability Rules `2`, and models.dev `1`. This affects new profiles only. Existing profiles retain their stored values unchanged, and the resolver continues to use each profile's persisted configuration.
+
+The earlier Owner decision states, “Starverse 不再把 Rules 作为随应用永久 bundled 的特殊 built-in dataset.” That decision remains in force: Cloud-applied Rules and committed User Rules remain ownership modes inside the single Capability Rules source. Request Rules V2 adds typed pre-send resolution over those owned Rules; it does not add a bundled Rule dataset. This amendment does not change the Cloud candidate/Apply/LKG contract or the completed historical status of Goals 2/3.
 
 ## Owner amendment：Goal 3 freshness / stale resolution closure（2026-09-22）
 

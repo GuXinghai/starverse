@@ -4,7 +4,7 @@
 
 **Status**: active
 **Document Role**: entry
-**Last updated**: 2026-08-23
+**Last updated**: 2026-10-17
 **Governance**: DGR-1 dual-dimension status model
 
 ---
@@ -66,6 +66,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 158 files including the archive index; read only for history |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Identity audit or closeout tracing | Point-in-time evidence; current source remains authoritative |
 | [analysis/models-dev-capability-resolution/README.md](analysis/models-dev-capability-resolution/README.md) | reference | entry | Model capability resolution | models.dev evidence or capability-authority analysis | Three independent point-in-time reports plus raw fact draft and original source; not SSOT |
+| [implementation/request-rules-v2-migration.md](implementation/request-rules-v2-migration.md) | active | spec | Request Rules V2 | Request resolution migration and acceptance gates | Owner-confirmed contract; implementation and 2026-10-17 targeted validation recorded, live-provider limits remain |
 
 ### DGR-1 Governance Documents
 
