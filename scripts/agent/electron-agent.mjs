@@ -161,7 +161,7 @@ async function start(profile, values) {
     }
     await page.waitForFunction(() => document.querySelector('#app')?.children.length > 0 &&
       Boolean(window.generationV2?.workspace && window.generationV2?.composer), undefined, { timeout: 60000 })
-    await page.locator('textarea').first().waitFor({ state: 'attached', timeout: 60000 })
+    await page.locator('textarea, [data-testid="workspace-startup-empty"]').first().waitFor({ state: 'attached', timeout: 60000 })
     ensureRunning()
     const inspect = async () => ({
       profileRoot: profile.profileRoot, runRoot, network: values.offline ? 'offline' : 'normal',
@@ -218,6 +218,12 @@ async function start(profile, values) {
         case 'press': await locate(page, command.target).press(command.key, options); break
         case 'select': await locate(page, command.target).selectOption(command.value, options); break
         case 'check': await locate(page, command.target).setChecked(command.value ?? true, options); break
+        case 'set-files': {
+          if (!Array.isArray(command.paths) || command.paths.length > 20 ||
+              command.paths.some(file => typeof file !== 'string' || !path.isAbsolute(file))) throw new Error('Absolute input file paths are required')
+          await locate(page, command.target).setInputFiles(command.paths, options)
+          break
+        }
         case 'scroll': {
           if (!command.target) throw new Error('scroll requires a target')
           await locate(page, command.target).evaluate((element, delta) => element.scrollBy(delta), {
