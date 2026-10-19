@@ -1,5 +1,6 @@
 {
   "errors": {
+    "imagePreviewUnavailable": "The image preview could not be loaded. Reopen this conversation to try again.",
     "startup": {
       "loading": "Opening your workspace…",
       "failed": "Your workspace could not be opened.",
@@ -314,7 +315,8 @@
       "priceWebSearch": "web_search",
       "priceInternalReasoning": "internal_reasoning",
       "priceInputReuseRead": "input_reuse_read",
-      "priceInputReuseWrite": "input_reuse_write"
-      }
+      "priceInputReuseWrite": "input_reuse_write",
+      "useModel": "Use this model"
+    }
   }
 }

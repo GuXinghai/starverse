@@ -48,15 +48,13 @@ function keydown(event: KeyboardEvent, current: TabId) {
 </script>
 
 <template>
-  <section class="space-y-3" data-testid="models-capabilities-settings-panel">
-    <nav class="flex gap-1 overflow-x-auto border-b border-gray-200 pb-2" role="tablist" :aria-label="t('settings.modelsCapabilities.tabsLabel')">
+  <section class="flex flex-col gap-5" data-testid="models-capabilities-settings-panel">
+    <nav class="sv-segmented max-w-full self-start overflow-x-auto" role="tablist" :aria-label="t('settings.modelsCapabilities.tabsLabel')">
       <button v-for="tab in tabs" :id="tabId(tab.id)" :key="tab.id" type="button" role="tab"
-        class="shrink-0 rounded px-3 py-1.5 text-xs font-medium outline-none ring-blue-300 focus:ring-2"
-        :class="active === tab.id ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50'"
         :aria-selected="active === tab.id" :aria-controls="panelId(tab.id)" :tabindex="active === tab.id ? 0 : -1"
         @click="select(tab.id)" @keydown="keydown($event, tab.id)">{{ t(tab.label) }}</button>
     </nav>
-    <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')" class="space-y-3"><CapabilityRulesOverviewPanel ownership="cloud" :active="active === 'cloud'" /><ModelFactsSourcePrioritySettingsPanel @open-inspector="select('inspector')" /></div>
+    <div :id="panelId('cloud')" v-show="active === 'cloud'" role="tabpanel" :aria-labelledby="tabId('cloud')" class="flex flex-col gap-5"><CapabilityRulesOverviewPanel ownership="cloud" :active="active === 'cloud'" /><ModelFactsSourcePrioritySettingsPanel @open-inspector="select('inspector')" /></div>
     <div :id="panelId('user')" v-show="active === 'user'" role="tabpanel" :aria-labelledby="tabId('user')"><CapabilityRulesOverviewPanel ownership="user" /></div>
     <div :id="panelId('inspector')" v-show="active === 'inspector'" role="tabpanel" :aria-labelledby="tabId('inspector')"><ModelFactsInspectorPanel :initialSubject="props.inspectorSubject" :initialPath="props.inspectorPath" @open-source-priority="openSourcePriority" /></div>
   </section>

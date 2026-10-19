@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -17,26 +18,26 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <div
+    <button
       v-if="props.floating"
-      class="flex h-6 items-center justify-center"
+      type="button"
+      class="group flex h-6 w-full shrink-0 items-center justify-center"
+      :aria-label="t('chat.rightRail.closePanel')"
+      data-testid="right-rail-floating-close-handle"
+      @click="emit('close')"
     >
-      <button
-        type="button"
-        class="h-1 w-16 rounded-full bg-gray-200 hover:bg-gray-300"
-        :aria-label="t('chat.rightRail.closePanel')"
-        data-testid="right-rail-floating-close-handle"
-        @click="emit('close')"
-      />
-    </div>
+      <span class="h-1 w-10 rounded-full bg-[var(--sv-line-strong)] group-hover:bg-[var(--sv-text-3)]" />
+    </button>
 
-    <div v-else class="flex items-center justify-end border-b border-gray-200 px-3 py-2">
+    <div v-else class="flex h-10 shrink-0 items-center justify-end px-3">
       <button
         type="button"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+        class="sv-icon-btn"
+        :aria-label="t('chat.rightRail.closePanel')"
+        :title="t('chat.rightRail.closePanel')"
         @click="emit('close')"
       >
-        <span aria-hidden="true">→</span>
+        <UiIcon name="forward" :size="16" />
       </button>
     </div>
 

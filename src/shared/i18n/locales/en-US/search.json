@@ -32,7 +32,8 @@
       "all": "All",
       "from": "From (local time)",
       "to": "To (local time)",
-      "rebuildIndex": "Rebuild index"
+      "rebuildIndex": "Rebuild index",
+      "toggle": "Filters"
     },
     "sort": {
       "label": "Sort",
@@ -132,6 +133,7 @@
     "matchNav": {
       "previous": "Previous match",
       "next": "Next match"
-    }
+    },
+    "clear": "Clear search"
   }
 }

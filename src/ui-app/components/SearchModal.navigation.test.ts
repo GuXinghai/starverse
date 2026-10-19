@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SearchModal from './SearchModal.vue'
 import { resetI18nForTests, setLocale, t } from '@/shared/i18n'
 import { decodeSearchPreferences } from '@/next/search/searchPreferences'
+import { SEARCH_RESULT_ROW_HEIGHT } from '@/next/search/searchLayout'
 
 type Preferences = Parameters<typeof decodeSearchPreferences>[0]
 
@@ -50,6 +51,97 @@ describe('SearchModal result navigation', () => {
   }
 
   const rowCount = () => document.querySelectorAll('[data-testid^="search-hit-"]').length
+
+  it.each([0, 20])('clears %i results back to the initial hint, keeping this open\'s options', async (count) => {
+    total = count
+    await openAndSearch()
+    await waitFor(() => expect(query).toHaveBeenCalled())
+    await fireEvent.update(screen.getByTestId('search-sort'), 'relevance')
+    await fireEvent.click(screen.getByTestId('search-presentation-pagination'))
+    const input = screen.getByPlaceholderText('Search...')
+    await fireEvent.update(input, '   ')
+    expect(screen.getByTestId('search-initial-hint')).toBeInTheDocument()
+    expect(screen.queryByTestId('search-result-toolbar')).toBeNull()
+    expect(screen.queryByText('No results.')).toBeNull()
+    expect(rowCount()).toBe(0)
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled()
+    await fireEvent.update(input, 'second')
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await screen.findByTestId('search-result-toolbar')
+    expect(screen.getByTestId('search-sort')).toHaveValue('relevance')
+    expect(screen.getByTestId('search-presentation-pagination')).toHaveAttribute('aria-pressed', 'true')
+    expect((globalThis as any).electronStore.set).not.toHaveBeenCalled()
+  })
+
+  it('ignores a search response arriving after clearing, then searches normally again', async () => {
+    let finish!: (value: any) => void
+    query.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await openAndSearch()
+    await waitFor(() => expect(finish).toBeTypeOf('function'))
+    const input = screen.getByPlaceholderText('Search...')
+    await fireEvent.update(input, '')
+    finish({ ok: true, value: { hits: [{ entityType: 'project', entityId: 'stale', projectId: 'stale', createdAtSec: 1, snippet: 'stale' }], hasMore: false } })
+    await Promise.resolve()
+    expect(screen.getByTestId('search-initial-hint')).toBeInTheDocument()
+    expect(screen.queryByTestId('search-result-toolbar')).toBeNull()
+    await fireEvent.update(input, 'fresh')
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await screen.findByTestId('search-hit-m0')
+    expect(screen.queryByTestId('search-hit-stale')).toBeNull()
+  })
+
+  it('does not publish a browser from a search cleared while preferences are loading', async () => {
+    let finish!: (value: any) => void
+    const store = (globalThis as any).electronStore
+    store.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const view = render(SearchModal, { props: { ...baseProps, open: false } })
+    await view.rerender({ ...baseProps, open: true })
+    const input = screen.getByPlaceholderText('Search...')
+    await fireEvent.update(input, 'old')
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await fireEvent.update(input, '')
+    finish({ searchPreferences: { defaultSort: 'reverse-chronological' } })
+    await Promise.resolve()
+    expect(query).not.toHaveBeenCalled()
+    expect(screen.getByTestId('search-initial-hint')).toBeInTheDocument()
+    await fireEvent.update(input, 'new')
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await screen.findByTestId('search-result-toolbar')
+    await waitFor(() => expect(query).toHaveBeenCalled())
+    expect(query.mock.calls.every(([params]) => params.q === 'new')).toBe(true)
+  })
+
+  it('keeps sidebar results, pagination and sort after opening a detail; explicit close still works', async () => {
+    const onClose = vi.fn()
+    const props = { ...baseProps, variant: 'sidebar' as const, onClose }
+    const view = render(SearchModal, { props: { ...props, open: false } })
+    await view.rerender({ ...props, open: true })
+    expect(screen.getByRole('search')).not.toHaveAttribute('aria-modal')
+    await fireEvent.update(screen.getByPlaceholderText('Search...'), 'needle')
+    await fireEvent.keyDown(screen.getByPlaceholderText('Search...'), { key: 'Enter' })
+    await screen.findByTestId('search-hit-m0')
+    await fireEvent.update(screen.getByTestId('search-sort'), 'relevance')
+    await fireEvent.click(screen.getByTestId('search-presentation-pagination'))
+    await fireEvent.click(screen.getByTestId('search-hit-m0'))
+    await waitFor(() => expect(screen.getByTestId('search-hit-m0')).toHaveAttribute('aria-current', 'true'))
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('Search...')).toHaveValue('needle')
+    expect(screen.getByTestId('search-sort')).toHaveValue('relevance')
+    expect(screen.getByTestId('search-paginator')).toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('search-close'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves sidebar search open when Escape belongs to the right-hand workspace', async () => {
+    const onClose = vi.fn()
+    const props = { ...baseProps, variant: 'sidebar' as const, onClose }
+    const view = render(SearchModal, { props: { ...props, open: false } })
+    await view.rerender({ ...props, open: true })
+    await fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    await fireEvent.keyDown(screen.getByPlaceholderText('Search...'), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 
   it('has dialog semantics, an initial hint and closes on Escape', async () => {
     const onClose = vi.fn()
@@ -212,7 +304,7 @@ describe('SearchModal result navigation', () => {
     }, 30_000)
 
     it('measures the real viewport once for Adaptive sizing and keeps it until Re-adapt', async () => {
-      let height = 360 // five 72px rows
+      let height = 5 * SEARCH_RESULT_ROW_HEIGHT
       const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
       Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return height } })
       try {
@@ -225,7 +317,7 @@ describe('SearchModal result navigation', () => {
         await waitFor(() => expect(screen.getByTestId('search-page-3')).toBeInTheDocument())
         await fireEvent.click(screen.getByTestId('search-page-3'))
         await waitFor(() => expect(screen.getByTestId('search-hit-m10')).toBeInTheDocument())
-        height = 720 // window grew: nothing changes until the explicit control is used
+        height = 10 * SEARCH_RESULT_ROW_HEIGHT // window grew: nothing changes until the explicit control is used
         await new Promise((resolve) => setTimeout(resolve, 20))
         expect(screen.getByTestId('search-page-3')).toHaveAttribute('data-state', 'both')
         await fireEvent.click(screen.getByTestId('search-readapt'))

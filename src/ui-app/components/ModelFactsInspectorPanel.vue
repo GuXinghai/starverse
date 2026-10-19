@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { decodeModelFactsSemanticInvalidationV1 } from '@/core/generation-v2/model-facts/semanticInvalidationV1'
 import {
   modelFactAssertionKindKey, modelFactCompletenessKey, modelFactDiagnosticKindKey, modelFactMatchesFilter,
@@ -81,11 +82,11 @@ let rawAttempt = 0
 let unsubscribeInvalidation: (() => void) | null = null
 const FILTERS: readonly ModelFactFilter[] = ['all', 'conflict', 'unknown', 'diagnostics']
 const TONE_CLASS: Readonly<Record<ModelFactPresentationTone, string>> = {
-  positive: 'bg-green-100 text-green-800',
-  negative: 'bg-gray-200 text-gray-800',
-  neutral: 'bg-gray-100 text-gray-600',
-  warning: 'bg-amber-100 text-amber-800',
-  attention: 'bg-orange-100 text-orange-800',
+  positive: 'text-gray-900',
+  negative: 'text-gray-700',
+  neutral: 'text-gray-600',
+  warning: 'text-[var(--sv-warning)]',
+  attention: 'text-[var(--sv-warning)]',
 }
 
 function bridge() {
@@ -339,81 +340,80 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="space-y-3" data-testid="model-facts-inspector-panel">
+  <section class="flex min-w-0 flex-col gap-4" data-testid="model-facts-inspector-panel">
     <header>
       <h3 class="text-sm font-semibold text-gray-900">{{ t('settings.modelsCapabilities.inspectorTitle') }}</h3>
-      <p class="mt-1 text-xs text-gray-500">{{ t('settings.modelsCapabilities.inspectorDescription') }}</p>
+      <p class="sv-meta mt-1">{{ t('settings.modelsCapabilities.inspectorDescription') }}</p>
     </header>
 
     <form class="flex gap-2" @submit.prevent="search()">
-      <input v-model="query" class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm" type="search"
+      <input v-model="query" class="sv-input min-w-0 flex-1" type="search"
         :aria-label="t('settings.modelsCapabilities.subjectSearch')" :placeholder="t('settings.modelsCapabilities.subjectSearch')" />
-      <button type="submit" class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50" :disabled="loading">{{ t('common.search') }}</button>
+      <button type="submit" class="sv-btn min-w-20" :disabled="loading">{{ t('common.search') }}</button>
     </form>
-    <p v-if="error" class="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">{{ error }}</p>
+    <p v-if="error" class="sv-notice sv-notice-danger"><UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" /><span class="min-w-0 break-all">{{ error }}</span></p>
 
-    <div class="grid gap-3 lg:grid-cols-[minmax(14rem,0.8fr)_minmax(20rem,1.2fr)]">
-      <div>
-        <ul class="max-h-72 overflow-auto rounded border border-gray-200 bg-white" :aria-label="t('settings.modelsCapabilities.authoritativeSubjects')">
-          <li v-for="record in records" :key="title(record.subject)" class="border-b border-gray-100 last:border-b-0">
-            <button type="button" class="w-full px-3 py-2 text-left text-xs hover:bg-gray-50"
-              :class="selected && subjectKey(selected) === subjectKey(record.subject) ? 'bg-blue-50 text-blue-900' : 'text-gray-700'" @click="inspect(record.subject)">
-              <span class="block truncate font-medium">{{ record.subject.nativeModelId }}</span>
-              <span class="block truncate text-[10px] text-gray-500">{{ record.subject.providerAuthorityId }} · {{ record.subject.endpointProfileId }}</span>
+    <div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(14rem,0.8fr)_minmax(20rem,1.2fr)]">
+      <div class="min-w-0">
+        <ul class="flex max-h-72 flex-col gap-0.5 overflow-auto" :aria-label="t('settings.modelsCapabilities.authoritativeSubjects')">
+          <li v-for="record in records" :key="title(record.subject)">
+            <button type="button" class="sv-row block w-full px-3 py-2 text-left text-xs"
+              :class="selected && subjectKey(selected) === subjectKey(record.subject) ? 'is-selected text-gray-900' : 'text-gray-700'" @click="inspect(record.subject)">
+              <span class="block truncate text-[13px] font-medium">{{ record.subject.nativeModelId }}</span>
+              <span class="sv-meta block truncate">{{ record.subject.providerAuthorityId }} · {{ record.subject.endpointProfileId }}</span>
             </button>
           </li>
-          <li v-if="!loading && records.length === 0" class="px-3 py-2 text-xs text-gray-500">{{ t('settings.modelsCapabilities.noAuthoritativeSubjects') }}</li>
+          <li v-if="!loading && records.length === 0" class="sv-meta px-3 py-2">{{ t('settings.modelsCapabilities.noAuthoritativeSubjects') }}</li>
         </ul>
-        <button v-if="nextCursor" type="button" class="mt-2 w-full rounded border border-gray-300 px-2 py-1 text-xs" :disabled="loading" @click="search(true)">{{ t('settings.modelsCapabilities.loadMore') }}</button>
-        <p v-if="subjectSetRevision" class="mt-1 break-all text-[10px] text-gray-400">{{ subjectSetRevision }}</p>
+        <button v-if="nextCursor" type="button" class="sv-btn sv-btn-sm mt-2 w-full" :disabled="loading" @click="search(true)">{{ t('settings.modelsCapabilities.loadMore') }}</button>
+        <p v-if="subjectSetRevision" class="sv-meta mt-1 break-all">{{ subjectSetRevision }}</p>
       </div>
 
-      <div class="rounded border border-gray-200 bg-white p-3">
-        <p v-if="!snapshot" class="text-xs text-gray-500">{{ t('settings.modelsCapabilities.selectSubject') }}</p>
+      <div class="min-w-0 lg:border-l lg:border-[var(--sv-line)] lg:pl-4">
+        <p v-if="!snapshot" class="sv-meta">{{ t('settings.modelsCapabilities.selectSubject') }}</p>
         <template v-else>
-          <p class="break-all text-xs font-medium text-gray-900">{{ title(snapshot.subject) }}</p>
-          <p class="mt-1 break-all text-[10px] text-gray-500">{{ snapshot.subjectSetRevision }}</p>
-          <nav class="mt-3 flex gap-1 border-b border-gray-200 pb-2" role="tablist">
-            <button v-for="tab in (['overview', 'fields', 'evidence'] as const)" :key="tab" type="button" role="tab" class="rounded px-2 py-1 text-[11px]" :class="view === tab ? 'bg-blue-50 text-blue-800' : 'text-gray-600'" :aria-selected="view === tab" @click="view = tab">{{ t(`settings.modelsCapabilities.inspector.${tab}`) }}</button>
+          <p class="break-all text-[13px] font-medium text-gray-900">{{ title(snapshot.subject) }}</p>
+          <p class="sv-meta mt-1 break-all">{{ snapshot.subjectSetRevision }}</p>
+          <nav class="sv-segmented mt-3" role="tablist">
+            <button v-for="tab in (['overview', 'fields', 'evidence'] as const)" :key="tab" type="button" role="tab" :aria-selected="view === tab" @click="view = tab">{{ t(`settings.modelsCapabilities.inspector.${tab}`) }}</button>
           </nav>
 
-          <div v-if="view === 'overview'" class="mt-3 space-y-2">
-            <div class="rounded border border-blue-100 bg-blue-50 p-2 text-xs text-blue-950">
-              <div class="font-medium">{{ t('settings.modelsCapabilities.resolvedTitle') }}</div>
+          <div v-if="view === 'overview'" class="mt-4 flex flex-col gap-4">
+            <div class="text-xs text-gray-800">
+              <div class="sv-label">{{ t('settings.modelsCapabilities.resolvedTitle') }}</div>
               <template v-if="snapshot.resolved">
-                <div class="mt-1 break-all text-[10px]">{{ t('settings.modelsCapabilities.capabilityRevision') }}: {{ snapshot.resolved.resolvedFacts.capabilityRevision }}</div>
-                <div class="break-all text-[10px]">{{ t('settings.modelsCapabilities.resolvedSnapshotRevision') }}: {{ snapshot.resolved.resolvedSnapshotRevision }}</div>
-                <div class="mt-1 text-[11px]">{{ snapshot.resolved.resolvedFacts.fields.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
-                <div v-if="snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision" class="break-all text-[10px]">{{ t('settings.modelsCapabilities.facts.detail.sourcePriorityConfig') }}: {{ snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision }}
-                  <button type="button" class="ml-1 rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-800" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
-                <div class="mt-2 flex flex-wrap gap-1" role="group" :aria-label="t('settings.modelsCapabilities.facts.filter.label')">
-                  <button v-for="option in FILTERS" :key="option" type="button" class="rounded border px-2 py-0.5 text-[10px]"
-                    :class="filter === option ? 'border-blue-400 bg-white text-blue-900' : 'border-blue-100 text-blue-800'"
+                <div class="mt-1 break-all">{{ t('settings.modelsCapabilities.capabilityRevision') }}: {{ snapshot.resolved.resolvedFacts.capabilityRevision }}</div>
+                <div class="break-all">{{ t('settings.modelsCapabilities.resolvedSnapshotRevision') }}: {{ snapshot.resolved.resolvedSnapshotRevision }}</div>
+                <div class="mt-1">{{ snapshot.resolved.resolvedFacts.fields.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
+                <div v-if="snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><span class="min-w-0 break-all">{{ t('settings.modelsCapabilities.facts.detail.sourcePriorityConfig') }}: {{ snapshot.resolved.sourcePriorityConfigRevision ?? snapshot.resolved.resolvedFacts.input?.sourcePriorityConfigRevision }}</span>
+                  <button type="button" class="sv-btn sv-btn-sm" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
+                <div class="mt-3 flex flex-wrap gap-1" role="group" :aria-label="t('settings.modelsCapabilities.facts.filter.label')">
+                  <button v-for="option in FILTERS" :key="option" type="button" class="sv-btn sv-btn-sm sv-btn-ghost"
                     :aria-pressed="filter === option" @click="filter = option">{{ t(`settings.modelsCapabilities.facts.filter.${option}`) }}</button>
                 </div>
-                <div class="mt-2 max-h-64 space-y-1 overflow-auto">
-                  <div v-for="field in filteredResolvedFields()" :key="field.path" class="rounded border border-blue-100 bg-white p-2 text-[10px]" :data-testid="`resolved-field-${field.path}`">
-                    <div class="flex items-center gap-2">
-                      <span class="font-medium text-gray-800">{{ field.path }}</span>
-                      <span class="rounded px-1" :class="TONE_CLASS[modelFactPresentationTone(stateOf(field))]" :data-state="stateOf(field)">{{ t(modelFactStateKey(stateOf(field))) }}</span>
-                      <button type="button" class="ml-auto rounded border border-gray-300 px-1.5 py-0.5 text-gray-700" :aria-label="`${t('settings.modelsCapabilities.facts.detail.inspect')} ${field.path}`" @click="detailPath = field.path">{{ t('settings.modelsCapabilities.facts.detail.inspect') }}</button>
+                <div class="mt-2 max-h-64 overflow-auto">
+                  <div v-for="field in filteredResolvedFields()" :key="field.path" class="sv-divider-t flex flex-col gap-0.5 py-2 first:border-t-0" :data-testid="`resolved-field-${field.path}`">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="min-w-0 break-all font-medium text-gray-900">{{ field.path }}</span>
+                      <span class="sv-chip" :class="TONE_CLASS[modelFactPresentationTone(stateOf(field))]" :data-state="stateOf(field)">{{ t(modelFactStateKey(stateOf(field))) }}</span>
+                      <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost ml-auto" :aria-label="`${t('settings.modelsCapabilities.facts.detail.inspect')} ${field.path}`" @click="detailPath = field.path">{{ t('settings.modelsCapabilities.facts.detail.inspect') }}</button>
                     </div>
-                    <div class="text-gray-500">{{ valueOrNone(field.selectedValue) }} · {{ t(modelFactSelectionReasonKey(field.selectionReason)) }}</div>
-                    <div class="text-gray-400">{{ field.supportingProvenance.length }} {{ t('settings.modelsCapabilities.supportingClaims') }} · {{ field.opposingProvenance.length }} {{ t('settings.modelsCapabilities.opposingClaims') }} · {{ field.overriddenProvenance.length }} {{ t('settings.modelsCapabilities.overriddenClaims') }} · {{ field.diagnostics.length }} {{ t('settings.modelsCapabilities.diagnostics') }}</div>
+                    <div class="break-words text-gray-600">{{ valueOrNone(field.selectedValue) }} · {{ t(modelFactSelectionReasonKey(field.selectionReason)) }}</div>
+                    <div class="sv-meta">{{ field.supportingProvenance.length }} {{ t('settings.modelsCapabilities.supportingClaims') }} · {{ field.opposingProvenance.length }} {{ t('settings.modelsCapabilities.opposingClaims') }} · {{ field.overriddenProvenance.length }} {{ t('settings.modelsCapabilities.overriddenClaims') }} · {{ field.diagnostics.length }} {{ t('settings.modelsCapabilities.diagnostics') }}</div>
                   </div>
-                  <p v-if="filteredResolvedFields().length === 0" class="text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.noFieldsMatch') }}</p>
+                  <p v-if="filteredResolvedFields().length === 0" class="sv-meta py-2">{{ t('settings.modelsCapabilities.facts.detail.noFieldsMatch') }}</p>
                 </div>
-                <section v-if="detailField()" class="mt-2 space-y-2 rounded border border-blue-200 bg-white p-2 text-[11px] text-gray-800" data-testid="resolved-field-detail" role="region" :aria-label="`${t('settings.modelsCapabilities.facts.detail.title')} ${detailField()!.path}`">
-                  <div class="flex items-center gap-2">
-                    <span class="font-medium">{{ detailField()!.path }}</span>
-                    <span class="rounded px-1" :class="TONE_CLASS[modelFactPresentationTone(stateOf(detailField()!))]">{{ t(modelFactStateKey(stateOf(detailField()!))) }}</span>
-                    <button type="button" class="ml-auto rounded border border-gray-300 px-1.5 py-0.5" @click="detailPath = null">{{ t('settings.modelsCapabilities.facts.detail.close') }}</button>
+                <section v-if="detailField()" class="mt-3 flex flex-col gap-2 border-l border-[var(--sv-line-strong)] pl-3 text-xs text-gray-800" data-testid="resolved-field-detail" role="region" :aria-label="`${t('settings.modelsCapabilities.facts.detail.title')} ${detailField()!.path}`">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="min-w-0 break-all font-medium">{{ detailField()!.path }}</span>
+                    <span class="sv-chip" :class="TONE_CLASS[modelFactPresentationTone(stateOf(detailField()!))]">{{ t(modelFactStateKey(stateOf(detailField()!))) }}</span>
+                    <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost ml-auto" @click="detailPath = null">{{ t('settings.modelsCapabilities.facts.detail.close') }}</button>
                   </div>
                   <p class="text-gray-600">{{ t(modelFactStateExplanationKey(stateOf(detailField()!))) }}</p>
-                  <dl class="space-y-0.5">
+                  <dl class="flex flex-col gap-0.5">
                     <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectedValue') }}: </dt><dd class="inline break-all">{{ valueOrNone(detailField()!.selectedValue) }}</dd></div>
                     <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.selectionReason') }}: </dt><dd class="inline">{{ t(modelFactSelectionReasonKey(detailField()!.selectionReason)) }}</dd>
-                      <button v-if="detailField()!.selectionReason === 'equal_priority_conflict'" type="button" class="ml-1 rounded border border-gray-300 px-1.5 py-0.5 text-[10px]" data-testid="detail-edit-source-priority" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
+                      <button v-if="detailField()!.selectionReason === 'equal_priority_conflict'" type="button" class="sv-btn sv-btn-sm ml-2" data-testid="detail-edit-source-priority" @click="emit('open-source-priority')">{{ t('settings.modelsCapabilities.sourcePriority.edit') }}</button></div>
                     <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.facts.detail.completeness') }}: </dt><dd class="inline">{{ t(modelFactCompletenessKey(detailField()!.completenessDisposition)) }}</dd></div>
                   </dl>
                   <template v-for="group in ([
@@ -422,9 +422,9 @@ onUnmounted(() => {
                     { id: 'overridden', claims: detailField()!.overriddenProvenance },
                   ] as const)" :key="group.id">
                     <div :data-testid="`detail-${group.id}`">
-                      <div class="font-medium">{{ t(`settings.modelsCapabilities.facts.detail.${group.id}`) }}</div>
-                      <p v-if="group.claims.length === 0" class="text-gray-400">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
-                      <ul v-else class="space-y-0.5">
+                      <div class="sv-label">{{ t(`settings.modelsCapabilities.facts.detail.${group.id}`) }}</div>
+                      <p v-if="group.claims.length === 0" class="sv-meta">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
+                      <ul v-else class="flex flex-col gap-0.5">
                         <li v-for="(claim, index) in group.claims" :key="index" class="break-all">
                           {{ t(modelFactSourceKindKey(claim.sourceKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }} · {{ t(modelFactAssertionKindKey(claim.sourceAssertion?.provenance?.assertionKind)) }} · {{ t('settings.modelsCapabilities.facts.detail.claimValue') }} {{ valueOrNone(claim.sourceAssertion?.value) }}<span v-if="modelFactRuleClaimIdentity(claim)" data-testid="detail-rule-claim"> · {{ t(modelFactRuleClaimIdentity(claim)!.ownerKey) }} {{ modelFactRuleClaimIdentity(claim)!.packId }} / {{ modelFactRuleClaimIdentity(claim)!.ruleId }}</span>
                         </li>
@@ -432,8 +432,8 @@ onUnmounted(() => {
                     </div>
                   </template>
                   <div v-if="detailField()!.candidates?.length" data-testid="detail-candidates">
-                    <div class="font-medium">{{ t('settings.modelsCapabilities.facts.detail.candidates') }}</div>
-                    <ul class="space-y-0.5">
+                    <div class="sv-label">{{ t('settings.modelsCapabilities.facts.detail.candidates') }}</div>
+                    <ul class="flex flex-col gap-0.5">
                       <li v-for="(candidate, index) in detailField()!.candidates" :key="index" class="break-all">
                         {{ t('settings.modelsCapabilities.facts.detail.tiedCandidate') }} {{ index + 1 }}: {{ valueOrNone(candidate.value) }}
                         <span v-for="(claim, claimIndex) in candidate.provenance ?? []" :key="claimIndex"> · {{ t(modelFactSourceKindKey(claim.sourceKind)) }} ({{ t('settings.modelsCapabilities.facts.detail.priority') }} {{ claim.sourcePriority }})</span>
@@ -441,45 +441,49 @@ onUnmounted(() => {
                     </ul>
                   </div>
                   <div data-testid="detail-diagnostics">
-                    <div class="font-medium">{{ t('settings.modelsCapabilities.facts.detail.diagnostics') }}</div>
-                    <p v-if="detailField()!.diagnostics.length === 0" class="text-gray-400">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
-                    <ul v-else class="space-y-0.5">
+                    <div class="sv-label">{{ t('settings.modelsCapabilities.facts.detail.diagnostics') }}</div>
+                    <p v-if="detailField()!.diagnostics.length === 0" class="sv-meta">{{ t('settings.modelsCapabilities.facts.detail.noClaims') }}</p>
+                    <ul v-else class="flex flex-col gap-0.5">
                       <li v-for="(diagnostic, index) in detailField()!.diagnostics" :key="index" class="break-all">
                         {{ t(modelFactSourceKindKey(diagnostic.sourceKind)) }} · {{ t(modelFactDiagnosticKindKey(diagnostic.kind)) }}<span v-if="diagnostic.errorCode"> · {{ t('settings.modelsCapabilities.facts.detail.diagnosticCode') }} {{ diagnostic.errorCode }}</span>
                       </li>
                     </ul>
                   </div>
-                  <button v-if="(snapshot.sources ?? []).some((row) => sourceOutcome(row, detailField()!.path) !== null)" type="button" class="rounded border border-gray-300 px-2 py-1" @click="openEvidenceFor(detailField()!.path)">{{ t('settings.modelsCapabilities.facts.detail.openEvidence') }}</button>
+                  <div v-if="(snapshot.sources ?? []).some((row) => sourceOutcome(row, detailField()!.path) !== null)" class="flex">
+                    <button type="button" class="sv-btn sv-btn-sm" @click="openEvidenceFor(detailField()!.path)">{{ t('settings.modelsCapabilities.facts.detail.openEvidence') }}</button>
+                  </div>
                 </section>
               </template>
-              <div v-else class="mt-1 text-[11px] text-blue-800">{{ t('settings.modelsCapabilities.resolvedAbsent') }}</div>
+              <div v-else class="sv-meta mt-1">{{ t('settings.modelsCapabilities.resolvedAbsent') }}</div>
             </div>
-            <div v-for="source in snapshot.sources" :key="`${source.state.sourceKind}:${source.state.sourceScopeId}`" class="rounded border border-gray-100 p-2 text-xs text-gray-700">
-              <div class="font-medium">{{ t(modelFactSourceKindKey(source.state.sourceKind)) }} · {{ source.state.sourceScopeId }}</div>
-              <div class="mt-1 text-[11px] text-gray-500">{{ source.subjectFact ? t('settings.modelsCapabilities.subjectFactPresent') : t('settings.modelsCapabilities.sourceAbsent') }}<span v-if="source.state.staleReason"> · {{ t('settings.modelsCapabilities.facts.detail.sourceStale') }}: {{ source.state.staleReason }}</span></div>
-              <div v-if="source.subjectFact" class="mt-1 text-[10px] text-gray-400">{{ source.subjectFact.payload.recordOutcome }} · {{ source.subjectFact.payload.outcomes.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
+            <div class="flex flex-col">
+              <div v-for="source in snapshot.sources" :key="`${source.state.sourceKind}:${source.state.sourceScopeId}`" class="sv-divider-t py-2 text-xs text-gray-700 first:border-t-0">
+                <div class="break-all font-medium text-gray-900">{{ t(modelFactSourceKindKey(source.state.sourceKind)) }} · {{ source.state.sourceScopeId }}</div>
+                <div class="sv-meta mt-0.5">{{ source.subjectFact ? t('settings.modelsCapabilities.subjectFactPresent') : t('settings.modelsCapabilities.sourceAbsent') }}<span v-if="source.state.staleReason"> · {{ t('settings.modelsCapabilities.facts.detail.sourceStale') }}: {{ source.state.staleReason }}</span></div>
+                <div v-if="source.subjectFact" class="sv-meta">{{ source.subjectFact.payload.recordOutcome }} · {{ source.subjectFact.payload.outcomes.length }} {{ t('settings.modelsCapabilities.fields') }}</div>
+              </div>
             </div>
           </div>
 
-          <div v-else-if="view === 'fields'" class="mt-3 space-y-2">
-            <div v-for="row in fields()" :key="`${row.source.state.sourceKind}:${row.source.state.sourceScopeId}:${row.outcome.path}`" class="rounded border border-gray-100 p-2 text-[11px]">
-              <button type="button" class="w-full text-left" @click="inspectField(row.source, row.outcome)">
-                <span class="font-medium text-gray-800">{{ row.outcome.path }}</span>
-                <span v-if="resolvedFieldFor(row.outcome.path) && stateOf(resolvedFieldFor(row.outcome.path)!) === 'conflict'" class="ml-2 rounded bg-amber-100 px-1 text-amber-800">{{ t('settings.modelsCapabilities.facts.state.conflict') }}</span>
-                <span class="block text-gray-500">{{ row.source.state.sourceKind }} · {{ valueText(row.outcome) }} · {{ row.outcome.disposition }}</span>
+          <div v-else-if="view === 'fields'" class="mt-4 flex flex-col">
+            <div v-for="row in fields()" :key="`${row.source.state.sourceKind}:${row.source.state.sourceScopeId}:${row.outcome.path}`" class="sv-divider-t text-xs first:border-t-0">
+              <button type="button" class="sv-row block w-full px-2 py-2 text-left" @click="inspectField(row.source, row.outcome)">
+                <span class="break-all font-medium text-gray-900">{{ row.outcome.path }}</span>
+                <span v-if="resolvedFieldFor(row.outcome.path) && stateOf(resolvedFieldFor(row.outcome.path)!) === 'conflict'" class="sv-chip ml-2 text-[var(--sv-warning)]">{{ t('settings.modelsCapabilities.facts.state.conflict') }}</span>
+                <span class="sv-meta block break-words">{{ row.source.state.sourceKind }} · {{ valueText(row.outcome) }} · {{ row.outcome.disposition }}</span>
               </button>
             </div>
-            <p v-if="fields().length === 0" class="text-xs text-gray-500">{{ t('settings.modelsCapabilities.noFields') }}</p>
+            <p v-if="fields().length === 0" class="sv-meta">{{ t('settings.modelsCapabilities.noFields') }}</p>
           </div>
 
-          <div v-else class="mt-3 space-y-2">
-            <p v-if="!selectedField" class="text-xs text-gray-500">{{ t('settings.modelsCapabilities.selectField') }}</p>
+          <div v-else class="mt-4 flex flex-col gap-2">
+            <p v-if="!selectedField" class="sv-meta">{{ t('settings.modelsCapabilities.selectField') }}</p>
             <template v-else>
-              <div class="text-xs font-medium text-gray-800">{{ selectedField.outcome.path }}</div>
-              <pre class="max-h-56 overflow-auto rounded bg-gray-50 p-2 text-[10px] text-gray-700">{{ JSON.stringify(selectedField.outcome, null, 2) }}</pre>
-              <div class="text-[10px] text-gray-500">{{ selectedField.source.state.sourceKind }} · {{ selectedField.source.state.sourceScopeId }}</div>
-              <button type="button" class="rounded border border-gray-300 px-2 py-1 text-xs" :disabled="evidenceLoading" @click="readRawPayload">{{ t('settings.modelsCapabilities.viewRawPayload') }}</button>
-              <pre v-if="rawPayload !== null" class="max-h-72 overflow-auto rounded bg-gray-900 p-2 text-[10px] text-gray-100">{{ JSON.stringify(rawPayload, null, 2) }}</pre>
+              <div class="break-all text-[13px] font-medium text-gray-900">{{ selectedField.outcome.path }}</div>
+              <pre class="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--sv-sunken)] p-2 text-xs text-gray-700">{{ JSON.stringify(selectedField.outcome, null, 2) }}</pre>
+              <div class="sv-meta break-all">{{ selectedField.source.state.sourceKind }} · {{ selectedField.source.state.sourceScopeId }}</div>
+              <div class="flex"><button type="button" class="sv-btn sv-btn-sm" :disabled="evidenceLoading" @click="readRawPayload">{{ t('settings.modelsCapabilities.viewRawPayload') }}</button></div>
+              <pre v-if="rawPayload !== null" class="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--sv-sunken)] p-2 text-xs text-gray-700">{{ JSON.stringify(rawPayload, null, 2) }}</pre>
             </template>
           </div>
         </template>

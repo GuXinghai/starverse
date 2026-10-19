@@ -113,66 +113,70 @@ defineExpose({ save })
 </script>
 
 <template>
-  <div class="space-y-3" data-testid="network-proxy-settings">
-    <p class="text-xs text-gray-600">{{ t('settings.network.proxyPolicyDesc') }}</p>
-    <p class="text-xs text-gray-600">{{ t('settings.network.reconnectHint') }}</p>
-    <section v-for="scope in scopes" :key="scope" class="rounded-md border border-gray-200 p-3 space-y-2" :data-testid="`proxy-${scope}`">
-      <h3 class="text-sm font-semibold">{{ scope === 'application' ? t('settings.network.applicationTitle') : t('settings.network.browserTitle') }}</h3>
-      <label v-if="scope === 'browser'" class="block text-xs">
+  <div data-testid="network-proxy-settings">
+    <p class="sv-meta mt-1">{{ t('settings.network.proxyPolicyDesc') }}</p>
+    <p class="sv-meta mt-1">{{ t('settings.network.reconnectHint') }}</p>
+    <section v-for="scope in scopes" :key="scope" class="sv-divider-t mt-5 flex flex-col gap-3 pt-5" :data-testid="`proxy-${scope}`">
+      <h3 class="text-[13px] font-semibold">{{ scope === 'application' ? t('settings.network.applicationTitle') : t('settings.network.browserTitle') }}</h3>
+      <label v-if="scope === 'browser'" class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px]">
         {{ t('settings.network.browserPolicy') }}
-        <select v-model="configuration.browser.mode" :disabled="busy" data-testid="proxy-browser-policy" class="ml-2 rounded border p-1">
+        <select v-model="configuration.browser.mode" :disabled="busy" data-testid="proxy-browser-policy" class="sv-select w-56">
           <option value="inherit">{{ t('settings.network.inherit') }}</option>
           <option value="independent">{{ t('settings.network.independent') }}</option>
         </select>
       </label>
-      <p class="text-xs" :title="states[scope]">{{ t('settings.network.effectiveMode') }}: {{ t(modeKey[effectiveProxySettings(configuration, scope).proxyMode]) }} · {{ stateText(scope) }}</p>
+      <p class="sv-meta" :title="states[scope]">{{ t('settings.network.effectiveMode') }}: {{ t(modeKey[effectiveProxySettings(configuration, scope).proxyMode]) }} · {{ stateText(scope) }}</p>
       <template v-if="scope === 'application' || configuration.browser.mode === 'independent'">
-        <label class="block text-xs">
+        <label class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px]">
           {{ t('settings.network.proxyMode') }}
-          <select v-model="draftSettings(scope).proxyMode" :disabled="busy" :data-testid="`proxy-${scope}-mode`" class="ml-2 rounded border p-1">
+          <select v-model="draftSettings(scope).proxyMode" :disabled="busy" :data-testid="`proxy-${scope}-mode`" class="sv-select w-56">
             <option v-for="mode in modes" :key="mode" :value="mode">{{ t(modeKey[mode]) }}</option>
           </select>
         </label>
         <template v-if="draftSettings(scope).proxyMode === 'manual'">
-          <label class="block text-xs">{{ t('settings.network.manualProxyUrl') }}
-            <input v-model="draftSettings(scope).manualProxyUrl" :disabled="busy" :data-testid="`proxy-${scope}-url`" class="mt-1 w-full rounded border p-1" placeholder="http://127.0.0.1:10808" />
+          <label class="block text-[13px]">{{ t('settings.network.manualProxyUrl') }}
+            <input v-model="draftSettings(scope).manualProxyUrl" :disabled="busy" :data-testid="`proxy-${scope}-url`" class="sv-input mt-1.5" placeholder="http://127.0.0.1:10808" />
           </label>
-          <p class="text-xs text-gray-500">{{ t('settings.network.protocolHint') }}</p>
-          <label class="block text-xs">{{ t('settings.network.noProxyList') }}
-            <input v-model="draftSettings(scope).noProxy" :disabled="busy" :data-testid="`proxy-${scope}-bypass`" class="mt-1 w-full rounded border p-1" placeholder="localhost,127.0.0.1,.example.com" />
+          <p class="sv-meta">{{ t('settings.network.protocolHint') }}</p>
+          <label class="block text-[13px]">{{ t('settings.network.noProxyList') }}
+            <input v-model="draftSettings(scope).noProxy" :disabled="busy" :data-testid="`proxy-${scope}-bypass`" class="sv-input mt-1.5" placeholder="localhost,127.0.0.1,.example.com" />
           </label>
         </template>
-        <div v-else-if="draftSettings(scope).proxyMode === 'environment'" class="text-xs" :data-testid="`proxy-${scope}-environment`">
+        <div v-else-if="draftSettings(scope).proxyMode === 'environment'" class="sv-meta" :data-testid="`proxy-${scope}-environment`">
           <p>{{ t('settings.network.environmentHint') }}</p>
           <dl v-for="(value, key) in environment" :key="key" class="break-all"><dt class="inline font-mono">{{ key }}</dt>: <dd class="inline">{{ value || '—' }}</dd></dl>
         </div>
-        <p v-else-if="draftSettings(scope).proxyMode === 'system'" class="text-xs text-gray-500">{{ t('settings.network.systemHint') }}</p>
+        <p v-else-if="draftSettings(scope).proxyMode === 'system'" class="sv-meta">{{ t('settings.network.systemHint') }}</p>
       </template>
-      <div class="flex gap-2 text-xs">
-        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-test`" class="rounded border px-2 py-1" @click="probe(scope)">{{ t('settings.network.testDraft') }}</button>
-        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-reapply`" class="rounded border px-2 py-1" @click="reapply(scope)">{{ t('settings.network.reapply') }}</button>
-        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-reset`" class="rounded border px-2 py-1" @click="reset(scope)">{{ t('settings.network.resetApply') }}</button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-test`" class="sv-btn sv-btn-sm" @click="probe(scope)">{{ t('settings.network.testDraft') }}</button>
+        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-reapply`" class="sv-btn sv-btn-sm" @click="reapply(scope)">{{ t('settings.network.reapply') }}</button>
+        <button type="button" :disabled="busy" :data-testid="`proxy-${scope}-reset`" class="sv-btn sv-btn-sm" @click="reset(scope)">{{ t('settings.network.resetApply') }}</button>
       </div>
-      <div v-if="results[scope]" class="text-xs break-all" :data-testid="`proxy-${scope}-result`">
+      <div v-if="results[scope]" class="sv-meta break-all" :data-testid="`proxy-${scope}-result`">
         <div>{{ t('settings.network.configurationCheck') }}: {{ results[scope]?.configurationValid ? t('settings.network.passed') : t('settings.network.failed') }}</div>
         <div>{{ t('settings.network.plannedRoute') }}: {{ results[scope]?.resolvedProxy ?? '—' }}</div>
         <div>HTTP: {{ results[scope]?.httpStatus ?? '—' }} · {{ results[scope]?.elapsedMs }} ms</div>
         <div>{{ t('settings.network.diagnosticLabel') }} {{ results[scope]?.code }}</div>
       </div>
     </section>
-    <label class="block text-xs">{{ t('settings.network.testTarget') }}
-      <input v-model="url" type="url" list="proxy-targets" :disabled="busy" data-testid="proxy-test-target" class="mt-1 w-full rounded border p-1" />
-      <datalist id="proxy-targets"><option value="https://api.openai.com/" /><option value="https://api.anthropic.com/" /><option value="https://generativelanguage.googleapis.com/" /><option value="https://openrouter.ai/" /></datalist>
-    </label>
-    <p class="text-xs text-gray-500">{{ t('settings.network.diagnosticHint') }}</p>
-    <label class="block text-xs"><input type="checkbox" checked disabled /> {{ t('settings.network.strictSslRequired') }}</label>
-    <div class="flex flex-wrap gap-2 text-xs">
-      <button type="button" :disabled="busy" data-testid="proxy-save" class="rounded border px-2 py-1" @click="saveFromButton">{{ t('settings.network.saveApply') }}</button>
-      <button v-if="probeId" type="button" data-testid="proxy-cancel" class="rounded border px-2 py-1" @click="cancelProxyProbe(probeId)">{{ t('settings.network.cancelTest') }}</button>
-      <button type="button" :disabled="busy" data-testid="proxy-download-check" class="rounded border px-2 py-1" @click="checkDownload">{{ t('settings.network.downloadCheck') }}</button>
+    <div class="sv-divider-t mt-5 flex flex-col gap-3 pt-5">
+      <label class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px]">{{ t('settings.network.testTarget') }}
+        <input v-model="url" type="url" list="proxy-targets" :disabled="busy" data-testid="proxy-test-target" class="sv-input w-72" />
+        <datalist id="proxy-targets"><option value="https://api.openai.com/" /><option value="https://api.anthropic.com/" /><option value="https://generativelanguage.googleapis.com/" /><option value="https://openrouter.ai/" /></datalist>
+      </label>
+      <p class="sv-meta">{{ t('settings.network.diagnosticHint') }}</p>
+      <label class="flex items-center gap-2 text-[13px]"><input type="checkbox" class="size-4" checked disabled /> {{ t('settings.network.strictSslRequired') }}</label>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" :disabled="busy" data-testid="proxy-save" class="sv-btn w-32" @click="saveFromButton">{{ t('settings.network.saveApply') }}</button>
+        <button type="button" :disabled="busy" data-testid="proxy-download-check" class="sv-btn" @click="checkDownload">{{ t('settings.network.downloadCheck') }}</button>
+        <button v-if="probeId" type="button" data-testid="proxy-cancel" class="sv-btn order-last" @click="cancelProxyProbe(probeId)">{{ t('settings.network.cancelTest') }}</button>
+      </div>
+      <p v-if="downloadResult" class="sv-meta">{{ t('settings.network.downloadCheck') }}: {{ downloadResult }}</p>
+      <div class="min-h-[18px]">
+        <p v-if="error" role="alert" class="text-xs text-[color:var(--sv-danger)]">{{ error }}</p>
+        <p v-if="message" role="status" class="text-xs text-[color:var(--sv-text-2)]">{{ message }}</p>
+      </div>
     </div>
-    <p v-if="downloadResult" class="text-xs">{{ t('settings.network.downloadCheck') }}: {{ downloadResult }}</p>
-    <p v-if="error" role="alert" class="text-xs text-red-600">{{ error }}</p>
-    <p v-if="message" role="status" class="text-xs text-green-700">{{ message }}</p>
   </div>
 </template>

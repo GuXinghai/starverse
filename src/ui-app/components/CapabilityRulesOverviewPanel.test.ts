@@ -71,6 +71,33 @@ describe('CapabilityRulesOverviewPanel', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
+  it('renders a Rule V2 Cloud operation effect without an assertion field', async () => {
+    const rule = { ruleId: 'gemini-reasoning', label: 'Gemini reasoning', description: null,
+      priority: 0, configured: 'default', providerAuthorityId: 'google', endpointProfileId: 'google-default',
+      selector: { kind: 'exact', nativeModelIds: ['gemini-test'] }, evidence: null, category: 'reasoning',
+      when: { kind: 'eq', path: 'target.operation', value: 'generateContent' }, effect: {
+        kind: 'registered_operation', operationId: 'reasoning_gemini', parameters: { protocol: 'generate_content' },
+      }, decisionKey: 'gemini.reasoning', dependencies: [] }
+    const pack = { schemaVersion: 2, packId: 'pack.v2', displayName: 'Rule V2 pack', description: null,
+      priority: 0, mode: 'override', target: 'enabled', rules: [rule] }
+    const read = vi.fn(async () => ({ distribution: { latestObserved: null, candidate: null },
+      application: { appliedIntegrity: 'valid', appliedRecordRevision: 2,
+        applied: { releaseVersion: '2.0.0', document: { schemaVersion: 2, releaseVersion: '2.0.0', packs: [pack] } },
+        policy: { policyRevision: 1, historyLimit: 4, pin: null }, overrides: { revision: 1, overrides: [] } },
+      active: { activeSnapshot: { projected: { definition: { schemaVersion: 2, ownership: 'cloud',
+        ownerId: 'official', packs: [pack] } } } }, history: [] }))
+    ;(window as any).generationV2 = { capabilityRules: { cloud: {
+      read, check: vi.fn(), candidateDiff: vi.fn(), apply: vi.fn(), rollback: vi.fn(),
+      replaceActivationOverrides: vi.fn(), setHistoryLimit: vi.fn(), resumeUpdates: vi.fn(),
+    }, user: { readCommitted: vi.fn(async () => ({ snapshot: null, notes: [] })) } } }
+    const user = userEvent.setup()
+    render(CapabilityRulesOverviewPanel, { props: { ownership: 'cloud' } })
+    await user.click(await screen.findByRole('button', { name: /Rule V2 pack.*1 Rules/ }))
+    await user.click(await screen.findByRole('button', { name: /Gemini reasoning.*reasoning/ }))
+    expect(await screen.findByTestId('cloud-rule-asserted-value')).toHaveTextContent('reasoning_gemini')
+    expect(screen.getByTestId('cloud-rule-detail')).toHaveTextContent('reasoning')
+  })
+
   it('keeps User Rule edits in the session draft until the batch Save', async () => {
     const replaceDraft = vi.fn(async (input: any) => ({
       ...draftFixture, draftRevision: input.expectedDraftRevision + 1, dirty: true,

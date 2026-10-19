@@ -29,7 +29,7 @@ describe('ChatInlineReasoning', () => {
       },
     })
 
-    expect(screen.getByText('<')).toBeInTheDocument()
+    expect(document.querySelector('[data-indicator="<"]')).not.toBeNull()
     first.unmount()
 
     render(ChatInlineReasoning, {
@@ -40,7 +40,7 @@ describe('ChatInlineReasoning', () => {
       },
     })
 
-    expect(screen.getByText('>')).toBeInTheDocument()
+    expect(document.querySelector('[data-indicator=">"]')).not.toBeNull()
   })
 
   it('uses dropdown indicators in inline mode', () => {
@@ -52,7 +52,7 @@ describe('ChatInlineReasoning', () => {
       },
     })
 
-    expect(screen.getByText('v')).toBeInTheDocument()
+    expect(document.querySelector('[data-indicator="v"]')).not.toBeNull()
     first.unmount()
 
     render(ChatInlineReasoning, {
@@ -63,7 +63,7 @@ describe('ChatInlineReasoning', () => {
       },
     })
 
-    expect(screen.getByText('^')).toBeInTheDocument()
+    expect(document.querySelector('[data-indicator="^"]')).not.toBeNull()
   })
 
   it('does not render inline reasoning body in rail mode', () => {

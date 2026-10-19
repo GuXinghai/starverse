@@ -22,6 +22,7 @@ import type {
 import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
 import type { ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '@/core/generation-v2/capability/modelCapabilitySchemaV2'
 import { t, tf } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { modelFactControlKey } from '@/shared/model-facts/modelFactPresentation'
 import {
   modelFactControlReasonTextV1,
@@ -406,26 +407,27 @@ watch(
 </script>
 
 <template>
-  <div class="min-w-0 space-y-1.5" data-testid="generation-params-editor">
+  <div class="flex min-w-0 flex-col gap-2" data-testid="generation-params-editor">
     <div class="flex min-w-0 items-center justify-between gap-2">
       <button
         v-if="props.collapsible"
         type="button"
-        class="inline-flex min-w-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 shadow-sm hover:bg-gray-50"
+        class="sv-btn sv-btn-sm min-w-0 gap-1.5"
         data-testid="generation-params-toggle"
         @click="toggleExpanded"
       >
+        <UiIcon :name="expanded ? 'chevronUp' : 'chevronDown'" :size="12" class="shrink-0" />
         <span class="shrink-0">{{ expanded ? t('chat.generationParams.hide') : t('chat.generationParams.show') }}</span>
-        <span>{{ t('chat.generationParams.title') }}</span>
-        <span class="shrink-0 text-[10px] text-gray-500">({{ customCount }})</span>
+        <span class="truncate">{{ t('chat.generationParams.title') }}</span>
+        <span class="shrink-0 text-[color:var(--sv-text-3)]">({{ customCount }})</span>
       </button>
-      <div v-else class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.generationParams.title') }}</div>
+      <div v-else class="text-[13px] font-medium">{{ t('chat.generationParams.title') }}</div>
       <div class="flex shrink-0 items-center gap-2">
-        <span v-if="!props.collapsible && customCount > 0" class="text-[10px] text-gray-500">{{ tf('chat.generationParams.configuredCount', { count: customCount }) }}</span>
+        <span v-if="!props.collapsible && customCount > 0" class="sv-meta">{{ tf('chat.generationParams.configuredCount', { count: customCount }) }}</span>
         <button
           v-if="hasAdvancedSpecs"
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-btn sv-btn-sm min-w-28"
           :disabled="props.disabled"
           data-testid="generation-params-advanced-toggle"
           @click="toggleAdvanced"
@@ -434,7 +436,7 @@ watch(
         </button>
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-btn sv-btn-sm"
           :disabled="props.disabled"
           data-testid="generation-params-reset"
           @click="resetAllToInherit"
@@ -446,23 +448,22 @@ watch(
 
     <div
       v-if="expanded || !props.collapsible"
-      class="grid min-w-0 gap-1.5"
-      :class="props.compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'"
+      class="grid min-w-0 grid-cols-1 gap-y-0.5"
     >
       <div
         v-for="spec in visibleSpecs"
         :key="spec.key"
-        class="grid min-w-0 items-center gap-2 rounded-md border border-gray-100 bg-gray-50/70 px-2 py-1.5"
-        :class="props.compact ? 'grid-cols-[minmax(0,1fr)_82px]' : 'grid-cols-[140px_86px_minmax(120px,1fr)]'"
+        class="grid min-w-0 items-center gap-x-3 gap-y-1 py-1.5"
+        :class="props.compact ? 'grid-cols-[minmax(0,1fr)_88px]' : 'grid-cols-[minmax(110px,1fr)_96px_minmax(120px,1fr)]'"
       >
         <div class="min-w-0">
-          <div class="truncate text-[11px] font-semibold text-gray-700" :title="paramDescription(GENERATION_PARAM_SPEC_MAP[spec.key])">
+          <div class="truncate text-[13px]" :title="paramDescription(GENERATION_PARAM_SPEC_MAP[spec.key])">
             {{ spec.label }}
           </div>
           <button
             v-if="isUnverified(spec)"
             type="button"
-            class="mt-0.5 rounded bg-gray-100 px-1 py-px text-[10px] font-medium text-gray-600 disabled:cursor-default"
+            class="mt-0.5 block max-w-full truncate text-xs text-[color:var(--sv-text-3)] underline decoration-dotted underline-offset-2 disabled:cursor-default disabled:no-underline"
             :disabled="!canInspectModelFacts || !unverifiedReason(spec)?.path"
             :title="unverifiedTitle(spec)"
             :aria-label="`${t(modelFactControlKey('notVerified'))}: ${unverifiedTitle(spec)}`"
@@ -474,7 +475,7 @@ watch(
         </div>
 
         <select
-          class="min-w-0 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+          class="sv-select sv-select-sm"
           :disabled="props.disabled"
           :value="modeForKey(spec.key)"
           :data-testid="`generation-param-mode-${spec.key}`"
@@ -488,7 +489,7 @@ watch(
         <div class="min-w-0" :class="props.compact ? 'col-span-2' : ''">
           <select
             v-if="capabilityForSpec(spec).valueType === 'boolean' || capabilityForSpec(spec).valueType === 'enum'"
-            class="min-w-0 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+            class="sv-select sv-select-sm"
             :disabled="props.disabled || modeForKey(spec.key) !== 'custom'"
             :value="inputTextByKey[spec.key]"
             :title="validationHint(spec)"
@@ -511,8 +512,8 @@ watch(
           </select>
           <textarea
             v-else-if="capabilityForSpec(spec).valueType === 'stringArray'"
-            class="min-h-[56px] min-w-0 w-full rounded border bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
-            :class="hasInputError(spec) ? 'border-red-300' : 'border-gray-200'"
+            class="sv-textarea min-h-[56px] text-xs"
+            :class="hasInputError(spec) ? 'border-[color:var(--sv-danger)]' : ''"
             :disabled="props.disabled || modeForKey(spec.key) !== 'custom'"
             :value="inputTextByKey[spec.key]"
             :placeholder="modeForKey(spec.key) === 'inherit' ? inheritedValueHint(spec) : undefined"
@@ -525,7 +526,7 @@ watch(
           <input
             v-else-if="capabilityForSpec(spec).valueType === 'string'"
             type="text"
-            class="min-w-0 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+            class="sv-input sv-input-sm"
             :disabled="props.disabled || modeForKey(spec.key) !== 'custom'"
             :value="inputTextByKey[spec.key]"
             :maxlength="capabilityForSpec(spec).maxLength"
@@ -540,8 +541,8 @@ watch(
           <input
             v-else
             type="number"
-            class="min-w-0 w-full rounded border bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
-            :class="hasInputError(spec) ? 'border-red-300' : 'border-gray-200'"
+            class="sv-input sv-input-sm"
+            :class="hasInputError(spec) ? 'border-[color:var(--sv-danger)]' : ''"
             :disabled="props.disabled || modeForKey(spec.key) !== 'custom'"
             :value="inputTextByKey[spec.key]"
             :placeholder="modeForKey(spec.key) === 'inherit' ? inheritedValueHint(spec) : undefined"
@@ -562,10 +563,10 @@ watch(
         <div
           v-for="spec in unavailableSpecs"
           :key="`unavailable-${spec.key}`"
-          class="min-w-0 space-y-0.5 rounded-md border border-dashed border-gray-200 px-2 py-1.5"
+          class="min-w-0 py-1.5"
           :data-testid="`generation-param-unavailable-${spec.key}`"
         >
-          <div class="truncate text-[11px] font-semibold text-gray-500">{{ spec.label }}</div>
+          <div class="truncate text-[13px] text-[color:var(--sv-text-3)]">{{ spec.label }}</div>
           <ModelFactControlReason
             v-if="unavailableReason(spec)"
             :reason="unavailableReason(spec)!"
@@ -577,13 +578,13 @@ watch(
       </template>
       <div
         v-else-if="unavailableSpecs.length > 0"
-        class="text-[11px] text-gray-500"
+        class="sv-meta"
         data-testid="generation-params-unavailable-summary"
       >
         {{ tf(modelFactControlKey('unavailableSummary'), { count: unavailableSpecs.length }) }}
       </div>
 
-      <div v-if="visibleSpecs.length === 0" class="rounded-md border border-gray-100 bg-gray-50 px-2 py-2 text-[11px] text-gray-500">
+      <div v-if="visibleSpecs.length === 0" class="sv-meta py-2">
         <ModelFactControlReason
           v-if="emptyStateReason"
           :reason="emptyStateReason"

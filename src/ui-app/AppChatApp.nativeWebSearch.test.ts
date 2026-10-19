@@ -17,6 +17,9 @@ import { createGeminiPlainTextInitialSendCoordinatorV2 } from '../../electron/se
 import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from '../../electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2'
 import { createOpenRouterChatPlainTextInitialSendCoordinatorV2 } from '../../electron/services/openRouterChatPlainTextInitialSendCoordinatorV2'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
+import { UserCapabilityRulesV2Service } from '../../electron/services/userCapabilityRulesV2Service'
+import { buildAuthoritativeModelSubjectSetV1 } from '@/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { createReviewedRequestRulePacksV2 } from '../../scripts/rules/reviewedRequestRulePacksV2'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 
@@ -57,6 +60,20 @@ async function fixture(provider: Provider, persistedWeb?: Record<string, unknown
   }] }], subjectCandidates: [{ subject: { providerAuthorityId: authority.providerAuthorityId, endpointProfileId: registry.endpointProfileId, nativeModelId: modelId },
     proof: { kind: 'provider_native_catalog', providerKey: provider, scopeId: 'scope:test:web', credentialScopeId: scope, credentialRevision: 1,
       endpointProfileId: registry.endpointProfileId, operationContractId: registry.modelsContractId, catalogCategory: '', activeSnapshotDigest: 'c'.repeat(64) } }] })
+  const subjects = buildAuthoritativeModelSubjectSetV1([{ subject: { providerAuthorityId: authority.providerAuthorityId,
+    endpointProfileId: registry.endpointProfileId, nativeModelId: modelId }, proof: { kind: 'provider_native_catalog',
+    providerKey: provider, scopeId: 'scope:test:web', credentialScopeId: scope, credentialRevision: 1,
+    endpointProfileId: registry.endpointProfileId, operationContractId: registry.modelsContractId,
+    catalogCategory: '', activeSnapshotDigest: 'c'.repeat(64) } }])
+  const ruleService = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects })
+  let ruleDraft = ruleService.openDraft({ sessionId: 'ui-web:rules-v2' })
+  const protocols = { anthropic_messages: 'anthropic-messages-2023-06-01', google_ai_studio: 'gemini-generate-content-v1beta',
+    openai_responses: 'openai-responses-v1', openrouter: 'openrouter-chat-completions-v1' }
+  for (const transfer of createReviewedRequestRulePacksV2([{ providerAuthorityId: authority.providerAuthorityId,
+    endpointProfileId: registry.endpointProfileId, protocolContractId: protocols[provider], nativeModelIds: [modelId] }])) {
+    ruleDraft = ruleService.importPack({ sessionId: ruleDraft.sessionId, expectedDraftRevision: ruleDraft.draftRevision, transfer })
+  }
+  await ruleService.saveDraft({ sessionId: ruleDraft.sessionId, expectedDraftRevision: ruleDraft.draftRevision })
   const configs = new GenerationConfigV2Repo(db)
   if (persistedWeb) configs.compareAndSetScope('conversation', 'c1', configs.getScope('conversation', 'c1').configRevision.value,
     { schemaVersion: 2, generation: provider === 'anthropic_messages' ? { maxOutputTokens: 32 } : {}, reasoning: { mode: 'disabled' }, web: persistedWeb,
@@ -100,7 +117,7 @@ async function fixture(provider: Provider, persistedWeb?: Record<string, unknown
   bridge.composer.updateText.mockImplementation(async (packet: any) => call(() => composer.updateText(packet)))
   bridge.capabilities.resolve.mockImplementation(async (packet: any) => call(() => capabilities.resolve(packet)))
   for (const credentials of Object.values(bridge.credentials) as any[]) credentials.getStatus.mockResolvedValue({ ok: true, status: {
-    configured: true, credentialRevision: 1, credentialScopeId: scope, profileId: registry.endpointProfileId,
+    apiKeyConfigured: true, credentialRevision: 1, credentialScopeId: scope, profileId: registry.endpointProfileId,
   } } as never)
   const port = provider === 'anthropic_messages' ? bridge.anthropic : provider === 'google_ai_studio' ? bridge.gemini.generateContent
     : provider === 'openai_responses' ? bridge.openAIResponses : bridge.openRouter.chat
@@ -144,9 +161,9 @@ describe('mounted composer web semantics through real prepared coordinators', ()
     expect(f.port.initial).toHaveBeenCalledTimes(1)
     expect(f.noTransport).not.toHaveBeenCalled()
     const web = (f.configs.getScope('conversation', 'c1').semanticLayer as any).web
-    if (provider === 'anthropic_messages') { expect(web).toEqual({ mode: 'provider_search', types: ['web'], maxResults: 5 }); expect(f.body().tools[0].max_uses).toBe(5) }
+    if (provider === 'anthropic_messages') { expect(web).toEqual({ mode: 'provider_search', types: ['web'] }); expect(f.body().tools[0].max_uses).toBe(5) }
     if (provider === 'google_ai_studio') { expect(web).toEqual({ mode: 'provider_search', types: ['web'] }); expect(f.body().tools).toEqual([{ googleSearch: {} }]) }
-    if (provider === 'openai_responses') { expect(web).toEqual({ mode: 'provider_search', types: ['web'], searchContextSize: 'medium' }); expect(f.body().tools[0].search_context_size).toBe('medium') }
+    if (provider === 'openai_responses') { expect(web).toEqual({ mode: 'provider_search', types: ['web'] }); expect(f.body().tools[0].search_context_size).toBe('medium') }
     if (provider === 'openrouter') expect(web).toMatchObject({ mode: 'provider_search', maxResults: 8, searchContextSize: 'high' })
   })
 
@@ -164,7 +181,7 @@ describe('mounted composer web semantics through real prepared coordinators', ()
     expect(f.noTransport).not.toHaveBeenCalled()
   })
 
-  it.each([{ searchContextSize: 'high' }, { engine: 'exa' }])('preserves unsupported authoritative rows on Send (%j)', async unsupported => {
+  it.each([{ searchContextSize: 'high' }, { engine: 'exa' }])('preserves saved controls and adapts unsupported target search parameters on Send (%j)', async unsupported => {
     const f = await fixture('anthropic_messages', { mode: 'provider_search', types: ['web'], maxResults: 5, ...unsupported })
     const before = f.configs.getScope('conversation', 'c1').canonicalJson
     f.logic.draft.value = 'Synthetic search'
@@ -172,9 +189,12 @@ describe('mounted composer web semantics through real prepared coordinators', ()
     expect(f.bridge.workspace.updateConfig).not.toHaveBeenCalled()
     expect(f.configs.getScope('conversation', 'c1').canonicalJson).toBe(before)
     expect(f.port.initial).toHaveBeenCalledTimes(1)
-    expect(f.prepared()).toBeNull()
-    expect(f.logic.loadError.value).not.toBeNull()
+    expect(f.prepared()).not.toBeNull()
+    expect(f.logic.loadError.value).toBe('FIXTURE_PREPARED_WITHOUT_TRANSPORT')
+    expect(f.body().tools).toContainEqual(expect.objectContaining({ type: 'web_search_20250305', max_uses: 5 }))
+    expect(JSON.stringify(f.body())).not.toContain('"exa"')
+    expect(JSON.stringify(f.body())).not.toContain('search_context_size')
     expect(f.noTransport).not.toHaveBeenCalled()
-    expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 0 })
+    expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 1 })
   })
 })

@@ -45,13 +45,13 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="flex flex-col gap-3">
     <div class="grid grid-cols-2 gap-3">
-      <label v-if="showImageSizeControl" class="space-y-1 text-xs text-gray-600">
-        <span class="font-medium text-gray-700">Resolution</span>
-        <span v-if="imageSizeUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-size">{{ notVerifiedLabel }}</span>
+      <label v-if="showImageSizeControl" class="block">
+        <span class="text-[13px] font-medium">Resolution</span>
+        <span v-if="imageSizeUnverified" class="sv-meta ml-2" :title="notVerifiedTitle" data-testid="image-generation-unverified-size">{{ notVerifiedLabel }}</span>
         <select
-          class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          class="sv-select mt-1.5"
           :disabled="props.disabled || props.lockImageSizeControl"
           :value="value.imageSize"
           @change="emitPatch({ imageSize: ($event.target as HTMLSelectElement).value as any })"
@@ -61,11 +61,11 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
         </select>
       </label>
 
-      <label class="space-y-1 text-xs text-gray-600">
-        <span class="font-medium text-gray-700">Aspect</span>
-        <span v-if="aspectRatioUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-aspect">{{ notVerifiedLabel }}</span>
+      <label class="block">
+        <span class="text-[13px] font-medium">Aspect</span>
+        <span v-if="aspectRatioUnverified" class="sv-meta ml-2" :title="notVerifiedTitle" data-testid="image-generation-unverified-aspect">{{ notVerifiedLabel }}</span>
         <select
-          class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          class="sv-select mt-1.5"
           :disabled="props.disabled"
           :value="value.aspectRatio || '1:1'"
           @change="emitPatch({ aspectRatio: ($event.target as HTMLSelectElement).value })"
@@ -75,11 +75,11 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
       </label>
     </div>
 
-    <label class="space-y-1 text-xs text-gray-600">
-      <span class="font-medium text-gray-700">Output mode</span>
-      <span v-if="outputModeUnverified" class="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-600" :title="notVerifiedTitle" data-testid="image-generation-unverified-output-mode">{{ notVerifiedLabel }}</span>
+    <label class="block">
+      <span class="text-[13px] font-medium">Output mode</span>
+      <span v-if="outputModeUnverified" class="sv-meta ml-2" :title="notVerifiedTitle" data-testid="image-generation-unverified-output-mode">{{ notVerifiedLabel }}</span>
       <select
-        class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+        class="sv-select mt-1.5"
         :disabled="props.disabled"
         :value="value.outputMode"
         @change="emitPatch({ outputMode: ($event.target as HTMLSelectElement).value as any })"

@@ -13,6 +13,8 @@ import { normalizeGenerationParamsLayer } from '@/next/generation-params/generat
 import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import { CatalogQueryService } from '@/next/modelCatalog/catalogQueryService'
 import { getQuitWarningEnabled, setQuitWarningEnabled } from '@/next/settings/quitWarningClient'
+import { getProjectDuplicatePolicy, setProjectDuplicatePolicy } from '@/next/settings/projectDuplicatePolicyClient'
+import type { ProjectDuplicatePolicy } from '@/shared/settings/projectDuplicatePolicy'
 import { getGenerationTotalTimeoutMs, setGenerationTotalTimeoutMs } from '@/next/settings/generationTotalTimeoutClient'
 import { GENERATION_TOTAL_TIMEOUT_MAX_MINUTES, parseGenerationTotalTimeoutMinutesText } from '@/shared/settings/generationTotalTimeoutPreference'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
@@ -23,6 +25,7 @@ import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSett
 import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
 import ModelsAndCapabilitiesSettingsPanel from './ModelsAndCapabilitiesSettingsPanel.vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
@@ -420,6 +423,16 @@ const SETTINGS_CATEGORIES: ReadonlyArray<Readonly<{ id: SettingsCategoryId; labe
   { id: 'network', labelKey: 'settings.categories.network' },
   { id: 'extensions', labelKey: 'settings.categories.extensions' },
 ]
+const SETTINGS_CATEGORY_ICONS: Readonly<Record<SettingsCategoryId, string>> = {
+  general: 'sliders',
+  providers: 'settingsKey',
+  'model-catalog': 'list',
+  'models-capabilities': 'settingsCube',
+  generation: 'reasoning',
+  'privacy-data': 'settingsShield',
+  network: 'globe',
+  extensions: 'settingsPlug',
+}
 const activeCategory = ref<SettingsCategoryId>(props.initialCategory ?? 'general')
 watch(() => props.initialCategory, (value) => {
   if (value) activeCategory.value = value
@@ -720,6 +733,7 @@ const reasoningPanelDefaultExpanded = ref(true)
 const userMessageRenderDefault = ref(false)
 const maxRecentModelsDraft = ref('8')
 const quitWarningEnabled = ref(true)
+const projectDuplicatePolicy = ref<ProjectDuplicatePolicy>('ask')
 const generationTimeoutUnlimited = ref(true)
 const generationTimeoutMinutesDraft = ref('30')
 const generationTimeoutInvalid = computed(() =>
@@ -1258,6 +1272,7 @@ async function load() {
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
     reasoningPanelDefaultExpanded.value = await getChatReasoningPanelDefaultExpanded()
     quitWarningEnabled.value = await getQuitWarningEnabled()
+    projectDuplicatePolicy.value = await getProjectDuplicatePolicy()
     const storedGenerationTimeoutMs = await getGenerationTotalTimeoutMs()
     generationTimeoutUnlimited.value = storedGenerationTimeoutMs === null
     if (storedGenerationTimeoutMs !== null) generationTimeoutMinutesDraft.value = String(storedGenerationTimeoutMs / 60_000)
@@ -1350,6 +1365,7 @@ async function save() {
     await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
     await setGenerationTotalTimeoutMs(nextGenerationTimeout.ms)
     await setQuitWarningEnabled(quitWarningEnabled.value)
+    if (!await setProjectDuplicatePolicy(projectDuplicatePolicy.value)) throw new Error('PROJECT_DUPLICATE_POLICY_SAVE_FAILED')
     await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
     if (isDev) {
       try {
@@ -1975,34 +1991,24 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <div v-if="credentialFallbackProvider" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-      <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
-        <div class="text-sm font-semibold text-gray-900">{{ t('settings.credentials.secureStorageUnavailableTitle') }}</div>
-        <p class="mt-2 text-sm text-gray-700">{{ t('settings.credentials.secureStorageUnavailableBody') }}</p>
-        <p v-if="plaintextCredentialPersistenceSupported" class="mt-2 text-sm font-medium text-red-700">{{ t('settings.credentials.plaintextWarning') }}</p>
+  <div class="flex h-full min-h-0 flex-col bg-white">
+    <div class="sr-only">{{ t('settings.title') }}</div>
+    <div v-if="credentialFallbackProvider" class="sv-backdrop" role="dialog" aria-modal="true">
+      <div class="sv-dialog w-full max-w-lg p-5">
+        <div class="text-sm font-semibold">{{ t('settings.credentials.secureStorageUnavailableTitle') }}</div>
+        <p class="mt-2 text-sm text-[color:var(--sv-text-2)]">{{ t('settings.credentials.secureStorageUnavailableBody') }}</p>
+        <p v-if="plaintextCredentialPersistenceSupported" class="mt-2 text-sm font-medium text-[color:var(--sv-danger)]">{{ t('settings.credentials.plaintextWarning') }}</p>
         <div class="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="applyCredentialFallback('session')">{{ t('settings.credentials.sessionOnly') }}</button>
-          <button v-if="plaintextCredentialPersistenceSupported" data-testid="settings-save-plaintext-credential" type="button" class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 hover:bg-amber-100" @click="applyCredentialFallback('plaintext')">{{ t('settings.credentials.savePlaintext') }}</button>
-          <button type="button" class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="dismissCredentialFallback">{{ t('common.cancel') }}</button>
+          <button type="button" class="sv-btn" @click="applyCredentialFallback('session')">{{ t('settings.credentials.sessionOnly') }}</button>
+          <button v-if="plaintextCredentialPersistenceSupported" data-testid="settings-save-plaintext-credential" type="button" class="sv-btn text-[color:var(--sv-warning)] [border-color:var(--sv-warning-line)]" @click="applyCredentialFallback('plaintext')">{{ t('settings.credentials.savePlaintext') }}</button>
+          <button type="button" class="sv-btn" @click="dismissCredentialFallback">{{ t('common.cancel') }}</button>
         </div>
       </div>
     </div>
-    <div class="px-4 pt-4 text-sm font-semibold text-gray-900">{{ t('settings.title') }}</div>
 
-    <div class="mt-3 space-y-3 px-4">
-      <div v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
-        {{ error }}
-        <ProviderFailureDetailsV2 v-if="errorFailure" class="mt-2" :failure="errorFailure" />
-      </div>
-      <div v-else-if="savedMessage" class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
-        {{ savedMessage }}
-      </div>
-    </div>
-
-    <div class="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden px-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+    <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[12rem_minmax(0,1fr)] md:grid-rows-1">
       <nav
-        class="flex gap-1 overflow-x-auto border-b border-gray-200 pb-2 md:flex-col md:overflow-x-visible md:border-b-0 md:border-r md:pb-0 md:pr-3"
+        class="flex gap-0.5 overflow-x-auto border-b border-[color:var(--sv-line)] px-3 py-2 md:flex-col md:overflow-y-auto md:overflow-x-visible md:border-b-0 md:border-r md:p-3"
         role="tablist"
         :aria-label="t('settings.categories.navigationLabel')"
         data-testid="settings-category-navigation"
@@ -2013,8 +2019,8 @@ onMounted(() => {
           :key="category.id"
           type="button"
           role="tab"
-          class="shrink-0 rounded-md px-3 py-2 text-left text-xs font-medium outline-none ring-blue-300 transition focus:ring-2"
-          :class="activeCategory === category.id ? 'bg-blue-50 text-blue-800' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+          class="sv-row flex h-8 shrink-0 items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13px] focus-visible:outline-offset-[-2px] md:w-full"
+          :class="activeCategory === category.id ? 'text-[color:var(--sv-text)]' : 'text-[color:var(--sv-text-2)]'"
           :aria-selected="activeCategory === category.id"
           :aria-controls="settingsCategoryPanelId(category.id)"
           :tabindex="activeCategory === category.id ? 0 : -1"
@@ -2022,73 +2028,91 @@ onMounted(() => {
           @click="selectSettingsCategory(category.id)"
           @keydown="onSettingsCategoryKeydown($event, category.id)"
         >
-          {{ t(category.labelKey) }}
+          <UiIcon :name="SETTINGS_CATEGORY_ICONS[category.id]" :size="16" class="shrink-0" />
+          <span class="min-w-0 truncate">{{ t(category.labelKey) }}</span>
         </button>
       </nav>
 
-      <div class="min-h-0 overflow-y-auto pb-4">
+      <div class="min-h-0 overflow-y-auto px-5 py-5 md:px-8 md:py-6">
         <section
           :id="settingsCategoryPanelId('general')"
           v-show="activeCategory === 'general'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('general')"
-          class="space-y-3"
+          class="divide-y divide-[color:var(--sv-line)]"
           data-testid="settings-pane-general"
         >
-
-          <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('common.language') }}</div>
-        <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.categories.immediateActionHint') }}</div>
-
-        <div class="mt-3 space-y-2">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="language-mode"
-              value="system"
-              :disabled="saving"
-              :checked="langMode === 'system'"
-              @change="applyLanguageMode('system')"
-            />
-            <div>
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('common.languageFollowSystem') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('common.languageFollowSystemDesc') }}</div>
-            </div>
-          </label>
-
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="language-mode"
-              value="manual"
-              :disabled="saving"
-              :checked="langMode === 'manual'"
-              @change="applyLanguageMode('manual')"
-            />
-            <div class="text-[11px] font-semibold text-gray-700">{{ t('common.languageManual') }}</div>
-          </label>
-
-          <div v-if="langMode === 'manual'" class="ml-6 flex flex-col gap-1">
-            <label
-              v-for="locale in ['zh-CN', 'en-US'] as const"
-              :key="locale"
-              class="flex items-center gap-2 cursor-pointer"
-            >
-              <input
-                type="radio"
-                name="language-locale"
-                :value="locale"
-                :disabled="saving"
-                :checked="langManualLocale === locale"
-                @change="applyLanguageLocale(locale)"
-              />
-              <span class="text-[11px] text-gray-700">{{ LOCALE_DISPLAY_NAMES[locale] }}</span>
+          <div class="py-6 first:pt-0">
+            <label class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <span class="text-[13px] font-medium">{{ t('settings.projectDuplicatePolicy.label') }}</span>
+              <select v-model="projectDuplicatePolicy" :disabled="!canEdit || saving"
+                class="sv-select w-56"
+                data-testid="project-duplicate-policy">
+                <option value="allow">{{ t('settings.projectDuplicatePolicy.allow') }}</option>
+                <option value="deny">{{ t('settings.projectDuplicatePolicy.deny') }}</option>
+                <option value="ask">{{ t('settings.projectDuplicatePolicy.ask') }}</option>
+              </select>
             </label>
           </div>
-        </div>
-      </div>
 
-          <SearchSettingsSection :disabled="disabled" />
+          <div class="py-6">
+            <div class="text-sm font-semibold">{{ t('common.language') }}</div>
+            <div class="sv-meta mt-1">{{ t('settings.categories.immediateActionHint') }}</div>
+
+            <div class="mt-3 flex flex-col">
+              <label class="flex cursor-pointer items-start gap-3 py-1.5">
+                <input
+                  type="radio"
+                  name="language-mode"
+                  value="system"
+                  class="mt-0.5 size-4 shrink-0"
+                  :disabled="saving"
+                  :checked="langMode === 'system'"
+                  @change="applyLanguageMode('system')"
+                />
+                <div>
+                  <div class="text-[13px] font-medium">{{ t('common.languageFollowSystem') }}</div>
+                  <div class="sv-meta">{{ t('common.languageFollowSystemDesc') }}</div>
+                </div>
+              </label>
+
+              <label class="flex cursor-pointer items-start gap-3 py-1.5">
+                <input
+                  type="radio"
+                  name="language-mode"
+                  value="manual"
+                  class="mt-0.5 size-4 shrink-0"
+                  :disabled="saving"
+                  :checked="langMode === 'manual'"
+                  @change="applyLanguageMode('manual')"
+                />
+                <div class="text-[13px] font-medium">{{ t('common.languageManual') }}</div>
+              </label>
+
+              <div v-if="langMode === 'manual'" class="ml-7 flex flex-col">
+                <label
+                  v-for="locale in ['zh-CN', 'en-US'] as const"
+                  :key="locale"
+                  class="flex cursor-pointer items-center gap-3 py-1.5"
+                >
+                  <input
+                    type="radio"
+                    name="language-locale"
+                    class="size-4 shrink-0"
+                    :value="locale"
+                    :disabled="saving"
+                    :checked="langManualLocale === locale"
+                    @change="applyLanguageLocale(locale)"
+                  />
+                  <span class="text-[13px]">{{ LOCALE_DISPLAY_NAMES[locale] }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="py-6">
+            <SearchSettingsSection :disabled="disabled" />
+          </div>
         </section>
 
         <section
@@ -2096,605 +2120,602 @@ onMounted(() => {
           v-show="activeCategory === 'providers'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('providers')"
-          class="space-y-3"
           data-testid="settings-pane-providers"
         >
-          <div class="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] text-blue-900" data-testid="settings-child-owned-actions">
+          <p class="sv-meta pb-5" data-testid="settings-child-owned-actions">
             {{ t('settings.categories.childOwnedActionHint') }}
-          </div>
+          </p>
 
-          <CompatibleProviderSettingsPanel :disabled="props.disabled || props.isRunning" />
+          <div class="divide-y divide-[color:var(--sv-line)] border-t border-[color:var(--sv-line)]">
+            <div class="py-6">
+              <CompatibleProviderSettingsPanel :disabled="props.disabled || props.isRunning" />
+            </div>
 
-      <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.openrouter.title') }}</div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-explicit-runtime-note">
-          {{ t('settings.openrouter.explicitProviderDesc') }}
-        </div>
+            <div class="py-6">
+              <div class="text-sm font-semibold">{{ t('settings.openrouter.title') }}</div>
+              <div class="sv-meta mt-1" data-testid="settings-openrouter-explicit-runtime-note">
+                {{ t('settings.openrouter.explicitProviderDesc') }}
+              </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.apiKey') }}</label>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span
-            class="text-[11px] font-semibold"
-            :class="openRouterCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
-            data-testid="settings-openrouter-key-status"
-          >
-            {{ credentialPresenceLabel(openRouterCredentialPresence) }}{{ credentialStorageLabel(openRouterCredentialBackend, openRouterCredentialPresence === 'configured', openRouterSessionOverridesPersistent) }}
-          </span>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="openRouterCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
-              data-testid="settings-openrouter-edit-key"
-              @click="beginOpenRouterCredentialEdit"
-            >{{ t('settings.credentials.replace') }}</button>
-            <button
-              v-else-if="openRouterCredentialPresence === 'unconfigured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
-              data-testid="settings-openrouter-edit-key"
-              @click="beginOpenRouterCredentialEdit"
-            >{{ t('settings.credentials.add') }}</button>
-            <button
-              v-else
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading || saving || credentialOperationPending('openrouter')"
-              data-testid="settings-openrouter-retry-status"
-              @click="loadOpenRouterCredentialStatus"
-            >{{ t('common.retry') }}</button>
-            <button
-              v-if="openRouterCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
-              data-testid="settings-openrouter-clear-key"
-              @click="clearApiKey"
-            >{{ t('common.clear') }}</button>
-          </div>
-        </div>
-        <div v-if="openRouterCredentialEditing" class="mt-2 flex items-center gap-2">
-          <input
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            type="password"
-            :placeholder="t('settings.openrouter.apiKeyPlaceholder')"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
-            data-testid="settings-openrouter-api-key"
-            v-model="apiKey"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter') || !apiKey.trim()"
-            data-testid="settings-openrouter-apply-key"
-            @click="() => applyOpenRouterCredential()"
-          >
-            {{ t('common.save') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
-            data-testid="settings-openrouter-cancel-key"
-            @click="cancelOpenRouterCredentialEdit"
-          >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div v-if="openRouterCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-openrouter-credential-error">
-          {{ credentialIssueSummary(openRouterCredentialIssue) }}
-          <ProviderFailureDetailsV2 :failure="openRouterCredentialIssue.failure" test-id-prefix="settings-openrouter-credential-failure" />
-        </div>
-        <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
-          <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.openrouter.apiKey') }}</label>
+              <div class="mt-1.5 flex min-h-7 items-center justify-between gap-3">
+                <span
+                  class="text-xs"
+                  :class="openRouterCredentialPresence === 'unknown' ? 'text-[color:var(--sv-danger)]' : 'text-[color:var(--sv-text-2)]'"
+                  data-testid="settings-openrouter-key-status"
+                >{{ credentialPresenceLabel(openRouterCredentialPresence) }}{{ credentialStorageLabel(openRouterCredentialBackend, openRouterCredentialPresence === 'configured', openRouterSessionOverridesPersistent) }}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="openRouterCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+                    data-testid="settings-openrouter-edit-key"
+                    @click="beginOpenRouterCredentialEdit"
+                  >{{ t('settings.credentials.replace') }}</button>
+                  <button
+                    v-else-if="openRouterCredentialPresence === 'unconfigured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+                    data-testid="settings-openrouter-edit-key"
+                    @click="beginOpenRouterCredentialEdit"
+                  >{{ t('settings.credentials.add') }}</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="sv-btn sv-btn-sm sv-btn-danger min-w-16"
+                    :disabled="loading || saving || credentialOperationPending('openrouter')"
+                    data-testid="settings-openrouter-retry-status"
+                    @click="loadOpenRouterCredentialStatus"
+                  >{{ t('common.retry') }}</button>
+                  <button
+                    v-if="openRouterCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+                    data-testid="settings-openrouter-clear-key"
+                    @click="clearApiKey"
+                  >{{ t('common.clear') }}</button>
+                </div>
+              </div>
+              <div v-if="openRouterCredentialEditing" class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="apiKey"
+                  type="password"
+                  :placeholder="t('settings.openrouter.apiKeyPlaceholder')"
+                  class="sv-input min-w-0 flex-1"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+                  data-testid="settings-openrouter-api-key"
+                />
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter') || !apiKey.trim()"
+                  data-testid="settings-openrouter-apply-key"
+                  @click="() => applyOpenRouterCredential()"
+                >
+                  {{ t('common.save') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+                  data-testid="settings-openrouter-cancel-key"
+                  @click="cancelOpenRouterCredentialEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="openRouterCredentialIssue" class="mt-2 text-xs text-[color:var(--sv-danger)]" data-testid="settings-openrouter-credential-error">
+                {{ credentialIssueSummary(openRouterCredentialIssue) }}
+                <ProviderFailureDetailsV2 :failure="openRouterCredentialIssue.failure" test-id-prefix="settings-openrouter-credential-failure" />
+              </div>
+              <div v-if="credentialWarnings.length" class="mt-1 flex flex-col gap-1 text-xs text-[color:var(--sv-warning)]" data-testid="settings-openrouter-credential-warnings">
+                <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
+              </div>
 
-        <div v-if="isDev" class="mt-4 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-amber-900">debug.echo_upstream_body</div>
-            <div class="text-[11px] text-amber-800">{{ t('settings.openrouter.debugEchoDesc') }}</div>
-          </div>
-          <label class="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              :aria-label="t('settings.openrouter.debugEchoDesc')"
-              :disabled="!canEdit || loading || saving"
-              v-model="debugEchoUpstreamBody"
-            />
-            <span class="text-[11px] text-amber-900">{{ debugEchoUpstreamBody ? t('common.on') : t('common.off') }}</span>
-          </label>
-        </div>
+              <div v-if="isDev" class="mt-5 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-mono text-xs font-medium">debug.echo_upstream_body</div>
+                  <div class="sv-meta">{{ t('settings.openrouter.debugEchoDesc') }}</div>
+                </div>
+                <label class="flex w-14 shrink-0 items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    class="size-4"
+                    :aria-label="t('settings.openrouter.debugEchoDesc')"
+                    :disabled="!canEdit || loading || saving"
+                    v-model="debugEchoUpstreamBody"
+                  />
+                  <span>{{ debugEchoUpstreamBody ? t('common.on') : t('common.off') }}</span>
+                </label>
+              </div>
+            </div>
 
-      </div>
+            <div class="py-6" data-testid="settings-openai-responses-experimental">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold">{{ t('settings.experimentalChat.openAIResponses.title') }}</div>
+                  <div class="sv-meta mt-1">
+                    {{ t('settings.experimentalChat.openAIResponses.desc') }}
+                  </div>
+                </div>
+                <span class="sv-meta shrink-0">
+                  {{ t('settings.experimentalChat.experimentalBadge') }}
+                </span>
+              </div>
 
-      <div class="rounded-lg border border-blue-200 bg-white p-3" data-testid="settings-openai-responses-experimental">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">{{ t('settings.experimentalChat.openAIResponses.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">
-              {{ t('settings.experimentalChat.openAIResponses.desc') }}
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.experimentalChat.openAIResponses.apiKeyLabel') }}</label>
+              <div class="mt-1.5 flex min-h-7 items-center justify-between gap-3">
+                <span
+                  class="text-xs"
+                  :class="openAIResponsesCredentialPresence === 'unknown' ? 'text-[color:var(--sv-danger)]' : 'text-[color:var(--sv-text-2)]'"
+                  data-testid="settings-openai-responses-key-status"
+                >{{ credentialPresenceLabel(openAIResponsesCredentialPresence) }}{{ credentialStorageLabel(openAIResponsesCredentialBackend, openAIResponsesCredentialPresence === 'configured', openAIResponsesSessionOverridesPersistent) }}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="openAIResponsesCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+                    data-testid="settings-openai-responses-edit-key"
+                    @click="beginOpenAIResponsesCredentialEdit"
+                  >{{ t('settings.credentials.replace') }}</button>
+                  <button
+                    v-else-if="openAIResponsesCredentialPresence === 'unconfigured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+                    data-testid="settings-openai-responses-edit-key"
+                    @click="beginOpenAIResponsesCredentialEdit"
+                  >{{ t('settings.credentials.add') }}</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="sv-btn sv-btn-sm sv-btn-danger min-w-16"
+                    :disabled="loading || saving || credentialOperationPending('openai_responses')"
+                    data-testid="settings-openai-responses-retry-status"
+                    @click="loadOpenAIResponsesCredentialStatus"
+                  >{{ t('common.retry') }}</button>
+                  <button
+                    v-if="openAIResponsesCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+                    data-testid="settings-openai-responses-clear-key"
+                    @click="clearOpenAIResponsesApiKey"
+                  >{{ t('common.clear') }}</button>
+                </div>
+              </div>
+              <div v-if="openAIResponsesCredentialEditing" class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="openAIResponsesApiKey"
+                  type="password"
+                  :placeholder="t('settings.experimentalChat.placeholder.openAIKey')"
+                  class="sv-input min-w-0 flex-1"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+                  data-testid="settings-openai-responses-api-key"
+                />
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses') || !openAIResponsesApiKey.trim()"
+                  data-testid="settings-openai-responses-apply-key"
+                  @click="() => applyOpenAIResponsesCredential()"
+                >
+                  {{ t('common.save') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+                  data-testid="settings-openai-responses-cancel-key"
+                  @click="cancelOpenAIResponsesCredentialEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="openAIResponsesCredentialIssue" class="mt-2 text-xs text-[color:var(--sv-danger)]" data-testid="settings-openai-responses-credential-error">
+                {{ credentialIssueSummary(openAIResponsesCredentialIssue) }}
+                <ProviderFailureDetailsV2 :failure="openAIResponsesCredentialIssue.failure" test-id-prefix="settings-openai-responses-credential-failure" />
+              </div>
+              <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 flex flex-col gap-1 text-xs text-[color:var(--sv-warning)]" data-testid="settings-openai-responses-credential-warnings">
+                <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
+              </div>
+            </div>
+
+            <div class="py-6" data-testid="settings-google-ai-studio-experimental">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold">{{ t('settings.experimentalChat.googleAIStudio.title') }}</div>
+                  <div class="sv-meta mt-1">
+                    {{ t('settings.experimentalChat.googleAIStudio.desc') }}
+                  </div>
+                </div>
+                <span class="sv-meta shrink-0">
+                  {{ t('settings.experimentalChat.experimentalBadge') }}
+                </span>
+              </div>
+
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.experimentalChat.googleAIStudio.apiKeyLabel') }}</label>
+              <div class="mt-1.5 flex min-h-7 items-center justify-between gap-3">
+                <span
+                  class="text-xs"
+                  :class="googleAIStudioCredentialPresence === 'unknown' ? 'text-[color:var(--sv-danger)]' : 'text-[color:var(--sv-text-2)]'"
+                  data-testid="settings-google-ai-studio-key-status"
+                >{{ credentialPresenceLabel(googleAIStudioCredentialPresence) }}{{ credentialStorageLabel(googleAIStudioCredentialBackend, googleAIStudioCredentialPresence === 'configured', googleAIStudioSessionOverridesPersistent) }}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="googleAIStudioCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+                    data-testid="settings-google-ai-studio-edit-key"
+                    @click="beginGoogleAIStudioCredentialEdit"
+                  >{{ t('settings.credentials.replace') }}</button>
+                  <button
+                    v-else-if="googleAIStudioCredentialPresence === 'unconfigured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+                    data-testid="settings-google-ai-studio-edit-key"
+                    @click="beginGoogleAIStudioCredentialEdit"
+                  >{{ t('settings.credentials.add') }}</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="sv-btn sv-btn-sm sv-btn-danger min-w-16"
+                    :disabled="loading || saving || credentialOperationPending('google_ai_studio')"
+                    data-testid="settings-google-ai-studio-retry-status"
+                    @click="loadGoogleAIStudioCredentialStatus"
+                  >{{ t('common.retry') }}</button>
+                  <button
+                    v-if="googleAIStudioCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+                    data-testid="settings-google-ai-studio-clear-key"
+                    @click="clearGoogleAIStudioApiKey"
+                  >{{ t('common.clear') }}</button>
+                </div>
+              </div>
+              <div v-if="googleAIStudioCredentialEditing" class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="googleAIStudioApiKey"
+                  type="password"
+                  :placeholder="t('settings.experimentalChat.placeholder.geminiKey')"
+                  class="sv-input min-w-0 flex-1"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+                  data-testid="settings-google-ai-studio-api-key"
+                />
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio') || !googleAIStudioApiKey.trim()"
+                  data-testid="settings-google-ai-studio-apply-key"
+                  @click="() => applyGoogleAIStudioCredential()"
+                >
+                  {{ t('common.save') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+                  data-testid="settings-google-ai-studio-cancel-key"
+                  @click="cancelGoogleAIStudioCredentialEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="googleAIStudioCredentialIssue" class="mt-2 text-xs text-[color:var(--sv-danger)]" data-testid="settings-google-ai-studio-credential-error">
+                {{ credentialIssueSummary(googleAIStudioCredentialIssue) }}
+                <ProviderFailureDetailsV2 :failure="googleAIStudioCredentialIssue.failure" test-id-prefix="settings-google-ai-studio-credential-failure" />
+              </div>
+              <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 flex flex-col gap-1 text-xs text-[color:var(--sv-warning)]" data-testid="settings-google-ai-studio-credential-warnings">
+                <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
+              </div>
+            </div>
+
+            <div class="py-6" data-testid="settings-anthropic-experimental">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold">{{ t('settings.experimentalChat.anthropic.title') }}</div>
+                  <div class="sv-meta mt-1">
+                    {{ t('settings.experimentalChat.anthropic.desc') }}
+                  </div>
+                </div>
+                <span class="sv-meta shrink-0">
+                  {{ t('settings.experimentalChat.experimentalBadge') }}
+                </span>
+              </div>
+
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.experimentalChat.anthropic.apiKeyLabel') }}</label>
+              <div class="mt-1.5 flex min-h-7 items-center justify-between gap-3">
+                <span
+                  class="text-xs"
+                  :class="anthropicCredentialPresence === 'unknown' ? 'text-[color:var(--sv-danger)]' : 'text-[color:var(--sv-text-2)]'"
+                  data-testid="settings-anthropic-key-status"
+                >{{ credentialPresenceLabel(anthropicCredentialPresence) }}{{ credentialStorageLabel(anthropicCredentialBackend, anthropicCredentialPresence === 'configured', anthropicSessionOverridesPersistent) }}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="anthropicCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+                    data-testid="settings-anthropic-edit-key"
+                    @click="beginAnthropicCredentialEdit"
+                  >{{ t('settings.credentials.replace') }}</button>
+                  <button
+                    v-else-if="anthropicCredentialPresence === 'unconfigured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+                    data-testid="settings-anthropic-edit-key"
+                    @click="beginAnthropicCredentialEdit"
+                  >{{ t('settings.credentials.add') }}</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="sv-btn sv-btn-sm sv-btn-danger min-w-16"
+                    :disabled="loading || saving || credentialOperationPending('anthropic_messages')"
+                    data-testid="settings-anthropic-retry-status"
+                    @click="loadAnthropicCredentialStatus"
+                  >{{ t('common.retry') }}</button>
+                  <button
+                    v-if="anthropicCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+                    data-testid="settings-anthropic-clear-key"
+                    @click="clearAnthropicApiKey"
+                  >{{ t('common.clear') }}</button>
+                </div>
+              </div>
+              <div v-if="anthropicCredentialEditing" class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="anthropicApiKey"
+                  type="password"
+                  :placeholder="t('settings.experimentalChat.placeholder.anthropicKey')"
+                  class="sv-input min-w-0 flex-1"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+                  data-testid="settings-anthropic-api-key"
+                />
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages') || !anthropicApiKey.trim()"
+                  data-testid="settings-anthropic-apply-key"
+                  @click="() => applyAnthropicCredential()"
+                >
+                  {{ t('common.save') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+                  data-testid="settings-anthropic-cancel-key"
+                  @click="cancelAnthropicCredentialEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="anthropicCredentialIssue" class="mt-2 text-xs text-[color:var(--sv-danger)]" data-testid="settings-anthropic-credential-error">
+                {{ credentialIssueSummary(anthropicCredentialIssue) }}
+                <ProviderFailureDetailsV2 :failure="anthropicCredentialIssue.failure" test-id-prefix="settings-anthropic-credential-failure" />
+              </div>
+              <div v-if="anthropicCredentialWarnings.length" class="mt-1 flex flex-col gap-1 text-xs text-[color:var(--sv-warning)]" data-testid="settings-anthropic-credential-warnings">
+                <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
+              </div>
+            </div>
+
+            <div class="py-6" data-testid="settings-deepseek-experimental">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold">{{ t('settings.experimentalChat.deepSeek.title') }}</div>
+                  <div class="sv-meta mt-1">
+                    {{ t('settings.experimentalChat.deepSeek.desc') }}
+                  </div>
+                </div>
+                <span class="sv-meta shrink-0">
+                  {{ t('settings.experimentalChat.experimentalBadge') }}
+                </span>
+              </div>
+
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.experimentalChat.deepSeek.apiKeyLabel') }}</label>
+              <div class="mt-1.5 flex min-h-7 items-center justify-between gap-3">
+                <span
+                  class="text-xs"
+                  :class="deepSeekCredentialPresence === 'unknown' ? 'text-[color:var(--sv-danger)]' : 'text-[color:var(--sv-text-2)]'"
+                  data-testid="settings-deepseek-key-status"
+                >{{ credentialPresenceLabel(deepSeekCredentialPresence) }}{{ credentialStorageLabel(deepSeekCredentialBackend, deepSeekCredentialPresence === 'configured', deepSeekSessionOverridesPersistent) }}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="deepSeekCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+                    data-testid="settings-deepseek-edit-key"
+                    @click="beginDeepSeekCredentialEdit"
+                  >{{ t('settings.credentials.replace') }}</button>
+                  <button
+                    v-else-if="deepSeekCredentialPresence === 'unconfigured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm min-w-16"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+                    data-testid="settings-deepseek-edit-key"
+                    @click="beginDeepSeekCredentialEdit"
+                  >{{ t('settings.credentials.add') }}</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="sv-btn sv-btn-sm sv-btn-danger min-w-16"
+                    :disabled="loading || saving || credentialOperationPending('deepseek')"
+                    data-testid="settings-deepseek-retry-status"
+                    @click="loadDeepSeekCredentialStatus"
+                  >{{ t('common.retry') }}</button>
+                  <button
+                    v-if="deepSeekCredentialPresence === 'configured'"
+                    type="button"
+                    class="sv-btn sv-btn-sm"
+                    :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+                    data-testid="settings-deepseek-clear-key"
+                    @click="clearDeepSeekApiKey"
+                  >{{ t('common.clear') }}</button>
+                </div>
+              </div>
+              <div v-if="deepSeekCredentialEditing" class="mt-2 flex items-center gap-2">
+                <input
+                  v-model="deepSeekApiKey"
+                  type="password"
+                  :placeholder="t('settings.experimentalChat.placeholder.deepSeekKey')"
+                  class="sv-input min-w-0 flex-1"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+                  data-testid="settings-deepseek-api-key"
+                />
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek') || !deepSeekApiKey.trim()"
+                  data-testid="settings-deepseek-apply-key"
+                  @click="() => applyDeepSeekCredential()"
+                >
+                  {{ t('common.save') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-sm"
+                  :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+                  data-testid="settings-deepseek-cancel-key"
+                  @click="cancelDeepSeekCredentialEdit"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="deepSeekCredentialIssue" class="mt-2 text-xs text-[color:var(--sv-danger)]" data-testid="settings-deepseek-credential-error">
+                {{ credentialIssueSummary(deepSeekCredentialIssue) }}
+                <ProviderFailureDetailsV2 :failure="deepSeekCredentialIssue.failure" test-id-prefix="settings-deepseek-credential-failure" />
+              </div>
+              <div v-if="deepSeekCredentialWarnings.length" class="mt-1 flex flex-col gap-1 text-xs text-[color:var(--sv-warning)]" data-testid="settings-deepseek-credential-warnings">
+                <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>
+              </div>
+            </div>
+
+            <div class="py-6" data-testid="settings-local-endpoint-diagnostics">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold">{{ t('settings.localEndpoint.title') }}</div>
+                  <div class="sv-meta mt-1">{{ t('settings.localEndpoint.desc') }}</div>
+                </div>
+                <span class="sv-meta shrink-0">
+                  {{ t('settings.localEndpoint.diagnosticsOnly') }}
+                </span>
+              </div>
+
+              <label class="mt-4 block text-[13px] font-medium">{{ t('settings.localEndpoint.urlLabel') }}</label>
+              <div class="mt-1.5 flex flex-wrap items-center gap-2">
+                <input
+                  v-model="localEndpointUrl"
+                  type="url"
+                  placeholder="http://localhost:1234"
+                  class="sv-input min-w-[14rem] flex-1"
+                  :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
+                  data-testid="settings-local-endpoint-url"
+                />
+                <button
+                  type="button"
+                  class="sv-btn min-w-28"
+                  :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
+                  data-testid="settings-local-endpoint-probe"
+                  @click="probeLocalEndpoint"
+                >
+                  {{ localEndpointProbeLoading ? t('settings.localEndpoint.probing') : t('settings.localEndpoint.testProbe') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn min-w-28"
+                  :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
+                  data-testid="settings-local-endpoint-stream-probe"
+                  @click="streamProbeLocalEndpoint"
+                >
+                  {{ localEndpointStreamProbeLoading ? t('settings.localEndpoint.testing') : t('settings.localEndpoint.testStreaming') }}
+                </button>
+                <button
+                  type="button"
+                  class="sv-btn sv-btn-primary min-w-28"
+                  :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading || !localEndpointUrl.trim()"
+                  data-testid="settings-local-endpoint-save-url"
+                  @click="applyLocalEndpointChatSettings"
+                >
+                  保存端点
+                </button>
+              </div>
+
+              <div
+                v-if="localEndpointProbeResult"
+                class="mt-3 text-xs text-[color:var(--sv-text-2)]"
+                data-testid="settings-local-endpoint-probe-result"
+              >
+                <template v-if="localEndpointProbeResult.ok">
+                  <div>
+                    {{ t('settings.localEndpoint.statusLabel') }}
+                    <span data-testid="settings-local-endpoint-probe-status">{{ localEndpointProbeResult.diagnostics.status }}</span>
+                    · {{ t('settings.localEndpoint.familyLabel') }}
+                    <span data-testid="settings-local-endpoint-probe-family">{{ localEndpointProbeResult.diagnostics.endpointFamily }}</span>
+                  </div>
+                  <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointProbeResult.diagnostics.safeBaseUrl }}</div>
+                  <div class="mt-1">
+                    {{ t('settings.localEndpoint.modelsLabel') }}
+                    <span v-if="localEndpointProbeResult.diagnostics.modelList.ok" data-testid="settings-local-endpoint-probe-models">
+                      {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : t('settings.localEndpoint.noModelsFound') }}
+                      <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> {{ t('settings.localEndpoint.truncated') }}</span>
+                    </span>
+                    <span v-else data-testid="settings-local-endpoint-probe-models">
+                      {{ tf('settings.localEndpoint.modelListFailed', { message: localEndpointProbeResult.diagnostics.modelList.message }) }}
+                    </span>
+                  </div>
+                  <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
+                    {{ t('settings.localEndpoint.textCapabilitySummary') }}
+                  </div>
+                </template>
+                <template v-else>
+                  <div data-testid="settings-local-endpoint-probe-error">
+                    {{ localEndpointProbeResult.message }}
+                  </div>
+                </template>
+              </div>
+
+              <div
+                v-if="localEndpointStreamProbeResult"
+                class="mt-3 text-xs text-[color:var(--sv-text-2)]"
+                data-testid="settings-local-endpoint-stream-probe-result"
+              >
+                <template v-if="localEndpointStreamProbeResult.ok">
+                  <div>
+                    {{ t('settings.localEndpoint.streamLabel') }}
+                    <span data-testid="settings-local-endpoint-stream-status">{{ localEndpointStreamProbeResult.diagnostics.status }}</span>
+                    · {{ t('settings.localEndpoint.familyLabel') }}
+                    <span data-testid="settings-local-endpoint-stream-family">{{ localEndpointStreamProbeResult.diagnostics.endpointFamily }}</span>
+                  </div>
+                  <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointStreamProbeResult.diagnostics.safeBaseUrl }}</div>
+                  <div class="mt-1" data-testid="settings-local-endpoint-stream-evidence">
+                    {{ t('settings.localEndpoint.evidenceLabel') }} {{ localEndpointStreamProbeResult.diagnostics.evidence }}
+                    <span v-if="localEndpointStreamProbeResult.diagnostics.textDeltaPreview">
+                      · {{ localEndpointStreamProbeResult.diagnostics.textDeltaPreview }}
+                    </span>
+                  </div>
+                  <div class="mt-1" data-testid="settings-local-endpoint-stream-capabilities">
+                    {{ t('settings.localEndpoint.streamingCapabilitySummary') }}
+                  </div>
+                </template>
+                <template v-else>
+                  <div data-testid="settings-local-endpoint-stream-error">
+                    {{ localEndpointStreamProbeResult.message }}
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
-          <span class="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800">
-            {{ t('settings.experimentalChat.experimentalBadge') }}
-          </span>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.openAIResponses.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span
-            class="text-[11px] font-semibold"
-            :class="openAIResponsesCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
-            data-testid="settings-openai-responses-key-status"
-          >{{ credentialPresenceLabel(openAIResponsesCredentialPresence) }}{{ credentialStorageLabel(openAIResponsesCredentialBackend, openAIResponsesCredentialPresence === 'configured', openAIResponsesSessionOverridesPersistent) }}</span>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="openAIResponsesCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
-              data-testid="settings-openai-responses-edit-key"
-              @click="beginOpenAIResponsesCredentialEdit"
-            >{{ t('settings.credentials.replace') }}</button>
-            <button
-              v-else-if="openAIResponsesCredentialPresence === 'unconfigured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
-              data-testid="settings-openai-responses-edit-key"
-              @click="beginOpenAIResponsesCredentialEdit"
-            >{{ t('settings.credentials.add') }}</button>
-            <button
-              v-else
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading || saving || credentialOperationPending('openai_responses')"
-              data-testid="settings-openai-responses-retry-status"
-              @click="loadOpenAIResponsesCredentialStatus"
-            >{{ t('common.retry') }}</button>
-            <button
-              v-if="openAIResponsesCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
-              data-testid="settings-openai-responses-clear-key"
-              @click="clearOpenAIResponsesApiKey"
-            >{{ t('common.clear') }}</button>
-          </div>
-        </div>
-        <div v-if="openAIResponsesCredentialEditing" class="mt-2 flex items-center gap-2">
-          <input
-            v-model="openAIResponsesApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.openAIKey')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
-            data-testid="settings-openai-responses-api-key"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses') || !openAIResponsesApiKey.trim()"
-            data-testid="settings-openai-responses-apply-key"
-            @click="() => applyOpenAIResponsesCredential()"
-          >
-            {{ t('common.save') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
-            data-testid="settings-openai-responses-cancel-key"
-            @click="cancelOpenAIResponsesCredentialEdit"
-          >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div v-if="openAIResponsesCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-openai-responses-credential-error">
-          {{ credentialIssueSummary(openAIResponsesCredentialIssue) }}
-          <ProviderFailureDetailsV2 :failure="openAIResponsesCredentialIssue.failure" test-id-prefix="settings-openai-responses-credential-failure" />
-        </div>
-        <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openai-responses-credential-warnings">
-          <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-      </div>
-
-      <div class="rounded-lg border border-emerald-200 bg-white p-3" data-testid="settings-google-ai-studio-experimental">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">{{ t('settings.experimentalChat.googleAIStudio.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">
-              {{ t('settings.experimentalChat.googleAIStudio.desc') }}
-            </div>
-          </div>
-          <span class="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800">
-            {{ t('settings.experimentalChat.experimentalBadge') }}
-          </span>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.googleAIStudio.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span
-            class="text-[11px] font-semibold"
-            :class="googleAIStudioCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
-            data-testid="settings-google-ai-studio-key-status"
-          >{{ credentialPresenceLabel(googleAIStudioCredentialPresence) }}{{ credentialStorageLabel(googleAIStudioCredentialBackend, googleAIStudioCredentialPresence === 'configured', googleAIStudioSessionOverridesPersistent) }}</span>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="googleAIStudioCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
-              data-testid="settings-google-ai-studio-edit-key"
-              @click="beginGoogleAIStudioCredentialEdit"
-            >{{ t('settings.credentials.replace') }}</button>
-            <button
-              v-else-if="googleAIStudioCredentialPresence === 'unconfigured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
-              data-testid="settings-google-ai-studio-edit-key"
-              @click="beginGoogleAIStudioCredentialEdit"
-            >{{ t('settings.credentials.add') }}</button>
-            <button
-              v-else
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading || saving || credentialOperationPending('google_ai_studio')"
-              data-testid="settings-google-ai-studio-retry-status"
-              @click="loadGoogleAIStudioCredentialStatus"
-            >{{ t('common.retry') }}</button>
-            <button
-              v-if="googleAIStudioCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
-              data-testid="settings-google-ai-studio-clear-key"
-              @click="clearGoogleAIStudioApiKey"
-            >{{ t('common.clear') }}</button>
-          </div>
-        </div>
-        <div v-if="googleAIStudioCredentialEditing" class="mt-2 flex items-center gap-2">
-          <input
-            v-model="googleAIStudioApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.geminiKey')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
-            data-testid="settings-google-ai-studio-api-key"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio') || !googleAIStudioApiKey.trim()"
-            data-testid="settings-google-ai-studio-apply-key"
-            @click="() => applyGoogleAIStudioCredential()"
-          >
-            {{ t('common.save') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
-            data-testid="settings-google-ai-studio-cancel-key"
-            @click="cancelGoogleAIStudioCredentialEdit"
-          >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div v-if="googleAIStudioCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-google-ai-studio-credential-error">
-          {{ credentialIssueSummary(googleAIStudioCredentialIssue) }}
-          <ProviderFailureDetailsV2 :failure="googleAIStudioCredentialIssue.failure" test-id-prefix="settings-google-ai-studio-credential-failure" />
-        </div>
-        <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-google-ai-studio-credential-warnings">
-          <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-      </div>
-
-      <div class="rounded-lg border border-rose-200 bg-white p-3" data-testid="settings-anthropic-experimental">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-rose-800">{{ t('settings.experimentalChat.anthropic.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">
-              {{ t('settings.experimentalChat.anthropic.desc') }}
-            </div>
-          </div>
-          <span class="shrink-0 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-800">
-            {{ t('settings.experimentalChat.experimentalBadge') }}
-          </span>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.anthropic.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span
-            class="text-[11px] font-semibold"
-            :class="anthropicCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
-            data-testid="settings-anthropic-key-status"
-          >{{ credentialPresenceLabel(anthropicCredentialPresence) }}{{ credentialStorageLabel(anthropicCredentialBackend, anthropicCredentialPresence === 'configured', anthropicSessionOverridesPersistent) }}</span>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="anthropicCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
-              data-testid="settings-anthropic-edit-key"
-              @click="beginAnthropicCredentialEdit"
-            >{{ t('settings.credentials.replace') }}</button>
-            <button
-              v-else-if="anthropicCredentialPresence === 'unconfigured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
-              data-testid="settings-anthropic-edit-key"
-              @click="beginAnthropicCredentialEdit"
-            >{{ t('settings.credentials.add') }}</button>
-            <button
-              v-else
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading || saving || credentialOperationPending('anthropic_messages')"
-              data-testid="settings-anthropic-retry-status"
-              @click="loadAnthropicCredentialStatus"
-            >{{ t('common.retry') }}</button>
-            <button
-              v-if="anthropicCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
-              data-testid="settings-anthropic-clear-key"
-              @click="clearAnthropicApiKey"
-            >{{ t('common.clear') }}</button>
-          </div>
-        </div>
-        <div v-if="anthropicCredentialEditing" class="mt-2 flex items-center gap-2">
-          <input
-            v-model="anthropicApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.anthropicKey')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
-            data-testid="settings-anthropic-api-key"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages') || !anthropicApiKey.trim()"
-            data-testid="settings-anthropic-apply-key"
-            @click="() => applyAnthropicCredential()"
-          >
-            {{ t('common.save') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
-            data-testid="settings-anthropic-cancel-key"
-            @click="cancelAnthropicCredentialEdit"
-          >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div v-if="anthropicCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-anthropic-credential-error">
-          {{ credentialIssueSummary(anthropicCredentialIssue) }}
-          <ProviderFailureDetailsV2 :failure="anthropicCredentialIssue.failure" test-id-prefix="settings-anthropic-credential-failure" />
-        </div>
-        <div v-if="anthropicCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-anthropic-credential-warnings">
-          <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-      </div>
-
-      <div class="rounded-lg border border-cyan-200 bg-white p-3" data-testid="settings-deepseek-experimental">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-cyan-800">{{ t('settings.experimentalChat.deepSeek.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">
-              {{ t('settings.experimentalChat.deepSeek.desc') }}
-            </div>
-          </div>
-          <span class="shrink-0 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-800">
-            {{ t('settings.experimentalChat.experimentalBadge') }}
-          </span>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.deepSeek.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span
-            class="text-[11px] font-semibold"
-            :class="deepSeekCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
-            data-testid="settings-deepseek-key-status"
-          >{{ credentialPresenceLabel(deepSeekCredentialPresence) }}{{ credentialStorageLabel(deepSeekCredentialBackend, deepSeekCredentialPresence === 'configured', deepSeekSessionOverridesPersistent) }}</span>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="deepSeekCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
-              data-testid="settings-deepseek-edit-key"
-              @click="beginDeepSeekCredentialEdit"
-            >{{ t('settings.credentials.replace') }}</button>
-            <button
-              v-else-if="deepSeekCredentialPresence === 'unconfigured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
-              data-testid="settings-deepseek-edit-key"
-              @click="beginDeepSeekCredentialEdit"
-            >{{ t('settings.credentials.add') }}</button>
-            <button
-              v-else
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading || saving || credentialOperationPending('deepseek')"
-              data-testid="settings-deepseek-retry-status"
-              @click="loadDeepSeekCredentialStatus"
-            >{{ t('common.retry') }}</button>
-            <button
-              v-if="deepSeekCredentialPresence === 'configured'"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
-              data-testid="settings-deepseek-clear-key"
-              @click="clearDeepSeekApiKey"
-            >{{ t('common.clear') }}</button>
-          </div>
-        </div>
-        <div v-if="deepSeekCredentialEditing" class="mt-2 flex items-center gap-2">
-          <input
-            v-model="deepSeekApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.deepSeekKey')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
-            data-testid="settings-deepseek-api-key"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek') || !deepSeekApiKey.trim()"
-            data-testid="settings-deepseek-apply-key"
-            @click="() => applyDeepSeekCredential()"
-          >
-            {{ t('common.save') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
-            data-testid="settings-deepseek-cancel-key"
-            @click="cancelDeepSeekCredentialEdit"
-          >
-            {{ t('common.cancel') }}
-          </button>
-        </div>
-        <div v-if="deepSeekCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-deepseek-credential-error">
-          {{ credentialIssueSummary(deepSeekCredentialIssue) }}
-          <ProviderFailureDetailsV2 :failure="deepSeekCredentialIssue.failure" test-id-prefix="settings-deepseek-credential-failure" />
-        </div>
-        <div v-if="deepSeekCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-deepseek-credential-warnings">
-          <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-      </div>
-
-      <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-local-endpoint-diagnostics">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.localEndpoint.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.localEndpoint.desc') }}</div>
-          </div>
-          <span class="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-            {{ t('settings.localEndpoint.diagnosticsOnly') }}
-          </span>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.localEndpoint.urlLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            v-model="localEndpointUrl"
-            type="url"
-            placeholder="http://localhost:1234"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
-            data-testid="settings-local-endpoint-url"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
-            data-testid="settings-local-endpoint-probe"
-            @click="probeLocalEndpoint"
-          >
-            {{ localEndpointProbeLoading ? t('settings.localEndpoint.probing') : t('settings.localEndpoint.testProbe') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
-            data-testid="settings-local-endpoint-stream-probe"
-            @click="streamProbeLocalEndpoint"
-          >
-            {{ localEndpointStreamProbeLoading ? t('settings.localEndpoint.testing') : t('settings.localEndpoint.testStreaming') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-amber-700 bg-amber-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800 disabled:opacity-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading || !localEndpointUrl.trim()"
-            data-testid="settings-local-endpoint-save-url"
-            @click="applyLocalEndpointChatSettings"
-          >
-            保存端点
-          </button>
-        </div>
-
-        <div
-          v-if="localEndpointProbeResult"
-          class="mt-3 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
-          data-testid="settings-local-endpoint-probe-result"
-        >
-          <template v-if="localEndpointProbeResult.ok">
-            <div>
-              {{ t('settings.localEndpoint.statusLabel') }}
-              <span data-testid="settings-local-endpoint-probe-status">{{ localEndpointProbeResult.diagnostics.status }}</span>
-              · {{ t('settings.localEndpoint.familyLabel') }}
-              <span data-testid="settings-local-endpoint-probe-family">{{ localEndpointProbeResult.diagnostics.endpointFamily }}</span>
-            </div>
-            <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointProbeResult.diagnostics.safeBaseUrl }}</div>
-            <div class="mt-1">
-              {{ t('settings.localEndpoint.modelsLabel') }}
-              <span v-if="localEndpointProbeResult.diagnostics.modelList.ok" data-testid="settings-local-endpoint-probe-models">
-                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : t('settings.localEndpoint.noModelsFound') }}
-                <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> {{ t('settings.localEndpoint.truncated') }}</span>
-              </span>
-              <span v-else data-testid="settings-local-endpoint-probe-models">
-                {{ tf('settings.localEndpoint.modelListFailed', { message: localEndpointProbeResult.diagnostics.modelList.message }) }}
-              </span>
-            </div>
-            <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
-              {{ t('settings.localEndpoint.textCapabilitySummary') }}
-            </div>
-          </template>
-          <template v-else>
-            <div data-testid="settings-local-endpoint-probe-error">
-              {{ localEndpointProbeResult.message }}
-            </div>
-          </template>
-        </div>
-
-        <div
-          v-if="localEndpointStreamProbeResult"
-          class="mt-3 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
-          data-testid="settings-local-endpoint-stream-probe-result"
-        >
-          <template v-if="localEndpointStreamProbeResult.ok">
-            <div>
-              {{ t('settings.localEndpoint.streamLabel') }}
-              <span data-testid="settings-local-endpoint-stream-status">{{ localEndpointStreamProbeResult.diagnostics.status }}</span>
-              · {{ t('settings.localEndpoint.familyLabel') }}
-              <span data-testid="settings-local-endpoint-stream-family">{{ localEndpointStreamProbeResult.diagnostics.endpointFamily }}</span>
-            </div>
-            <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointStreamProbeResult.diagnostics.safeBaseUrl }}</div>
-            <div class="mt-1" data-testid="settings-local-endpoint-stream-evidence">
-              {{ t('settings.localEndpoint.evidenceLabel') }} {{ localEndpointStreamProbeResult.diagnostics.evidence }}
-              <span v-if="localEndpointStreamProbeResult.diagnostics.textDeltaPreview">
-                · {{ localEndpointStreamProbeResult.diagnostics.textDeltaPreview }}
-              </span>
-            </div>
-            <div class="mt-1" data-testid="settings-local-endpoint-stream-capabilities">
-              {{ t('settings.localEndpoint.streamingCapabilitySummary') }}
-            </div>
-          </template>
-          <template v-else>
-            <div data-testid="settings-local-endpoint-stream-error">
-              {{ localEndpointStreamProbeResult.message }}
-            </div>
-          </template>
-        </div>
-      </div>
         </section>
 
         <section
@@ -2702,7 +2723,6 @@ onMounted(() => {
           v-show="activeCategory === 'models-capabilities'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('models-capabilities')"
-          class="space-y-3"
           data-testid="settings-pane-models-capabilities"
         >
           <ModelsAndCapabilitiesSettingsPanel
@@ -2717,19 +2737,19 @@ onMounted(() => {
           v-show="activeCategory === 'model-catalog'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('model-catalog')"
-          class="space-y-3"
+          class="divide-y divide-[color:var(--sv-line)]"
           data-testid="settings-pane-model-catalog"
         >
-          <div class="rounded-lg border border-gray-200 bg-white p-3">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.catalog.policyTitle') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.catalog.policyDesc') }}</div>
+          <div class="py-6 first:pt-0">
+            <div class="text-sm font-semibold">{{ t('settings.catalog.policyTitle') }}</div>
+            <div class="sv-meta mt-1">{{ t('settings.catalog.policyDesc') }}</div>
 
-            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+            <div class="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.policyTarget') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.policyTarget') }}</span>
                 <select
                   v-model="catalogPolicyTarget"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select mt-1.5"
                   :disabled="!canEdit || loading || saving"
                   data-testid="settings-catalog-policy-target"
                 >
@@ -2739,10 +2759,10 @@ onMounted(() => {
               </label>
 
               <label v-if="catalogPolicyTarget === 'provider_override'" class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.provider') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.provider') }}</span>
                 <select
                   v-model="catalogSelectedProviderKey"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select mt-1.5"
                   :disabled="!canEdit || loading || saving"
                   data-testid="settings-catalog-policy-provider"
                 >
@@ -2755,10 +2775,11 @@ onMounted(() => {
 
             <label
               v-if="catalogPolicyTarget === 'provider_override'"
-              class="mt-3 flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
+              class="mt-4 flex items-center gap-2 text-[13px]"
             >
               <input
                 type="checkbox"
+                class="size-4"
                 :checked="catalogProviderOverrideEnabled[catalogSelectedProviderKey] === true"
                 :disabled="!canEdit || loading || saving"
                 data-testid="settings-catalog-provider-override-enabled"
@@ -2767,12 +2788,12 @@ onMounted(() => {
               <span>{{ t('settings.catalog.overrideGlobalPolicy') }}</span>
             </label>
 
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div class="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.startupSyncPolicy') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.startupSyncPolicy') }}</span>
                 <select
                   v-model="activeCatalogStartupSyncPolicy"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-select mt-1.5"
                   :disabled="catalogPolicyControlsDisabled"
                   data-testid="settings-catalog-startup-sync-policy"
                 >
@@ -2783,10 +2804,10 @@ onMounted(() => {
               </label>
 
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.pickerOpenSyncPolicy') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.pickerOpenSyncPolicy') }}</span>
                 <select
                   v-model="activeCatalogPickerOpenSyncPolicy"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-select mt-1.5"
                   :disabled="catalogPolicyControlsDisabled"
                   data-testid="settings-catalog-picker-open-sync-policy"
                 >
@@ -2797,10 +2818,10 @@ onMounted(() => {
               </label>
 
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.listUpdateMode') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.listUpdateMode') }}</span>
                 <select
                   v-model="activeCatalogListUpdateMode"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-select mt-1.5"
                   :disabled="catalogPolicyControlsDisabled"
                   data-testid="settings-catalog-list-update-mode"
                 >
@@ -2811,10 +2832,10 @@ onMounted(() => {
               </label>
 
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.freshness') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.freshness') }}</span>
                 <select
                   v-model="activeCatalogFreshnessChoice"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-select mt-1.5"
                   :disabled="catalogPolicyControlsDisabled"
                   data-testid="settings-catalog-freshness"
                 >
@@ -2830,7 +2851,7 @@ onMounted(() => {
                   min="0"
                   step="1"
                   :value="activeCatalogFreshnessMs ?? ''"
-                  class="mt-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-input mt-2"
                   :disabled="catalogPolicyControlsDisabled"
                   :aria-label="t('settings.catalog.customDurationMs')"
                   data-testid="settings-catalog-freshness-custom"
@@ -2839,10 +2860,10 @@ onMounted(() => {
               </label>
 
               <label class="block">
-                <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.retention') }}</span>
+                <span class="text-[13px] font-medium">{{ t('settings.catalog.retention') }}</span>
                 <select
                   v-model="activeCatalogRetentionChoice"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-select mt-1.5"
                   :disabled="catalogPolicyControlsDisabled"
                   data-testid="settings-catalog-retention"
                 >
@@ -2857,7 +2878,7 @@ onMounted(() => {
                   min="0"
                   step="1"
                   :value="activeCatalogRetentionMs === 'never' ? '' : activeCatalogRetentionMs"
-                  class="mt-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50"
+                  class="sv-input mt-2"
                   :disabled="catalogPolicyControlsDisabled"
                   :aria-label="t('settings.catalog.customDurationMs')"
                   data-testid="settings-catalog-retention-custom"
@@ -2867,44 +2888,44 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="rounded-lg border border-gray-200 bg-white p-3">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.catalog.providerStatusTitle') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.catalog.providerStatusDesc') }}</div>
+          <div class="py-6">
+            <div class="text-sm font-semibold">{{ t('settings.catalog.providerStatusTitle') }}</div>
+            <div class="sv-meta mt-1">{{ t('settings.catalog.providerStatusDesc') }}</div>
 
-            <div class="mt-3 space-y-2">
+            <div class="mt-2">
               <div
                 v-for="descriptor in catalogProviderDescriptors"
                 :key="descriptor.providerKey"
-                class="rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2"
+                class="sv-divider-t py-3 first:border-t-0"
                 :data-testid="`settings-catalog-provider-${descriptor.providerKey}`"
               >
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-gray-800">{{ descriptor.displayName }}</div>
-                    <div class="mt-1 text-[11px] text-gray-500" :data-testid="`settings-catalog-status-${descriptor.providerKey}`">
+                    <div class="text-[13px] font-medium">{{ descriptor.displayName }}</div>
+                    <div class="sv-meta mt-0.5" :data-testid="`settings-catalog-status-${descriptor.providerKey}`">
                       {{ catalogStatusLabel(catalogProviderStatuses[descriptor.providerKey]?.status) }}
                       · {{ tf('settings.catalog.modelCount', { count: catalogProviderStatuses[descriptor.providerKey]?.modelCount ?? 0 }) }}
                       · {{ formatCatalogTimestamp(catalogProviderStatuses[descriptor.providerKey]?.lastSyncAtMs) }}
                     </div>
-                    <div v-if="catalogProviderStatuses[descriptor.providerKey]?.errorCode" class="mt-1 text-[11px] text-red-700">
+                    <div v-if="catalogProviderStatuses[descriptor.providerKey]?.errorCode" class="mt-1 text-xs text-[color:var(--sv-danger)]">
                       {{ catalogProviderStatuses[descriptor.providerKey]?.errorCode }}
                     </div>
                     <div
                       v-if="catalogProviderStatuses[descriptor.providerKey]?.status === 'failed' && (catalogProviderStatuses[descriptor.providerKey]?.modelCount ?? 0) > 0"
-                      class="mt-1 text-[11px] text-amber-700"
+                      class="mt-1 text-xs text-[color:var(--sv-warning)]"
                     >
                       {{ t('errors.modelCatalog.usingLastKnownGood') }}
                     </div>
                     <div
                       v-else-if="catalogProviderIsStale(descriptor.providerKey)"
-                      class="mt-1 text-[11px] text-amber-700"
+                      class="mt-1 text-xs text-[color:var(--sv-warning)]"
                     >
                       {{ t('errors.modelCatalog.staleSnapshot') }}
                     </div>
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-blue-600 bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm min-w-24"
                     :disabled="!canEdit || loading || saving || catalogProviderStatusLoading[descriptor.providerKey] === true"
                     :data-testid="`settings-catalog-refresh-${descriptor.providerKey}`"
                     @click="refreshCatalogProvider(descriptor.providerKey)"
@@ -2914,14 +2935,14 @@ onMounted(() => {
                 </div>
                 <div
                   v-if="catalogProviderPendingRevisions[descriptor.providerKey]"
-                  class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-blue-700"
+                  class="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--sv-text-2)]"
                   :data-testid="`settings-catalog-pending-${descriptor.providerKey}`"
                 >
-                  <span v-if="catalogRuntimeSnapshot[descriptor.providerKey]?.pendingEmpty" class="text-amber-700" :data-testid="`settings-catalog-pending-empty-${descriptor.providerKey}`">{{ t('settings.catalog.pendingEmptyConfirm') }}</span>
+                  <span v-if="catalogRuntimeSnapshot[descriptor.providerKey]?.pendingEmpty" class="text-[color:var(--sv-warning)]" :data-testid="`settings-catalog-pending-empty-${descriptor.providerKey}`">{{ t('settings.catalog.pendingEmptyConfirm') }}</span>
                   <span v-else>{{ t('settings.catalog.pendingAvailable') }}</span>
                   <button
                     type="button"
-                    class="rounded border border-blue-200 bg-white px-2 py-1 font-semibold hover:bg-blue-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm"
                     :disabled="catalogProviderStatusLoading[descriptor.providerKey] === true"
                     :data-testid="`settings-catalog-apply-${descriptor.providerKey}`"
                     @click="applyPendingCatalogProvider(descriptor.providerKey)"
@@ -2930,7 +2951,7 @@ onMounted(() => {
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm"
                     :disabled="catalogProviderStatusLoading[descriptor.providerKey] === true"
                     :data-testid="`settings-catalog-discard-${descriptor.providerKey}`"
                     @click="discardPendingCatalogProvider(descriptor.providerKey)"
@@ -2952,18 +2973,20 @@ onMounted(() => {
           v-show="activeCategory === 'privacy-data'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('privacy-data')"
-          class="space-y-3"
+          class="divide-y divide-[color:var(--sv-line)]"
           data-testid="settings-pane-privacy-data"
         >
-          <NewChatLifecycleSettingsPanel />
-          <div class="rounded-lg border border-gray-200 bg-white p-3">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.catalog.cacheTitle') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.catalog.cacheDesc') }}</div>
-            <label class="mt-3 block max-w-sm">
-              <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.catalog.provider') }}</span>
+          <div class="py-6 first:pt-0">
+            <NewChatLifecycleSettingsPanel />
+          </div>
+          <div class="py-6">
+            <div class="text-sm font-semibold">{{ t('settings.catalog.cacheTitle') }}</div>
+            <div class="sv-meta mt-1">{{ t('settings.catalog.cacheDesc') }}</div>
+            <label class="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <span class="text-[13px] font-medium">{{ t('settings.catalog.provider') }}</span>
               <select
                 v-model="catalogSelectedProviderKey"
-                class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                class="sv-select w-56"
                 :disabled="!canEdit || loading || saving || catalogClearLoading !== null"
                 data-testid="settings-catalog-cache-provider"
               >
@@ -2975,7 +2998,7 @@ onMounted(() => {
             <div class="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                class="sv-btn min-w-40"
                 :disabled="!canEdit || loading || saving || catalogClearLoading !== null || !catalogProviderCredentialConfigured(catalogSelectedProviderKey)"
                 data-testid="settings-clear-current-catalog-cache"
                 @click="clearCurrentCatalogCache"
@@ -2984,7 +3007,7 @@ onMounted(() => {
               </button>
               <button
                 type="button"
-                class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                class="sv-btn min-w-40"
                 :disabled="!canEdit || loading || saving || catalogClearLoading !== null"
                 data-testid="settings-clear-all-catalog-caches"
                 @click="clearAllCatalogCaches"
@@ -2992,7 +3015,7 @@ onMounted(() => {
                 {{ catalogClearLoading === 'all' ? t('common.loading') : t('settings.catalog.cacheClearAll') }}
               </button>
             </div>
-            <div class="mt-2 text-[11px] text-gray-500">{{ t('settings.categories.immediateActionHint') }}</div>
+            <div class="sv-meta mt-2">{{ t('settings.categories.immediateActionHint') }}</div>
           </div>
         </section>
 
@@ -3001,14 +3024,11 @@ onMounted(() => {
           v-show="activeCategory === 'network'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('network')"
-          class="space-y-3"
           data-testid="settings-pane-network"
         >
-      <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.network.title') }}</div>
+          <div class="text-sm font-semibold">{{ t('settings.network.title') }}</div>
 
-        <NetworkProxySettingsPanel ref="proxySettingsPanel" :disabled="!canEdit || loading" />
-      </div>
+          <NetworkProxySettingsPanel ref="proxySettingsPanel" :disabled="!canEdit || loading" />
         </section>
 
         <section
@@ -3016,172 +3036,179 @@ onMounted(() => {
           v-show="activeCategory === 'generation'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('generation')"
-          class="space-y-3"
+          class="divide-y divide-[color:var(--sv-line)]"
           data-testid="settings-pane-generation"
         >
-      <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.customParams.title') }}</div>
-        <div class="mt-3">
-          <GenerationParamsSettingsEditor
-            v-model="generationParamsDefaults"
-            :disabled="!canEdit || loading || saving"
-            :defaultCollapsed="true"
-          />
-        </div>
-      </div>
-
-      <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.reasoning.title') }}</div>
-
-        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
-          <div class="flex items-center gap-2">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('settings.reasoning.reasoning') }}</div>
-            <select
-              class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs shadow-sm"
-              :value="requestedReasoningEffort"
-              :disabled="!canEdit || loading || saving"
-              @change="requestedReasoningEffort = ($event.target as HTMLSelectElement).value as any"
-            >
-              <option value="auto">auto</option>
-              <option value="none">none</option>
-              <option value="minimal">minimal</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-              <option value="max">max</option>
-            </select>
-            <label class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.reasoning.exclude')"
-                class="h-4 w-4 rounded border-gray-300"
-                :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto' || requestedReasoningEffort === 'none'"
-                v-model="requestedReasoningExclude"
-              />
-              {{ t('settings.reasoning.exclude') }}
-            </label>
-          </div>
-
-          <div class="text-[11px] text-gray-500">
-            {{ t('settings.reasoning.hint') }}
-          </div>
-
-          <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.inlineDefault') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.inlineDefaultDesc') }}</div>
-            </div>
-            <label class="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                :aria-label="t('settings.reasoning.inlineDefault')"
+          <div class="py-6 first:pt-0">
+            <div class="text-sm font-semibold">{{ t('settings.customParams.title') }}</div>
+            <div class="mt-3">
+              <GenerationParamsSettingsEditor
+                v-model="generationParamsDefaults"
                 :disabled="!canEdit || loading || saving"
-                v-model="reasoningPanelDefaultExpanded"
+                :defaultCollapsed="true"
               />
-              <span class="text-[11px] text-gray-700">{{ reasoningPanelDefaultExpanded ? t('settings.reasoning.expanded') : t('settings.reasoning.collapsed') }}</span>
-            </label>
+            </div>
           </div>
 
-          <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.userMessageRich') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.userMessageRichDesc') }}</div>
+          <div class="py-6">
+            <div class="text-sm font-semibold">{{ t('settings.reasoning.title') }}</div>
+
+            <div class="mt-2 flex flex-col">
+              <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
+                <div class="min-w-0 flex-1 basis-56">
+                  <div class="text-[13px] font-medium">{{ t('settings.reasoning.reasoning') }}</div>
+                  <div class="sv-meta">{{ t('settings.reasoning.hint') }}</div>
+                </div>
+                <div class="flex shrink-0 items-center gap-4">
+                  <select
+                    class="sv-select w-32"
+                    :value="requestedReasoningEffort"
+                    :disabled="!canEdit || loading || saving"
+                    @change="requestedReasoningEffort = ($event.target as HTMLSelectElement).value as any"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="none">none</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                    <option value="max">max</option>
+                  </select>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      :aria-label="t('settings.reasoning.exclude')"
+                      class="size-4"
+                      :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto' || requestedReasoningEffort === 'none'"
+                      v-model="requestedReasoningExclude"
+                    />
+                    {{ t('settings.reasoning.exclude') }}
+                  </label>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
+                <div class="min-w-0 flex-1 basis-56">
+                  <div class="text-[13px] font-medium">{{ t('settings.reasoning.inlineDefault') }}</div>
+                  <div class="sv-meta">{{ t('settings.reasoning.inlineDefaultDesc') }}</div>
+                </div>
+                <label class="flex w-28 shrink-0 items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    class="size-4"
+                    :aria-label="t('settings.reasoning.inlineDefault')"
+                    :disabled="!canEdit || loading || saving"
+                    v-model="reasoningPanelDefaultExpanded"
+                  />
+                  <span>{{ reasoningPanelDefaultExpanded ? t('settings.reasoning.expanded') : t('settings.reasoning.collapsed') }}</span>
+                </label>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
+                <div class="min-w-0 flex-1 basis-56">
+                  <div class="text-[13px] font-medium">{{ t('settings.reasoning.userMessageRich') }}</div>
+                  <div class="sv-meta">{{ t('settings.reasoning.userMessageRichDesc') }}</div>
+                </div>
+                <label class="flex w-28 shrink-0 items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    class="size-4"
+                    :aria-label="t('settings.reasoning.userMessageRich')"
+                    :disabled="!canEdit || loading || saving"
+                    v-model="userMessageRenderDefault"
+                  />
+                  <span>{{ userMessageRenderDefault ? t('common.on') : t('common.off') }}</span>
+                </label>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
+                <div class="min-w-0 flex-1 basis-56">
+                  <div class="text-[13px] font-medium">{{ t('settings.reasoning.recentModelsLimit') }}</div>
+                  <div class="sv-meta">{{ t('settings.reasoning.recentModelsLimitDesc') }}</div>
+                </div>
+                <input
+                  v-model="maxRecentModelsDraft"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="sv-input w-28 shrink-0"
+                  :disabled="!canEdit || loading || saving"
+                  data-testid="settings-max-recent-models"
+                />
+              </div>
             </div>
-            <label class="inline-flex items-center gap-2">
+          </div>
+
+          <div class="py-6" data-testid="settings-quit-warning">
+            <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <div class="min-w-0 flex-1 basis-56">
+                <div class="text-[13px] font-medium">{{ t('settings.quitWarning.label') }}</div>
+                <div class="sv-meta">{{ t('settings.quitWarning.help') }}</div>
+              </div>
+              <label class="flex w-28 shrink-0 items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="size-4"
+                  :aria-label="t('settings.quitWarning.label')"
+                  :disabled="!canEdit || loading || saving"
+                  v-model="quitWarningEnabled"
+                  data-testid="settings-quit-warning-enabled"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="py-6" data-testid="settings-generation-timeout">
+            <div class="text-sm font-semibold">{{ t('settings.generationTimeout.title') }}</div>
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
+              <div class="min-w-0 flex-1 basis-56">
+                <div class="text-[13px] font-medium">{{ t('settings.generationTimeout.unlimited') }}</div>
+                <div class="sv-meta">{{ t('settings.generationTimeout.help') }}</div>
+              </div>
+              <label class="flex w-28 shrink-0 items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="size-4"
+                  :aria-label="t('settings.generationTimeout.unlimited')"
+                  :disabled="!canEdit || loading || saving"
+                  v-model="generationTimeoutUnlimited"
+                  data-testid="settings-generation-timeout-unlimited"
+                />
+              </label>
+            </div>
+            <div v-if="!generationTimeoutUnlimited" class="flex items-center justify-end gap-2 py-1">
               <input
-                type="checkbox"
-                :aria-label="t('settings.reasoning.userMessageRich')"
+                v-model="generationTimeoutMinutesDraft"
+                type="number"
+                min="1"
+                :max="GENERATION_TOTAL_TIMEOUT_MAX_MINUTES"
+                step="1"
+                :aria-label="t('settings.generationTimeout.minutes')"
+                class="sv-input w-28"
                 :disabled="!canEdit || loading || saving"
-                v-model="userMessageRenderDefault"
+                data-testid="settings-generation-timeout-minutes"
               />
-              <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? t('common.on') : t('common.off') }}</span>
-            </label>
-          </div>
-
-          <div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-            <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.recentModelsLimit') }}</div>
-              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.recentModelsLimitDesc') }}</div>
+              <span class="w-14 text-[13px] text-[color:var(--sv-text-2)]">{{ t('settings.generationTimeout.minutes') }}</span>
             </div>
-            <input
-              v-model="maxRecentModelsDraft"
-              type="number"
-              min="1"
-              step="1"
-              class="w-24 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-              :disabled="!canEdit || loading || saving"
-              data-testid="settings-max-recent-models"
-            />
+            <div class="min-h-[18px] text-right">
+              <div v-if="generationTimeoutInvalid" class="text-xs text-[color:var(--sv-danger)]" role="alert" data-testid="settings-generation-timeout-error">
+                {{ t('settings.generationTimeout.invalid') }}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-quit-warning">
-        <div class="flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.quitWarning.label') }}</div>
-            <div class="text-[11px] text-gray-500">{{ t('settings.quitWarning.help') }}</div>
+          <div class="py-6">
+            <div class="text-sm font-semibold">{{ t('settings.search.title') }}</div>
+            <div class="mt-3">
+              <WebSearchSettingsEditor
+                v-model="webSearchDefaults"
+                :disabled="!canEdit || loading || saving"
+                :resolved="globalWebSearchResolved"
+                :inheritanceHint="globalWebSearchInheritanceHint"
+              />
+            </div>
           </div>
-          <label class="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              :aria-label="t('settings.quitWarning.label')"
-              :disabled="!canEdit || loading || saving"
-              v-model="quitWarningEnabled"
-              data-testid="settings-quit-warning-enabled"
-            />
-          </label>
-        </div>
-      </div>
-
-      <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-generation-timeout">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.generationTimeout.title') }}</div>
-        <div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.generationTimeout.unlimited') }}</div>
-            <div class="text-[11px] text-gray-500">{{ t('settings.generationTimeout.help') }}</div>
-          </div>
-          <label class="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              :aria-label="t('settings.generationTimeout.unlimited')"
-              :disabled="!canEdit || loading || saving"
-              v-model="generationTimeoutUnlimited"
-              data-testid="settings-generation-timeout-unlimited"
-            />
-          </label>
-        </div>
-        <div v-if="!generationTimeoutUnlimited" class="mt-2 flex items-center gap-2 px-3">
-          <input
-            v-model="generationTimeoutMinutesDraft"
-            type="number"
-            min="1"
-            :max="GENERATION_TOTAL_TIMEOUT_MAX_MINUTES"
-            step="1"
-            :aria-label="t('settings.generationTimeout.minutes')"
-            class="w-24 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-            :disabled="!canEdit || loading || saving"
-            data-testid="settings-generation-timeout-minutes"
-          />
-          <span class="text-[11px] text-gray-600">{{ t('settings.generationTimeout.minutes') }}</span>
-        </div>
-        <div v-if="generationTimeoutInvalid" class="mt-1 px-3 text-[11px] text-red-600" role="alert" data-testid="settings-generation-timeout-error">
-          {{ t('settings.generationTimeout.invalid') }}
-        </div>
-      </div>
-
-      <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.search.title') }}</div>
-        <div class="mt-3">
-          <WebSearchSettingsEditor
-            v-model="webSearchDefaults"
-            :disabled="!canEdit || loading || saving"
-            :resolved="globalWebSearchResolved"
-            :inheritanceHint="globalWebSearchInheritanceHint"
-          />
-        </div>
-      </div>
         </section>
 
         <section
@@ -3189,27 +3216,39 @@ onMounted(() => {
           v-show="activeCategory === 'extensions'"
           role="tabpanel"
           :aria-labelledby="settingsCategoryTabId('extensions')"
-          class="space-y-3"
           data-testid="settings-pane-extensions"
         >
-          <div class="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] text-blue-900">
+          <p class="sv-meta pb-5">
             {{ t('settings.categories.childOwnedActionHint') }}
+          </p>
+          <div class="sv-divider-t pt-6">
+            <PluginManagementPanel />
           </div>
-          <PluginManagementPanel />
         </section>
 
-        <div class="mt-3 text-[11px] text-gray-500">
+        <div class="sv-meta mt-6">
           {{ t('settings.footer') }}
         </div>
       </div>
     </div>
 
-    <div class="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] backdrop-blur" data-testid="settings-global-actions">
-      <div class="min-w-0 text-[11px] text-gray-500">{{ t('settings.categories.globalSaveHint') }}</div>
+    <div class="sv-divider-t flex shrink-0 items-center justify-between gap-4 bg-white px-5 py-3 md:px-8" data-testid="settings-global-actions">
+      <div class="min-w-0 flex-1">
+        <div class="sv-meta">{{ t('settings.categories.globalSaveHint') }}</div>
+        <div class="max-h-24 min-h-[18px] overflow-y-auto break-words text-xs" aria-live="polite">
+          <div v-if="error" class="text-[color:var(--sv-danger)]">
+            {{ error }}
+            <ProviderFailureDetailsV2 v-if="errorFailure" class="mt-2" :failure="errorFailure" />
+          </div>
+          <div v-else-if="savedMessage" class="text-[color:var(--sv-text-2)]">
+            {{ savedMessage }}
+          </div>
+        </div>
+      </div>
       <div class="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-btn w-24"
           :disabled="props.disabled || props.isRunning || loading || saving"
           data-testid="settings-reload"
           @click="load"
@@ -3218,7 +3257,7 @@ onMounted(() => {
         </button>
         <button
           type="button"
-          class="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+          class="sv-btn sv-btn-primary w-24"
           :disabled="!canEdit || loading || saving"
           data-testid="settings-save"
           @click="save"

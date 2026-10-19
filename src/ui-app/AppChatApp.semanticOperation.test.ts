@@ -149,9 +149,9 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
       referenceRevision: 'url-revision:operation', originalUrl: 'https://example.test/preserved', mediaKind: 'other', declaredMediaType: null })
     bridge.composer.get = vi.fn(async (id: string) => ok(drafts.getOrCreate(id)))
     bridge.composer.updateText = vi.fn(async (packet: any) => ok(drafts.updateText(packet)))
-    bridge.credentials.openRouter.getStatus.mockResolvedValue({ ok: true, status: { configured: true,
+    bridge.credentials.openRouter.getStatus.mockResolvedValue({ ok: true, status: { apiKeyConfigured: true,
       credentialRevision: 1, credentialScopeId: credentialScope, profileId: 'openrouter-first-party-v1' } })
-    bridge.credentials.googleAIStudio.getStatus.mockResolvedValue({ ok: true, status: { configured: true,
+    bridge.credentials.googleAIStudio.getStatus.mockResolvedValue({ ok: true, status: { apiKeyConfigured: true,
       credentialRevision: 1, credentialScopeId: credentialScope, profileId: 'gemini-developer-api-v1beta' } })
     bridge.capabilities.resolve.mockImplementation(async (request: any) => capabilityBoundary(request))
     bridge.openRouter.images.getEndpointSelection = vi.fn(async (request: any) => {
@@ -306,6 +306,36 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
     expect(composer().props('capabilityProjection')).toBe(current)
     expect(bridge.workspace.updateConfig).not.toHaveBeenCalled()
     expect(bridge.openRouter.images.initial).not.toHaveBeenCalled()
+  })
+
+  if (providerId === 'openrouter') it('loads endpoints after initial capability failure with an empty local layer and preserves requested image intent', async () => {
+    const originalStore = (globalThis as any).electronStore
+    ;(globalThis as any).electronStore = { ...originalStore, get: vi.fn(async (key: string) => key === 'generationV2UiPreferences'
+      ? { imageGenerationDefault: { enabled: true, outputMode: 'auto', imageSize: '2K', aspectRatio: '16:9' } }
+      : originalStore?.get?.(key)) }
+    try {
+      bridge.capabilities.resolve.mockResolvedValue({ ok: false, code: 'DESCRIPTOR_MODEL_NOT_FOUND' })
+      wrapper = mount(AppChatApp, { attachTo: host })
+      await waitFor(() => expect(screen.getByTestId('composer-draft')).toBeEnabled())
+      await waitFor(() => expect(bridge.capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ operation: 'image_generate' })))
+      await flushPromises()
+      expect(composer().props('capabilityProjection')).toBeNull()
+      expect(conversationSemantics()).toEqual({ schemaVersion: 2 })
+      expect(composer().props('sessionConfig')?.imageGeneration).toMatchObject({ enabled: true, resolution: '2K', aspectRatio: '16:9' })
+      bridge.openRouter.images.getEndpointSelection.mockClear()
+      wrapper.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
+      await flushPromises()
+      await fireEvent.click(screen.getByTestId('openrouter-image-endpoint-refresh'))
+      await waitFor(() => expect(bridge.openRouter.images.getEndpointSelection).toHaveBeenCalledOnce())
+      expect(bridge.openRouter.images.getEndpointSelection).toHaveBeenCalledWith(expect.objectContaining({ modelId,
+        semanticIntent: expect.objectContaining({ image: expect.objectContaining({ mode: 'generate', resolution: '2K', aspectRatio: '16:9' }),
+          attachments: expect.arrayContaining([expect.objectContaining({ kind: 'url_reference', referenceId: 'url:operation' })]) }) }))
+      expect(wrapper.text()).not.toContain('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
+      expect(bridge.openRouter.images.initial).not.toHaveBeenCalled()
+      expect(conversationSemantics()).toEqual({ schemaVersion: 2 })
+    } finally {
+      ;(globalThis as any).electronStore = originalStore
+    }
   })
 
   it('keeps current text authority and persisted config intact while target resolution waits, then rejects invalidated target work', async () => {

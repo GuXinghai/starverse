@@ -1,5 +1,6 @@
 @import "tailwindcss" source(none);
 @import "./assets/design-tokens.css";
+@import "./assets/ui-system.css";
 @source "../index.html";
 @source "./App.vue";
 @source "./ui-app/**/*.{vue,js,ts,jsx,tsx}";
@@ -7,82 +8,254 @@
 @source "../.storybook/**/*.{vue,js,ts,jsx,tsx}";
 
 /* ========================================
- * Tailwind CSS v4 主题配置
- * 所有主题扩展均在此配置，不使用 tailwind.config.js
+ * Tailwind CSS v4 theme — neutral, monochrome interface
+ * Single source of the visual language. Decorative hues (blue, green, teal,
+ * purple, ...) resolve to one neutral accent ramp so chrome stays monochrome;
+ * red/amber stay available strictly for error/warning/destructive meaning.
+ * Component primitives live in assets/ui-system.css.
  * ======================================== */
 
 @theme {
-  /* 自定义颜色系统 - Primary */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
 
-  /* 自定义颜色系统 - Secondary */
-  --color-secondary-50: #f8fafc;
-  --color-secondary-100: #f1f5f9;
-  --color-secondary-200: #e2e8f0;
-  --color-secondary-300: #cbd5e1;
-  --color-secondary-400: #94a3b8;
-  --color-secondary-500: #64748b;
-  --color-secondary-600: #475569;
-  --color-secondary-700: #334155;
-  --color-secondary-800: #1e293b;
-  --color-secondary-900: #0f172a;
+  /* Neutral grey ramp (true neutral, no blue cast) */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f5f5f5;
+  --color-gray-200: #e8e8e8;
+  --color-gray-300: #d4d4d4;
+  --color-gray-400: #8f8f8f;
+  --color-gray-500: #6b6b6b;
+  --color-gray-600: #525252;
+  --color-gray-700: #3f3f3f;
+  --color-gray-800: #262626;
+  --color-gray-900: #171717;
+  --color-gray-950: #0a0a0a;
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f5f5f5;
+  --color-slate-200: #e8e8e8;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #8f8f8f;
+  --color-slate-500: #6b6b6b;
+  --color-slate-600: #525252;
+  --color-slate-700: #3f3f3f;
+  --color-slate-800: #262626;
+  --color-slate-900: #171717;
+  --color-slate-950: #0a0a0a;
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f5f5f5;
+  --color-zinc-200: #e8e8e8;
+  --color-zinc-300: #d4d4d4;
+  --color-zinc-400: #8f8f8f;
+  --color-zinc-500: #6b6b6b;
+  --color-zinc-600: #525252;
+  --color-zinc-700: #3f3f3f;
+  --color-zinc-800: #262626;
+  --color-zinc-900: #171717;
+  --color-zinc-950: #0a0a0a;
 
-  /* 自定义颜色系统 - Success */
-  --color-success-50: #f0fdf4;
-  --color-success-100: #dcfce7;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
-  --color-success-700: #15803d;
+  /* Decorative hues collapse to the neutral accent ramp (primary action = near-black) */
+  --color-blue-50: #f7f7f7;
+  --color-blue-100: #efefef;
+  --color-blue-200: #e0e0e0;
+  --color-blue-300: #c9c9c9;
+  --color-blue-400: #9a9a9a;
+  --color-blue-500: #6b6b6b;
+  --color-blue-600: #262626;
+  --color-blue-700: #171717;
+  --color-blue-800: #171717;
+  --color-blue-900: #0a0a0a;
+  --color-blue-950: #0a0a0a;
+  --color-indigo-50: #f7f7f7;
+  --color-indigo-100: #efefef;
+  --color-indigo-200: #e0e0e0;
+  --color-indigo-300: #c9c9c9;
+  --color-indigo-400: #9a9a9a;
+  --color-indigo-500: #6b6b6b;
+  --color-indigo-600: #262626;
+  --color-indigo-700: #171717;
+  --color-indigo-800: #171717;
+  --color-indigo-900: #0a0a0a;
+  --color-indigo-950: #0a0a0a;
+  --color-sky-50: #f7f7f7;
+  --color-sky-100: #efefef;
+  --color-sky-200: #e0e0e0;
+  --color-sky-300: #c9c9c9;
+  --color-sky-400: #9a9a9a;
+  --color-sky-500: #6b6b6b;
+  --color-sky-600: #262626;
+  --color-sky-700: #171717;
+  --color-sky-800: #171717;
+  --color-sky-900: #0a0a0a;
+  --color-sky-950: #0a0a0a;
+  --color-cyan-50: #f7f7f7;
+  --color-cyan-100: #efefef;
+  --color-cyan-200: #e0e0e0;
+  --color-cyan-300: #c9c9c9;
+  --color-cyan-400: #9a9a9a;
+  --color-cyan-500: #6b6b6b;
+  --color-cyan-600: #262626;
+  --color-cyan-700: #171717;
+  --color-cyan-800: #171717;
+  --color-cyan-900: #0a0a0a;
+  --color-cyan-950: #0a0a0a;
+  --color-teal-50: #f7f7f7;
+  --color-teal-100: #efefef;
+  --color-teal-200: #e0e0e0;
+  --color-teal-300: #c9c9c9;
+  --color-teal-400: #9a9a9a;
+  --color-teal-500: #6b6b6b;
+  --color-teal-600: #262626;
+  --color-teal-700: #171717;
+  --color-teal-800: #171717;
+  --color-teal-900: #0a0a0a;
+  --color-teal-950: #0a0a0a;
+  --color-emerald-50: #f7f7f7;
+  --color-emerald-100: #efefef;
+  --color-emerald-200: #e0e0e0;
+  --color-emerald-300: #c9c9c9;
+  --color-emerald-400: #9a9a9a;
+  --color-emerald-500: #6b6b6b;
+  --color-emerald-600: #262626;
+  --color-emerald-700: #171717;
+  --color-emerald-800: #171717;
+  --color-emerald-900: #0a0a0a;
+  --color-emerald-950: #0a0a0a;
+  --color-green-50: #f7f7f7;
+  --color-green-100: #efefef;
+  --color-green-200: #e0e0e0;
+  --color-green-300: #c9c9c9;
+  --color-green-400: #9a9a9a;
+  --color-green-500: #6b6b6b;
+  --color-green-600: #262626;
+  --color-green-700: #171717;
+  --color-green-800: #171717;
+  --color-green-900: #0a0a0a;
+  --color-green-950: #0a0a0a;
+  --color-lime-50: #f7f7f7;
+  --color-lime-100: #efefef;
+  --color-lime-200: #e0e0e0;
+  --color-lime-300: #c9c9c9;
+  --color-lime-400: #9a9a9a;
+  --color-lime-500: #6b6b6b;
+  --color-lime-600: #262626;
+  --color-lime-700: #171717;
+  --color-lime-800: #171717;
+  --color-lime-900: #0a0a0a;
+  --color-lime-950: #0a0a0a;
+  --color-purple-50: #f7f7f7;
+  --color-purple-100: #efefef;
+  --color-purple-200: #e0e0e0;
+  --color-purple-300: #c9c9c9;
+  --color-purple-400: #9a9a9a;
+  --color-purple-500: #6b6b6b;
+  --color-purple-600: #262626;
+  --color-purple-700: #171717;
+  --color-purple-800: #171717;
+  --color-purple-900: #0a0a0a;
+  --color-purple-950: #0a0a0a;
+  --color-violet-50: #f7f7f7;
+  --color-violet-100: #efefef;
+  --color-violet-200: #e0e0e0;
+  --color-violet-300: #c9c9c9;
+  --color-violet-400: #9a9a9a;
+  --color-violet-500: #6b6b6b;
+  --color-violet-600: #262626;
+  --color-violet-700: #171717;
+  --color-violet-800: #171717;
+  --color-violet-900: #0a0a0a;
+  --color-violet-950: #0a0a0a;
+  --color-fuchsia-50: #f7f7f7;
+  --color-fuchsia-100: #efefef;
+  --color-fuchsia-200: #e0e0e0;
+  --color-fuchsia-300: #c9c9c9;
+  --color-fuchsia-400: #9a9a9a;
+  --color-fuchsia-500: #6b6b6b;
+  --color-fuchsia-600: #262626;
+  --color-fuchsia-700: #171717;
+  --color-fuchsia-800: #171717;
+  --color-fuchsia-900: #0a0a0a;
+  --color-fuchsia-950: #0a0a0a;
+  --color-pink-50: #f7f7f7;
+  --color-pink-100: #efefef;
+  --color-pink-200: #e0e0e0;
+  --color-pink-300: #c9c9c9;
+  --color-pink-400: #9a9a9a;
+  --color-pink-500: #6b6b6b;
+  --color-pink-600: #262626;
+  --color-pink-700: #171717;
+  --color-pink-800: #171717;
+  --color-pink-900: #0a0a0a;
+  --color-pink-950: #0a0a0a;
+  --color-primary-50: #f7f7f7;
+  --color-primary-100: #efefef;
+  --color-primary-200: #e0e0e0;
+  --color-primary-300: #c9c9c9;
+  --color-primary-400: #9a9a9a;
+  --color-primary-500: #6b6b6b;
+  --color-primary-600: #262626;
+  --color-primary-700: #171717;
+  --color-primary-800: #171717;
+  --color-primary-900: #0a0a0a;
+  --color-primary-950: #0a0a0a;
+  --color-secondary-50: #f7f7f7;
+  --color-secondary-100: #efefef;
+  --color-secondary-200: #e0e0e0;
+  --color-secondary-300: #c9c9c9;
+  --color-secondary-400: #9a9a9a;
+  --color-secondary-500: #6b6b6b;
+  --color-secondary-600: #262626;
+  --color-secondary-700: #171717;
+  --color-secondary-800: #171717;
+  --color-secondary-900: #0a0a0a;
+  --color-secondary-950: #0a0a0a;
+  --color-success-50: #f7f7f7;
+  --color-success-100: #efefef;
+  --color-success-200: #e0e0e0;
+  --color-success-300: #c9c9c9;
+  --color-success-400: #9a9a9a;
+  --color-success-500: #6b6b6b;
+  --color-success-600: #262626;
+  --color-success-700: #171717;
+  --color-success-800: #171717;
+  --color-success-900: #0a0a0a;
+  --color-success-950: #0a0a0a;
 
-  /* 自定义颜色系统 - Warning */
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
+  /* Corner radii: controls 8, menus 12, dialogs 16 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 16px;
+  --radius-4xl: 20px;
 
-  /* 自定义颜色系统 - Danger */
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
+  /* Elevation: flat surfaces, one soft shadow for floating layers */
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 6px 20px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 30px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-xl: 0 12px 36px rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-2xl: 0 16px 48px rgb(0 0 0 / 0.16), 0 0 0 1px rgb(0 0 0 / 0.05);
 
-  /* 自定义间距 */
   --spacing-18: 4.5rem;
   --spacing-88: 22rem;
   --spacing-100: 25rem;
   --spacing-112: 28rem;
   --spacing-128: 32rem;
 
-  /* 按钮高度设计令牌 - 全局统一尺寸 */
-  --button-height-sm: 28px;  /* 7 */
-  --button-height-md: 32px;  /* 8 */
-  --button-height-lg: 36px;  /* 9 */
+  /* Control heights */
+  --button-height-sm: 28px;
+  --button-height-md: 32px;
+  --button-height-lg: 36px;
 
-  /* 自定义字体大小 */
-  --font-size-2xs: 0.625rem;
-  --font-size-2xs--line-height: 0.875rem;
-
-  /* 自定义圆角 */
-  --radius-4xl: 2rem;
-
-  /* 自定义动画 */
   --animate-marquee: marquee 10s linear infinite;
   --animate-spin-slow: spin 3s linear infinite;
-
-  /* 自定义缓动函数 */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
 
 /* 动画关键帧定义 */
 @keyframes marquee {

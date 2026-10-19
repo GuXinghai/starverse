@@ -450,7 +450,9 @@
       "startupResetDraft": "启动时重置草稿与附件",
       "postSendReset": "首次发送后",
       "resetAll": "全部重置",
-      "preserveModel": "保留模型与配置"
+      "preserveModel": "保留模型与配置",
+      "welcome": "今天想探索什么？",
+      "welcomeHint": "选择模型，开启新的对话"
     }
   }
 }

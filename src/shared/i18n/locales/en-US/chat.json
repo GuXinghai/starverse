@@ -450,7 +450,9 @@
       "startupResetDraft": "Reset draft and attachments on startup",
       "postSendReset": "After first send",
       "resetAll": "Reset everything",
-      "preserveModel": "Preserve model and configuration"
+      "preserveModel": "Preserve model and configuration",
+      "welcome": "What would you like to explore?",
+      "welcomeHint": "Choose a model and start a conversation"
     }
   }
 }

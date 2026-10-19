@@ -1,5 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, getCurrentInstance, h } from 'vue'
 import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
@@ -24,6 +25,7 @@ import { CatalogQueryService } from '@/next/modelCatalog/catalogQueryService'
 import { catalogRuntimeStoreV2ForApp, type CatalogRuntimeStoreV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import { resetI18nForTests } from '@/shared/i18n'
 import AppChatApp from './AppChatApp.vue'
+import ChatAppComposer from './components/ChatAppComposer.vue'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 
@@ -72,6 +74,7 @@ describe('actual App current semantic invalidation', () => {
   let latest: any
   let unsubscribe: () => void
   const originalBridge = window.generationV2
+  const originalElectronStore = (globalThis as any).electronStore
   const invoke = (channel: string, payload?: unknown) => handlers.get(channel)!({}, payload)
   const call = async (read: () => any) => {
     try { return ok(await read()) } catch (error) { return { ok: false as const, code: (error as Error).message } }
@@ -204,7 +207,7 @@ describe('actual App current semantic invalidation', () => {
               architecture: { modality: 'text->text', input_modalities: ['text'], output_modalities: ['text'] }, supported_parameters: ['max_tokens'] },
             facts: {}, provenance: { sourceKind: 'provider_api', sourceLabel: 'synthetic_catalog', observedAtMs: 100, parserVersion: 2 } } } }] } })) })
     for (const credentials of Object.values(bridge.credentials) as any[]) credentials.getStatus.mockResolvedValue({ ok: true, status: {
-      configured: true, credentialRevision: 1, credentialScopeId: credentialScope, profileId: registry.endpointProfileId } })
+      apiKeyConfigured: true, credentialRevision: 1, credentialScopeId: credentialScope, profileId: registry.endpointProfileId } })
     const service = createGenerationV2CapabilityResolutionService({ db, credentialService, openAICompatibleCredentialService: {} as never })
     resolveCurrent = async packet => {
       const result = await call(() => service.resolve(packet))
@@ -221,7 +224,85 @@ describe('actual App current semantic invalidation', () => {
     await Promise.resolve()
     db.close()
     ;(window as any).generationV2 = originalBridge
+    ;(globalThis as any).electronStore = originalElectronStore
     localStorage.removeItem('starverse.openRouterTextChat.enabled')
+  })
+
+  it('persists an inherited global search prompt in the first V2 semantic config', async () => {
+    ;(globalThis as any).electronStore = {
+      get: vi.fn(async (key: string) => key === 'generationV2UiPreferences' ? {
+        webSearchDefaults: { searchMode: 'disable', searchPrompt: { mode: 'customText', text: 'global inherited search prompt' } },
+      } : undefined),
+      set: vi.fn(async () => true),
+    }
+    render(AppChatApp)
+    await readyDraft()
+    await fireEvent.click(screen.getByTestId('composer-send'))
+    await waitFor(() => expect(bridge.workspace.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      ownerKind: 'conversation', ownerId: conversationA,
+      semanticLayer: expect.objectContaining({ web: expect.objectContaining({ searchPrompt: 'global inherited search prompt' }) }),
+    })))
+    const persisted = await bridge.workspace.getConfig('conversation', conversationA)
+    expect(persisted.semanticLayer?.web?.searchPrompt ?? persisted.value?.semanticLayer?.web?.searchPrompt)
+      .toBe('global inherited search prompt')
+  })
+
+  it('preserves raw requested parameter values and source when another setting force-saves the semantic layer', async () => {
+    const initial = await bridge.workspace.getConfig('conversation', conversationA)
+    const seeded = await bridge.workspace.updateConfig({
+      ownerKind: 'conversation', ownerId: conversationA,
+      expectedConfigRevision: initial.value.configRevision,
+      semanticLayer: {
+        schemaVersion: 2,
+        generation: {},
+        reasoning: { mode: 'disabled' },
+        web: { mode: 'disabled' },
+        image: { mode: 'disabled' },
+        tools: { mode: 'disabled' },
+        providerExtension: { kind: 'none' },
+        requestedParameters: {
+          temperature: { mode: 'custom', value: 0.4, source: 'conversation' },
+          thinkingEnabled: { mode: 'custom', value: false, source: 'conversation' },
+          topP: { mode: 'omit', source: 'conversation' },
+        },
+      },
+    })
+    expect(seeded).toMatchObject({ ok: true })
+    bridge.workspace.updateConfig.mockClear()
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const wrapper: VueWrapper = mount(AppChatApp, { attachTo: host })
+    try {
+      await readyDraft()
+      wrapper.findComponent(ChatAppComposer).vm.$emit('updateWebSearchEnabled', true)
+
+      await waitFor(() => expect(bridge.workspace.updateConfig).toHaveBeenCalledOnce())
+      expect(bridge.workspace.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        ownerKind: 'conversation', ownerId: conversationA,
+        semanticLayer: expect.objectContaining({
+          requestedParameters: expect.objectContaining({
+            temperature: { mode: 'custom', value: 0.4, source: 'conversation' },
+            thinkingEnabled: { mode: 'custom', value: false, source: 'conversation' },
+            topP: { mode: 'omit', source: 'conversation' },
+          }),
+        }),
+      }))
+      const forceSave = await bridge.workspace.updateConfig.mock.results[0]?.value
+      expect(forceSave?.ok).toBe(true)
+
+      const persisted = await bridge.workspace.getConfig('conversation', conversationA)
+      expect(persisted.value.configRevision).not.toBe(seeded.value.configRevision)
+      expect(persisted.value.semanticLayer.web).toMatchObject({ mode: 'provider_search', types: ['web'] })
+      expect(persisted.value.semanticLayer.requestedParameters).toMatchObject({
+        temperature: { mode: 'custom', value: 0.4, source: 'conversation' },
+        thinkingEnabled: { mode: 'custom', value: false, source: 'conversation' },
+        topP: { mode: 'omit', source: 'conversation' },
+      })
+    } finally {
+      wrapper.unmount()
+      host.remove()
+    }
   })
 
   it('refreshes an unchanged selection after a real priority commit and blocks submission until the current response arrives', async () => {

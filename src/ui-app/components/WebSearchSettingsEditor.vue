@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import type { GenerationV2WebSearchControls } from '../app/generationV2WebSearchProjection'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import type {
@@ -90,19 +91,19 @@ const modeDefaultSelected = computed(() => modeValue.value === 'default')
 const engineDefaultSelected = computed(() => engineValue.value === 'default')
 const isCustomDepth = computed(() => depthValue.value === 'custom')
 const isCustomInputValid = computed(() => parseValidCustomMaxResults(customInputText.value) !== null)
-const modeIcon = computed(() => (modeDisplayValue.value === 'enable' ? '🌐' : '🚫'))
+const modeIcon = computed(() => (modeDisplayValue.value === 'enable' ? 'globe' : 'close'))
 const engineIcon = computed(() => {
-  if (engineDisplayValue.value === 'native') return '🧭'
-  if (engineDisplayValue.value === 'exa') return '⚡'
-  return '♻'
+  if (engineDisplayValue.value === 'native') return 'orbit'
+  if (engineDisplayValue.value === 'exa') return 'search'
+  return 'refresh'
 })
 
 function clampMaxResults(value: number): number {
   if (!Number.isFinite(value)) return 5
-  const rounded = Math.round(value)
-  if (rounded < maxResultsBounds.value.min) return maxResultsBounds.value.min
-  if (rounded > maxResultsBounds.value.max) return maxResultsBounds.value.max
-  return rounded
+  const roundedValue = Math.round(value)
+  if (roundedValue < maxResultsBounds.value.min) return maxResultsBounds.value.min
+  if (roundedValue > maxResultsBounds.value.max) return maxResultsBounds.value.max
+  return roundedValue
 }
 
 function emitLayer(next: SearchSettingsLayer) {
@@ -203,8 +204,7 @@ function onEngineValueClick() {
 }
 
 function buttonClass(active: boolean): string {
-  if (active) return 'border-blue-300 bg-blue-50 text-blue-700'
-  return 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+  return active ? 'is-active' : ''
 }
 
 function onDepthSelect(nextRaw: string) {
@@ -339,13 +339,14 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-3">
-    <div>
-      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Search mode</div>
-      <div class="mt-1 flex flex-wrap items-center gap-2">
-        <label class="inline-flex items-center gap-1 text-[11px] text-gray-700">
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div class="text-[13px] font-medium">Search mode</div>
+      <div class="flex items-center gap-3">
+        <label class="inline-flex items-center gap-1.5 text-[13px]">
           <input
             type="checkbox"
+            class="size-4"
             :disabled="props.disabled"
             :checked="modeDefaultSelected"
             data-testid="search-mode-default"
@@ -355,25 +356,26 @@ watch(
         </label>
         <button
           type="button"
-          class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+          class="sv-btn sv-btn-sm min-w-24"
           :class="buttonClass(modeDisplayValue === 'enable')"
           :disabled="props.disabled || (searchUnavailable && modeDisplayValue !== 'enable')"
           data-testid="search-mode-toggle"
           @click="onModeValueClick"
           :title="`search mode ${modeDisplayValue}`"
         >
-          <span aria-hidden="true">{{ modeIcon }}</span>
+          <UiIcon :name="modeIcon" :size="14" />
           <span>{{ modeDisplayValue }}</span>
         </button>
       </div>
     </div>
 
-    <div v-if="engineAvailable">
-      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Engine</div>
-      <div class="mt-1 flex flex-wrap items-center gap-2">
-        <label class="inline-flex items-center gap-1 text-[11px] text-gray-700">
+    <div v-if="engineAvailable" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div class="text-[13px] font-medium">Engine</div>
+      <div class="flex items-center gap-3">
+        <label class="inline-flex items-center gap-1.5 text-[13px]">
           <input
             type="checkbox"
+            class="size-4"
             :disabled="props.disabled"
             :checked="engineDefaultSelected"
             data-testid="search-engine-default"
@@ -383,14 +385,14 @@ watch(
         </label>
         <button
           type="button"
-          class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+          class="sv-btn sv-btn-sm min-w-24"
           :class="buttonClass(engineDisplayValue !== 'exa')"
           :disabled="props.disabled"
           data-testid="search-engine-toggle"
           @click="onEngineValueClick"
           :title="`search engine ${engineDisplayValue}`"
         >
-          <span aria-hidden="true">{{ engineIcon }}</span>
+          <UiIcon :name="engineIcon" :size="14" />
           {{ engineDisplayValue }}
         </button>
       </div>
@@ -398,23 +400,24 @@ watch(
 
     <div v-if="depthAvailable">
       <div class="flex items-center justify-between gap-2">
-        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Depth presets</div>
+        <div class="text-[13px] font-medium">Depth presets</div>
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="sv-btn sv-btn-sm w-24"
           :disabled="props.disabled"
           data-testid="search-depth-panel-toggle"
           :aria-expanded="depthPanelExpanded ? 'true' : 'false'"
           @click="onDepthPanelToggle"
         >
           {{ depthPanelExpanded ? 'Collapse' : 'Expand' }}
+          <UiIcon :name="depthPanelExpanded ? 'chevronUp' : 'chevronDown'" :size="12" />
         </button>
       </div>
-      <div v-show="depthPanelExpanded" class="mt-2 space-y-2 rounded-md border border-gray-100 bg-gray-50/70 px-3 py-2">
-        <label class="flex items-center gap-2 text-[11px] text-gray-700">
-          <span class="font-semibold">Depth</span>
+      <div v-show="depthPanelExpanded" class="mt-3 flex flex-col gap-3">
+        <label class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13px]">
+          <span>Depth</span>
           <select
-            class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+            class="sv-select sv-select-sm w-32"
             :disabled="props.disabled"
             :value="depthValue"
             data-testid="search-depth-select"
@@ -427,12 +430,12 @@ watch(
             <option v-if="customAvailable" value="custom">custom</option>
           </select>
         </label>
-        <div v-if="customAvailable" class="flex items-center gap-2">
-          <div class="text-[11px] font-semibold text-gray-700">Custom max results ({{ maxResultsBounds.min }}-{{ maxResultsBounds.max }})</div>
+        <div v-if="customAvailable" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div class="text-[13px]">Custom max results ({{ maxResultsBounds.min }}-{{ maxResultsBounds.max }})</div>
           <input
             type="text"
             inputmode="numeric"
-            class="w-28 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:cursor-not-allowed disabled:bg-gray-100"
+            class="sv-input sv-input-sm w-32"
             :disabled="props.disabled || !isCustomDepth"
             :value="customInputText"
             data-testid="search-max-results-input"
@@ -443,13 +446,13 @@ watch(
       </div>
     </div>
 
-    <div v-if="controlFeedback" role="status" data-testid="search-control-feedback" class="text-[11px] text-amber-700">{{ t(controlFeedback) }}</div>
-    <div v-if="props.controls && isCustomDepth && !isCustomInputValid" role="status" class="text-[11px] text-amber-700">{{ t('errors.webSearch.invalidMaxResults') }}</div>
+    <div v-if="controlFeedback" role="status" data-testid="search-control-feedback" class="text-xs text-[color:var(--sv-warning)]">{{ t(controlFeedback) }}</div>
+    <div v-if="props.controls && isCustomDepth && !isCustomInputValid" role="status" class="text-xs text-[color:var(--sv-warning)]">{{ t('errors.webSearch.invalidMaxResults') }}</div>
 
-    <div v-if="effectiveSummary" class="rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2 text-[11px] text-gray-600">
+    <div v-if="effectiveSummary" class="sv-meta">
       {{ effectiveSummary }}
     </div>
-    <div v-if="props.inheritanceHint" class="text-[11px] text-gray-500">
+    <div v-if="props.inheritanceHint" class="sv-meta">
       {{ props.inheritanceHint }}
     </div>
   </div>

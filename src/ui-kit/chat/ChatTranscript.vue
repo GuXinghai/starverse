@@ -32,18 +32,18 @@ const errorText = computed(() => {
 </script>
 
 <template>
-  <div class="h-full overflow-auto overscroll-contain bg-gradient-to-b from-gray-50 to-white p-4">
-    <div v-if="props.messageIds.length === 0" class="text-sm text-gray-500">
+  <div class="h-full overflow-auto overscroll-contain px-6 py-6">
+    <div v-if="props.messageIds.length === 0" class="text-sm text-[var(--sv-text-3)]">
       {{ props.emptyText || t('navigation.empty.noConversations') }}
     </div>
-    <div v-else class="mx-auto max-w-3xl space-y-4">
+    <div v-else class="mx-auto flex max-w-[760px] flex-col gap-5">
       <template v-for="id in props.messageIds" :key="id">
         <div
           v-if="props.messagesById[id]"
           class="rounded-2xl"
           :class="
             props.activeMessageId && props.messagesById[id]?.messageId === props.activeMessageId
-              ? 'ring-2 ring-blue-200 ring-offset-2 ring-offset-gray-50'
+              ? 'ring-1 ring-black/[0.08] ring-offset-8 ring-offset-white'
               : ''
           "
         >
@@ -59,20 +59,38 @@ const errorText = computed(() => {
               !props.messagesById[id]?.streaming.isComplete &&
               !props.messagesById[id]?.streaming.isTarget
             "
-            class="mt-2 pl-11 text-[11px] font-medium text-blue-700"
+            class="mt-2 flex items-center gap-1.5 text-xs text-[var(--sv-text-3)]"
           >
-            {{ t('common.generating') }}<span class="font-mono">▍</span>
+            {{ t('common.generating') }}<span class="sv-stream-caret" aria-hidden="true" />
           </div>
         </div>
       </template>
 
-      <div v-if="props.error" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 shadow-sm">
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wide">{{ t('chat.transcript.error') }}</div>
-          <div class="text-[11px] text-red-700">{{ t('chat.transcript.runTerminated') }}</div>
+      <div v-if="props.error" class="sv-notice sv-notice-danger flex-col items-stretch gap-1 p-3 text-sm">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-medium">{{ t('chat.transcript.error') }}</div>
+          <div class="text-xs opacity-80">{{ t('chat.transcript.runTerminated') }}</div>
         </div>
-        <pre class="whitespace-pre-wrap text-xs">{{ errorText }}</pre>
+        <pre class="whitespace-pre-wrap break-words text-xs">{{ errorText }}</pre>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.sv-stream-caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: sv-transcript-caret-pulse 1s ease-in-out infinite;
+}
+@keyframes sv-transcript-caret-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sv-stream-caret { animation: none; opacity: 0.6; }
+}
+</style>

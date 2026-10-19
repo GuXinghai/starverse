@@ -35,37 +35,35 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-type Tone = 'gray' | 'blue' | 'green' | 'red' | 'amber'
+type Tone = 'idle' | 'active' | 'ok' | 'error' | 'warning'
 
 const statusTone = computed<Tone>(() => {
   const s = props.run?.status
   switch (s) {
     case 'requesting':
     case 'streaming':
-      return 'blue'
+      return 'active'
     case 'done':
-      return 'green'
+      return 'ok'
     case 'error':
-      return 'red'
+      return 'error'
     case 'aborted':
-      return 'amber'
+      return 'warning'
     default:
-      return 'gray'
+      return 'idle'
   }
 })
 
-const statusPillClass = computed(() => {
+const statusTextClass = computed(() => {
   switch (statusTone.value) {
-    case 'blue':
-      return 'bg-blue-50 text-blue-800 ring-blue-200'
-    case 'green':
-      return 'bg-green-50 text-green-800 ring-green-200'
-    case 'red':
-      return 'bg-red-50 text-red-800 ring-red-200'
-    case 'amber':
-      return 'bg-amber-50 text-amber-900 ring-amber-200'
+    case 'error':
+      return 'text-[var(--sv-danger)]'
+    case 'warning':
+      return 'text-[var(--sv-warning)]'
+    case 'idle':
+      return 'text-[var(--sv-text-3)]'
     default:
-      return 'bg-gray-100 text-gray-800 ring-gray-200'
+      return 'text-[var(--sv-text-2)]'
   }
 })
 
@@ -145,53 +143,53 @@ const usageCostSummary = computed(() => {
 </script>
 
 <template>
-  <div class="border-b border-gray-200 bg-white">
-    <div class="flex flex-wrap items-center gap-3 px-4 py-3 text-xs text-gray-700">
+  <div class="border-b border-[var(--sv-line)] bg-white">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs text-[var(--sv-text-3)]">
       <div class="flex items-center gap-2">
-        <div class="font-semibold text-gray-900">{{ props.title || t('chat.status.title') }}</div>
+        <div class="font-medium text-[var(--sv-text)]">{{ props.title || t('chat.status.title') }}</div>
         <span
           v-if="props.run"
-          class="rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1"
-          :class="statusPillClass"
+          class="font-medium"
+          :class="statusTextClass"
         >
           {{ props.run.status }}
         </span>
       </div>
 
-      <div v-if="props.run" class="flex flex-wrap items-center gap-3">
+      <div v-if="props.run" class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <div v-if="props.run.model">
-          {{ t('chat.status.model') }}: <span class="font-mono">{{ props.run.model }}</span>
+          {{ t('chat.status.model') }}: <span class="font-mono text-[var(--sv-text-2)]">{{ props.run.model }}</span>
         </div>
         <div v-if="props.run.provider">
-          {{ t('chat.status.provider') }}: <span class="font-mono">{{ props.run.provider }}</span>
+          {{ t('chat.status.provider') }}: <span class="font-mono text-[var(--sv-text-2)]">{{ props.run.provider }}</span>
         </div>
         <div v-if="props.run.generationId">
-          {{ t('chat.status.generation') }}: <span class="font-mono">{{ props.run.generationId }}</span>
+          {{ t('chat.status.generation') }}: <span class="font-mono text-[var(--sv-text-2)]">{{ props.run.generationId }}</span>
         </div>
         <div v-if="props.run.finishReason">
-          {{ t('chat.status.finish') }}: <span class="font-mono">{{ props.run.finishReason }}</span>
+          {{ t('chat.status.finish') }}: <span class="font-mono text-[var(--sv-text-2)]">{{ props.run.finishReason }}</span>
         </div>
         <div
           v-if="props.run.completionOutcome === 'truncated'"
-          class="rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200"
+          class="font-medium text-[var(--sv-warning)]"
         >
           {{ t('chat.status.truncated') }}
         </div>
-        <div v-if="props.showUsage && usageSummary" class="flex flex-wrap items-center gap-2">
-          <span class="text-gray-500">{{ t('chat.status.thisTurn') }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.promptShort') }}={{ usageSummary.pt }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.completionShort') }}={{ usageSummary.ct }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.totalShort') }}={{ usageSummary.tt }}</span>
-          <span v-if="usageCostSummary" class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.cost') }}={{ usageCostSummary.text }}</span>
+        <div v-if="props.showUsage && usageSummary" class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{{ t('chat.status.thisTurn') }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.promptShort') }}={{ usageSummary.pt }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.completionShort') }}={{ usageSummary.ct }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.totalShort') }}={{ usageSummary.tt }}</span>
+          <span v-if="usageCostSummary" class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.cost') }}={{ usageCostSummary.text }}</span>
         </div>
         <div
           v-if="props.showUsage && props.showSessionTotalDerived && derivedUsageSummary"
-          class="flex flex-wrap items-center gap-2"
+          class="flex flex-wrap items-center gap-x-2 gap-y-1"
         >
-          <span class="text-gray-500">{{ t('chat.status.sessionTotalDerived') }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.promptShort') }}={{ derivedUsageSummary.pt }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.completionShort') }}={{ derivedUsageSummary.ct }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.totalShort') }}={{ derivedUsageSummary.tt }}</span>
+          <span>{{ t('chat.status.sessionTotalDerived') }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.promptShort') }}={{ derivedUsageSummary.pt }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.completionShort') }}={{ derivedUsageSummary.ct }}</span>
+          <span class="font-mono text-[var(--sv-text-2)]">{{ t('chat.status.totalShort') }}={{ derivedUsageSummary.tt }}</span>
         </div>
       </div>
 
@@ -199,7 +197,7 @@ const usageCostSummary = computed(() => {
         <slot name="actions" />
         <button
           v-if="props.showAbort"
-          class="rounded-lg bg-gray-100 px-3 py-1 text-xs hover:bg-gray-200 disabled:opacity-50"
+          class="sv-btn sv-btn-sm"
           :disabled="!props.isRunning"
           @click="emit('abort')"
         >
@@ -207,7 +205,7 @@ const usageCostSummary = computed(() => {
         </button>
         <button
           v-if="props.showReset"
-          class="rounded-lg bg-gray-100 px-3 py-1 text-xs hover:bg-gray-200"
+          class="sv-btn sv-btn-sm"
           @click="emit('reset')"
         >
           {{ t('chat.status.reset') }}
@@ -215,8 +213,8 @@ const usageCostSummary = computed(() => {
       </div>
     </div>
 
-    <div v-if="errorText" class="border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-900">
-      <span class="font-semibold">{{ t('chat.status.error') }}:</span> <span class="font-mono">{{ errorText }}</span>
+    <div v-if="errorText" class="sv-notice sv-notice-danger mx-4 mb-2">
+      <span class="font-medium">{{ t('chat.status.error') }}:</span> <span class="min-w-0 break-words font-mono">{{ errorText }}</span>
     </div>
   </div>
 </template>

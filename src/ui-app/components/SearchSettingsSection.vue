@@ -139,16 +139,19 @@ const groups = [
 </script>
 
 <template>
-  <div id="settings-search-section" class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-search-section">
-    <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('search.settings.title') }}</div>
-    <div class="mt-1 text-[11px] text-gray-500">{{ t('search.settings.description') }}</div>
+  <div id="settings-search-section" class="flex flex-col gap-3" data-testid="settings-search-section">
+    <div>
+      <div class="sv-label">{{ t('search.settings.title') }}</div>
+      <div class="sv-meta mt-1">{{ t('search.settings.description') }}</div>
+    </div>
 
-    <fieldset v-for="group in groups" :key="group.id" class="mt-3 space-y-2" :disabled="props.disabled">
-      <legend class="text-[11px] font-semibold text-gray-700">{{ t(group.titleKey) }}</legend>
-      <label v-for="field in group.selects" :key="field.id" class="flex items-center justify-between gap-3 text-[11px] text-gray-700">
-        <span>{{ t(field.labelKey) }}</span>
+    <div v-for="group in groups" :key="group.id" class="sv-divider-t pt-3">
+    <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" :disabled="props.disabled">
+      <legend class="mb-2 p-0 text-xs font-medium text-[color:var(--sv-text-2)]">{{ t(group.titleKey) }}</legend>
+      <label v-for="field in group.selects" :key="field.id" class="flex items-center justify-between gap-3 text-[13px] text-[color:var(--sv-text)]">
+        <span class="min-w-0">{{ t(field.labelKey) }}</span>
         <select
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px]"
+          class="sv-select sv-select-sm w-auto max-w-[60%] shrink-0"
           :value="field.get()"
           :data-testid="`settings-search-${field.id}`"
           @change="onSelect(field, $event)"
@@ -157,25 +160,26 @@ const groups = [
         </select>
       </label>
       <div v-for="field in group.numbers" :key="field.id">
-        <label class="flex items-center justify-between gap-3 text-[11px] text-gray-700">
-          <span>{{ t(field.labelKey) }}</span>
+        <label class="flex items-center justify-between gap-3 text-[13px] text-[color:var(--sv-text)]">
+          <span class="min-w-0">{{ t(field.labelKey) }}</span>
           <input
             type="number"
             min="1"
             step="1"
-            class="w-28 rounded-md border border-gray-200 px-2 py-1 text-[11px]"
+            class="sv-input sv-input-sm w-28 shrink-0"
             :value="field.get()"
             :aria-invalid="invalidField === field.id"
             :data-testid="`settings-search-${field.id}`"
             @change="onNumber(field, $event)"
           />
         </label>
-        <div v-if="field.hintKey" class="mt-0.5 text-[10px] text-gray-500">{{ t(field.hintKey) }}</div>
-        <div v-if="invalidField === field.id" class="mt-0.5 text-[10px] text-red-600" role="alert">{{ t('search.settings.positiveInteger') }}</div>
+        <div v-if="field.hintKey" class="sv-meta mt-0.5">{{ t(field.hintKey) }}</div>
+        <div v-if="invalidField === field.id" class="mt-0.5 text-xs text-[color:var(--sv-danger)]" role="alert">{{ t('search.settings.positiveInteger') }}</div>
       </div>
     </fieldset>
+    </div>
 
-    <div v-if="status" class="mt-2 text-[11px] text-gray-500" role="status" data-testid="settings-search-status">
+    <div v-if="status" class="sv-meta" role="status" data-testid="settings-search-status">
       {{ status === 'saved' ? t('search.settings.saved') : t('search.settings.saveFailed') }}
     </div>
   </div>

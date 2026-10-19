@@ -131,6 +131,80 @@ describe('workspace composer scope ownership', () => {
   const selectedFiles = (count = 1) => ({ filePaths: Array.from({ length: count }, (_, i) => `C:/fixtures/file-${i}.txt`),
     fileGrants: Array.from({ length: count }, (_, i) => ({ filePath: `C:/fixtures/file-${i}.txt`, token: `grant:${i}`, expiresAtMs: 9999 })) })
 
+  it.each(['initial', 'regenerate', 'retry', 'editResend'] as const)('owns delayed %s errors across A-B-A navigation', async kind => {
+    await mountLogic()
+    if (kind === 'editResend') await logic.openQuestionEdit('question:A')
+    const gate = deferred<any>()
+    bridge.openRouter.chat[kind].mockImplementationOnce(() => gate.promise)
+    const action = kind === 'initial' ? logic.onSend() : kind === 'regenerate' ? logic.onRegenerateFromQuestion('question:A')
+      : kind === 'retry' ? logic.onRetryReplaceAnswer('question:A', 'answer:A') : logic.submitQuestionEdit()
+    await waitFor(() => expect(bridge.openRouter.chat[kind]).toHaveBeenCalled())
+    await select('B')
+    await logic.onSelectConvo('A')
+    await waitFor(() => expect(logic.activeConvoId.value).toBe('A'))
+    gate.resolve({ ok: false, code: 'OLD_CHAT_FAILURE' })
+    await action
+    expect(logic.loadError.value).toBeNull()
+  })
+
+  it('keeps subscription failures global across chat navigation', async () => {
+    bridge.runtime.subscribe.mockRejectedValueOnce(new Error('WORKSPACE_CONNECTION_FAILURE'))
+    await mountLogic()
+    await waitFor(() => expect(logic.loadError.value).toBe('WORKSPACE_CONNECTION_FAILURE'))
+    await select('B')
+    expect(logic.loadError.value).toBe('WORKSPACE_CONNECTION_FAILURE')
+  })
+
+  it('does not show a background operation synchronization error in another chat', async () => {
+    bridge.runtime.subscribe.mockResolvedValueOnce(ok([{ binding: { operationId: 'operation:A', conversationId: 'A',
+      branchId: branchFor('A'), targetAnswerId: 'answer:A', sourceAnswerId: null, snapshotHash: 'a'.repeat(64),
+      providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1' }, status: 'completed', body: 'answer body A',
+      reasoning: [], images: [], lastSequence: 1, errorFact: null, updatedAtMs: 2 }]))
+    await mountLogic()
+    await select('B')
+    const receive = bridge.runtime.onEvent.mock.calls[0][0]
+    receive({ operationId: 'operation:A', sequence: 3, payload: { type: 'assistant_body', content: 'gap' } })
+    await waitFor(() => expect(bridge.runtime.snapshot).toHaveBeenCalledWith('operation:A'))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(logic.loadError.value).toBeNull()
+    await select('A')
+    receive({ operationId: 'operation:A', sequence: 4, payload: { type: 'assistant_body', content: 'gap again' } })
+    await waitFor(() => expect(logic.loadError.value).toBe('GENERATION_V2_RUNTIME_EVENT_SEQUENCE_GAP'))
+    await select('B')
+    expect(logic.loadError.value).toBeNull()
+  })
+
+  it('clears a current chat error on another branch and when starting a new send', async () => {
+    await mountLogic()
+    bridge.openRouter.chat.initial.mockResolvedValueOnce({ ok: false, code: 'FIRST_FAILURE' })
+    await logic.onSend()
+    expect(logic.loadError.value).toBe('FIRST_FAILURE')
+    await logic.onSelectBranch('branch:A:other')
+    expect(logic.loadError.value).toBeNull()
+    bridge.openRouter.chat.initial.mockResolvedValueOnce({ ok: false, code: 'SECOND_FAILURE' })
+    await logic.onSend()
+    expect(logic.loadError.value).toBe('SECOND_FAILURE')
+    const gate = deferred<any>()
+    bridge.openRouter.chat.initial.mockImplementationOnce(() => gate.promise)
+    const sending = logic.onSend()
+    await waitFor(() => expect(logic.loadError.value).toBeNull())
+    gate.resolve({ ok: false, code: 'NEW_FAILURE' })
+    await sending
+  })
+
+  it('does not let an older same-page regenerate failure overwrite a newer action', async () => {
+    await mountLogic()
+    const first = deferred<any>(), second = deferred<any>()
+    bridge.openRouter.chat.regenerate.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
+    const a = logic.onRegenerateFromQuestion('question:A')
+    await waitFor(() => expect(bridge.openRouter.chat.regenerate).toHaveBeenCalledTimes(1))
+    const b = logic.onRegenerateFromQuestion('question:A')
+    await waitFor(() => expect(bridge.openRouter.chat.regenerate).toHaveBeenCalledTimes(2))
+    second.resolve({ ok: false, code: 'LATEST_FAILURE' }); await b
+    first.resolve({ ok: false, code: 'STALE_FAILURE' }); await a
+    expect(logic.loadError.value).toBe('LATEST_FAILURE')
+  })
+
   it('drops a delayed compose picker after A-B-A and a compose-edit-compose round trip', async () => {
     await mountLogic()
     const gate = deferred<any>()

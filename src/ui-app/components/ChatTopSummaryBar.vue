@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 const props = defineProps<{
   title: string
@@ -21,10 +22,10 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex flex-col">
-    <div class="flex items-center justify-between gap-3 px-4 py-2">
+    <div class="flex items-start justify-between gap-3 px-6 pb-1 pt-3">
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold text-gray-900">{{ props.title || t('chat.topBar.untitledConversation') }}</div>
-        <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+        <div class="sv-title truncate">{{ props.title || t('chat.topBar.untitledConversation') }}</div>
+        <div class="sv-meta mt-0.5 flex flex-wrap items-center gap-x-1.5 [&>*+*]:before:mr-1.5 [&>*+*]:before:content-['·']">
           <span>{{ props.branchSummary }}</span>
           <span>{{ props.runSummary }}</span>
           <span v-if="props.modelSummary">{{ props.modelSummary }}</span>
@@ -32,31 +33,27 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-          @click="emit('openSettings')"
-        >
-          <span>{{ t('common.settings') }}</span>
-        </button>
-        <button
-          type="button"
-          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-          @click="emit('toggleConsolePanel')"
-        >
-          <span aria-hidden="true">{{ props.consolePanelOpen ? '→' : '←' }}</span>
-          <span>{{ props.consolePanelOpen ? t('chat.topBar.hideConsole') : t('chat.topBar.console') }}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="sv-btn sv-btn-sm sv-btn-ghost w-28"
+        :aria-expanded="props.consolePanelOpen"
+        @click="emit('toggleConsolePanel')"
+      >
+        <UiIcon name="panel" :size="15" />
+        <span>{{ props.consolePanelOpen ? t('chat.topBar.hideConsole') : t('chat.topBar.console') }}</span>
+      </button>
     </div>
 
-    <div v-if="props.loadError" class="border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-900">
-      {{ props.loadError }}
+    <div v-if="props.loadError" class="sv-notice sv-notice-danger mx-6 mb-1 mt-1">
+      <UiIcon name="alert" :size="14" class="mt-0.5 flex-none" />
+      <span class="min-w-0 break-words">{{ props.loadError }}</span>
     </div>
-    <div v-else-if="props.normalizedErrorSummary" class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-      <div>{{ props.normalizedErrorSummary }}</div>
-      <div v-if="props.normalizedErrorActionHint" class="mt-1 text-[11px] text-amber-800">{{ props.normalizedErrorActionHint }}</div>
+    <div v-else-if="props.normalizedErrorSummary" class="sv-notice sv-notice-warning mx-6 mb-1 mt-1">
+      <UiIcon name="alert" :size="14" class="mt-0.5 flex-none" />
+      <div class="min-w-0 break-words">
+        <div>{{ props.normalizedErrorSummary }}</div>
+        <div v-if="props.normalizedErrorActionHint" class="mt-1">{{ props.normalizedErrorActionHint }}</div>
+      </div>
     </div>
   </div>
 </template>

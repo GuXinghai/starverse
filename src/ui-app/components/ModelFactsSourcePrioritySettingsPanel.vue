@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { t, tf } from '@/shared/i18n'
 import {
   SOURCE_PRIORITY_KEYS, parseSourcePriorityDraft, sourcePriorityErrorKey, sourcePriorityErrorKind, sourcePriorityKey,
@@ -121,45 +122,53 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="space-y-3 rounded border border-gray-200 bg-white p-3" data-testid="model-facts-source-priority-settings">
+  <section class="flex min-w-0 flex-col gap-4" data-testid="model-facts-source-priority-settings">
     <header>
       <h3 class="text-sm font-semibold text-gray-900">{{ t('settings.modelsCapabilities.priorityTitle') }}</h3>
-      <p class="mt-1 text-xs text-gray-500">{{ t('settings.modelsCapabilities.priorityDescription') }}</p>
+      <p class="sv-meta mt-1">{{ t('settings.modelsCapabilities.priorityDescription') }}</p>
     </header>
-    <div v-if="error" role="alert" class="space-y-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800" data-testid="source-priority-error" :data-error-kind="error.kind">
-      <p>{{ t(sourcePriorityErrorKey(error.kind)) }}</p>
-      <p v-if="error.kind === 'unknown'" class="break-all text-[10px] text-red-600">{{ error.detail }}</p>
-      <button v-if="error.kind === 'staleRevision'" type="button" class="rounded border border-red-300 bg-white px-2 py-0.5 text-[11px]" :disabled="loading || saving" @click="loadLatestKeepDraft">{{ t(sourcePriorityKey('loadLatestKeepDraft')) }}</button>
+    <div v-if="error" role="alert" class="sv-notice sv-notice-danger" data-testid="source-priority-error" :data-error-kind="error.kind">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+        <p>{{ t(sourcePriorityErrorKey(error.kind)) }}</p>
+        <p v-if="error.kind === 'unknown'" class="break-all">{{ error.detail }}</p>
+        <button v-if="error.kind === 'staleRevision'" type="button" class="sv-btn sv-btn-sm" :disabled="loading || saving" @click="loadLatestKeepDraft">{{ t(sourcePriorityKey('loadLatestKeepDraft')) }}</button>
+      </div>
     </div>
-    <p v-if="status" class="rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">{{ status }}</p>
-    <p v-if="latest" class="text-[11px] text-gray-600" data-testid="source-priority-latest">
+    <p v-if="latest" class="text-xs text-gray-600" data-testid="source-priority-latest">
       {{ t(sourcePriorityKey('latestSaved')) }}: {{ SOURCE_PRIORITY_KEYS.map((key) => `${t(LABEL_KEYS[key])} ${latest![key]}`).join(' · ') }}
     </p>
-    <form class="grid gap-2 sm:grid-cols-3" novalidate @submit.prevent="save">
-      <div v-for="key in SOURCE_PRIORITY_KEYS" :key="key" class="text-xs text-gray-700">
-        <label>{{ t(LABEL_KEYS[key]) }}
-          <input v-model="drafts[key]" type="text" inputmode="numeric" class="mt-1 w-full rounded border px-2 py-1.5 text-sm"
-            :class="parsed[key].ok ? 'border-gray-300' : 'border-red-400'" :disabled="loading || saving"
+    <form class="grid gap-x-4 gap-y-4 sm:grid-cols-3" novalidate @submit.prevent="save">
+      <div v-for="key in SOURCE_PRIORITY_KEYS" :key="key" class="min-w-0 text-xs text-gray-700">
+        <label class="flex flex-col gap-1">{{ t(LABEL_KEYS[key]) }}
+          <input v-model="drafts[key]" type="text" inputmode="numeric" class="sv-input w-full"
+            :class="parsed[key].ok ? '' : 'border-[var(--sv-danger)]'" :disabled="loading || saving"
             :aria-invalid="!parsed[key].ok" :aria-describedby="`source-priority-${key}-hint`" />
         </label>
-        <p :id="`source-priority-${key}-hint`" class="mt-0.5 text-[10px]" :class="parsed[key].ok ? 'text-gray-500' : 'text-red-700'" :data-testid="`source-priority-${key}-hint`">
+        <p :id="`source-priority-${key}-hint`" class="mt-1 min-h-4 text-xs" :class="parsed[key].ok ? 'text-gray-500' : 'text-[var(--sv-danger)]'" :data-testid="`source-priority-${key}-hint`">
           {{ hintText(key) }}
         </p>
       </div>
-      <div v-if="ranks" class="sm:col-span-3 space-y-1 text-[11px] text-gray-700" data-testid="source-priority-order">
+      <div v-if="ranks" class="flex flex-col gap-2 text-xs text-gray-700 sm:col-span-3" data-testid="source-priority-order">
         <p>{{ t(sourcePriorityKey('order')) }}: {{ order }}</p>
         <p v-if="ties.length === 0" class="text-gray-500">{{ t(sourcePriorityKey('noTies')) }}</p>
-        <div v-else class="space-y-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900" data-testid="source-priority-ties">
-          <p v-for="group in ties" :key="group.join(',')">{{ tf(sourcePriorityKey('tie'), { sources: sourceList(group), priority: valid![group[0]!] }) }}</p>
-          <p>{{ t(sourcePriorityKey('tieExplanation')) }}</p>
-          <button type="button" class="rounded border border-amber-300 bg-white px-2 py-0.5" @click="emit('open-inspector')">{{ t(sourcePriorityKey('openInspector')) }}</button>
+        <div v-else class="sv-notice sv-notice-warning flex-col" data-testid="source-priority-ties">
+          <div class="flex items-start gap-2">
+            <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+            <div class="flex min-w-0 flex-col gap-1">
+              <p v-for="group in ties" :key="group.join(',')">{{ tf(sourcePriorityKey('tie'), { sources: sourceList(group), priority: valid![group[0]!] }) }}</p>
+              <p>{{ t(sourcePriorityKey('tieExplanation')) }}</p>
+            </div>
+          </div>
+          <button type="button" class="sv-btn sv-btn-sm ml-5" @click="emit('open-inspector')">{{ t(sourcePriorityKey('openInspector')) }}</button>
         </div>
       </div>
-      <div class="sm:col-span-3 flex items-center justify-between gap-2">
-        <span class="break-all text-[10px] text-gray-400">{{ revision }}</span>
-        <div class="flex gap-2">
-          <button type="button" class="rounded border border-gray-300 px-3 py-1.5 text-xs" :disabled="loading || saving" @click="load">{{ t('common.reload') }}</button>
-          <button type="submit" class="rounded bg-blue-600 px-3 py-1.5 text-xs text-white disabled:opacity-50" :disabled="loading || saving || !revision || !valid">{{ t('settings.modelsCapabilities.savePriority') }}</button>
+      <div class="sv-divider-t flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-3 sm:col-span-3">
+        <span class="sv-meta min-w-0 flex-1 break-all">{{ revision }}</span>
+        <div class="flex items-center gap-2">
+          <p v-if="status" class="flex items-center gap-1 text-xs text-gray-700"><UiIcon name="check" :size="14" class="shrink-0" />{{ status }}</p>
+          <button type="button" class="sv-btn sv-btn-sm min-w-20" :disabled="loading || saving" @click="load">{{ t('common.reload') }}</button>
+          <button type="submit" class="sv-btn sv-btn-sm sv-btn-primary min-w-20" :disabled="loading || saving || !revision || !valid">{{ t('settings.modelsCapabilities.savePriority') }}</button>
         </div>
       </div>
     </form>

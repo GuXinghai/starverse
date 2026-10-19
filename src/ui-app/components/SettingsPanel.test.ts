@@ -568,6 +568,26 @@ describe('ui-app SettingsPanel', () => {
     expect(credentialUpdate).not.toHaveBeenCalled()
   })
 
+  it('defaults project duplicate policy to ask and saves the selected policy', async () => {
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+    const select = await screen.findByTestId('project-duplicate-policy')
+    await waitFor(() => expect(select).not.toBeDisabled())
+    expect(select).toHaveValue('ask')
+    await fireEvent.update(select, 'deny')
+    await fireEvent.click(screen.getByTestId('settings-save'))
+    await waitFor(() => expect((globalThis as any).electronStore.set)
+      .toHaveBeenCalledWith('generationV2UiPreferences.projectDuplicatePolicy', 'deny'))
+  })
+
+  it.each(['allow', 'deny', 'ask'])('loads the retained %s project duplicate policy', async (policy) => {
+    const store = (globalThis as any).electronStore
+    const get = store.get.getMockImplementation()
+    store.get.mockImplementation((key: string) => key === 'generationV2UiPreferences'
+      ? Promise.resolve({ projectDuplicatePolicy: policy }) : get(key))
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+    await waitFor(() => expect(screen.getByTestId('project-duplicate-policy')).toHaveValue(policy))
+  })
+
   describe('quit warning', () => {
     const KEY = 'generationV2UiPreferences.warnOnQuitWithActiveWork'
     const quitWrites = () => ((globalThis as any).electronStore.set as ReturnType<typeof vi.fn>).mock.calls

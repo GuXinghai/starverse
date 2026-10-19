@@ -12,8 +12,8 @@ const props = withDefaults(
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden bg-gray-50">
-    <div v-if="$slots.header" class="border-b border-gray-200 bg-white">
+  <div class="flex h-full flex-col overflow-hidden bg-white">
+    <div v-if="$slots.header" class="border-b border-[var(--sv-line)] bg-white">
       <slot name="header" />
     </div>
 
@@ -32,13 +32,13 @@ const props = withDefaults(
       <div
         v-if="props.sidePanel !== 'none' && $slots.side"
         class="min-h-0 flex-shrink-0 bg-white"
-        :class="props.sidePanel === 'right' ? [props.sidePanelWidthClass, 'border-l border-gray-200'] : 'border-t border-gray-200'"
+        :class="props.sidePanel === 'right' ? [props.sidePanelWidthClass, 'border-l border-[var(--sv-line)]'] : 'border-t border-[var(--sv-line)]'"
       >
         <slot name="side" />
       </div>
     </div>
 
-    <div v-if="$slots.composer" class="border-t border-gray-200 bg-white">
+    <div v-if="$slots.composer" class="border-t border-[var(--sv-line)] bg-white">
       <slot name="composer" />
     </div>
   </div>

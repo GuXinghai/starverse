@@ -22,23 +22,19 @@ const statusLabel = computed(() => {
 })
 
 const toneClass = computed(() => {
-  if (props.attachment.borderTone === 'green') return 'border-green-300 bg-green-50'
-  if (props.attachment.borderTone === 'yellow') return 'border-amber-300 bg-amber-50'
-  if (props.attachment.borderTone === 'red') return 'border-red-300 bg-red-50'
-  return 'border-gray-200 bg-white'
+  if (props.attachment.borderTone === 'yellow') return 'border-[var(--sv-warning-line)]'
+  if (props.attachment.borderTone === 'red') return 'border-[var(--sv-danger-line)]'
+  return 'border-gray-200'
 })
 
 const textToneClass = computed(() => {
-  if (props.attachment.borderTone === 'green') return 'text-green-700'
-  if (props.attachment.borderTone === 'yellow') return 'text-amber-700'
-  if (props.attachment.borderTone === 'red') return 'text-red-700'
+  if (props.attachment.borderTone === 'yellow') return 'text-[var(--sv-warning)]'
+  if (props.attachment.borderTone === 'red') return 'text-[var(--sv-danger)]'
   return 'text-gray-600'
 })
 
 const activeClass = computed(() =>
-  props.attachment.isActiveLocatedAttachment
-    ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-gray-50 shadow-[0_0_0_1px_rgba(245,158,11,0.35)]'
-    : '',
+  props.attachment.isActiveLocatedAttachment ? 'ring-2 ring-gray-900 ring-offset-2' : '',
 )
 
 const iconLabel = computed(() => {
@@ -91,13 +87,13 @@ const compatibilityLabel = computed(() => {
 <template>
   <button
     type="button"
-    class="relative flex w-[18rem] min-w-0 cursor-default flex-col overflow-hidden rounded-lg border text-left shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    class="relative flex w-[18rem] min-w-0 max-w-full cursor-default flex-col overflow-hidden rounded-xl border bg-white text-left"
     :class="[toneClass, activeClass, props.attachment.displayStatus === 'parsing' ? 'opacity-80 grayscale' : '']"
     :data-testid="`history-attachment-card-${props.attachment.attachmentId}`"
     @click.stop
   >
     <div class="flex items-start gap-3 p-2.5">
-      <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
+      <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
         <img
           v-if="props.attachment.previewDataUrl && props.attachment.iconKind === 'image'"
           :src="props.attachment.previewDataUrl"
@@ -108,37 +104,36 @@ const compatibilityLabel = computed(() => {
         />
         <div
           v-else
-          class="flex h-full w-full flex-col items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
+          class="flex h-full w-full items-center justify-center text-xs font-medium text-gray-500"
           :data-testid="`history-attachment-placeholder-${props.attachment.attachmentId}`"
         >
-          <div class="text-sm leading-none">{{ iconLabel }}</div>
-          <div>{{ props.attachment.iconKind }}</div>
+          {{ iconLabel }}
         </div>
       </div>
 
-      <div class="min-w-0 flex-1">
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
         <div class="min-w-0">
-          <div class="truncate text-xs font-semibold text-gray-900" :title="props.attachment.filename">
+          <div class="truncate text-[13px] font-medium text-gray-900" :title="props.attachment.filename">
             {{ props.attachment.filename }}
           </div>
-          <div class="mt-0.5 text-[11px] text-gray-500">
+          <div class="text-xs text-gray-500">
             {{ subtitle }}
           </div>
         </div>
 
-        <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-          <span class="rounded-full border px-2 py-0.5 font-medium uppercase tracking-wide" :class="textToneClass">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+          <span :class="textToneClass">
             {{ statusLabel }}
           </span>
-          <span v-if="props.attachment.isHistoryIncompatible" class="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-medium uppercase tracking-wide text-red-700">
+          <span v-if="props.attachment.isHistoryIncompatible" class="text-[var(--sv-danger)]">
             {{ t('chat.attachment.history') }}
           </span>
         </div>
 
-        <div v-if="props.attachment.incompatibilityReason" class="mt-1 text-[11px] text-red-700">
+        <div v-if="props.attachment.incompatibilityReason" class="text-xs text-[var(--sv-danger)]">
           {{ props.attachment.incompatibilityReason }}
         </div>
-        <div v-if="fileTypeHint" class="mt-1.5 space-y-0.5 text-[11px] text-gray-600">
+        <div v-if="fileTypeHint" class="flex flex-col gap-0.5 text-xs text-gray-500">
           <div>
             {{ t('chat.attachment.type') }}: {{ fileTypeHint.formatId }} · {{ fileTypeHint.confidenceLevel }}
           </div>
@@ -147,7 +142,7 @@ const compatibilityLabel = computed(() => {
             <span v-if="fileTypeHint.requiresJob"> · {{ t('chat.attachment.needsJob') }}</span>
             <span v-if="fileTypeHint.engineUnavailable"> · {{ t('chat.attachment.engineUnavailable') }}</span>
           </div>
-          <div v-if="fileTypeHint.hasConflicts || fileTypeHint.hasExtensionMimeConflict" class="text-amber-700">
+          <div v-if="fileTypeHint.hasConflicts || fileTypeHint.hasExtensionMimeConflict" class="text-[var(--sv-warning)]">
             {{ t('chat.attachment.typeConflictDetected') }}
           </div>
         </div>

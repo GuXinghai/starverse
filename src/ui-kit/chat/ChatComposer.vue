@@ -38,14 +38,16 @@ const canSend = computed(() => !props.disabled && props.draft.trim().length > 0)
     <div class="mb-3 flex items-center justify-end gap-2">
       <button
         v-if="props.showAbort"
-        class="rounded-lg bg-gray-100 px-3 py-1 text-xs text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+        type="button"
+        class="sv-btn sv-btn-sm"
         :disabled="!props.canAbort"
         @click="emit('abort')"
       >
         {{ props.abortLabel }}
       </button>
       <button
-        class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        type="button"
+        class="sv-btn sv-btn-sm sv-btn-primary"
         :disabled="!canSend"
         @click="emit('send')"
       >
@@ -54,7 +56,7 @@ const canSend = computed(() => !props.disabled && props.draft.trim().length > 0)
     </div>
 
     <textarea
-      class="h-24 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm outline-none focus:border-blue-300 focus:bg-white disabled:opacity-60"
+      class="sv-textarea h-24 resize-none text-sm"
       :value="props.draft"
       :disabled="props.disabled"
       :placeholder="props.placeholder"

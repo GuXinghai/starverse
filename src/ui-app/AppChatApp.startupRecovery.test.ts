@@ -157,6 +157,18 @@ describe('AppChatApp startup recovery with persisted workspace authorities', () 
     },
   )
 
+  it('centers an empty chat and opens all settings from the persistent workspace menu', async () => {
+    render(AppChatApp)
+    await ready()
+    await screen.findByTestId('composer-draft')
+    expect(screen.getByTestId('new-chat-welcome')).toBeInTheDocument()
+    expect(document.querySelector('[data-composer-position]')).toHaveAttribute('data-composer-position', 'center')
+    await fireEvent.click(screen.getByTestId('workspace-menu-trigger'))
+    await fireEvent.click(screen.getByTestId('workspace-open-settings'))
+    expect(await screen.findByTestId('settings-modal-categorized')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(8)
+  })
+
   it('shows missing bridge recovery and opens Settings while workspace actions remain unavailable', async () => {
     delete (globalThis as any).generationV2
     const mountedError = vi.fn()

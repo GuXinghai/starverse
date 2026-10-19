@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import WorkspaceIcon from './WorkspaceIcon.vue'
+import { computed, nextTick, ref } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import type { ConversationListItem, ProjectListItem } from './ConversationList.types'
+import type { ProjectNameMutationResult } from '@/shared/settings/projectDuplicatePolicy'
+
+type ProjectNameCompletion = (result: ProjectNameMutationResult | null) => void
+type ProjectNameSubmission = { projectId: string | null; name: string }
 
 const props = defineProps<{
   items: readonly ConversationListItem[]
@@ -29,8 +34,8 @@ const emit = defineEmits<{
   bulkMoveToProject: [convoIds: string[], projectId: string | null]
   selectProject: [projectId: string | null]
   openSearch: []
-  createProject: [name: string]
-  renameProject: [projectId: string, name: string]
+  createProject: [name: string, confirmDuplicate: boolean, complete: ProjectNameCompletion]
+  renameProject: [projectId: string, name: string, confirmDuplicate: boolean, complete: ProjectNameCompletion]
   deleteProject: [projectId: string]
   openProjectSettings: [projectId: string]
 }>()
@@ -49,6 +54,11 @@ const projectCreateName = ref('')
 const projectRenameDialog = ref<{ id: string; name: string } | null>(null)
 const projectDeleteDialog = ref<{ id: string; name: string } | null>(null)
 const projectErrorMessage = ref<string | null>(null)
+const projectNameError = ref<string | null>(null)
+const projectNamePending = ref(false)
+const projectDuplicateConfirmation = ref<ProjectNameSubmission | null>(null)
+const projectDuplicateConfirmButton = ref<HTMLButtonElement | null>(null)
+let projectNameOperation = 0
 
 const mutationsDisabled = computed(() => props.disabled || props.mutationDisabled)
 
@@ -182,19 +192,47 @@ function onSelectProject(projectId: string | null) {
 
 function openProjectCreate() {
   if (mutationsDisabled.value) return
+  projectNameOperation += 1
+  projectNameError.value = null
   projectCreateName.value = ''
   projectCreateDialogOpen.value = true
 }
 
 function confirmProjectCreate() {
-  if (mutationsDisabled.value) return
+  if (mutationsDisabled.value || !projectCreateDialogOpen.value) return
   const name = projectCreateName.value.trim()
   if (!name) return
   
-  // 直接创建项目，后端会处理同名逻辑（返回已存在项目并自动选中）
-  emit('createProject', name)
-  projectCreateDialogOpen.value = false
-  projectCreateName.value = ''
+  submitProjectName({ projectId: null, name })
+}
+
+function submitProjectName(submission: ProjectNameSubmission, confirmDuplicate = false) {
+  if (mutationsDisabled.value || projectNamePending.value) return
+  const operation = ++projectNameOperation
+  projectNamePending.value = true
+  projectDuplicateConfirmation.value = null
+  const complete: ProjectNameCompletion = (result) => {
+    if (operation !== projectNameOperation) return
+    projectNamePending.value = false
+    if (!result) return
+    if (result.status === 'saved') {
+      projectNameError.value = null
+      cancelProjectDialog()
+    } else if (result.policy === 'deny') {
+      projectNameError.value = t('navigation.project.duplicateName')
+    } else {
+      projectNameError.value = null
+      projectDuplicateConfirmation.value = submission
+      void nextTick(() => projectDuplicateConfirmButton.value?.focus())
+    }
+  }
+  if (submission.projectId === null) emit('createProject', submission.name, confirmDuplicate, complete)
+  else emit('renameProject', submission.projectId, submission.name, confirmDuplicate, complete)
+}
+
+function confirmDuplicateProjectName() {
+  const submission = projectDuplicateConfirmation.value
+  if (submission) submitProjectName(submission, true)
 }
 
 function openProjectRename(project: ProjectListItem) {
@@ -206,6 +244,8 @@ function openProjectRename(project: ProjectListItem) {
     }, 3000)
     return
   }
+  projectNameOperation += 1
+  projectNameError.value = null
   projectRenameDialog.value = { id: project.id, name: project.name }
 }
 
@@ -215,8 +255,7 @@ function confirmProjectRename() {
   if (!dlg) return
   const name = dlg.name.trim()
   if (!name) return
-  emit('renameProject', dlg.id, name)
-  projectRenameDialog.value = null
+  submitProjectName({ projectId: dlg.id, name })
 }
 
 function openProjectDelete(project: ProjectListItem) {
@@ -246,6 +285,10 @@ function confirmProjectDelete() {
 }
 
 function cancelProjectDialog() {
+  if (projectNamePending.value) return
+  projectNameOperation += 1
+  projectNameError.value = null
+  projectDuplicateConfirmation.value = null
   projectCreateDialogOpen.value = false
   projectRenameDialog.value = null
   projectDeleteDialog.value = null
@@ -254,170 +297,183 @@ function cancelProjectDialog() {
 </script>
 
 <template>
-  <div class="flex h-full w-80 flex-col border-r border-gray-200 bg-white">
-    <div class="border-b border-gray-200 px-3 py-3">
+  <div class="flex h-full min-w-0 flex-col">
+    <div class="flex-none px-2 pt-1">
       <button
         type="button"
-        class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+        class="nav-row flex h-8 w-full items-center gap-2 px-2 text-left text-[13px] disabled:text-gray-400"
         :disabled="props.disabled"
         @click="emit('openSearch')"
       >
-        <span class="text-base">🔍</span>
-        <span class="font-semibold">{{ t('common.search') }}</span>
+        <WorkspaceIcon name="search" :size="16" class="flex-none" />
+        <span>{{ t('common.search') }}</span>
       </button>
     </div>
 
-    <div class="border-b border-gray-200 px-3 py-2">
-      <div class="flex items-center justify-between gap-2">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.project.title') }}</div>
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-            :disabled="props.disabled"
-            :aria-expanded="projectPanelOpen"
-            @click="projectPanelOpen = !projectPanelOpen"
-          >
-            {{ projectPanelOpen ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-            :disabled="mutationsDisabled"
-            :aria-label="t('navigation.project.newProject')"
-            @click="openProjectCreate"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      <div
-        v-if="projectErrorMessage"
-        class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"
-      >
-        {{ projectErrorMessage }}
+    <div class="flex flex-none items-center justify-between gap-2 px-4 pb-1 pt-3">
+      <div class="sv-label">{{ t('navigation.project.title') }}</div>
+      <div class="flex items-center gap-0.5">
+        <button
+          type="button"
+          class="h-6 w-12 rounded-md text-center text-xs text-gray-500 hover:bg-black/5 hover:text-gray-900 disabled:text-gray-400 disabled:hover:bg-transparent"
+          :disabled="props.disabled"
+          data-testid="project-group-toggle"
+          :aria-expanded="projectPanelOpen"
+          @click="projectPanelOpen = !projectPanelOpen"
+        >
+          {{ projectPanelOpen ? t('common.hide') : t('common.show') }}
+        </button>
+        <button
+          type="button"
+          class="sv-icon-btn h-6 w-6"
+          :disabled="mutationsDisabled"
+          :aria-label="t('navigation.project.newProject')"
+          :title="t('navigation.project.newProject')"
+          @click="openProjectCreate"
+        >
+          <WorkspaceIcon name="plus" :size="15" />
+        </button>
       </div>
     </div>
 
-    <div v-show="projectPanelOpen" class="border-b border-gray-200 px-3 py-2">
-      <div class="space-y-1">
+    <div
+      v-if="projectErrorMessage"
+      class="sv-notice sv-notice-danger mx-3 mb-1"
+    >
+      {{ projectErrorMessage }}
+    </div>
+
+    <div v-show="projectPanelOpen" class="max-h-[34vh] flex-none overflow-y-auto px-2">
+      <div class="flex flex-col gap-0.5">
         <button
           type="button"
-          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-          :class="props.activeProjectId === null ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+          class="nav-row flex h-8 w-full items-center gap-2 px-2 text-left text-[13px] disabled:text-gray-400"
+          :aria-current="props.activeProjectId === null ? 'true' : undefined"
           :disabled="props.disabled"
           @click="onSelectProject(null)"
         >
-          <span class="text-base">📋</span>
+          <WorkspaceIcon name="list" :size="16" class="flex-none" />
           <span class="min-w-0 flex-1 truncate">{{ t('navigation.empty.allConversations') }}</span>
         </button>
 
         <button
           v-if="inboxProject"
           type="button"
-          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-          :class="props.activeProjectId === inboxProject.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+          class="nav-row flex h-8 w-full items-center gap-2 px-2 text-left text-[13px] disabled:text-gray-400"
+          :aria-current="props.activeProjectId === inboxProject.id ? 'true' : undefined"
           :disabled="props.disabled"
           @click="onSelectProject(inboxProject.id)"
           @contextmenu.prevent
         >
-          <span class="text-base">📥</span>
+          <WorkspaceIcon name="folder" :size="16" class="flex-none" />
           <span class="min-w-0 flex-1 truncate">{{ inboxProject.name }}</span>
-          <span v-if="inboxProject.convoCount !== undefined" class="text-[10px] text-gray-500">
+          <span v-if="inboxProject.convoCount !== undefined" class="sv-meta tabular-nums">
             {{ inboxProject.convoCount }}
           </span>
         </button>
 
-        <div v-if="userProjects.length > 0" class="my-2 border-t border-gray-200" />
+        <div v-if="userProjects.length > 0" class="sv-divider-t mx-2 my-1" />
 
-        <div v-for="project in userProjects" :key="project.id" class="group relative">
+        <div
+          v-for="project in userProjects"
+          :key="project.id"
+          class="nav-row group relative"
+          :class="{ 'is-current': props.activeProjectId === project.id }"
+        >
           <button
             type="button"
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-            :class="props.activeProjectId === project.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+            class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] disabled:text-gray-400"
+            :aria-current="props.activeProjectId === project.id ? 'true' : undefined"
             :disabled="props.disabled"
             @click="onSelectProject(project.id)"
           >
-            <span class="text-base">📁</span>
+            <WorkspaceIcon name="folder" :size="16" class="flex-none" />
             <span class="min-w-0 flex-1 truncate">
-              <mark v-if="props.highlightedProjectIds?.includes(project.id)" class="rounded bg-yellow-200 px-0.5" :data-testid="`project-name-match-${project.id}`">{{ project.name }}</mark>
+              <mark v-if="props.highlightedProjectIds?.includes(project.id)" class="rounded-[3px] bg-black/10 text-inherit" :data-testid="`project-name-match-${project.id}`">{{ project.name }}</mark>
               <template v-else>{{ project.name }}</template>
             </span>
-            <span v-if="project.convoCount !== undefined" class="text-[10px] text-gray-500">
+            <span v-if="project.convoCount !== undefined" class="sv-meta tabular-nums">
               {{ project.convoCount }}
             </span>
           </button>
 
-          <div class="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 group-hover:flex">
+          <div class="nav-actions absolute inset-y-0 right-0 flex items-center rounded-r-md pl-4 pr-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
             <button
               type="button"
-              class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
+              class="sv-icon-btn h-6 w-6"
               :disabled="props.disabled"
               :data-testid="`project-settings-${project.id}`"
               @click.stop="openProjectSettings(project)"
               :aria-label="t('navigation.project.projectSettings')"
+              :title="t('navigation.project.projectSettings')"
             >
-              ⚙️
+              <WorkspaceIcon name="sliders" :size="14" />
             </button>
             <button
               type="button"
-              class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
+              class="sv-icon-btn h-6 w-6"
               :disabled="mutationsDisabled"
               @click.stop="openProjectRename(project)"
               :aria-label="t('navigation.project.renameProject')"
+              :title="t('navigation.project.renameProject')"
             >
-              ✏️
+              <WorkspaceIcon name="edit" :size="14" />
             </button>
             <button
               type="button"
-              class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
+              class="sv-icon-btn h-6 w-6 hover:text-red-700"
               :disabled="mutationsDisabled"
               @click.stop="openProjectDelete(project)"
               :aria-label="t('navigation.project.deleteProject')"
+              :title="t('navigation.project.deleteProject')"
             >
-              🗑️
+              <WorkspaceIcon name="trash" :size="14" />
             </button>
           </div>
         </div>
 
-        <div v-if="userProjects.length === 0 && !inboxProject" class="px-2 py-3 text-xs text-gray-400">
+        <div v-if="userProjects.length === 0 && !inboxProject" class="sv-meta px-2 py-3">
           {{ t('navigation.empty.noProjects') }}
         </div>
       </div>
     </div>
 
-    <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
-      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.conversation.title') }}</div>
-      <div class="flex items-center gap-2">
+    <div class="flex flex-none items-center justify-between gap-2 px-4 pb-1 pt-3">
+      <div class="sv-label">{{ t('navigation.conversation.title') }}</div>
+      <div class="flex items-center gap-0.5">
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
+          class="h-6 w-14 rounded-md text-center text-xs text-gray-500 hover:bg-black/5 hover:text-gray-900 disabled:text-gray-400 disabled:hover:bg-transparent"
           :disabled="props.disabled"
+          data-testid="conversation-selection-toggle"
           @click="setSelectionMode(!selectionMode)"
         >
           {{ selectionMode ? t('common.done') : t('common.select') }}
         </button>
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
+          class="sv-icon-btn h-6 w-6"
           :disabled="props.disabled"
+          :aria-label="t('common.refresh')"
+          :title="t('common.refresh')"
           @click="emit('refresh')"
         >
-          {{ t('common.refresh') }}
+          <WorkspaceIcon name="refresh" :size="14" />
         </button>
         <button
           type="button"
-          class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700"
+          class="sv-icon-btn h-6 w-6"
           :disabled="props.disabled"
+          :aria-label="t('common.new')"
+          :title="t('common.new')"
           @click="emit('create')"
         >
-          {{ t('common.new') }}
+          <WorkspaceIcon name="plus" :size="15" />
         </button>
       </div>
     </div>
 
-    <div v-if="selectionMode" class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 text-[11px] text-gray-700" data-testid="bulk-bar">
+    <div v-if="selectionMode" class="mx-2 mb-1 flex flex-none items-center justify-between gap-2 px-2 text-xs text-gray-600" data-testid="bulk-bar">
       <div class="flex min-w-0 items-center gap-2">
         <input
           type="checkbox"
@@ -430,10 +486,10 @@ function cancelProjectDialog() {
         />
         <span class="truncate">{{ t('navigation.actions.selected') }} {{ selectedCount }}</span>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-btn sv-btn-sm sv-btn-ghost"
           :disabled="mutationsDisabled || selectedCount === 0"
           :aria-label="t('navigation.actions.bulkMove')"
           @click="openMove(selectedIdsArray)"
@@ -442,7 +498,7 @@ function cancelProjectDialog() {
         </button>
         <button
           type="button"
-          class="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-50"
+          class="sv-btn sv-btn-sm sv-btn-ghost text-red-700 disabled:text-gray-400"
           :disabled="mutationsDisabled || selectedCount === 0"
           :aria-label="t('navigation.actions.bulkDelete')"
           @click="openDelete(selectedIdsArray)"
@@ -452,17 +508,17 @@ function cancelProjectDialog() {
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto p-2">
-      <div v-if="props.items.length === 0" class="p-3 text-sm text-gray-500">
+    <div class="min-h-0 flex-1 overflow-auto px-2 pb-2">
+      <div v-if="props.items.length === 0" class="sv-meta px-2 py-3 text-[13px]">
         {{ t('navigation.empty.noConversations') }}
       </div>
 
-      <div v-else class="space-y-1">
+      <div v-else class="flex flex-col gap-0.5">
         <div
           v-for="c in props.items"
           :key="c.id"
-          class="flex items-stretch gap-2 rounded-lg border shadow-sm transition-colors"
-          :class="c.id === props.activeId ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
+          class="nav-row group relative flex items-stretch"
+          :class="{ 'is-current': c.id === props.activeId }"
           :data-testid="`convo-row-${c.id}`"
         >
           <div v-if="selectionMode" class="flex items-center pl-2">
@@ -477,34 +533,37 @@ function cancelProjectDialog() {
 
           <button
             type="button"
-            class="min-w-0 flex-1 px-3 py-2 text-left hover:bg-gray-50"
+            class="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left disabled:text-gray-400"
+            :aria-current="c.id === props.activeId ? 'true' : undefined"
             :disabled="props.disabled"
             @click="onRowClick(c.id)"
           >
-            <div class="truncate text-sm font-medium" :class="c.id === props.activeId ? 'text-blue-700' : 'text-gray-900'"><mark v-if="props.highlightedConvoIds?.includes(c.id)" class="rounded bg-yellow-200 px-0.5" :data-testid="`convo-title-match-${c.id}`">{{ c.title }}</mark><template v-else>{{ c.title }}</template></div>
-            <div class="mt-1 truncate text-[11px] text-gray-500">
+            <div class="truncate text-[13px] leading-5"><mark v-if="props.highlightedConvoIds?.includes(c.id)" class="rounded-[3px] bg-black/10 text-inherit" :data-testid="`convo-title-match-${c.id}`">{{ c.title }}</mark><template v-else>{{ c.title }}</template></div>
+            <div class="sv-meta truncate leading-4">
               {{ formatTime(c.updatedAt) }}
             </div>
           </button>
 
-          <div class="relative flex items-start pr-2 pt-2">
+          <div class="relative flex flex-none items-start pr-1 pt-1.5">
             <button
               type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              class="sv-icon-btn opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+              :class="{ 'opacity-100': openConvoMenuId === c.id }"
               :disabled="mutationsDisabled"
               :data-testid="`convo-menu-${c.id}`"
               :aria-label="t('navigation.actions.moreActions')"
+              :aria-expanded="openConvoMenuId === c.id"
               @click.stop="toggleConvoMenu(c.id)"
             >
-              ...
+              <WorkspaceIcon name="more" :size="16" />
             </button>
             <div
               v-if="openConvoMenuId === c.id"
-              class="absolute right-2 top-11 z-10 min-w-[8rem] rounded-lg border border-gray-200 bg-white p-1 shadow-lg"
+              class="sv-popover absolute right-1 top-9 z-20 min-w-[8rem]"
             >
               <button
                 type="button"
-                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
+                class="sv-menu-item"
                 :disabled="mutationsDisabled"
                 @click.stop="openRename(c.id, c.title); openConvoMenuId = null"
               >
@@ -512,7 +571,7 @@ function cancelProjectDialog() {
               </button>
               <button
                 type="button"
-                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
+                class="sv-menu-item"
                 :disabled="mutationsDisabled"
                 @click.stop="openMove([c.id]); openConvoMenuId = null"
               >
@@ -520,7 +579,7 @@ function cancelProjectDialog() {
               </button>
               <button
                 type="button"
-                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-red-700 hover:bg-red-50"
+                class="sv-menu-item text-red-700 disabled:text-gray-400"
                 :disabled="mutationsDisabled"
                 @click.stop="openDelete([c.id]); openConvoMenuId = null"
               >
@@ -534,7 +593,7 @@ function cancelProjectDialog() {
       <button
         v-if="props.hasMore"
         type="button"
-        class="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+        class="sv-btn sv-btn-sm sv-btn-ghost mt-1 w-full"
         :disabled="props.disabled"
         data-testid="conversation-load-more"
         @click="emit('loadMore')"
@@ -543,11 +602,11 @@ function cancelProjectDialog() {
       </button>
     </div>
 
-    <div v-if="renameDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="rename-dialog">
-      <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.renameConversation') }}</div>
+    <div v-if="renameDialog" class="sv-backdrop" data-testid="rename-dialog">
+      <div class="sv-dialog w-full max-w-sm p-4">
+        <div class="text-sm font-semibold">{{ t('navigation.conversation.renameConversation') }}</div>
         <input
-          class="mt-3 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          class="sv-input mt-3"
           :disabled="props.disabled"
           :value="renameDialog.title"
           @input="renameDialog = { ...renameDialog, title: ($event.target as HTMLInputElement).value }"
@@ -555,7 +614,7 @@ function cancelProjectDialog() {
         <div class="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             :disabled="props.disabled"
             @click="renameDialog = null"
           >
@@ -563,7 +622,7 @@ function cancelProjectDialog() {
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            class="sv-btn sv-btn-primary"
             :disabled="mutationsDisabled || renameDialog.title.trim().length === 0"
             @click="confirmRename"
           >
@@ -573,16 +632,16 @@ function cancelProjectDialog() {
       </div>
     </div>
 
-    <div v-if="deleteDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="delete-dialog">
-      <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.deleteConversation') }}{{ deleteDialog.ids.length > 1 ? 's' : '' }}?</div>
+    <div v-if="deleteDialog" class="sv-backdrop" data-testid="delete-dialog">
+      <div class="sv-dialog w-full max-w-sm p-4">
+        <div class="text-sm font-semibold">{{ t('navigation.conversation.deleteConversation') }}{{ deleteDialog.ids.length > 1 ? 's' : '' }}?</div>
         <div class="mt-2 text-sm text-gray-600">
           {{ tf('navigation.conversation.deleteConversationConfirm', { count: deleteDialog.ids.length }) }}
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             :disabled="props.disabled"
             @click="deleteDialog = null"
           >
@@ -590,7 +649,7 @@ function cancelProjectDialog() {
           </button>
           <button
             type="button"
-            class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            class="sv-btn sv-btn-danger"
             :disabled="mutationsDisabled"
             @click="confirmDelete"
           >
@@ -600,14 +659,14 @@ function cancelProjectDialog() {
       </div>
     </div>
 
-    <div v-if="moveDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="move-dialog">
-      <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.moveToProject') }}</div>
+    <div v-if="moveDialog" class="sv-backdrop" data-testid="move-dialog">
+      <div class="sv-dialog w-full max-w-sm p-4">
+        <div class="text-sm font-semibold">{{ t('navigation.conversation.moveToProject') }}</div>
         <div class="mt-2 text-sm text-gray-600">
           {{ tf('navigation.conversation.movePrompt', { count: moveDialog.ids.length }) }}
         </div>
         <select
-          class="mt-3 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          class="sv-select mt-3"
           :disabled="props.disabled"
           :value="moveDialog.projectId ?? ''"
           @change="moveDialog = { ...moveDialog, projectId: ($event.target as HTMLSelectElement).value || null }"
@@ -618,7 +677,7 @@ function cancelProjectDialog() {
         <div class="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             :disabled="props.disabled"
             @click="moveDialog = null"
           >
@@ -626,7 +685,7 @@ function cancelProjectDialog() {
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            class="sv-btn sv-btn-primary"
             :disabled="mutationsDisabled"
             @click="confirmMove"
           >
@@ -638,33 +697,36 @@ function cancelProjectDialog() {
 
     <div
       v-if="projectCreateDialogOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      :inert="!!projectDuplicateConfirmation"
+      class="sv-backdrop"
       @click.self="cancelProjectDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.newProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.newProject') }}</div>
         <input
           v-model="projectCreateName"
+          :disabled="projectNamePending || !!projectDuplicateConfirmation"
           type="text"
-          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="sv-input mb-3"
           :placeholder="t('navigation.project.projectName')"
-          @keydown.enter="confirmProjectCreate"
+          @keydown.enter.prevent="!$event.isComposing && confirmProjectCreate()"
           @keydown.escape="cancelProjectDialog"
         />
-        <div v-if="projectErrorMessage" class="mb-3 text-sm text-red-600">
+        <div v-if="projectNameError" class="mb-3 text-sm text-[color:var(--sv-danger)]" data-testid="project-name-error">{{ projectNameError }}</div>
+        <div v-if="projectErrorMessage" class="mb-3 text-sm text-[color:var(--sv-danger)]">
           {{ projectErrorMessage }}
         </div>
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelProjectDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
-            type="button" :disabled="mutationsDisabled"
-            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            type="button" :disabled="mutationsDisabled || projectNamePending || !projectCreateName.trim() || !!projectDuplicateConfirmation"
+            class="sv-btn sv-btn-primary"
             @click="confirmProjectCreate"
           >
             {{ t('common.create') }}
@@ -675,30 +737,33 @@ function cancelProjectDialog() {
 
     <div
       v-if="projectRenameDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      :inert="!!projectDuplicateConfirmation"
+      class="sv-backdrop"
       @click.self="cancelProjectDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.renameProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.renameProject') }}</div>
         <input
           v-model="projectRenameDialog.name"
+          :disabled="projectNamePending || !!projectDuplicateConfirmation"
           type="text"
-          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="sv-input mb-3"
           :placeholder="t('navigation.project.projectName')"
-          @keydown.enter="confirmProjectRename"
+          @keydown.enter.prevent="!$event.isComposing && confirmProjectRename()"
           @keydown.escape="cancelProjectDialog"
         />
+        <div v-if="projectNameError" class="mb-3 text-sm text-[color:var(--sv-danger)]" data-testid="project-name-error">{{ projectNameError }}</div>
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelProjectDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
-            type="button" :disabled="mutationsDisabled"
-            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            type="button" :disabled="mutationsDisabled || projectNamePending || !projectRenameDialog.name.trim() || !!projectDuplicateConfirmation"
+            class="sv-btn sv-btn-primary"
             @click="confirmProjectRename"
           >
             {{ t('common.save') }}
@@ -709,25 +774,25 @@ function cancelProjectDialog() {
 
     <div
       v-if="projectDeleteDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      class="sv-backdrop"
       @click.self="cancelProjectDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.deleteProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.deleteProject') }}</div>
         <p class="mb-4 text-sm text-gray-600">
           {{ tf('navigation.project.deleteConfirm', { name: projectDeleteDialog.name }) }}
         </p>
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelProjectDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             type="button" :disabled="mutationsDisabled"
-            class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+            class="sv-btn sv-btn-danger"
             @click="confirmProjectDelete"
           >
             {{ t('common.delete') }}
@@ -735,5 +800,27 @@ function cancelProjectDialog() {
         </div>
       </div>
     </div>
+    <div v-if="projectDuplicateConfirmation" class="sv-backdrop"
+      @click.self="projectDuplicateConfirmation = null" @keydown.esc.stop="projectDuplicateConfirmation = null">
+      <div role="dialog" aria-modal="true" aria-labelledby="project-duplicate-confirmation" class="sv-dialog w-72 p-4">
+        <p id="project-duplicate-confirmation" class="mb-4 text-sm">{{ t('navigation.project.duplicateConfirm') }}</p>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="sv-btn"
+            @click="projectDuplicateConfirmation = null">{{ t('common.cancel') }}</button>
+          <button ref="projectDuplicateConfirmButton" type="button" :disabled="mutationsDisabled || projectNamePending"
+            class="sv-btn sv-btn-primary"
+            @click="confirmDuplicateProjectName">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+/* Flat sidebar row: hover / current are background fills only, so rows never change size or weight. */
+.nav-row { --row-bg: transparent; border-radius: var(--sv-radius-control); background: var(--row-bg); color: var(--sv-text); }
+.nav-row:hover { --row-bg: color-mix(in srgb, var(--sv-sidebar), #000 5%); }
+.nav-row.is-current, .nav-row[aria-current='true'] { --row-bg: color-mix(in srgb, var(--sv-sidebar), #000 8%); }
+/* Hover actions overlay the row tail; the fade hides the truncated name underneath without moving it. */
+.nav-actions { background: linear-gradient(to left, var(--row-bg) 75%, transparent); }
+</style>

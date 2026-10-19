@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import {
   listOfficialPlugins,
   listInstalledPlugins,
@@ -254,72 +255,70 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white p-3">
+  <div class="flex min-w-0 flex-col gap-3">
     <div class="flex items-center justify-between gap-2">
-      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Official Engines</div>
-      <button
-        type="button"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-        :disabled="loading"
-        @click="loadData"
-      >
-        {{ loading ? 'Loading...' : 'Refresh' }}
-      </button>
+      <div class="sv-label">Official Engines</div>
+      <div class="flex min-w-0 items-center gap-2">
+        <span v-if="!error && statusMessage" class="flex min-w-0 items-center gap-1 text-xs text-gray-700">
+          <UiIcon name="check" :size="14" class="shrink-0" />
+          <span class="min-w-0 break-words">{{ statusMessage }}</span>
+        </span>
+        <button
+          type="button"
+          class="sv-btn sv-btn-sm min-w-24 shrink-0"
+          :disabled="loading"
+          @click="loadData"
+        >
+          {{ loading ? 'Loading...' : 'Refresh' }}
+        </button>
+      </div>
     </div>
 
-    <div class="mt-2 space-y-2">
-      <div v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
-        {{ error }}
-      </div>
-      <div v-else-if="statusMessage" class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
-        {{ statusMessage }}
-      </div>
+    <div v-if="error" class="sv-notice sv-notice-danger" role="alert">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <span class="min-w-0 break-words">{{ error }}</span>
+    </div>
 
-      <div v-if="trustRootUnconfigured" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        官方插件信任根未配置，官方插件列表暂不可用
-      </div>
+    <div v-if="trustRootUnconfigured" class="sv-notice sv-notice-warning">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <span class="min-w-0">官方插件信任根未配置，官方插件列表暂不可用</span>
+    </div>
 
-      <div v-if="officialRows.length === 0 && !trustRootUnconfigured && !loading" class="text-[11px] text-gray-500">
-        No official plugins available.
-      </div>
+    <div v-if="officialRows.length === 0 && !trustRootUnconfigured && !loading" class="sv-meta">
+      No official plugins available.
+    </div>
 
-      <div v-for="row in officialRows" :key="row.pluginId" class="rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
-        <div class="flex items-center justify-between gap-2">
+    <div v-if="officialRows.length > 0" class="flex flex-col">
+      <div v-for="row in officialRows" :key="row.pluginId" class="sv-divider-t py-3 first:border-t-0 first:pt-0">
+        <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold text-gray-900">{{ row.pluginId }}</div>
-            <div class="text-[11px] text-gray-500">
+            <div class="break-all text-[13px] font-medium text-gray-900">{{ row.pluginId }}</div>
+            <div class="sv-meta">
               v{{ row.pluginVersion }}
               <span v-if="row.catalogGeneratedAt" class="ml-1">
                 &middot; catalog {{ row.catalogGeneratedAt?.slice(0, 10) }}
               </span>
             </div>
-            <div class="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-gray-500 sm:grid-cols-2">
+            <div class="sv-meta mt-1.5 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
               <div>Available version: {{ displayOptional(row.availableVersion ?? row.pluginVersion) }}</div>
               <div>Model: {{ displayOptional(row.modelVersion) }}</div>
-              <div>Signature key: {{ displayOptional(row.releaseProvenance?.trustKeyId) }}</div>
+              <div class="break-all">Signature key: {{ displayOptional(row.releaseProvenance?.trustKeyId) }}</div>
               <div>Package hash: {{ shortHash(row.releaseProvenance?.packageSha256) }}</div>
               <div>Signed: {{ displayDate(row.releaseProvenance?.signedAt) }}</div>
               <div>Expires: {{ displayDate(row.releaseProvenance?.expiresAt) }}</div>
             </div>
           </div>
-          <div class="flex items-center gap-1">
-            <span
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-              :class="{
-                'bg-green-100 text-green-800': row.installState === 'installed',
-                'bg-red-100 text-red-800': row.installState === 'failed',
-                'bg-gray-100 text-gray-700': row.installState === 'uninstalled' || row.installState === 'not_installed',
-                'bg-blue-100 text-blue-800': row.installState === 'update_available',
-              }"
-            >
-              {{ row.installState === 'not_installed' ? 'not installed' : row.installState }}
-            </span>
-          </div>
+          <span
+            class="sv-chip shrink-0"
+            :class="{ 'text-[var(--sv-danger)]': row.installState === 'failed' }"
+          >
+            {{ row.installState === 'not_installed' ? 'not installed' : row.installState }}
+          </span>
         </div>
         <div v-if="row.installState === 'not_installed'" class="mt-2">
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            class="sv-btn sv-btn-sm sv-btn-primary"
             :disabled="loading"
             @click="doRegister(row.pluginId, row.pluginVersion, row.recommendedInstallRootKind)"
           >
@@ -327,99 +326,97 @@ onMounted(() => {
           </button>
         </div>
       </div>
+    </div>
 
-      <div v-if="installedRows.length > 0" class="mt-3 border-t border-gray-100 pt-2">
-        <div class="text-[11px] font-semibold text-gray-700 mb-2">Installed Plugins</div>
-        <div v-for="item in installedRows" :key="item.engineId" class="rounded-md border border-gray-100 bg-white px-3 py-2 mb-1">
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-xs font-semibold text-gray-900">{{ item.displayName }}</div>
-              <div class="text-[11px] text-gray-500">
-                {{ item.engineId }} v{{ item.pluginVersion }}
-                <span v-if="item.modelVersion" class="ml-1">&middot; model {{ item.modelVersion }}</span>
-              </div>
-              <div class="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-gray-500 sm:grid-cols-2">
-                <div>Installed version: {{ displayOptional(item.installedVersion ?? item.pluginVersion) }}</div>
-                <div>Available version: {{ displayOptional(item.availableVersion) }}</div>
-                <div>Model: {{ displayOptional(item.modelVersion ?? item.releaseProvenance?.modelVersion) }}</div>
-                <div>Runtime: {{ displayOptional(item.runtimeVersion) }}</div>
-                <div>Signature key: {{ displayOptional(item.releaseProvenance?.trustKeyId) }}</div>
-                <div>Package hash: {{ shortHash(item.releaseProvenance?.packageSha256) }}</div>
-                <div>Inventory hash: {{ shortHash(item.releaseProvenance?.inventorySha256) }}</div>
-                <div>Signed: {{ displayDate(item.releaseProvenance?.signedAt) }}</div>
-                <div>Expires: {{ displayDate(item.releaseProvenance?.expiresAt) }}</div>
-                <div>Status: {{ versionStatus(item) }}</div>
-              </div>
-              <div v-if="item.failureReason" class="mt-1 inline-flex items-center gap-2 rounded bg-red-50 px-2 py-0.5 text-[10px] text-red-800">
-                <span>{{ pluginPrimaryErrorDisplay(item.errorChain, item.failureReason) }}</span>
-                <button
-                  v-if="hasErrorChain(item)"
-                  type="button"
-                  class="font-medium underline decoration-red-300 underline-offset-2 hover:text-red-950"
-                  @click="toggleErrorChain(item.engineId)"
-                >
-                  {{ isErrorChainExpanded(item.engineId) ? 'Hide details' : 'Details' }}
-                </button>
-              </div>
-              <dl v-if="item.failureReason && hasErrorChain(item) && isErrorChainExpanded(item.engineId)" class="mt-1 grid gap-0.5 text-[10px] text-red-800">
-                <div
-                  v-for="row in pluginErrorChainDetailRows(item.errorChain, item.failureReason)"
-                  :key="row.label"
-                >
-                  {{ row.label }}: {{ row.value }}
-                </div>
-              </dl>
+    <div v-if="installedRows.length > 0" class="sv-divider-t flex flex-col pt-4">
+      <div class="sv-label mb-2">Installed Plugins</div>
+      <div v-for="item in installedRows" :key="item.engineId" class="sv-divider-t py-3 first:border-t-0 first:pt-0">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="break-words text-[13px] font-medium text-gray-900">{{ item.displayName }}</div>
+            <div class="sv-meta">
+              {{ item.engineId }} v{{ item.pluginVersion }}
+              <span v-if="item.modelVersion" class="ml-1">&middot; model {{ item.modelVersion }}</span>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">
-              <span
-                class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                :class="{
-                  'bg-green-100 text-green-800': item.healthStatus === 'healthy',
-                  'bg-yellow-100 text-yellow-800': item.healthStatus === 'degraded',
-                  'bg-red-100 text-red-800': item.healthStatus === 'unhealthy',
-                  'bg-gray-100 text-gray-700': item.healthStatus === 'unknown',
-                }"
+            <div class="sv-meta mt-1.5 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+              <div>Installed version: {{ displayOptional(item.installedVersion ?? item.pluginVersion) }}</div>
+              <div>Available version: {{ displayOptional(item.availableVersion) }}</div>
+              <div>Model: {{ displayOptional(item.modelVersion ?? item.releaseProvenance?.modelVersion) }}</div>
+              <div>Runtime: {{ displayOptional(item.runtimeVersion) }}</div>
+              <div class="break-all">Signature key: {{ displayOptional(item.releaseProvenance?.trustKeyId) }}</div>
+              <div>Package hash: {{ shortHash(item.releaseProvenance?.packageSha256) }}</div>
+              <div>Inventory hash: {{ shortHash(item.releaseProvenance?.inventorySha256) }}</div>
+              <div>Signed: {{ displayDate(item.releaseProvenance?.signedAt) }}</div>
+              <div>Expires: {{ displayDate(item.releaseProvenance?.expiresAt) }}</div>
+              <div>Status: {{ versionStatus(item) }}</div>
+            </div>
+            <div v-if="item.failureReason" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--sv-danger)]">
+              <UiIcon name="alert" :size="14" class="shrink-0" />
+              <span class="min-w-0 break-words">{{ pluginPrimaryErrorDisplay(item.errorChain, item.failureReason) }}</span>
+              <button
+                v-if="hasErrorChain(item)"
+                type="button"
+                class="sv-btn sv-btn-sm sv-btn-ghost min-w-20"
+                :aria-expanded="isErrorChainExpanded(item.engineId)"
+                @click="toggleErrorChain(item.engineId)"
               >
-                {{ item.healthStatus }}
-              </span>
+                {{ isErrorChainExpanded(item.engineId) ? 'Hide details' : 'Details' }}
+              </button>
             </div>
+            <dl v-if="item.failureReason && hasErrorChain(item) && isErrorChainExpanded(item.engineId)" class="mt-1 grid gap-0.5 break-words border-l border-[var(--sv-danger-line)] pl-3 text-xs text-[var(--sv-danger)]">
+              <div
+                v-for="row in pluginErrorChainDetailRows(item.errorChain, item.failureReason)"
+                :key="row.label"
+              >
+                {{ row.label }}: {{ row.value }}
+              </div>
+            </dl>
           </div>
-          <div class="mt-2 flex flex-wrap gap-1">
-            <button
-              v-if="!item.enabled"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="loading"
-              @click="doEnable(item.engineId)"
-            >
-              Enable
-            </button>
-            <button
-              v-if="item.enabled"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="loading"
-              @click="doDisable(item.engineId)"
-            >
-              Disable
-            </button>
-            <button
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="loading"
-              @click="doHealthCheck(item.engineId)"
-            >
-              Health Check
-            </button>
-            <button
-              type="button"
-              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
-              :disabled="loading"
-              @click="doUninstall(item)"
-            >
-              {{ uninstallActionLabel(item) }}
-            </button>
-          </div>
+          <span
+            class="sv-chip shrink-0"
+            :class="{
+              'text-[var(--sv-warning)]': item.healthStatus === 'degraded',
+              'text-[var(--sv-danger)]': item.healthStatus === 'unhealthy',
+            }"
+          >
+            {{ item.healthStatus }}
+          </span>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            v-if="!item.enabled"
+            type="button"
+            class="sv-btn sv-btn-sm"
+            :disabled="loading"
+            @click="doEnable(item.engineId)"
+          >
+            Enable
+          </button>
+          <button
+            v-if="item.enabled"
+            type="button"
+            class="sv-btn sv-btn-sm"
+            :disabled="loading"
+            @click="doDisable(item.engineId)"
+          >
+            Disable
+          </button>
+          <button
+            type="button"
+            class="sv-btn sv-btn-sm"
+            :disabled="loading"
+            @click="doHealthCheck(item.engineId)"
+          >
+            Health Check
+          </button>
+          <button
+            type="button"
+            class="sv-btn sv-btn-sm sv-btn-danger"
+            :disabled="loading"
+            @click="doUninstall(item)"
+          >
+            {{ uninstallActionLabel(item) }}
+          </button>
         </div>
       </div>
     </div>

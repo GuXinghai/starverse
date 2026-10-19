@@ -61,6 +61,7 @@ function googleAvailability(modelId: string, thinking = true) {
 function geminiCapabilityProjection(input: {
   budget?: { min: number; max: number }
   levels?: readonly string[]
+  defaultLevel?: string
   imageSizes?: readonly string[]
   aspectRatios?: readonly string[]
   summaries?: readonly string[]
@@ -74,7 +75,7 @@ function geminiCapabilityProjection(input: {
       ? { visibility: 'visible', state: 'supported', domain: { kind: 'range', min: input.budget.min, max: input.budget.max, integer: true }, constraints: [], evidenceIds: [] }
       : missing,
     'providerExtension.thinkingLevel': input.levels
-      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.levels] }, constraints: [], evidenceIds: [] }
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.levels] }, ...(input.defaultLevel === undefined ? {} : { defaultValue: input.defaultLevel }), constraints: [], evidenceIds: [] }
       : missing,
     'reasoning.summary': input.summaries
       ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.summaries] }, constraints: [], evidenceIds: [] }
@@ -293,7 +294,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.1-pro-preview'),
-        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'] }),
+        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'], defaultLevel: 'medium' }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -325,7 +326,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.6-flash'  },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.6-flash'),
-        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'] }),
+        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'], defaultLevel: 'medium' }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -444,7 +445,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     const imageToggle = screen.getByTestId('session-image-generation-enabled')
     expect(imageToggle).toBeDisabled()
     expect(imageToggle).toBeChecked()
-    expect(screen.getByRole('button', { name: '1:1' })).toHaveClass('bg-gray-900')
+    expect(screen.getByRole('button', { name: '1:1' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: '1K' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '2K' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '4K' })).not.toBeInTheDocument()
@@ -488,7 +489,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
       },
     })
 
-    expect(screen.getByRole('button', { name: '4K' })).toHaveClass('bg-gray-900')
-    expect(screen.getByRole('button', { name: '16:9' })).toHaveClass('bg-gray-900')
+    expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '16:9' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

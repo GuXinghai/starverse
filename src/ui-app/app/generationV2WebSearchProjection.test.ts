@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerationControlsProjectionV2 } from '@/core/generation-v2/capability/resolvedCapabilityV2'
-import { buildGenerationV2WebSearch, projectGenerationV2WebSearchControls } from './generationV2WebSearchProjection'
+import { buildGenerationV2WebSearch, buildGenerationV2RequestedWebSearch, projectGenerationV2WebSearchControls } from './generationV2WebSearchProjection'
 
 function projection(providerId: string, protocolContractId: string, fields: Record<string, unknown> = {}): GenerationControlsProjectionV2 {
   const supported = (domain: unknown) => ({ state: 'supported', domain, visibility: 'visible', constraints: [], evidenceIds: [] })
@@ -23,6 +23,28 @@ const build = (projectionValue: GenerationControlsProjectionV2 | null, convo: an
 })
 
 describe('capability-bound web search', () => {
+  it('persists inherited search intent without consulting target protocol support or injecting defaults', () => {
+    expect(buildGenerationV2RequestedWebSearch({ layers: { convo: { searchMode: 'enable', searchDepth: 'high' },
+      global: { searchEngine: 'exa' } } })).toEqual({ mode: 'provider_search', types: ['web'], maxResults: 8,
+      searchContextSize: 'high', engine: 'exa' })
+    expect(buildGenerationV2RequestedWebSearch({ layers: { convo: { searchMode: 'enable', searchDepth: 'custom', maxResults: 21 } } }))
+      .toEqual({ mode: 'provider_search', types: ['web'], maxResults: 21 })
+    expect(buildGenerationV2RequestedWebSearch({ layers: { convo: { searchMode: 'enable' } } }))
+      .toEqual({ mode: 'provider_search', types: ['web'] })
+  })
+  it('preserves inherited project/global search prompts in the first requested V2 layer', () => {
+    expect(buildGenerationV2RequestedWebSearch({ layers: {
+      convo: { searchMode: 'enable' },
+      project: { searchPrompt: { mode: 'customText', text: '  focus project sources  ' } },
+    } })).toEqual({ mode: 'provider_search', types: ['web'], searchPrompt: 'focus project sources' })
+    expect(buildGenerationV2RequestedWebSearch({ layers: {
+      convo: { searchMode: 'enable' },
+      global: { searchPrompt: { mode: 'customText', text: 'focus global sources' } },
+    } })).toEqual({ mode: 'provider_search', types: ['web'], searchPrompt: 'focus global sources' })
+    expect(buildGenerationV2RequestedWebSearch({ layers: {
+      project: { searchPrompt: { mode: 'customText', text: 'dormant prompt' } },
+    } })).toEqual({ mode: 'disabled', searchPrompt: 'dormant prompt' })
+  })
   it.each([
     ['anthropic', { mode: 'provider_search', types: ['web'], maxResults: 5 }],
     ['gemini', { mode: 'provider_search', types: ['web'] }],

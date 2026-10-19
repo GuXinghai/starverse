@@ -23,6 +23,7 @@ import {
 } from '@/next/modelCatalog/modelDetailService'
 import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '@/next/modelCatalog/openRouterCategoryCache'
 import { useVirtualWindow } from '@/ui-kit/chat/useVirtualWindow'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import EndpointDetailPanel from './EndpointDetailPanel.vue'
 import ModelDetailPanel from './ModelDetailPanel.vue'
 import ProviderFailureDetailsV2 from './ProviderFailureDetailsV2.vue'
@@ -2396,35 +2397,38 @@ const selectedModelFilteredOut = computed(() =>
 <template>
   <div
     v-if="props.open"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    class="sv-backdrop"
     data-testid="model-picker-dialog"
     @click.self="onClose"
     @keydown="onDialogKeydown"
   >
-    <div class="flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-      <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-        <div class="text-sm font-semibold text-gray-900">{{ t('errors.modelCatalog.dialogTitle') }}</div>
+    <div class="sv-dialog mp-dialog flex h-[85vh] max-h-[880px] w-full max-w-6xl flex-col overflow-hidden"
+      role="dialog" aria-modal="true" :aria-label="t('errors.modelCatalog.dialogTitle')">
+      <div class="sv-divider-b flex h-14 shrink-0 items-center justify-between gap-3 px-5">
+        <div class="sv-title">{{ t('errors.modelCatalog.dialogTitle') }}</div>
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-icon-btn"
+          :title="t('common.close')"
           :disabled="props.disabled"
           data-testid="model-picker-close"
           @click="onClose"
         >
-          {{ t('common.close') }}
+          <UiIcon name="close" :size="16" />
+          <span class="sr-only">{{ t('common.close') }}</span>
         </button>
       </div>
 
-      <div v-if="props.compatibleRouteSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-route-picker">
-        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible</div>
+      <div v-if="props.compatibleRouteSources.length" class="sv-divider-b max-h-32 shrink-0 overflow-auto px-5 py-3" data-testid="compatible-route-picker">
+        <div class="sv-label">OpenAI Chat Completions-compatible</div>
         <div class="mt-2 flex flex-wrap gap-2">
           <template v-for="source in props.compatibleRouteSources" :key="source.providerInstanceId">
-            <div v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" class="flex items-center gap-1 rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs">
-              <button type="button" class="min-w-0 flex-1 text-left" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
+            <div v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" class="mp-route">
+              <button type="button" class="min-w-0 flex-1 truncate text-left" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
                 <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
-                <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
+                <span class="ml-1 text-gray-500">{{ model.sourceLabel }}</span>
               </button>
-              <button type="button" class="shrink-0 rounded border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700 hover:bg-blue-50" :disabled="props.disabled || props.isRunning" :data-testid="`compatible-model-inspect-${source.providerInstanceId}-${model.modelId}`" @click="inspectCompatibleModelFacts(model.routeIntent)">
+              <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost shrink-0" :disabled="props.disabled || props.isRunning" :data-testid="`compatible-model-inspect-${source.providerInstanceId}-${model.modelId}`" @click="inspectCompatibleModelFacts(model.routeIntent)">
                 {{ t('settings.modelsCapabilities.inspectModelFacts') }}
               </button>
             </div>
@@ -2432,43 +2436,23 @@ const selectedModelFilteredOut = computed(() =>
         </div>
       </div>
 
-      <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside class="min-h-0 space-y-3 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <details open class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {{ t('errors.modelCatalog.identitySearch') }}
+      <div class="mp-grid">
+        <aside class="mp-filters">
+          <details open class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.identitySearch') }}</span>
             </summary>
-            <div class="mt-2 space-y-3">
-              <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.search') }}</label>
-                <input
-                  ref="searchInputRef"
-                  v-model="searchText"
-                  type="text"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  :placeholder="t('errors.modelCatalog.searchPlaceholder')"
-                  :disabled="props.disabled"
-                  data-testid="model-picker-search"
-                />
-                <label class="mt-2 flex items-center gap-2 text-[11px] text-gray-600">
-                  <input
-                    v-model="includeDescriptionInSearch"
-                    type="checkbox"
-                    class="h-3.5 w-3.5 rounded border-gray-300"
-                    :disabled="props.disabled"
-                    data-testid="model-picker-include-description"
-                  />
-                  <span>{{ t('errors.modelCatalog.includingDescription') }}</span>
-                </label>
-              </div>
+            <div class="mp-section-body">
+
               <div>
                 <div class="flex items-center justify-between gap-2">
-                  <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.provider') }}</label>
+                  <div class="sv-label">{{ t('errors.modelCatalog.provider') }}</div>
                   <div class="flex items-center gap-1">
                     <button
                       type="button"
-                      class="rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-50"
-                      :class="allProviderFiltersSelected ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
+                      class="sv-btn sv-btn-ghost h-6 px-1.5 text-xs"
+                      :aria-pressed="allProviderFiltersSelected"
                       :disabled="props.disabled"
                       data-testid="model-picker-provider-select-all"
                       @click="selectAllProviderFilters"
@@ -2477,7 +2461,7 @@ const selectedModelFilteredOut = computed(() =>
                     </button>
                     <button
                       type="button"
-                      class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      class="sv-btn sv-btn-ghost h-6 px-1.5 text-xs"
                       :disabled="props.disabled"
                       data-testid="model-picker-provider-select-none"
                       @click="clearProviderFilters"
@@ -2486,44 +2470,47 @@ const selectedModelFilteredOut = computed(() =>
                     </button>
                   </div>
                 </div>
-                <div class="mt-2 space-y-1">
+                <div class="mt-1 flex flex-col">
                   <div
                     v-for="provider in providerOptions"
                     :key="`provider-status-${provider.providerId}`"
-                    class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px]"
+                    class="mp-prov"
                     :data-testid="`model-picker-provider-status-${provider.providerId}`"
                   >
-                    <button
-                      type="button"
-                      class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                      :disabled="props.disabled || provider.loading || catalogProviderKeyForRuntimeProvider(provider.providerId) === null"
-                      :data-testid="`model-picker-provider-refresh-${provider.providerId}`"
-                      @click="onProviderRowRefresh(provider.providerId)"
-                    >
-                      {{ provider.loading ? '…' : t('errors.modelCatalog.refresh') }}
-                    </button>
-                    <label class="flex min-w-0 items-center gap-2">
+                    <label class="mp-opt min-w-0">
                       <input
                         type="checkbox"
-                        class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        class="mp-check"
                         :checked="selectedProviderSet.has(provider.providerId)"
                         :disabled="props.disabled"
                         :data-testid="`model-picker-provider-filter-${provider.providerId}`"
                         @change="toggleProviderFilter(provider.providerId, ($event.target as HTMLInputElement).checked)"
                       />
-                      <span class="truncate font-medium text-gray-700">{{ provider.providerName }}</span>
+                      <span class="mp-prov-name" :title="provider.providerName">{{ provider.providerName }}</span>
                     </label>
-                    <span :class="provider.loading ? 'text-blue-600' : provider.count > 0 ? 'text-green-700' : 'text-gray-500'">
+                    <button
+                      type="button"
+                      class="sv-icon-btn"
+                      :title="t('errors.modelCatalog.refresh')"
+                      :disabled="props.disabled || provider.loading || catalogProviderKeyForRuntimeProvider(provider.providerId) === null"
+                      :data-testid="`model-picker-provider-refresh-${provider.providerId}`"
+                      @click="onProviderRowRefresh(provider.providerId)"
+                    >
+                      <UiIcon :name="provider.loading ? 'spinner' : 'refresh'" :size="14" />
+                      <span class="sr-only">{{ t('errors.modelCatalog.refresh') }}</span>
+                    </button>
+                    <span class="mp-prov-status">
                       {{ provider.loading ? t('errors.modelCatalog.syncing') : provider.statusLabel }}
                     </span>
                   </div>
                 </div>
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.category') }}</label>
+                <label class="sv-label" for="model-picker-category">{{ t('errors.modelCatalog.category') }}</label>
                 <select
+                  id="model-picker-category"
                   v-model="selectedCategory"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select sv-select-sm mt-1"
                   :disabled="props.disabled"
                   data-testid="model-picker-category"
                 >
@@ -2532,19 +2519,19 @@ const selectedModelFilteredOut = computed(() =>
                 </select>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.vendorPrefix') }}</div>
-                <div v-if="vendorOptions.length === 0" class="mt-1 text-[11px] text-gray-400">
+                <div class="sv-label">{{ t('errors.modelCatalog.vendorPrefix') }}</div>
+                <div v-if="vendorOptions.length === 0" class="mt-1 text-xs text-gray-500">
                   {{ t('errors.modelCatalog.vendorOptionsPending') }}
                 </div>
-                <div v-else class="mt-1 max-h-28 space-y-1 overflow-auto">
+                <div v-else class="mt-1 flex max-h-32 flex-col overflow-auto">
                   <label
                     v-for="vendor in vendorOptions"
                     :key="vendor"
-                    class="flex items-center gap-2 text-[11px] text-gray-700"
+                    class="mp-opt"
                   >
                     <input
                       type="checkbox"
-                      class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      class="mp-check"
                       :checked="selectedVendors.includes(vendor)"
                       :disabled="props.disabled"
                       :data-testid="`model-picker-vendor-${vendor}`"
@@ -2557,19 +2544,20 @@ const selectedModelFilteredOut = computed(() =>
             </div>
           </details>
 
-          <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {{ t('errors.modelCatalog.capabilityLimits') }}
+          <details class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.capabilityLimits') }}</span>
             </summary>
-            <div class="mt-2 space-y-3">
+            <div class="mp-section-body">
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.contextLength') }}</div>
+                <div class="sv-label">{{ t('errors.modelCatalog.contextLength') }}</div>
                 <div class="mt-1 grid grid-cols-2 gap-2">
                   <input
                     v-model="contextLengthMin"
                     type="number"
                     min="0"
-                    class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                    class="sv-input sv-input-sm"
                     :placeholder="t('errors.modelCatalog.minPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-context-min"
@@ -2578,7 +2566,7 @@ const selectedModelFilteredOut = computed(() =>
                     v-model="contextLengthMax"
                     type="number"
                     min="0"
-                    class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                    class="sv-input sv-input-sm"
                     :placeholder="t('errors.modelCatalog.maxPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-context-max"
@@ -2586,13 +2574,13 @@ const selectedModelFilteredOut = computed(() =>
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.maxCompletionTokens') }}</div>
+                <div class="sv-label">{{ t('errors.modelCatalog.maxCompletionTokens') }}</div>
                 <div class="mt-1 grid grid-cols-2 gap-2">
                   <input
                     v-model="maxOutputTokensMin"
                     type="number"
                     min="0"
-                    class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                    class="sv-input sv-input-sm"
                     :placeholder="t('errors.modelCatalog.minPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-max-output-min"
@@ -2601,7 +2589,7 @@ const selectedModelFilteredOut = computed(() =>
                     v-model="maxOutputTokensMax"
                     type="number"
                     min="0"
-                    class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                    class="sv-input sv-input-sm"
                     :placeholder="t('errors.modelCatalog.maxPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-max-output-max"
@@ -2611,39 +2599,36 @@ const selectedModelFilteredOut = computed(() =>
             </div>
           </details>
 
-          <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {{ t('errors.modelCatalog.modalities') }}
+          <details class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.modalities') }}</span>
             </summary>
-            <div class="mt-2 space-y-3">
-              <div class="flex items-center gap-2">
+            <div class="mp-section-body">
+              <div>
                 <button
                   type="button"
-                  class="rounded border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-                  :class="
-                    selectedOutputModalities.length === 1 && selectedOutputModalities[0] === 'image'
-                      ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                  "
+                  class="sv-btn sv-btn-sm"
+                  :aria-pressed="selectedOutputModalities.length === 1 && selectedOutputModalities[0] === 'image'"
                   :disabled="props.disabled"
                   data-testid="model-picker-quick-image-output"
                   @click="toggleQuickImageOutputFilter"
                 >
                   {{ selectedOutputModalities.length === 1 && selectedOutputModalities[0] === 'image' ? t('errors.modelCatalog.imageOutputOnlyOn') : t('errors.modelCatalog.imageOutputOnlyOff') }}
                 </button>
-                <div class="text-[11px] text-gray-500">{{ t('errors.modelCatalog.imageOutputOnlyHelp') }}</div>
+                <div class="mt-1 text-xs text-gray-500">{{ t('errors.modelCatalog.imageOutputOnlyHelp') }}</div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.architecture') }}</div>
-                <div class="mt-1 flex flex-wrap gap-2">
+                <div class="sv-label">{{ t('errors.modelCatalog.architecture') }}</div>
+                <div class="mt-1 flex flex-wrap gap-x-3">
                   <label
                     v-for="option in architectureModalityOptions"
                     :key="option"
-                    class="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700"
+                    class="mp-opt"
                   >
                     <input
                       type="checkbox"
-                      class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      class="mp-check"
                       :checked="selectedArchitectureModalities.includes(option)"
                       :disabled="props.disabled"
                       :data-testid="`model-picker-arch-${option}`"
@@ -2654,16 +2639,16 @@ const selectedModelFilteredOut = computed(() =>
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.inputModalities') }}</div>
-                <div class="mt-1 flex flex-wrap gap-2">
+                <div class="sv-label">{{ t('errors.modelCatalog.inputModalities') }}</div>
+                <div class="mt-1 flex flex-wrap gap-x-3">
                   <label
                     v-for="option in modalityOptions"
                     :key="`input-${option}`"
-                    class="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700"
+                    class="mp-opt"
                   >
                     <input
                       type="checkbox"
-                      class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      class="mp-check"
                       :checked="selectedInputModalities.includes(option)"
                       :disabled="props.disabled"
                       :data-testid="`model-picker-input-modality-${option}`"
@@ -2674,16 +2659,16 @@ const selectedModelFilteredOut = computed(() =>
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.outputModalities') }}</div>
-                <div class="mt-1 flex flex-wrap gap-2">
+                <div class="sv-label">{{ t('errors.modelCatalog.outputModalities') }}</div>
+                <div class="mt-1 flex flex-wrap gap-x-3">
                   <label
                     v-for="option in modalityOptions"
                     :key="`output-${option}`"
-                    class="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700"
+                    class="mp-opt"
                   >
                     <input
                       type="checkbox"
-                      class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      class="mp-check"
                       :checked="selectedOutputModalities.includes(option)"
                       :disabled="props.disabled"
                       :data-testid="`model-picker-output-modality-${option}`"
@@ -2696,22 +2681,23 @@ const selectedModelFilteredOut = computed(() =>
             </div>
           </details>
 
-          <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {{ t('errors.modelCatalog.features') }}
+          <details class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.features') }}</span>
             </summary>
-            <div class="mt-2 space-y-3">
+            <div class="mp-section-body">
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.supportedParameters') }}</div>
-                <div class="mt-1 max-h-28 space-y-1 overflow-auto">
+                <div class="sv-label">{{ t('errors.modelCatalog.supportedParameters') }}</div>
+                <div class="mt-1 flex max-h-32 flex-col overflow-auto">
                   <label
                     v-for="option in effectiveSupportedParameterOptions"
                     :key="option"
-                    class="flex items-center gap-2 text-[11px] text-gray-700"
+                    class="mp-opt"
                   >
                     <input
                       type="checkbox"
-                      class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      class="mp-check"
                       :checked="selectedSupportedParameters.includes(option)"
                       :disabled="props.disabled"
                       :data-testid="`model-picker-supported-${option}`"
@@ -2722,32 +2708,35 @@ const selectedModelFilteredOut = computed(() =>
                 </div>
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.tokenizerCsv') }}</label>
+                <label class="sv-label" for="model-picker-tokenizers">{{ t('errors.modelCatalog.tokenizerCsv') }}</label>
                 <input
+                  id="model-picker-tokenizers"
                   v-model="tokenizerFiltersText"
                   type="text"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-input sv-input-sm mt-1"
                   :placeholder="t('errors.modelCatalog.tokenizerPlaceholder')"
                   :disabled="props.disabled"
                   data-testid="model-picker-tokenizers"
                 />
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.instructTypeCsv') }}</label>
+                <label class="sv-label" for="model-picker-instruct-types">{{ t('errors.modelCatalog.instructTypeCsv') }}</label>
                 <input
+                  id="model-picker-instruct-types"
                   v-model="instructTypeFiltersText"
                   type="text"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-input sv-input-sm mt-1"
                   :placeholder="t('errors.modelCatalog.instructTypePlaceholder')"
                   :disabled="props.disabled"
                   data-testid="model-picker-instruct-types"
                 />
               </div>
-              <div class="grid grid-cols-1 gap-2">
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.perRequestLimits') }}</label>
+              <div>
+                <label class="sv-label" for="model-picker-per-request-limits">{{ t('errors.modelCatalog.perRequestLimits') }}</label>
                 <select
+                  id="model-picker-per-request-limits"
                   v-model="hasPerRequestLimits"
-                  class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select sv-select-sm mt-1"
                   :disabled="props.disabled"
                   data-testid="model-picker-per-request-limits"
                 >
@@ -2755,10 +2744,13 @@ const selectedModelFilteredOut = computed(() =>
                   <option value="yes">{{ t('errors.modelCatalog.hasLimits') }}</option>
                   <option value="no">{{ t('errors.modelCatalog.noLimits') }}</option>
                 </select>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.defaultParameters') }}</label>
+              </div>
+              <div>
+                <label class="sv-label" for="model-picker-default-parameters">{{ t('errors.modelCatalog.defaultParameters') }}</label>
                 <select
+                  id="model-picker-default-parameters"
                   v-model="hasDefaultParameters"
-                  class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select sv-select-sm mt-1"
                   :disabled="props.disabled"
                   data-testid="model-picker-default-parameters"
                 >
@@ -2770,16 +2762,18 @@ const selectedModelFilteredOut = computed(() =>
             </div>
           </details>
 
-          <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {{ t('errors.modelCatalog.complianceLifecycle') }}
+          <details class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.complianceLifecycle') }}</span>
             </summary>
-            <div class="mt-2 space-y-3">
+            <div class="mp-section-body">
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.moderation') }}</label>
+                <label class="sv-label" for="model-picker-is-moderated">{{ t('errors.modelCatalog.moderation') }}</label>
                 <select
+                  id="model-picker-is-moderated"
                   v-model="moderationFilter"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  class="sv-select sv-select-sm mt-1"
                   :disabled="props.disabled"
                   data-testid="model-picker-is-moderated"
                 >
@@ -2788,87 +2782,94 @@ const selectedModelFilteredOut = computed(() =>
                   <option value="no">{{ t('errors.modelCatalog.unmoderated') }}</option>
                 </select>
               </div>
-              <label class="flex items-center gap-2 text-[11px] text-gray-700">
+              <div>
+                <label class="mp-opt">
+                  <input
+                    v-model="expiringWithinEnabled"
+                    type="checkbox"
+                    class="mp-check"
+                    :disabled="props.disabled"
+                    data-testid="model-picker-expiring-toggle"
+                  />
+                  <span>{{ t('errors.modelCatalog.expiringWithinDays') }}</span>
+                </label>
                 <input
-                  v-model="expiringWithinEnabled"
-                  type="checkbox"
-                  class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  :disabled="props.disabled"
-                  data-testid="model-picker-expiring-toggle"
+                  v-model="expiringWithinDays"
+                  type="number"
+                  min="0"
+                  class="sv-input sv-input-sm mt-1"
+                  placeholder="7"
+                  :disabled="props.disabled || !expiringWithinEnabled"
+                  data-testid="model-picker-expiring-days"
                 />
-                <span>{{ t('errors.modelCatalog.expiringWithinDays') }}</span>
-              </label>
-              <input
-                v-model="expiringWithinDays"
-                type="number"
-                min="0"
-                class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-100"
-                placeholder="7"
-                :disabled="props.disabled || !expiringWithinEnabled"
-                data-testid="model-picker-expiring-days"
-              />
+              </div>
             </div>
           </details>
 
-          <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.sort') }}</summary>
-            <div class="mt-2 grid grid-cols-2 gap-2">
-              <select
-                v-model="sortBy"
-                class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                :disabled="props.disabled"
-                data-testid="model-picker-sort-by"
-              >
-                <option v-for="option in sortByOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
-              </select>
-              <select
-                v-model="sortOrder"
-                class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                :disabled="props.disabled"
-                data-testid="model-picker-sort-order"
-              >
-                <option v-for="option in sortOrderOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
-              </select>
+          <details class="mp-section">
+            <summary class="mp-summary">
+              <span class="mp-chev"><UiIcon name="chevronRight" :size="14" /></span>
+              <span>{{ t('errors.modelCatalog.sort') }}</span>
+            </summary>
+            <div class="mp-section-body">
+              <div class="grid grid-cols-2 gap-2">
+                <select
+                  v-model="sortBy"
+                  class="sv-select sv-select-sm"
+                  :disabled="props.disabled"
+                  data-testid="model-picker-sort-by"
+                >
+                  <option v-for="option in sortByOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
+                </select>
+                <select
+                  v-model="sortOrder"
+                  class="sv-select sv-select-sm"
+                  :disabled="props.disabled"
+                  data-testid="model-picker-sort-order"
+                >
+                  <option v-for="option in sortOrderOptions" :key="option.key" :value="option.key">{{ option.label }}</option>
+                </select>
+              </div>
             </div>
           </details>
 
-          <div class="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
-            <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.current') }}</div>
-            <div class="mt-1 break-all font-medium text-gray-900">{{ selectedModelLabel }}</div>
+          <div class="mp-block">
+            <div class="sv-label">{{ t('errors.modelCatalog.current') }}</div>
+            <div class="mt-1 break-all text-[13px] font-medium text-gray-900">{{ selectedModelLabel }}</div>
             <div
               v-if="selectedModelUnlisted"
-              class="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800"
+              class="sv-notice sv-notice-warning mt-2"
               data-testid="model-picker-selected-model-unlisted"
             >
               {{ t('errors.modelCatalog.selectedModelUnlisted') }}
             </div>
             <div
               v-else-if="selectedModelFilteredOut"
-              class="mt-2 flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-800"
+              class="sv-notice mt-2 flex-col"
               data-testid="model-picker-selected-model-filtered"
             >
               <span>{{ t('errors.modelCatalog.selectedModelFiltered') }}</span>
               <button
                 type="button"
-                class="rounded border border-blue-200 bg-white px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-50"
+                class="sv-btn sv-btn-sm"
                 data-testid="model-picker-clear-filters-for-selected"
                 @click="clearFiltersToRevealSelectedModel"
               >
                 {{ t('errors.modelCatalog.clearFiltersToReveal') }}
               </button>
             </div>
-            <div v-if="effectiveNotice" class="mt-2 text-[11px] text-gray-500">{{ effectiveNotice }}</div>
-            <div v-if="error" class="mt-2 text-[11px] text-red-600">{{ error }}</div>
+            <div v-if="effectiveNotice" class="mt-2 text-xs text-gray-500">{{ effectiveNotice }}</div>
+            <div v-if="error" class="mp-danger mt-2 text-xs">{{ error }}</div>
           </div>
 
-          <div class="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
-            <div class="flex items-center justify-between gap-2">
-              <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.favoritesOrder') }}</div>
-              <div class="flex items-center gap-2">
+          <div class="mp-block">
+            <div class="flex min-h-7 items-center justify-between gap-2">
+              <div class="sv-label">{{ t('errors.modelCatalog.favoritesOrder') }}</div>
+              <div class="flex items-center gap-1">
                 <button
                   v-if="!favoriteEditMode"
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="props.disabled || props.isRunning || normalizedEditableFavoriteModelKeys.length === 0"
                   data-testid="model-picker-favorites-edit"
                   @click="openFavoriteEditMode"
@@ -2878,7 +2879,7 @@ const selectedModelFilteredOut = computed(() =>
                 <template v-else>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     :disabled="props.disabled || props.isRunning"
                     data-testid="model-picker-favorites-cancel"
                     @click="cancelFavoriteEditMode"
@@ -2887,7 +2888,7 @@ const selectedModelFilteredOut = computed(() =>
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-primary"
                     :disabled="props.disabled || props.isRunning"
                     data-testid="model-picker-favorites-done"
                     @click="saveFavoriteOrder"
@@ -2897,23 +2898,23 @@ const selectedModelFilteredOut = computed(() =>
                 </template>
               </div>
             </div>
-            <div v-if="normalizedFavoriteModelKeys.length === 0" class="mt-2 text-[11px] text-gray-400">
+            <div v-if="normalizedFavoriteModelKeys.length === 0" class="mt-1 text-xs text-gray-500">
               {{ t('errors.modelCatalog.noFavoritesYet') }}
             </div>
-            <div v-else-if="!favoriteEditMode" class="mt-2 space-y-1">
+            <div v-else-if="!favoriteEditMode" class="mt-1 flex flex-col">
               <div
                 v-for="modelKey in normalizedFavoriteModelKeys"
                 :key="`favorite-preview-${modelKey}`"
-                class="truncate rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
+                class="truncate py-1 text-[13px] text-gray-700"
               >
                 {{ resolveFavoriteName(modelKey) }}
               </div>
             </div>
-            <div v-else class="mt-2 space-y-2" data-testid="model-picker-favorites-editor">
+            <div v-else class="mt-1 flex flex-col gap-1" data-testid="model-picker-favorites-editor">
               <div
                 v-for="(modelKey, index) in editableFavoriteModelKeys"
                 :key="`favorite-edit-${modelKey}`"
-                class="relative flex items-center gap-2 rounded border border-gray-200 px-2 py-1"
+                class="mp-fav-card"
                 draggable="true"
                 :data-testid="`model-picker-favorites-card-${index}`"
                 @dragstart="onFavoriteDragStart(index, $event)"
@@ -2921,259 +2922,252 @@ const selectedModelFilteredOut = computed(() =>
                 @drop="onFavoriteDrop(index, $event)"
                 @dragend="onFavoriteDragEnd"
               >
-                <div
-                  class="pointer-events-none absolute left-0 top-1/2 z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-[10px] text-gray-400"
-                  aria-hidden="true"
-                >
-                  ::
-                </div>
-                <div class="min-w-0 flex-1 whitespace-normal break-words text-[11px] leading-tight text-gray-800">
+                <span class="mp-grip" aria-hidden="true"><UiIcon name="grip" :size="14" /></span>
+                <div class="min-w-0 flex-1 whitespace-normal break-words text-[13px] leading-tight text-gray-800">
                   {{ resolveFavoriteName(modelKey) }}
                 </div>
                 <button
                   type="button"
-                  class="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded border border-gray-200 bg-white text-sm leading-none text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-icon-btn shrink-0"
+                  :title="t('common.remove')"
                   :disabled="props.disabled || props.isRunning"
                   :data-testid="`model-picker-favorites-remove-${index}`"
                   @click="removeEditableFavorite(index)"
                 >
-                  ×
+                  <UiIcon name="close" :size="14" />
+                  <span class="sr-only">{{ t('common.remove') }}</span>
                 </button>
               </div>
             </div>
           </div>
         </aside>
 
-        <section class="min-h-0 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div class="grid h-full max-h-[60vh] grid-cols-1 gap-0 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div class="flex min-h-0 flex-col border-b border-gray-200 xl:border-b-0 xl:border-r xl:border-gray-200">
-              <div
-                ref="listScrollRef"
-                class="h-[60vh] overflow-auto px-2 py-2 xl:h-auto xl:flex-1"
-                data-testid="model-picker-list"
-                @scroll="onModelListScroll"
-              >
-                <template v-if="activePickerMode === 'all'">
-                  <div v-if="loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">{{ t('errors.modelCatalog.loadingModels') }}</div>
-                  <div v-else-if="!loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
-                    {{ t('errors.modelCatalog.noModelsFound') }}
-                  </div>
-                  <template v-else>
-                    <div :style="{ height: `${topPaddingPx}px` }" />
-                    <button
-                      v-for="item in visibleItems"
-                      :key="item.itemKey"
-                      type="button"
-                      class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
-                      :class="
-                        isSelectedItem(item)
-                          ? 'border-blue-300 bg-blue-50'
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
-                      "
-                      :data-testid="item.providerId === OPENROUTER_PROVIDER_ID ? `model-picker-item-${item.modelId}` : `model-picker-item-${item.providerId}-${item.modelId}`"
-                      :disabled="props.disabled || props.isRunning || !item.selectable"
-                      @mouseenter="activeModelKey = item.itemKey"
-                      @focus="activeModelKey = item.itemKey"
-                      @click="onSelectItem(item)"
-                      :ref="(el) => onRowRef(item, el as Element | null)"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="min-w-0">
-                          <div class="truncate text-sm font-semibold text-gray-900">{{ item.displayName }}</div>
-                          <div class="truncate text-[11px] text-gray-500">{{ `${item.providerName} · ${item.modelId}` }}</div>
-                        </div>
-                        <div class="flex shrink-0 items-center gap-2">
-                          <button
-                            v-if="item.providerId === OPENROUTER_PROVIDER_ID"
-                            type="button"
-                            class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
-                            :class="
-                              isFavoriteModel(item.modelId, item.providerId)
-                                ? 'border-amber-300 bg-amber-50 text-amber-700'
-                                : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
-                            "
-                            :disabled="props.disabled || props.isRunning"
-                            :data-testid="`model-picker-favorite-${item.modelId}`"
-                            @click.stop="onToggleFavorite(item)"
-                          >
-                            {{ isFavoriteModel(item.modelId, item.providerId) ? '★' : '☆' }}
-                          </button>
-                          <div class="text-[11px] uppercase tracking-wide text-gray-500">
-                            {{ item.providerName }}
-                          </div>
-                        </div>
-                      </div>
-                      <div v-if="item.description" class="mt-1 text-[11px] text-gray-600">
-                        {{ item.description }}
-                      </div>
-                      <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-600">
-                        <span class="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
-                          {{ item.statusLabel }}
-                        </span>
-                        <span class="rounded border border-gray-200 px-1.5 py-0.5">
-                          {{ item.sourceLabel }}
-                        </span>
-                      </div>
-                    </button>
-                    <div :style="{ height: `${bottomPaddingPx}px` }" />
-                  </template>
-                </template>
-                <template v-else>
-                  <div v-if="activeShortcutItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
-                    {{ activePickerMode === 'favorites' ? t('errors.modelCatalog.noFavoriteModels') : t('errors.modelCatalog.noRecentModels') }}
-                  </div>
-                  <template v-else>
-                    <button
-                      v-for="item in activeShortcutItems"
-                      :key="`${activePickerMode}-${item.modelKey}`"
-                      type="button"
-                      class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
-                      :class="
-                        !item.available
-                          ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-70'
-                          : isSelectedModel(item.modelId, item.providerId)
-                          ? 'border-blue-300 bg-blue-50'
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
-                      "
-                      :data-testid="`model-picker-${activePickerMode}-item-${item.modelId}`"
-                      :disabled="props.disabled || props.isRunning || !item.available"
-                      @mouseenter="activeModelKey = item.modelKey"
-                      @focus="activeModelKey = item.modelKey"
-                      @click="onSelectModel(item.modelId, item.providerId)"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="min-w-0">
-                          <div class="truncate text-sm font-semibold text-gray-900">{{ item.name }}</div>
-                          <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
-                        </div>
-                        <button
-                          v-if="item.providerId === OPENROUTER_PROVIDER_ID"
-                          type="button"
-                          class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
-                          :class="
-                              isFavoriteModel(item.modelId, item.providerId)
-                                ? 'border-amber-300 bg-amber-50 text-amber-700'
-                                : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
-                            "
-                          :disabled="props.disabled || props.isRunning"
-                          :data-testid="`model-picker-favorite-${item.modelId}`"
-                          @click.stop="onToggleShortcutFavorite(item)"
-                        >
-                          {{ isFavoriteModel(item.modelId, item.providerId) ? '★' : '☆' }}
-                        </button>
-                      </div>
-                    </button>
-                  </template>
-                </template>
-              </div>
-
-              <div class="flex items-center justify-between border-t border-gray-200 px-3 py-2 text-[11px] text-gray-500">
-                <div>
-                  {{ activePickerMode === 'all' ? tf('errors.modelCatalog.resultCount', { count: pickerItems.length }) : tf('errors.modelCatalog.modelCount', { count: activeShortcutItems.length }) }}
+        <section class="mp-results">
+          <div class="shrink-0 px-4 pb-2 pt-4">
+            <label class="sv-label" for="model-picker-search">{{ t('errors.modelCatalog.search') }}</label>
+            <div class="relative mt-1">
+              <span class="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 text-gray-500"><UiIcon name="search" :size="14" /></span>
+              <input
+                id="model-picker-search"
+                ref="searchInputRef"
+                v-model="searchText"
+                type="text"
+                class="sv-input pl-8"
+                :placeholder="t('errors.modelCatalog.searchPlaceholder')"
+                :disabled="props.disabled"
+                data-testid="model-picker-search"
+              />
+            </div>
+            <label class="mp-opt mt-2">
+              <input
+                v-model="includeDescriptionInSearch"
+                type="checkbox"
+                class="mp-check"
+                :disabled="props.disabled"
+                data-testid="model-picker-include-description"
+              />
+              <span>{{ t('errors.modelCatalog.includingDescription') }}</span>
+            </label>
+          </div>
+          <div class="flex min-h-0 flex-1 flex-col">
+            <div
+              ref="listScrollRef"
+              class="min-h-0 flex-1 overflow-auto px-2"
+              data-testid="model-picker-list"
+              @scroll="onModelListScroll"
+            >
+              <template v-if="activePickerMode === 'all'">
+                <div v-if="loading && pickerItems.length === 0" class="px-3 py-6 text-sm text-gray-500">{{ t('errors.modelCatalog.loadingModels') }}</div>
+                <div v-else-if="!loading && pickerItems.length === 0" class="px-3 py-6 text-sm text-gray-500">
+                  {{ t('errors.modelCatalog.noModelsFound') }}
                 </div>
-              </div>
+                <template v-else>
+                  <div :style="{ height: `${topPaddingPx}px` }" />
+                  <button
+                    v-for="item in visibleItems"
+                    :key="item.itemKey"
+                    type="button"
+                    class="mp-row sv-row"
+                    :class="{ 'is-selected': isSelectedItem(item), 'is-unavailable': !item.selectable }"
+                    :aria-current="isSelectedItem(item) ? 'true' : undefined"
+                    :data-testid="item.providerId === OPENROUTER_PROVIDER_ID ? `model-picker-item-${item.modelId}` : `model-picker-item-${item.providerId}-${item.modelId}`"
+                    :disabled="props.disabled || props.isRunning || !item.selectable"
+                    @mouseenter="activeModelKey = item.itemKey"
+                    @focus="activeModelKey = item.itemKey"
+                    @click="onSelectItem(item)"
+                    :ref="(el) => onRowRef(item, el as Element | null)"
+                  >
+                    <span class="mp-row-body">
+                      <span class="mp-row-name">{{ item.displayName }}</span>
+                      <span class="mp-row-sub">{{ `${item.providerName} · ${item.modelId}` }}</span>
+                      <span v-if="item.description" class="mp-row-desc">{{ item.description }}</span>
+                      <span class="mp-row-meta">
+                        <span>{{ item.statusLabel }}</span>
+                        <span>{{ item.sourceLabel }}</span>
+                      </span>
+                    </span>
+                    <span class="mp-row-aside">
+                      <button
+                        v-if="item.providerId === OPENROUTER_PROVIDER_ID"
+                        type="button"
+                        class="sv-icon-btn mp-star"
+                        :aria-pressed="isFavoriteModel(item.modelId, item.providerId)"
+                        :title="t('composer.modelPicker.favoriteModels')"
+                        :disabled="props.disabled || props.isRunning"
+                        :data-testid="`model-picker-favorite-${item.modelId}`"
+                        @click.stop="onToggleFavorite(item)"
+                      >
+                        <UiIcon name="star" :filled="isFavoriteModel(item.modelId, item.providerId)" :size="14" />
+                        <span class="sr-only">{{ t('composer.modelPicker.favoriteModels') }}</span>
+                      </button>
+                    </span>
+                  </button>
+                  <div :style="{ height: `${bottomPaddingPx}px` }" />
+                </template>
+              </template>
+              <template v-else>
+                <div v-if="activeShortcutItems.length === 0" class="px-3 py-6 text-sm text-gray-500">
+                  {{ activePickerMode === 'favorites' ? t('errors.modelCatalog.noFavoriteModels') : t('errors.modelCatalog.noRecentModels') }}
+                </div>
+                <template v-else>
+                  <button
+                    v-for="item in activeShortcutItems"
+                    :key="`${activePickerMode}-${item.modelKey}`"
+                    type="button"
+                    class="mp-row sv-row"
+                    :class="{ 'is-selected': item.available && isSelectedModel(item.modelId, item.providerId), 'is-unavailable': !item.available }"
+                    :aria-current="item.available && isSelectedModel(item.modelId, item.providerId) ? 'true' : undefined"
+                    :data-testid="`model-picker-${activePickerMode}-item-${item.modelId}`"
+                    :disabled="props.disabled || props.isRunning || !item.available"
+                    @mouseenter="activeModelKey = item.modelKey"
+                    @focus="activeModelKey = item.modelKey"
+                    @click="onSelectModel(item.modelId, item.providerId)"
+                  >
+                    <span class="mp-row-body">
+                      <span class="mp-row-name">{{ item.name }}</span>
+                      <span class="mp-row-sub">{{ item.modelId }}</span>
+                    </span>
+                    <span class="mp-row-aside">
+                      <button
+                        v-if="item.providerId === OPENROUTER_PROVIDER_ID"
+                        type="button"
+                        class="sv-icon-btn mp-star"
+                        :aria-pressed="isFavoriteModel(item.modelId, item.providerId)"
+                        :title="t('composer.modelPicker.favoriteModels')"
+                        :disabled="props.disabled || props.isRunning"
+                        :data-testid="`model-picker-favorite-${item.modelId}`"
+                        @click.stop="onToggleShortcutFavorite(item)"
+                      >
+                        <UiIcon name="star" :filled="isFavoriteModel(item.modelId, item.providerId)" :size="14" />
+                        <span class="sr-only">{{ t('composer.modelPicker.favoriteModels') }}</span>
+                      </button>
+                    </span>
+                  </button>
+                </template>
+              </template>
             </div>
 
-            <div class="flex h-full max-h-[60vh] flex-col gap-2 overflow-auto p-2">
-              <div class="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 p-1 text-[11px]">
-                <button
-                  type="button"
-                  class="rounded px-2 py-1"
-                  :class="
-                    activeDetailTab === 'model'
-                      ? 'bg-white font-semibold text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:bg-white/60'
-                  "
-                  data-testid="model-picker-detail-tab-model"
-                  @click="setActiveDetailTab('model')"
-                >
-                  {{ t('errors.modelCatalog.detailTabModel') }}
-                </button>
-                <button
-                  type="button"
-                  class="rounded px-2 py-1"
-                  :class="
-                    activeDetailTab === 'endpoints'
-                      ? 'bg-white font-semibold text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:bg-white/60'
-                  "
-                  data-testid="model-picker-detail-tab-endpoints"
-                  @click="setActiveDetailTab('endpoints')"
-                >
-                  {{ t('errors.modelCatalog.detailTabEndpoints') }}
-                </button>
-              </div>
-
-              <div
-                v-if="activeDetailTab === 'model' && activeDetailItem && activeDetailItem.providerId !== OPENROUTER_PROVIDER_ID"
-                class="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700"
-                data-testid="model-picker-provider-detail"
-              >
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.providerModel') }}</div>
-                <div class="mt-2 text-sm font-semibold text-gray-900">{{ activeDetailItem.displayName }}</div>
-                <div class="mt-1 break-all text-[11px] text-gray-500">{{ `${activeDetailItem.providerName} · ${activeDetailItem.modelId}` }}</div>
-                <div class="mt-3 grid gap-2">
-                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.status') }}</div>
-                    <div>{{ activeDetailItem.statusLabel }}</div>
-                  </div>
-                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.source') }}</div>
-                    <div>{{ activeDetailItem.sourceLabel ?? t('errors.modelCatalog.providerSource') }}</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="mt-3 rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-50"
-                  :disabled="props.disabled || !activeDetailItem"
-                  data-testid="model-picker-inspect-model-facts"
-                  @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
-                >
-                  {{ t('settings.modelsCapabilities.inspectModelFacts') }}
-                </button>
-              </div>
-              <ModelDetailPanel
-                v-else-if="activeDetailTab === 'model'"
-                :modelId="activeDetailModelId"
-                :loading="modelDetailLoading"
-                :detail="modelDetail"
-                :error="modelDetailError"
-                :disabled="props.disabled || !activeDetailModelId"
-              />
-              <button
-                v-if="activeDetailTab === 'model' && activeDetailItem?.providerId === OPENROUTER_PROVIDER_ID"
-                type="button"
-                class="rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-50"
-                :disabled="props.disabled || !activeDetailItem"
-                data-testid="model-picker-inspect-model-facts-openrouter"
-                @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
-              >
-                {{ t('settings.modelsCapabilities.inspectModelFacts') }}
-              </button>
-              <EndpointDetailPanel
-                v-if="activeDetailTab === 'endpoints'"
-                :modelId="activeDetailModelId"
-                :loading="endpointLoading"
-                :fetchedAtMs="endpointFetchedAtMs"
-                :items="endpointItems"
-                :error="endpointError"
-                :disabled="props.disabled || !activeDetailModelId || activeDetailItem?.providerId !== OPENROUTER_PROVIDER_ID"
-                @refresh="onRefreshEndpointDetails"
-              />
+            <div class="shrink-0 px-4 py-2 text-xs text-gray-500">
+              {{ activePickerMode === 'all' ? tf('errors.modelCatalog.resultCount', { count: pickerItems.length }) : tf('errors.modelCatalog.modelCount', { count: activeShortcutItems.length }) }}
             </div>
           </div>
         </section>
+
+        <section class="mp-detail">
+          <div class="sv-segmented w-full">
+            <button
+              type="button"
+              :aria-pressed="activeDetailTab === 'model'"
+              data-testid="model-picker-detail-tab-model"
+              @click="setActiveDetailTab('model')"
+            >
+              {{ t('errors.modelCatalog.detailTabModel') }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="activeDetailTab === 'endpoints'"
+              data-testid="model-picker-detail-tab-endpoints"
+              @click="setActiveDetailTab('endpoints')"
+            >
+              {{ t('errors.modelCatalog.detailTabEndpoints') }}
+            </button>
+          </div>
+
+          <div
+            v-if="activeDetailTab === 'model' && activeDetailItem && activeDetailItem.providerId !== OPENROUTER_PROVIDER_ID"
+            class="text-xs text-gray-700"
+            data-testid="model-picker-provider-detail"
+          >
+            <div class="sv-label">{{ t('errors.modelCatalog.providerModel') }}</div>
+            <div class="mt-1 text-sm font-semibold text-gray-900">{{ activeDetailItem.displayName }}</div>
+            <div class="mt-1 break-all text-xs text-gray-500">{{ `${activeDetailItem.providerName} · ${activeDetailItem.modelId}` }}</div>
+            <dl class="mp-dl mt-3">
+              <div>
+                <dt>{{ t('errors.modelCatalog.status') }}</dt>
+                <dd>{{ activeDetailItem.statusLabel }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('errors.modelCatalog.source') }}</dt>
+                <dd>{{ activeDetailItem.sourceLabel ?? t('errors.modelCatalog.providerSource') }}</dd>
+              </div>
+            </dl>
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm mt-3"
+              :disabled="props.disabled || !activeDetailItem"
+              data-testid="model-picker-inspect-model-facts"
+              @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
+            >
+              {{ t('settings.modelsCapabilities.inspectModelFacts') }}
+            </button>
+          </div>
+          <ModelDetailPanel
+            v-else-if="activeDetailTab === 'model'"
+            :modelId="activeDetailModelId"
+            :loading="modelDetailLoading"
+            :detail="modelDetail"
+            :error="modelDetailError"
+            :disabled="props.disabled || !activeDetailModelId"
+          />
+          <button
+            v-if="activeDetailTab === 'model' && activeDetailItem?.providerId === OPENROUTER_PROVIDER_ID"
+            type="button"
+            class="sv-btn sv-btn-sm self-start"
+            :disabled="props.disabled || !activeDetailItem"
+            data-testid="model-picker-inspect-model-facts-openrouter"
+            @click="inspectCatalogModelFacts(activeDetailItem!.providerId, activeDetailItem!.modelId)"
+          >
+            {{ t('settings.modelsCapabilities.inspectModelFacts') }}
+          </button>
+          <EndpointDetailPanel
+            v-if="activeDetailTab === 'endpoints'"
+            :modelId="activeDetailModelId"
+            :loading="endpointLoading"
+            :fetchedAtMs="endpointFetchedAtMs"
+            :items="endpointItems"
+            :error="endpointError"
+            :disabled="props.disabled || !activeDetailModelId || activeDetailItem?.providerId !== OPENROUTER_PROVIDER_ID"
+            @refresh="onRefreshEndpointDetails"
+          />
+        </section>
       </div>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-2 text-[11px]">
-        <div class="flex min-w-0 flex-wrap items-center gap-2">
+      <div v-if="selectedSyncSnapshot.providerFailure" class="max-h-40 shrink-0 overflow-auto px-5 pb-3">
+        <ProviderFailureDetailsV2
+          :failure="selectedSyncSnapshot.providerFailure"
+          test-id-prefix="model-picker-provider-failure"
+        />
+      </div>
+
+      <div class="mp-footer flex h-[68px] shrink-0 items-center gap-4 border-t border-(--sv-line) px-5 text-xs">
+        <div class="flex shrink-0 items-center gap-2">
           <label class="text-gray-500" for="model-picker-sync-provider">
             {{ t('errors.modelCatalog.provider') }}
           </label>
           <select
             id="model-picker-sync-provider"
             v-model="selectedSyncProviderKey"
-            class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 disabled:bg-gray-100"
+            class="sv-select sv-select-sm w-40"
             :disabled="props.disabled || syncProviderOptions.length === 0"
             data-testid="model-picker-sync-provider"
           >
@@ -3185,17 +3179,19 @@ const selectedModelFilteredOut = computed(() =>
               {{ provider.providerName }}
             </option>
           </select>
+        </div>
+        <div class="mp-status min-w-0 flex-1">
           <template v-if="pendingCatalogUpdateAvailable">
-            <span v-if="pendingCatalogUpdateIsEmpty" class="text-amber-700" data-testid="model-picker-empty-update">
+            <span v-if="pendingCatalogUpdateIsEmpty" class="mp-warn" data-testid="model-picker-empty-update">
               {{ t('errors.modelCatalog.emptyUpdate') }}
             </span>
-            <span v-else class="text-blue-700" data-testid="model-picker-update-available">
+            <span v-else class="text-gray-700" data-testid="model-picker-update-available">
               {{ t('errors.modelCatalog.updateAvailable') }}
             </span>
             <button
               v-if="pendingCatalogUpdateIsEmpty"
               type="button"
-              class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              class="sv-btn sv-btn-sm mx-1 align-middle"
               :disabled="props.disabled || loading"
               data-testid="model-picker-keep-current-catalog"
               @click="keepCurrentCatalogList"
@@ -3204,7 +3200,7 @@ const selectedModelFilteredOut = computed(() =>
             </button>
             <button
               type="button"
-              class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+              class="sv-btn sv-btn-sm mx-1 align-middle"
               :disabled="props.disabled || loading"
               data-testid="model-picker-apply-update"
               @click="onApplyCatalogUpdate"
@@ -3212,52 +3208,238 @@ const selectedModelFilteredOut = computed(() =>
               {{ pendingCatalogUpdateIsEmpty ? t('errors.modelCatalog.acceptEmptyUpdate') : t('errors.modelCatalog.applyUpdate') }}
             </button>
           </template>
-          <span v-if="selectedSyncSnapshot.status === 'not_synced'" class="text-gray-400">
+          <span v-if="selectedSyncSnapshot.status === 'not_synced'">
             {{ t('errors.modelCatalog.syncNotSynced') }}
           </span>
-          <span v-else-if="selectedSyncSnapshot.status === 'syncing'" class="text-blue-600">
+          <span v-else-if="selectedSyncSnapshot.status === 'syncing'">
             {{ t('errors.modelCatalog.syncSyncing') }}
           </span>
-          <span v-else-if="selectedSyncSnapshot.status === 'synced'" class="text-green-700">
+          <span v-else-if="selectedSyncSnapshot.status === 'synced'" class="text-gray-700">
             {{ formatProviderSyncStatusText(selectedSyncSnapshot) }}
           </span>
-          <span v-else-if="selectedSyncSnapshot.status === 'failed'" class="text-red-600">
+          <span v-else-if="selectedSyncSnapshot.status === 'failed'" class="mp-danger">
             {{ tf('errors.modelCatalog.syncFailedReason', { reason: modelCatalogSyncFailureReasonText(selectedSyncSnapshot) }) }}
           </span>
           <span
             v-if="selectedSyncSnapshot.status === 'failed' && selectedSyncSnapshot.totalModelCount > 0"
-            class="text-amber-700"
+            class="mp-warn"
             data-testid="model-picker-using-last-known-good"
           >
             {{ t('errors.modelCatalog.usingLastKnownGood') }}
           </span>
           <span
             v-else-if="selectedSyncSnapshot.isStale && selectedSyncSnapshot.totalModelCount > 0"
-            class="text-amber-700"
+            class="mp-warn"
             data-testid="model-picker-stale-snapshot"
           >
             {{ t('errors.modelCatalog.staleSnapshot') }}
           </span>
-          <span class="text-gray-400" data-testid="model-picker-sync-last-synced">
+          <span data-testid="model-picker-sync-last-synced">
             {{ tf('errors.modelCatalog.lastSyncedAt', { time: formatSyncTime(selectedSyncSnapshot.lastSyncedAtMs) }) }}
           </span>
         </div>
-        <button
-          type="button"
-          class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          :disabled="selectedSyncSnapshot.status === 'syncing' || props.disabled"
-          data-testid="model-picker-sync-refresh"
-          @click="onManualRefreshProvider()"
-        >
-          {{ selectedSyncSnapshot.status === 'syncing' ? '…' : t('errors.modelCatalog.sync') }}
-        </button>
-        <ProviderFailureDetailsV2
-          v-if="selectedSyncSnapshot.providerFailure"
-          class="basis-full"
-          :failure="selectedSyncSnapshot.providerFailure"
-          test-id-prefix="model-picker-provider-failure"
-        />
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            class="sv-btn w-24"
+            :disabled="selectedSyncSnapshot.status === 'syncing' || props.disabled"
+            data-testid="model-picker-sync-refresh"
+            @click="onManualRefreshProvider()"
+          >
+            <UiIcon :name="selectedSyncSnapshot.status === 'syncing' ? 'spinner' : 'refresh'" :size="14" />
+            {{ t('errors.modelCatalog.sync') }}
+          </button>
+          <button type="button" class="sv-btn sv-btn-primary w-32" data-testid="model-picker-use-model"
+            :disabled="props.disabled || props.isRunning || selectionPending || !activeDetailItem?.selectable"
+            @keydown.enter.stop
+            @click="onSelectItem(activeDetailItem)">{{ t('errors.modelCatalog.useModel') }}</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ---- layout: container-driven so the dialog adapts to its own width ---- */
+.mp-dialog { container-type: inline-size; container-name: mp; }
+.mp-grid {
+  display: grid;
+  flex: 1 1 0;
+  min-height: 0;
+  grid-template-columns: 224px minmax(0, 1fr) 320px;
+}
+.mp-grid > * { min-width: 0; min-height: 0; }
+@container mp (max-width: 999px) {
+  .mp-grid { grid-template-columns: 208px minmax(0, 1fr) 256px; }
+}
+@container mp (max-width: 719px) {
+  .mp-grid { grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 40%); }
+  .mp-detail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--sv-line); }
+}
+
+/* ---- left: filters ---- */
+.mp-filters {
+  overflow: auto;
+  padding: 8px 8px 16px;
+  border-right: 1px solid var(--sv-line);
+}
+.mp-section + .mp-section,
+.mp-section + .mp-block,
+.mp-block + .mp-block { border-top: 1px solid var(--sv-line); }
+.mp-block { padding: 12px 8px; font-size: 12px; color: var(--sv-text-2); }
+.mp-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: var(--sv-radius-control);
+  list-style: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sv-text);
+}
+.mp-summary::-webkit-details-marker { display: none; }
+.mp-summary:hover { background: var(--sv-hover); }
+.mp-chev {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--sv-text-3);
+  transition: transform 120ms;
+}
+.mp-section[open] > .mp-summary .mp-chev { transform: rotate(90deg); }
+.mp-section-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 8px 14px; }
+
+.mp-opt { display: flex; min-width: 0; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--sv-text); }
+.mp-check {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  border: 1px solid var(--sv-field-border);
+  border-radius: 4px;
+  background: var(--sv-surface);
+}
+.mp-check:checked {
+  border-color: var(--sv-primary);
+  background: var(--sv-primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+}
+.mp-check:disabled { border-color: var(--sv-line-strong); background-color: var(--sv-sunken); }
+.mp-check:checked:disabled { background-color: var(--sv-text-disabled); border-color: var(--sv-text-disabled); }
+
+/* provider rows: the name always gets its own full-width line; status wraps beneath it */
+.mp-prov {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  column-gap: 4px;
+  padding: 2px 0 4px;
+}
+.mp-prov-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-prov-status {
+  grid-column: 1 / -1;
+  padding-left: 24px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--sv-text-3);
+  overflow-wrap: anywhere;
+}
+
+.mp-fav-card {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px 2px 0;
+  border-radius: var(--sv-radius-control);
+  cursor: grab;
+}
+.mp-fav-card:hover { background: var(--sv-hover); }
+.mp-grip { display: inline-flex; width: 20px; flex: none; justify-content: center; color: var(--sv-text-3); }
+
+.mp-route {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--sv-line-strong);
+  border-radius: var(--sv-radius-control);
+  font-size: 12px;
+}
+
+/* ---- middle: results ---- */
+.mp-results { display: flex; flex-direction: column; overflow: hidden; }
+.mp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: start;
+  column-gap: 8px;
+  width: 100%;
+  padding: 10px 8px 10px 12px;
+  text-align: left;
+}
+.mp-row.is-unavailable .mp-row-name { color: var(--sv-text-3); }
+.mp-row-body { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.mp-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--sv-text); }
+.mp-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.4; color: var(--sv-text-3); }
+.mp-row-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--sv-text-2);
+}
+.mp-row-meta { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--sv-text-3); }
+.mp-row-meta > span:empty { display: none; }
+.mp-row-meta > span + span:not(:empty)::before { content: '·'; margin: 0 6px; }
+.mp-row-aside { display: flex; justify-content: center; }
+.mp-star { color: var(--sv-text-3); }
+.mp-star[aria-pressed='true'] { background: transparent; color: var(--sv-text); }
+.mp-star[aria-pressed='true']:hover:not(:disabled) { background: var(--sv-hover); }
+
+/* ---- right: detail ---- */
+.mp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: auto;
+  padding: 16px;
+  border-left: 1px solid var(--sv-line);
+}
+.mp-dl { margin: 0; }
+.mp-dl > div {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 38%) minmax(0, 1fr);
+  gap: 0 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--sv-line);
+}
+.mp-dl dt { color: var(--sv-text-3); overflow-wrap: anywhere; }
+.mp-dl dd { margin: 0; color: var(--sv-text); overflow-wrap: anywhere; }
+
+/* ---- footer: fixed height, fixed-size controls; status text flexes and clamps in its own region ---- */
+.mp-status {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  line-height: 16px;
+  color: var(--sv-text-3);
+  overflow-wrap: anywhere;
+}
+.mp-status > span:not(:first-child)::before { content: '·'; margin: 0 6px; color: var(--sv-text-disabled); }
+.mp-danger { color: var(--sv-danger); }
+.mp-warn { color: var(--sv-warning); }
+</style>

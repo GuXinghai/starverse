@@ -5,6 +5,7 @@ import {
   type ReasoningArtifact,
   type ReasoningArtifactKind,
 } from '@/next/provider/reasoningArtifact'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { t, tf } from '@/shared/i18n'
 
 const props = defineProps<{
@@ -40,31 +41,31 @@ function preview(artifact: ReasoningArtifact): string {
 <template>
   <details
     v-if="artifacts.length > 0"
-    class="mt-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600"
+    class="group/diag mt-2 text-xs text-[var(--sv-text-3)]"
     data-testid="reasoning-artifact-diagnostics"
   >
-    <summary class="cursor-pointer select-none font-medium text-gray-700">
-      {{ t('diagnostics.reasoningArtifacts.title') }} · {{ artifacts.length }}
+    <summary class="flex cursor-pointer select-none items-center gap-1 [&::-webkit-details-marker]:hidden font-medium text-[var(--sv-text-3)] hover:text-[var(--sv-text)]">
+      <span class="inline-flex h-3.5 w-3.5 flex-none items-center justify-center transition-transform group-open/diag:rotate-90"><UiIcon name="chevronRight" :size="14" /></span>
+      <span>{{ t('diagnostics.reasoningArtifacts.title') }} · {{ artifacts.length }}</span>
     </summary>
 
-    <div class="mt-2 space-y-2">
+    <div class="mt-2 flex flex-col gap-2 border-l border-[var(--sv-line-strong)] pl-3">
       <div
         v-for="artifact in visibleArtifacts"
         :key="artifact.id"
-        class="rounded border border-gray-200 bg-white px-2 py-1"
         :data-testid="`reasoning-artifact-${artifact.sequence}`"
       >
-        <div class="flex flex-wrap items-center gap-2 font-medium text-gray-700">
+        <div class="flex flex-wrap items-center gap-x-2 font-medium text-[var(--sv-text-2)]">
           <span>{{ artifact.providerKey }}</span>
           <span>{{ kindLabel(artifact.kind) }}</span>
           <span>#{{ artifact.sequence }}</span>
         </div>
-        <div class="mt-1 whitespace-pre-wrap break-words text-gray-600">
+        <div class="mt-1 whitespace-pre-wrap break-words text-[var(--sv-text-3)]">
           {{ preview(artifact) }}
         </div>
         <div
           v-if="artifact.warnings.length > 0"
-          class="mt-1 text-amber-700"
+          class="mt-1 text-[var(--sv-warning)]"
         >
           {{ artifact.warnings.join(' ') }}
         </div>
@@ -72,7 +73,7 @@ function preview(artifact: ReasoningArtifact): string {
 
       <div
         v-if="artifacts.length > visibleArtifacts.length"
-        class="text-gray-500"
+        class="text-[var(--sv-text-3)]"
       >
         {{ tf('diagnostics.reasoningArtifacts.hiddenCount', { count: artifacts.length - visibleArtifacts.length }) }}
       </div>
