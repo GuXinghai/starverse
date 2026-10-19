@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../../../core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
+import { stableSerializeProviderRequestV2 } from '../../../../core/generation-v2/compiler/stableSerialize'
+import { sha256Hex } from '../../../../shared/crypto/sha256Hex'
+import { createGeminiInteractionsImageTerminalArtifactV2, serializeGeminiInteractionsImageTerminalArtifactV2 } from '../../../../core/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
   GeminiInteractionsImageStreamV1Error } from '../../../../core/generation-v2/providers/gemini/interactionsStreamV1'
 
@@ -25,6 +27,147 @@ const interaction = { id: 'interaction:1', model: 'gemini-3.1-flash-image', stat
   usage: { total_input_tokens: 1, total_output_tokens: 2 } }
 
 describe('Gemini Interactions image SSE V1', () => {
+  it.each([undefined, '', 'interaction:known'])('treats empty optional IDs as absent and retains known identity (%s)', (createdId) => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { ...(createdId === undefined ? {} : { id: createdId }), model: interaction.model } },
+      { event_type: 'interaction.status_update', interaction_id: '', status: 'in_progress' },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { id: '', status: 'completed' } }, '[DONE]',
+    ])
+    expect(result.interactionId).toBe(createdId || null)
+    expect(new TextDecoder().decode(result.bytes)).toBe('image')
+  })
+
+  it('accepts the captured partial created frame with a synthetic completed stream', () => {
+    const capturedCreatedFrame = { event_type: 'interaction.created',
+      interaction: { object: 'interaction', model: 'gemini-3.1-flash-lite-image' } }
+    // Only the created frame is captured evidence; the remainder is synthetic fixture data.
+    const syntheticSuffix = [
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { id: 'interaction:synthetic', status: 'completed' } },
+      '[DONE]',
+    ]
+    const decoder = new GeminiInteractionsImageSseDecoderV1()
+    const assembler = new GeminiInteractionsImageResultAssemblerV1('gemini-3.1-flash-lite-image')
+    for (const event of decoder.push(sse([capturedCreatedFrame, ...syntheticSuffix]))) assembler.push(event)
+    for (const event of decoder.finish()) assembler.push(event)
+    const result = assembler.finish()
+
+    expect(result.interactionId).toBe('interaction:synthetic')
+    expect(new TextDecoder().decode(result.bytes)).toBe('image')
+  })
+
+  it('completes with no provider ID when created, status_update, and terminal omit IDs', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { object: 'interaction', model: interaction.model } },
+      { event_type: 'interaction.status_update', status: 'in_progress' },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ])
+    expect(result.interactionId).toBeNull()
+    expect(new TextDecoder().decode(result.bytes)).toBe('image')
+    const artifact = createGeminiInteractionsImageTerminalArtifactV2(result)
+    const serializedArtifact = serializeGeminiInteractionsImageTerminalArtifactV2(artifact)
+    const { artifactHash, ...projection } = artifact
+    expect(artifact.interactionId).toBeNull()
+    expect(JSON.parse(serializedArtifact)).toMatchObject({ interactionId: null, artifactHash })
+    expect(artifactHash).toBe(sha256Hex(stableSerializeProviderRequestV2(projection)))
+  })
+
+  it('retains a created provider ID when the completed interaction omits it', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, status: 'in_progress', model: interaction.model } },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ])
+    expect(result.interactionId).toBe(interaction.id)
+  })
+
+  it('still requires completed status when the terminal ID is present', () => {
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { id: 'interaction:terminal' } }, '[DONE]',
+    ])).toThrow(expect.objectContaining({ code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT' }))
+  })
+
+  it.each([
+    ['null created ID', [
+      { event_type: 'interaction.created', interaction: { id: null, model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ], 'interaction.id'],
+    ['non-string created ID', [
+      { event_type: 'interaction.created', interaction: { id: 42, model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ], 'interaction.id'],
+    ['null status_update ID', [
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.status_update', interaction_id: null, status: 'in_progress' },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ], 'interaction_id'],
+    ['non-string status_update ID', [
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.status_update', interaction_id: {}, status: 'in_progress' },
+      { event_type: 'interaction.completed', interaction: { status: 'completed' } }, '[DONE]',
+    ], 'interaction_id'],
+    ['null completed ID', [
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { id: null, status: 'completed' } }, '[DONE]',
+    ], 'interaction.id'],
+    ['non-string completed ID', [
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { id: {}, status: 'completed' } }, '[DONE]',
+    ], 'interaction.id'],
+  ] as const)('rejects an explicit invalid %s', (_name, events, _fieldPath) => {
+    expect(() => decode(events)).toThrow(expect.objectContaining({
+      code: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT',
+    }))
+  })
+
+  it('rejects a completed interaction ID that conflicts with a known created ID', () => {
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { id: 'interaction:created', status: 'in_progress', model: interaction.model } },
+      { event_type: 'interaction.completed', interaction: { id: 'interaction:completed', status: 'completed' } }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  })
+
+  it('rejects duplicate created events even when their IDs are absent', () => {
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.created', interaction: { model: interaction.model } }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  })
+
+  it('rejects streams that begin without interaction.created', () => {
+    expect(() => decode([
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  })
+
+  it('allows status_update to establish identity after partial created and checks later IDs', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.status_update', interaction_id: 'interaction:status', status: 'in_progress' },
+      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'interaction.completed', interaction: { id: 'interaction:status', status: 'completed' } }, '[DONE]',
+    ])
+    expect(result.interactionId).toBe('interaction:status')
+    expect(() => decode([
+      { event_type: 'interaction.created', interaction: { model: interaction.model } },
+      { event_type: 'interaction.status_update', interaction_id: 'interaction:status', status: 'in_progress' },
+      { event_type: 'interaction.completed', interaction: { id: 'interaction:other', status: 'completed' } }, '[DONE]',
+    ])).toThrow('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  })
+
   it.each(['', 'AA=A', 'A===', '!AAA', 'AB=='])('rejects malformed or noncanonical image encoding %j', data => {
     expect(() => decode([
       { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },

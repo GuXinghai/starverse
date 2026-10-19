@@ -1751,6 +1751,37 @@ describe('ChatAppComposer model picker integration', () => {
     expect(view.emitted('updateImageGenerationEnabled')).toBeUndefined()
   })
 
+  it('shows provider default without substituting the only supported image resolution', async () => {
+    const sessionConfig = createSessionConfig()
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...sessionConfig,
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash-image' },
+          imageGeneration: { ...sessionConfig.imageGeneration, enabled: true, resolution: '' },
+        },
+        capabilityProjection: geminiCapabilityProjection({
+          imageSizes: ['1K'],
+          aspectRatios: ['1:1'],
+          outputModes: ['image_only'],
+        }),
+        modelCatalog: [],
+      },
+    })
+
+    const imageChip = screen.getByTestId('image-chip')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('Default · 1:1')
+    const imageMenu = await openImageMenu()
+    await fireEvent.click(within(imageMenu).getByText('1K'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['1K']])
+    const defaultMenu = await openImageMenu()
+    await fireEvent.click(within(defaultMenu).getByText('Default'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['1K'], ['']])
+  })
+
   it('forces image generation on and disables reasoning for legacy Nano Banana', async () => {
     const view = render(ChatAppComposer, {
       props: {

@@ -82,7 +82,7 @@ function projectWeb(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): Ch
 function projectImage(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): ChatSessionConfig['imageGeneration'] {
   if (!layer.image || layer.image.mode === 'disabled') {
     const detail: ImageGenerationUserConfig = Object.freeze({ enabled: false, outputMode: 'auto', aspectRatio: '', imageSize: '' })
-    return Object.freeze({ enabled: false, resolution: '1K', aspectRatio: '1:1', mode: 'custom', detail })
+    return Object.freeze({ enabled: false, resolution: '', aspectRatio: '1:1', mode: 'custom', detail })
   }
   const image = layer.image
   const ratio = image.aspectRatio ? readImageAspectRatioV2(image.aspectRatio)
@@ -91,7 +91,7 @@ function projectImage(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): 
         : image.size ? '1:1' : 'auto'
   const supportedRatio = ['auto','1:1','9:16','16:9','3:4','4:3','3:2','2:3','5:4','4:5','21:9','4:1','1:4','8:1','1:8']
     .includes(ratio) ? ratio as ChatSessionConfig['imageGeneration']['aspectRatio'] : '1:1'
-  const resolution = image.resolution ?? '1K'
+  const resolution = image.resolution ?? ''
   const detail: ImageGenerationUserConfig = Object.freeze({ enabled: true, outputMode: image.outputMode ?? 'auto',
     aspectRatio: supportedRatio, imageSize: resolution })
   return Object.freeze({ enabled: true, resolution, aspectRatio: supportedRatio, mode: 'custom', detail })

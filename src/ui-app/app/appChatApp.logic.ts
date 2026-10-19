@@ -747,7 +747,8 @@ export function useAppChatAppLogic() {
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
   const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
-  const isDraftInteractionLocked = computed(() => !isReady.value || isAttachmentConfirmationActive.value ||
+  const imageResolutionResetCount = ref(0)
+  const isDraftInteractionLocked = computed(() => imageResolutionResetCount.value > 0 || !isReady.value || isAttachmentConfirmationActive.value ||
     (boundDraftScope.value !== null && (!draftScopeHydrated.value ||
       deletingConversationIds.value.has(boundDraftScope.value.convoId) ||
       submittingComposerConversationIds.value.has(boundDraftScope.value.convoId) || activeDraftConflict.value !== null)))
@@ -3728,13 +3729,13 @@ export function useAppChatAppLogic() {
         expectedRevision: current?.revision ?? 0, selection }))
   }
 
-  async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
+  async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch, isCurrent?: () => boolean): Promise<ChatSessionConfig | null> {
     const initialConvo = getActiveConvoRecord()
     if (!initialConvo) return null
     const conversationId = initialConvo.id
     return conversationConfigUpdateQueue.enqueue(conversationId, async () => {
       const convo = getActiveConvoRecord()
-      if (!convo || convo.id !== conversationId) return null
+      if (!convo || convo.id !== conversationId || isCurrent?.() === false) return null
       const current = getChatSessionConfigForConvo(convo)
       const nextConfig = mergeChatSessionConfig(current, patch)
       if (patch.routeSelection !== undefined) {
@@ -3841,7 +3842,7 @@ export function useAppChatAppLogic() {
     }))
   }
 
-  async function onUpdateImageGenerationResolution(nextResolution: '512' | '1K' | '2K' | '4K') {
+  async function onUpdateImageGenerationResolution(nextResolution: '' | '512' | '1K' | '2K' | '4K') {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value.imageGeneration
     await applyComposerSessionConfigUpdate(() => ({
@@ -6437,7 +6438,7 @@ export function useAppChatAppLogic() {
     const resolution =
       normalized.imageSize === '512' || normalized.imageSize === '1K' || normalized.imageSize === '2K' || normalized.imageSize === '4K'
         ? normalized.imageSize
-        : '1K'
+        : ''
     const aspectRatio =
       normalized.aspectRatio === 'auto' ||
       normalized.aspectRatio === '1:1' ||
@@ -6542,7 +6543,7 @@ export function useAppChatAppLogic() {
       ? requestedAspectRatio : allowedAspectRatios[0]
     const imageSize = allowedResolutions.includes(requestedResolution)
       ? requestedResolution as ImageGenerationUserConfig['imageSize']
-      : allowedResolutions[0] as ImageGenerationUserConfig['imageSize'] | undefined
+      : undefined
     const outputMode = allowedOutputModes.includes(requestedOutputMode)
       ? requestedOutputMode as ImageGenerationUserConfig['outputMode']
       : allowedOutputModes[0] as ImageGenerationUserConfig['outputMode'] | undefined
@@ -7584,9 +7585,26 @@ export function useAppChatAppLogic() {
       const result = await resolveGenerationV2CapabilityForSend(route, selection.modelId, endpointProfileId, selection.compatibleIntent, imageInput)
       if (!isCurrent()) return
       projection = result.controlsProjection
-      activeSessionCapabilityProjection.value = projection
-      activeSessionCapabilityPending.value = false
-      activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject })
+      const resolution = config.imageGeneration.resolution
+      const resolutionField = projection.controls['image.resolution']
+      // Only an authoritative complete enum can exclude a retained selection.
+      const resetResolution = projection.binding.operation === 'image_generate' && resolution !== '' &&
+        resolutionField?.state === 'supported' && resolutionField.domain?.kind === 'enum' &&
+        !resolutionField.domain.values.includes(resolution)
+      if (resetResolution) imageResolutionResetCount.value += 1
+      try {
+        activeSessionCapabilityProjection.value = projection
+        activeSessionCapabilityPending.value = false
+        activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject })
+        if (resetResolution) {
+          const updated = await updateActiveConvoSessionConfig({ imageGeneration: { resolution: '' } }, () =>
+            isCurrent() && activeSessionCapabilityProjection.value === projection &&
+            activeSessionConfig.value.imageGeneration.resolution === resolution)
+          if (updated && activeConvoId.value === conversationId) hydrateSessionConfigUiFromActiveConvo()
+        }
+      } finally {
+        if (resetResolution) imageResolutionResetCount.value -= 1
+      }
     } catch (cause) {
       if (isCurrent()) {
         activeSessionCapabilityPending.value = false

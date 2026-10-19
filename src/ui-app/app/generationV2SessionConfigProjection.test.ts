@@ -5,6 +5,14 @@ import {
 } from './generationV2SessionConfigProjection'
 
 describe('Generation V2 session config projection', () => {
+  it('keeps omitted image resolution omitted when hydrating a provider-default request', () => {
+    const projected = projectGenerationV2SemanticLayerToSessionConfig({ schemaVersion: 2,
+      generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
+      image: { mode: 'generate', aspectRatio: '1:1' }, tools: { mode: 'disabled' },
+    }, 'google_ai_studio')
+    expect(projected.patch.imageGeneration).toMatchObject({ resolution: '', detail: { imageSize: '' } })
+  })
+
   it('projects the persisted semantic fields used by the retained controls without losing exact reasoning state', () => {
     const projected = projectGenerationV2SemanticLayerToSessionConfig({
       schemaVersion: 2,

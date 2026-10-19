@@ -94,6 +94,28 @@ function geminiCapabilityProjection(input: {
 }
 
 describe('ChatSessionConsole Google AI Studio chat controls', () => {
+  it('offers provider default separately from the verified single 1K preset', async () => {
+    const base = googleAIStudioSessionConfig()
+    const view = render(ChatSessionConsole, { props: {
+      disabled: false, isRunning: false,
+      sessionConfig: { ...base,
+        routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-flash-image' },
+        imageGeneration: { ...base.imageGeneration, enabled: true, resolution: '' as const },
+      },
+      reasoningDisplayMode: 'inline', modelCatalog: [], webSearchResolved: null, generationParamsResolved: null,
+      capabilityProjection: geminiCapabilityProjection({ imageSizes: ['1K'], aspectRatios: ['1:1'] }),
+    } })
+    const resolution = screen.getByRole('combobox', { name: 'Resolution' })
+    expect(resolution).toHaveValue('')
+    expect(within(resolution).getAllByRole('option').map(option => option.textContent)).toEqual(['Default', '1K'])
+    await fireEvent.update(resolution, '1K')
+    expect(view.emitted('updateImageGeneration')?.at(-1)).toEqual([expect.objectContaining({ imageSize: '1K' })])
+    await fireEvent.update(resolution, '')
+    expect(view.emitted('updateImageGeneration')?.at(-1)).toEqual([expect.objectContaining({ imageSize: '' })])
+    await userEvent.click(screen.getByRole('button', { name: /^Default$/ }))
+    expect(view.emitted('updateImageGenerationResolution')?.at(-1)).toEqual([''])
+  })
+
   it('exposes explicit experimental Google AI Studio text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
     const view = render(ChatSessionConsole, {

@@ -370,7 +370,7 @@ const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  imageGenerationSizeOptions.value.length > 0 &&
+  props.sessionConfig.imageGeneration.resolution !== '' && imageGenerationSizeOptions.value.length > 0 &&
     !imageGenerationSizeOptions.value.includes(props.sessionConfig.imageGeneration.resolution)
     ? imageGenerationSizeOptions.value[0]
     : props.sessionConfig.imageGeneration.resolution
@@ -2573,6 +2573,14 @@ function chipClass(active: boolean): string {
           </label>
         </div>
         <div v-if="showImageGenerationSizeControl" class="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            class="rounded-md border px-2 py-1.5 text-sm"
+            :class="chipClass(effectiveImageGenerationResolution === '')"
+            :aria-pressed="effectiveImageGenerationResolution === ''"
+            :disabled="disabled || !effectiveImageGenerationEnabled"
+            @click="emit('updateImageGenerationResolution', '')"
+          >Default</button>
           <button
             v-for="resolution in imageGenerationSizeOptions"
             :key="resolution"

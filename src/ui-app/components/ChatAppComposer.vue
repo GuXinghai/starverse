@@ -96,7 +96,7 @@ const defaultSessionConfig: ChatSessionConfig = {
   },
   imageGeneration: {
     enabled: false,
-    resolution: '1K',
+    resolution: '',
     aspectRatio: '1:1',
     mode: 'default',
     detail: null,
@@ -547,10 +547,7 @@ const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || resolvedSessionConfig.value.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  imageGenerationSizeOptions.value.length > 0 &&
-    !imageGenerationSizeOptions.value.includes(resolvedSessionConfig.value.imageGeneration.resolution)
-    ? imageGenerationSizeOptions.value[0]
-    : resolvedSessionConfig.value.imageGeneration.resolution
+  resolvedSessionConfig.value.imageGeneration.resolution
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
   imageGenerationAspectRatioOptions.value.length > 0 &&
@@ -559,11 +556,11 @@ const effectiveImageGenerationAspectRatio = computed(() =>
     : resolvedSessionConfig.value.imageGeneration.aspectRatio
 )
 const imageChipOptions = computed(() => {
-  const sizeOptions = showImageGenerationSizeControl.value ? [...imageGenerationSizeOptions.value, '—'] : []
+  const sizeOptions = showImageGenerationSizeControl.value ? ['Default', ...imageGenerationSizeOptions.value, '—'] : []
   return [...sizeOptions, ...imageGenerationAspectRatioOptions.value]
 })
 const effectiveImageGenerationSizeLabel = computed(() =>
-  showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : null
+  showImageGenerationSizeControl.value ? (effectiveImageGenerationResolution.value || 'Default') : null
 )
 const effectiveImageGenerationActiveLabel = computed(() =>
   effectiveImageGenerationEnabled.value
@@ -809,7 +806,9 @@ function onPaste(event: ClipboardEvent) {
 function onImageChipOption(value: string) {
   const resolutions = imageGenerationSizeOptions.value
   const aspectRatios = imageGenerationAspectRatioOptions.value
-  if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
+  if (showImageGenerationSizeControl.value && value === 'Default') {
+    emit('updateImageGenerationResolution', '')
+  } else if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
     emit('updateImageGenerationResolution', value as ChatSessionConfigImageResolution)
   } else if ((aspectRatios as readonly string[]).includes(value)) {
     emit('updateImageGenerationAspectRatio', value as ChatSessionConfigAspectRatio)

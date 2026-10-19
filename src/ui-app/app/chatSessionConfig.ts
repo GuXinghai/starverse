@@ -25,7 +25,7 @@ import type { ConversationRouteSelection } from '@/next/provider/conversationRou
 
 export type ChatSessionConfigReasoningEffort = Exclude<ReasoningEffort, 'none'>
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
-export type ChatSessionConfigImageResolution = '512' | '1K' | '2K' | '4K'
+export type ChatSessionConfigImageResolution = '' | '512' | '1K' | '2K' | '4K'
 export type ChatSessionConfigAspectRatio =
   | 'auto'
   | '1:1'
@@ -141,7 +141,7 @@ function buildWebSearchDetail(input: Readonly<{
 function normalizeImageResolution(value: unknown): ChatSessionConfigImageResolution {
   return IMAGE_RESOLUTION_OPTIONS.includes(value as ChatSessionConfigImageResolution)
     ? (value as ChatSessionConfigImageResolution)
-    : '1K'
+    : ''
 }
 
 function normalizeAspectRatio(value: unknown): ChatSessionConfigAspectRatio {

@@ -23,6 +23,16 @@ function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionCo
 }
 
 describe('chatSessionConfig', () => {
+  it('preserves provider-default image resolution through storage instead of injecting 1K', () => {
+    const empty = deserializeChatSessionConfigFromConvoMeta({})
+    expect(empty.imageGeneration.resolution).toBe('')
+    const config = createConfig({ imageGeneration: { ...empty.imageGeneration, enabled: true, mode: 'custom' } })
+    const meta = serializeChatSessionConfigToConvoMeta({ config })
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: meta }).imageGeneration.resolution).toBe('')
+    const explicit = createConfig({ imageGeneration: { ...config.imageGeneration, resolution: '1K' } })
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: serializeChatSessionConfigToConvoMeta({ config: explicit }) }).imageGeneration.resolution).toBe('1K')
+  })
+
   it('preserves native mode-only absence and max20 without widening legacy serialization', () => {
     const config = createConfig({ webSearch: { enabled: true, level: 'high', detail: { searchMode: 'enable' } } })
     expect(serializeChatSessionConfigToConvoMeta({ config, preserveOptionalWebSearchFields: true })?.webSearchOverride).toEqual({ searchMode: 'enable' })

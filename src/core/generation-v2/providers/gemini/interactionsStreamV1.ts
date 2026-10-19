@@ -76,7 +76,7 @@ export type GeminiInteractionsSearchEvidenceV1 = Readonly<{
 export type GeminiInteractionsImageResultV1 = Readonly<{
   bytes: Uint8Array
   mime: string
-  interactionId: string
+  interactionId: string | null
   model: string
   text: string
   reasoningDetails: readonly GeminiInteractionsReasoningDetailV1[]
@@ -138,10 +138,10 @@ function canonicalRaw(raw: Readonly<Record<string, unknown>>, eventType: GeminiI
 }
 function readInteraction(value: unknown, terminal: boolean): Readonly<Record<string, unknown>> {
   const interaction = record(value)
-  keys(interaction, ['id', 'status'], ['agent', 'created', 'model', 'object', 'service_tier', 'steps', 'updated', 'usage'])
-  boundedString(interaction.id, 4096)
+  keys(interaction, terminal ? ['status'] : [], ['id', ...(terminal ? [] : ['status']), 'agent', 'created', 'model', 'object', 'service_tier', 'steps', 'updated', 'usage'])
+  if (interaction.id !== undefined && interaction.id !== '') boundedString(interaction.id, 4096)
   const expectedStatus = terminal ? 'completed' : 'in_progress'
-  if (interaction.status !== expectedStatus || (interaction.model !== undefined &&
+  if ((interaction.status !== undefined && interaction.status !== expectedStatus) || (interaction.model !== undefined &&
       (typeof interaction.model !== 'string' || interaction.model.length < 1))) {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
   }
@@ -269,8 +269,8 @@ function parseJsonEvent(rawText: string, sseEvent: string | null): GeminiInterac
       readInteraction(raw.interaction, false)
       break
     case 'interaction.status_update':
-      keys(raw, ['interaction_id', 'status'], ['event_type', 'type', 'event_id', 'metadata'])
-      boundedString(raw.interaction_id, 4096)
+      keys(raw, ['status'], ['event_type', 'type', 'event_id', 'metadata', 'interaction_id'])
+      if (raw.interaction_id !== undefined && raw.interaction_id !== '') boundedString(raw.interaction_id, 4096)
       if (!['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'incomplete', 'budget_exceeded'].includes(raw.status as string)) {
         return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
       }
@@ -419,6 +419,7 @@ export class GeminiInteractionsImageSseDecoderV1 {
 export class GeminiInteractionsImageResultAssemblerV1 {
   readonly #expectedModel!: string
   #events: GeminiInteractionsImageNativeEventV1[] = []
+  #createdSeen = false
   #createdId: string | null = null
   #activeStep: number | null = null
   #activeStepType: 'model_output' | 'thought' | GeminiInteractionsSearchStepTypeV1 | null = null
@@ -454,11 +455,23 @@ export class GeminiInteractionsImageResultAssemblerV1 {
       return
     }
     if (event.eventType === 'interaction.created') {
-      if (this.#createdId !== null || this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
-      this.#createdId = boundedString(record(raw.interaction).id, 4096)
+      if (this.#createdSeen || this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+      const interaction = readInteraction(raw.interaction, false)
+      this.#createdSeen = true
+      if (interaction.id !== undefined && interaction.id !== '') this.#createdId = boundedString(interaction.id, 4096)
       return
     }
-    if (this.#createdId === null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+    if (!this.#createdSeen) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+    if (event.eventType === 'interaction.status_update') {
+      if (raw.interaction_id !== undefined && raw.interaction_id !== '') {
+        const interactionId = boundedString(raw.interaction_id, 4096)
+        if (this.#createdId !== null && interactionId !== this.#createdId) {
+          return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+        }
+        this.#createdId = interactionId
+      }
+      return
+    }
     if (event.eventType === 'step.start') {
       if (this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
       this.#activeStep = index(raw.index)
@@ -509,7 +522,11 @@ export class GeminiInteractionsImageResultAssemblerV1 {
     if (event.eventType === 'interaction.completed') {
       if (this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
       const interaction = readInteraction(raw.interaction, true)
-      if (interaction.id !== this.#createdId) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+      if (interaction.id !== undefined && interaction.id !== '') {
+        const interactionId = boundedString(interaction.id, 4096)
+        if (this.#createdId !== null && interactionId !== this.#createdId) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+        this.#createdId = interactionId
+      }
       this.#mergeTerminalSearchSteps(interaction.steps)
       this.#completed = interaction
     }
@@ -600,7 +617,7 @@ export class GeminiInteractionsImageResultAssemblerV1 {
   }
   finish(): GeminiInteractionsImageResultV1 {
     if (this.#finished || !this.#done || this.#failed || this.#activeStep !== null || !this.#completed ||
-        this.#chunks.length === 0 || this.#mime === null || this.#completed.model !== this.#expectedModel) {
+        this.#chunks.length === 0 || this.#mime === null || (this.#completed.model !== undefined && this.#completed.model !== this.#expectedModel)) {
       const providerErrorEvent = this.#failed ? this.#events.find((event) => event.eventType === 'error') : null
       return fail(this.#failed ? 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
         : 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID',
@@ -617,7 +634,7 @@ export class GeminiInteractionsImageResultAssemblerV1 {
       return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
     }
     return Object.freeze({ bytes: new Uint8Array(bytes), mime: this.#mime,
-      interactionId: this.#createdId!, model: this.#expectedModel, text: this.#textChunks.join(''),
+      interactionId: this.#createdId, model: this.#expectedModel, text: this.#textChunks.join(''),
       reasoningDetails: Object.freeze([...this.#reasoningDetails]),
       usage: this.#completed.usage === undefined ? Object.freeze({}) : record(this.#completed.usage),
       events: Object.freeze([...this.#events]),

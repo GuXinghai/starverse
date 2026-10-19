@@ -53,9 +53,10 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
         <select
           class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
           :disabled="props.disabled || props.lockImageSizeControl"
-          :value="value.imageSize || '1K'"
+          :value="value.imageSize"
           @change="emitPatch({ imageSize: ($event.target as HTMLSelectElement).value as any })"
         >
+          <option value="">Default</option>
           <option v-for="size in imageSizeOptions" :key="size" :value="size">{{ size }}</option>
         </select>
       </label>
