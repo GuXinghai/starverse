@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 
-export const actions = new Set(['status', 'snapshot', 'screenshot', 'click', 'fill', 'press', 'scroll', 'select', 'check', 'stop'])
+export const actions = new Set(['status', 'snapshot', 'screenshot', 'click', 'fill', 'press', 'scroll', 'select', 'check', 'set-files', 'stop'])
 
 export function locate(page, target) {
   if (!target || typeof target !== 'object') throw new Error('target is required')

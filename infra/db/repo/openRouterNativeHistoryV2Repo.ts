@@ -1,4 +1,7 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
   decodeOpenRouterNativeHistoryArtifactV1,
@@ -108,6 +111,8 @@ export class OpenRouterNativeHistoryV2Repo {
     answerRootId: string,
     seen: Set<string>,
   ): readonly OpenRouterNativeMessageV1[] {
+    const interrupted = new GenerationInterruptedReplayV2Repo(this.db).load(context, answerRootId, 'openrouter')
+    if (interrupted !== null) return interrupted as readonly OpenRouterNativeMessageV1[]
     if (seen.has(answerRootId) || seen.size >= 4_096) return incompleteContextTurn()
     seen.add(answerRootId)
     try {
@@ -181,7 +186,9 @@ export class OpenRouterNativeHistoryV2Repo {
         !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(row.operationState as string) ||
         !['streaming', 'completed', 'failed', 'cancelled'].includes(row.answerStatus as string)) invalid()
     const contextProjection = new GenerationContextProjectionV2Repo(this.db).load(context, operationIdValue)
-    const projectionActive = contextProjection.turns.some((turn) => turn.mode === 'excluded')
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationIdValue, 'openrouter')
+    const projectionActive = portable !== null || contextProjection.turns.some((turn) => turn.mode === 'excluded' ||
+      turn.answerRootId !== null && new GenerationInterruptedReplayV2Repo(this.db).hasInterruptedTurn(turn.answerRootId))
     const messages: OpenRouterNativeMessageV1[] = []
     let prior: OpenRouterNativeHistoryArtifactV1 | null = null
     if (row.parentMessageId === null) {
@@ -193,7 +200,7 @@ export class OpenRouterNativeHistoryV2Repo {
     } else if ((row.parentRole === 'assistant' || row.parentRole === 'tool') && typeof row.priorAnswerRootId === 'string') {
       prior = projectionActive ? null : this.loadLatestCompletedArtifact(row.priorAnswerRootId)
     } else invalid()
-    messages.push(Object.freeze({ role: 'user', content: row.questionBody }))
+    messages.push(Object.freeze({ role: 'user', content: currentGenerationQuestionWithFallbackV2(this.db, context, operationIdValue, row.questionBody) }))
     const fact = Object.freeze({
       trust: 'openrouter_chat_history_repository_fact_v2' as const,
       operationId: GenerationV2Identity.create('operation_id', operationIdValue),
@@ -204,9 +211,9 @@ export class OpenRouterNativeHistoryV2Repo {
       priorArtifact: prior,
       clientMessages: Object.freeze(messages),
       contextProjection,
-      projectedPrefixMessages: projectionActive
+      projectedPrefixMessages: portable !== null ? [...this.systemMessages(row.conversationId, row.questionId), ...portable] : (projectionActive
         ? this.projectedPrefix(context, contextProjection, row.conversationId, row.questionId)
-        : null,
+        : null),
       requestSequence: 1 as const,
       toolOutputRecords: Object.freeze([]),
     })
@@ -383,21 +390,35 @@ export class OpenRouterNativeHistoryV2Repo {
         request.operationId !== execution.operation.operationId.value || request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalid()
     const canonical = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 }
+    const envelope = { artifactCodecVersion: 1, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
       WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
       request.answerRootId, request.requestSequence, OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
     ) as { artifactJson?: unknown; artifactHash?: unknown } | undefined
     if (existing) {
-      if (existing.artifactJson !== canonical || existing.artifactHash !== artifact.artifactHash) {
+      let existingCodecJson: string
+      try {
+        existingCodecJson = loadNativeArtifactJsonV2(this.db, key, existing.artifactJson as string, {
+          artifactCodecVersion: 1,
+          artifactHash: existing.artifactHash as string,
+        })
+      } catch {
+        throw new OpenRouterNativeHistoryV2RepoError('GENERATION_V2_OPENROUTER_HISTORY_LINEAGE_INVALID')
+      }
+      if (existingCodecJson !== canonical ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new OpenRouterNativeHistoryV2RepoError('GENERATION_V2_OPENROUTER_HISTORY_LINEAGE_INVALID')
       }
       return
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, canonical, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope
     ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 'request_terminal')`).run(
       request.answerRootId, request.requestSequence, request.operationId,
-      OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1, canonical, artifact.artifactHash, createdAtMs,
+      OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1, storedJson, artifact.artifactHash, createdAtMs,
     )
   }
 
@@ -433,7 +454,9 @@ export class OpenRouterNativeHistoryV2Repo {
         !((row.operationState === 'completed' && row.answerStatus === 'completed') ||
           (allowActive && row.operationState === 'streaming' && row.answerStatus === 'streaming'))) invalid()
     let artifact: OpenRouterNativeHistoryArtifactV1
-    try { artifact = decodeOpenRouterNativeHistoryArtifactV1(JSON.parse(row.artifactJson)) } catch { invalid() }
+    try { artifact = decodeOpenRouterNativeHistoryArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId, answerRootId, requestSequence, artifactKind: OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch { invalid() }
     if (artifact.artifactHash !== row.artifactHash) invalid()
     return artifact
   }

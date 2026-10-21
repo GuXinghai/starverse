@@ -28,6 +28,9 @@ import { CapabilityRuleMaterializationV1Repo } from
 import { CanonicalModelFactSourceV1Repo } from
   '../../infra/db/repo/canonicalModelFactSourceV1Repo'
 import { CloudRulesApplicationV1Repo } from '../../infra/db/repo/cloudRulesApplicationV1Repo'
+import { CapabilityRuleCoreV2Repo } from '../../infra/db/repo/capabilityRuleCoreV2Repo'
+import { prepareGenerationRequestRulesPublicationV2, writeGenerationRequestRulesPublicationV2 } from
+  '../../infra/db/repo/generationRequestRulesV2Repo'
 import { UserCapabilityRuleDraftV1Repo,
   type UserCapabilityRuleDraftV1 } from '../../infra/db/repo/userCapabilityRuleDraftV1Repo'
 import {
@@ -71,6 +74,7 @@ function packById(draft: UserCapabilityRuleDraftV1, packId: string): CapabilityR
 export class UserCapabilityRulesV1Service {
   readonly #draftRepo: UserCapabilityRuleDraftV1Repo
   readonly #coreRepo: CapabilityRuleCoreV1Repo
+  readonly #coreV2Repo: CapabilityRuleCoreV2Repo
   readonly #materializationRepo: CapabilityRuleMaterializationV1Repo
   readonly #sourceRepo: CanonicalModelFactSourceV1Repo
   readonly #cloudApplicationRepo: CloudRulesApplicationV1Repo
@@ -85,12 +89,14 @@ export class UserCapabilityRulesV1Service {
   ) {
     this.#draftRepo = new UserCapabilityRuleDraftV1Repo(db, nowMs)
     this.#coreRepo = new CapabilityRuleCoreV1Repo(db, nowMs)
+    this.#coreV2Repo = new CapabilityRuleCoreV2Repo(db, nowMs)
     this.#materializationRepo = new CapabilityRuleMaterializationV1Repo(db, nowMs)
     this.#sourceRepo = new CanonicalModelFactSourceV1Repo(db, nowMs)
     this.#cloudApplicationRepo = new CloudRulesApplicationV1Repo(db, nowMs)
   }
 
   openDraft(input: Readonly<{ sessionId: string }>): UserCapabilityRuleDraftV1 {
+    if (this.#hasV2Writer()) this.#stale()
     return this.#draftRepo.openOrCreate(input)
   }
 
@@ -217,7 +223,8 @@ export class UserCapabilityRulesV1Service {
   async saveDraft(input: Readonly<{
     sessionId: string
     expectedDraftRevision: number
-  }>): Promise<Readonly<{ snapshotRevision: string; canonicalSourceRevision: string }>> {
+  }>): Promise<Readonly<{ snapshotRevision: string; canonicalSourceRevision: string;
+    requestRulesPublicationRevision: string }>> {
     const draft = this.#requiredDraft(input)
     if (draft.sessionId !== input.sessionId) this.#stale()
     if (this.#cloudApplicationRepo.readState().appliedIntegrity === 'invalid') {
@@ -229,12 +236,25 @@ export class UserCapabilityRulesV1Service {
     if ((committed?.projected.snapshotRevision ?? null) !== draft.baseSnapshotRevision) this.#stale()
     const committedNotes = this.#draftRepo.readCommittedNotes()
     const coreWrite = prepareCapabilityRuleOwnershipSnapshotWriteV1(draft.projected.definition)
-    const ownershipSnapshots = this.#coreRepo.listOwnershipSnapshots()
+    if (this.#hasV2Writer()) this.#stale()
+    const subjectSet = await this.subjectSetReader.readCurrent()
+    const requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db,
+      subjectSet, undefined,
+      { ownership: 'user', ownerId: USER_RULES_LOCAL_OWNER_ID_V1 },
+      CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
+    const legacyV1Snapshots = this.#coreRepo.listOwnershipSnapshots()
       .filter((snapshot) => !(snapshot.projected.definition.ownership === 'user' &&
         snapshot.projected.definition.ownerId === USER_RULES_LOCAL_OWNER_ID_V1))
       .map((snapshot) => snapshot.projected)
-    ownershipSnapshots.push(coreWrite.projected)
-    const subjectSet = await this.subjectSetReader.readCurrent()
+    const v1OwnerKeys = new Set(legacyV1Snapshots.map(snapshot =>
+      `${snapshot.definition.ownership}\0${snapshot.definition.ownerId}`))
+    const v2Snapshots = this.#coreV2Repo.listOwnershipSnapshots()
+      .filter(snapshot => !v1OwnerKeys.has(`${snapshot.projected.definition.ownership}\0${snapshot.projected.definition.ownerId}`) &&
+        !(snapshot.projected.definition.ownership === 'user' &&
+          snapshot.projected.definition.ownerId === USER_RULES_LOCAL_OWNER_ID_V1))
+      .map(snapshot => snapshot.projected)
+    const ownershipSnapshots = [...legacyV1Snapshots, ...v2Snapshots, coreWrite.projected]
+    if (subjectSet.subjectSetRevision !== requestRulesPublication.authoritativeSubjectSetRevision) this.#stale()
     const materialization = prepareCapabilityRuleMaterializationV1({ sourceScopeId: this.#sourceScopeId,
       subjectSet, ownershipSnapshots,
       defaultActivationPolicies: CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1 })
@@ -249,12 +269,15 @@ export class UserCapabilityRulesV1Service {
       const currentDraft = this.#draftRepo.readDraft()
       const currentCommitted = this.#coreRepo.readOwnershipSnapshot({ ownership: 'user',
         ownerId: USER_RULES_LOCAL_OWNER_ID_V1 })
+      const currentV2User = this.#coreV2Repo.readOwnershipSnapshot({ ownership: 'user',
+        ownerId: USER_RULES_LOCAL_OWNER_ID_V1 })
       const currentStage = this.#materializationRepo.readStage(this.#sourceScopeId)
       const currentSource = this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)
       if (!currentDraft || currentDraft.sessionId !== input.sessionId ||
           currentDraft.draftRevision !== input.expectedDraftRevision ||
           currentDraft.baseSnapshotRevision !== draft.baseSnapshotRevision ||
           (currentCommitted?.projected.snapshotRevision ?? null) !== draft.baseSnapshotRevision ||
+          currentV2User !== null || this.#hasV2Writer() ||
           this.#draftRepo.readCommittedNotes().revision !== committedNotes.revision ||
           (currentStage?.materializationRevision ?? null) !== expectedMaterializationRevision ||
           (currentSource?.currentSourceRevision ?? null) !== expectedActiveSourceRevision ||
@@ -262,6 +285,7 @@ export class UserCapabilityRulesV1Service {
 
       const installed = this.#coreRepo.replacePreparedOwnershipSnapshot({
         expectedSnapshotRevision: draft.baseSnapshotRevision, prepared: coreWrite })
+      writeGenerationRequestRulesPublicationV2(this.db, requestRulesPublication)
       const staged = this.#materializationRepo.stagePrepared({ prepared: materialization,
         expectedMaterializationRevision,
         currentAuthoritativeSubjectSetRevision: currentSubjectSet.subjectSetRevision })
@@ -276,7 +300,8 @@ export class UserCapabilityRulesV1Service {
       this.#draftRepo.deleteDraftExpected({ sessionId: input.sessionId,
         expectedDraftRevision: input.expectedDraftRevision })
       return Object.freeze({ snapshotRevision: installed.projected.snapshotRevision,
-        canonicalSourceRevision: promoted.source.sourceRevision.canonicalSourceRevision })
+        canonicalSourceRevision: promoted.source.sourceRevision.canonicalSourceRevision,
+        requestRulesPublicationRevision: requestRulesPublication.publicationRevision })
     }).immediate()
   }
 
@@ -284,10 +309,16 @@ export class UserCapabilityRulesV1Service {
     sessionId: string
     expectedDraftRevision: number
   }>): UserCapabilityRuleDraftV1 {
+    if (this.#hasV2Writer()) this.#stale()
     const draft = this.#draftRepo.readDraft()
     if (!draft || draft.sessionId !== input.sessionId ||
         draft.draftRevision !== input.expectedDraftRevision) this.#stale()
     return draft
+  }
+
+  #hasV2Writer(): boolean {
+    return Boolean(this.#coreV2Repo.readOwnershipSnapshot({ ownership: 'user', ownerId: USER_RULES_LOCAL_OWNER_ID_V1 }) ||
+      this.db.prepare('SELECT 1 FROM user_capability_rule_editing_session_v2 WHERE singleton_id=1').get())
   }
 
   #stale(): never {

@@ -70,6 +70,7 @@ export interface CommonMessages {
  */
 export interface SettingsMessages {
   readonly settings: {
+    readonly projectDuplicatePolicy: { readonly label: string; readonly allow: string; readonly deny: string; readonly ask: string }
     readonly title: string
     readonly language: {
       readonly title: string
@@ -354,6 +355,8 @@ export interface NavigationMessages {
       readonly renameProject: string
       readonly deleteProject: string
       readonly projectName: string
+      readonly duplicateName: string
+      readonly duplicateConfirm: string
       readonly deleteConfirm: string
       readonly systemProjectNoRename: string
       readonly systemProjectNoDelete: string
@@ -564,6 +567,7 @@ export interface SendPlanMessages {
  */
 export interface ErrorsMessages {
   readonly errors: {
+    readonly imagePreviewUnavailable: string
     readonly provider: {
       readonly apiKeyMissing: string
       readonly apiKeyInvalid: string

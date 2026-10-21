@@ -3,6 +3,9 @@ import {
   listReviewedProviderContractDefinitionsV2,
   type ProviderContractOperationV2,
 } from '../contracts/providerContractRegistryV2'
+import { readApiRequestBodyContractV2, readLegacyAnthropicMessagesBodyRequestContractV2,
+  readLegacyLmStudioOpenResponsesBodyRequestContractV2, readLegacyOpenAIResponsesBodyRequestContractV2 } from '../contracts/apiRequestBodyContractV2'
+import { readEndpointTransportDefinitionV2 } from '../contracts/endpointTransportDefinitionV2'
 import type {
   PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
   ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
@@ -20,6 +23,8 @@ export type EncodingCoverageRegistryV2 = Readonly<{
   operation: ProviderContractOperationV2
   semanticPaths: readonly RuntimeCapabilitySemanticPathV2[]
   encoderRevision: string
+  bodySchemaRevision?: string
+  transportRevision?: string
 }>
 
 export class EncodingCoverageRegistryV2Error extends Error {
@@ -31,10 +36,27 @@ export class EncodingCoverageRegistryV2Error extends Error {
   }
 }
 
-export const ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 = hash({
+const PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_PROJECTION_V2 = {
   schemaVersion: 2,
   fields: ['providerId', 'protocolContractId', 'operation', 'semanticPaths', 'encoderRevision'],
   excludes: ['modelId', 'domains', 'constraints', 'aliases', 'valueMappings'],
+} as const
+
+/** Strict predecessor for migration of request-contract schema manifests. */
+export const PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_DIGEST_V2 = hash(
+  PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_PROJECTION_V2,
+)
+
+/** Frozen schema digest accepted by pre-rule-v2 epoch snapshots and migrations. */
+export const PRE_RULE_V2_ENCODING_COVERAGE_SCHEMA_DIGEST_V2 = hash({
+  ...PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_PROJECTION_V2,
+  semanticsRevision: 'encoding-coverage-v4-frozen-anthropic-openai-thinking-dispatch',
+})
+
+export const ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 = hash({
+  ...PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_PROJECTION_V2,
+  fields: [...PRE_REQUEST_CONTRACT_ENCODING_COVERAGE_SCHEMA_PROJECTION_V2.fields, 'bodySchemaRevision', 'transportRevision'],
+  semanticsRevision: 'encoding-coverage-v5-api-body-and-endpoint-transport-revisions',
 })
 
 function hash(value: unknown): string {
@@ -52,6 +74,7 @@ const COMMON_TEXT_NO_WIRE = Object.freeze([
 ] as RuntimeCapabilitySemanticPathV2[])
 
 const OPENROUTER_CHAT_PATHS = Object.freeze([
+  'attachments[].kind',
   ...TEXT_GENERATION,
   'reasoning.mode', 'reasoning.effort', 'reasoning.exclude',
   'web.mode', 'web.types', 'web.engine', 'web.maxResults', 'web.maxTotalResults',
@@ -63,17 +86,22 @@ const OPENROUTER_CHAT_PATHS = Object.freeze([
   'attachments[].include', 'attachments[].sendAs', 'attachments[].conversion',
 ] as RuntimeCapabilitySemanticPathV2[])
 
-const OPENAI_RESPONSES_PATHS = Object.freeze([
+const OPENAI_RESPONSES_LEGACY_PATHS = Object.freeze([
   'attachments[].kind', 'attachments[].mediaKind',
+  'attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].originalUrl', 'attachments[].urlDigest',
+  'attachments[].declaredMediaType', 'attachments[].capturedAtMs', 'attachments[].provenance',
   'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
   'attachments[].include', 'attachments[].sendAs', 'attachments[].conversion',
-  'generation.maxOutputTokens', 'image.mode', 'image.background', 'image.format', 'image.quality', 'image.size',
+  'generation.maxOutputTokens', 'generation.temperature', 'generation.topP', 'image.mode', 'image.background', 'image.format', 'image.quality', 'image.size',
   'providerExtension.kind', 'providerExtension.maxToolCalls', 'providerExtension.parallelToolCalls',
   'providerExtension.reasoningContext', 'providerExtension.reasoningMode', 'providerExtension.serviceTier',
   'providerExtension.verbosity', 'reasoning.mode', 'reasoning.effort', 'reasoning.summary',
   'tools.mode', 'tools.allowedToolIds', 'tools.sideEffectConfirmation', 'tools.toolChoice',
   'web.mode', 'web.types', 'web.searchContextSize', 'web.allowedDomains',
 ] as RuntimeCapabilitySemanticPathV2[])
+const OPENAI_IMAGE_TOOL_PATHS = Object.freeze(['image.toolModel', 'image.action', 'image.toolChoice', 'image.partialImages',
+  'image.inputFidelity', 'image.moderation', 'image.maskAsset', 'image.outputCompression'] as RuntimeCapabilitySemanticPathV2[])
+const OPENAI_RESPONSES_PATHS = Object.freeze([...OPENAI_RESPONSES_LEGACY_PATHS, ...OPENAI_IMAGE_TOOL_PATHS])
 
 const ANTHROPIC_PATHS = Object.freeze([
   'attachments[].kind', 'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
@@ -102,7 +130,7 @@ const GEMINI_GENERATE_CONTENT_PATHS = Object.freeze([
 const GEMINI_INTERACTIONS_IMAGE_PATHS = Object.freeze([
   'generation.maxOutputTokens', 'generation.temperature', 'generation.topP', 'generation.stop',
   'reasoning.mode', 'reasoning.effort', 'reasoning.summary', 'web.mode', 'web.types', 'tools.mode',
-  'providerExtension.kind', 'image.mode', 'image.outputMode', 'image.aspectRatio', 'image.resolution',
+  'providerExtension.kind', 'providerExtension.thinkingLevel', 'image.mode', 'image.outputMode', 'image.aspectRatio', 'image.resolution',
   'image.format', 'image.stream',
 ] as RuntimeCapabilitySemanticPathV2[])
 
@@ -172,21 +200,21 @@ const PATHS_BY_KEY: Readonly<Record<string, readonly RuntimeCapabilitySemanticPa
  */
 const ENCODER_IMPLEMENTATION_REVISION_BY_KEY: Readonly<Record<string, string>> = Object.freeze({
   'openrouter-images-v1\0image_generate': 'wire-adapter-20260817-openrouter-images-1',
-  'openrouter-chat-completions-v1\0text': 'wire-adapter-20260817-openrouter-chat-text-1',
-  'openrouter-chat-completions-v1\0tool_continue': 'wire-adapter-20260817-openrouter-chat-tool-1',
-  'gemini-generate-content-v1beta\0text': 'wire-adapter-20260817-gemini-content-text-2',
-  'gemini-generate-content-v1beta\0tool_continue': 'wire-adapter-20260817-gemini-content-tool-2',
-  'gemini-interactions-v1beta\0image_generate': 'wire-adapter-20260817-gemini-interactions-image-1',
-  'anthropic-messages-2023-06-01\0text': 'wire-adapter-20260817-anthropic-text-2',
-  'anthropic-messages-2023-06-01\0tool_continue': 'wire-adapter-20260817-anthropic-tool-2',
+  'openrouter-chat-completions-v1\0text': 'wire-adapter-20261016-openrouter-chat-text-2',
+  'openrouter-chat-completions-v1\0tool_continue': 'wire-adapter-20261016-openrouter-chat-tool-2',
+  'gemini-generate-content-v1beta\0text': 'wire-adapter-20261017-gemini-content-text-3',
+  'gemini-generate-content-v1beta\0tool_continue': 'wire-adapter-20261017-gemini-content-tool-3',
+  'gemini-interactions-v1beta\0image_generate': 'wire-adapter-20261017-gemini-interactions-image-2',
+  'anthropic-messages-2023-06-01\0text': 'wire-adapter-20261017-anthropic-text-3',
+  'anthropic-messages-2023-06-01\0tool_continue': 'wire-adapter-20261017-anthropic-tool-3',
   'deepseek-stable-chat-v1\0text': 'wire-adapter-20260817-deepseek-text-1',
   'deepseek-stable-chat-v1\0tool_continue': 'wire-adapter-20260817-deepseek-tool-1',
-  'openai-responses-v1\0text': 'wire-adapter-20260817-openai-responses-text-1',
-  'openai-responses-v1\0tool_continue': 'wire-adapter-20260817-openai-responses-tool-1',
+  'openai-responses-v1\0text': 'wire-adapter-20261020-openai-responses-text-5',
+  'openai-responses-v1\0tool_continue': 'wire-adapter-20261020-openai-responses-tool-5',
   'generic-local-openai-chat-completions\0text': 'wire-adapter-20260817-generic-local-1',
   'ollama-chat-v1\0text': 'wire-adapter-20260817-ollama-1',
-  'lmstudio-openresponses\0text': 'wire-adapter-20260817-lmstudio-text-1',
-  'lmstudio-openresponses\0tool_continue': 'wire-adapter-20260817-lmstudio-tool-1',
+  'lmstudio-openresponses\0text': 'wire-adapter-20261017-lmstudio-text-2',
+  'lmstudio-openresponses\0tool_continue': 'wire-adapter-20261017-lmstudio-tool-2',
   'openai_chat_compatible\0text': 'wire-adapter-20260817-openai-compatible-1',
 })
 
@@ -196,6 +224,13 @@ function key(protocolContractId: string, operation: ProviderContractOperationV2)
 
 const definitions = listReviewedProviderContractDefinitionsV2()
 const registries = new Map<string, EncodingCoverageRegistryV2>()
+const frozenRegistries = new Map<string, EncodingCoverageRegistryV2>()
+const anthropicLegacyEncoderRevisionByOperation = new Map<ProviderContractOperationV2, string>()
+const openAILegacyReasoningEncoderRevisionByOperation = new Map<ProviderContractOperationV2, string[]>()
+const openAILegacyImageEncoderRevisions = new Set<string>()
+const openAILegacyImageEncoderRevisionByOperation = new Map<ProviderContractOperationV2, string>()
+const lmStudioLegacyToolEncodingRevisionByOperation = new Map<ProviderContractOperationV2, string>()
+const anthropicLegacyBodyEncoderRevisionByOperation = new Map<ProviderContractOperationV2, string>()
 for (const definition of definitions) {
   for (const operation of definition.operations) {
     const semanticPaths = PATHS_BY_KEY[key(definition.protocolContractId.value, operation)]
@@ -219,7 +254,106 @@ for (const definition of definitions) {
     const registry = Object.freeze({ ...projection, encoderRevision })
     const registryKey = key(definition.protocolContractId.value, operation)
     if (registries.has(registryKey)) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
-    registries.set(registryKey, registry)
+    frozenRegistries.set(encoderRevision, registry)
+    // Explicitly reviewed, backwards-compatible encoders used by existing frozen retries.
+    // Keep their original coverage and identity; never relabel an old snapshot as current.
+    const surface = operation === 'tool_continue' ? 'tool' : 'text'
+    const predecessors = definition.protocolContractId.value === 'openrouter-chat-completions-v1'
+      ? [{ paths: semanticPaths.filter(path => path !== 'attachments[].kind'), seed: `wire-adapter-20260817-openrouter-chat-${surface}-1` }]
+      : definition.protocolContractId.value === 'openai-responses-v1' ? [
+        { paths: OPENAI_RESPONSES_LEGACY_PATHS, seed: `wire-adapter-20261017-openai-responses-${surface}-3` },
+        { paths: OPENAI_RESPONSES_LEGACY_PATHS.filter(path => !['attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].originalUrl', 'attachments[].urlDigest', 'attachments[].declaredMediaType', 'attachments[].capturedAtMs', 'attachments[].provenance'].includes(path)), seed: `wire-adapter-20261016-openai-responses-${surface}-2` },
+        { paths: OPENAI_RESPONSES_LEGACY_PATHS.filter(path => !['attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].originalUrl', 'attachments[].urlDigest', 'attachments[].declaredMediaType', 'attachments[].capturedAtMs', 'attachments[].provenance', 'generation.temperature', 'generation.topP'].includes(path)),
+          seed: `wire-adapter-20260817-openai-responses-${surface}-1` },
+      ] : definition.protocolContractId.value === 'gemini-generate-content-v1beta'
+        ? [{ paths: semanticPaths, seed: `wire-adapter-20260817-gemini-content-${surface}-2` }]
+      : definition.protocolContractId.value === 'lmstudio-openresponses'
+        ? [{ paths: semanticPaths, seed: `wire-adapter-20260817-lmstudio-${surface}-1` }]
+        : definition.protocolContractId.value === 'gemini-interactions-v1beta'
+          ? [{ paths: semanticPaths.filter(path => path !== 'providerExtension.thinkingLevel'), seed: 'wire-adapter-20260817-gemini-interactions-image-1' }]
+          : definition.protocolContractId.value === 'anthropic-messages-2023-06-01'
+            ? [{ paths: semanticPaths, seed: `wire-adapter-20260817-anthropic-${surface}-2` }] : []
+    for (const predecessor of predecessors) {
+      const priorProjection = Object.freeze({ ...projection, semanticPaths: Object.freeze(predecessor.paths) })
+      const priorRevision = `encoder-v2:${hash({ projection: priorProjection, contractRevision: definition.contractRevision.value,
+        registryRevision: definition.registryRevision.value, implementationRevision: predecessor.seed })}`
+      frozenRegistries.set(priorRevision, Object.freeze({ ...priorProjection, encoderRevision: priorRevision }))
+      if (definition.protocolContractId.value === 'anthropic-messages-2023-06-01') {
+        anthropicLegacyEncoderRevisionByOperation.set(operation, priorRevision)
+      }
+      if (definition.protocolContractId.value === 'openai-responses-v1') {
+        openAILegacyImageEncoderRevisions.add(priorRevision)
+        const revisions = openAILegacyReasoningEncoderRevisionByOperation.get(operation) ?? []
+        revisions.push(priorRevision)
+        openAILegacyReasoningEncoderRevisionByOperation.set(operation, revisions)
+      }
+    }
+
+    const bodyContract = readApiRequestBodyContractV2(definition.providerId.value, operation)
+    const endpointTransport = readEndpointTransportDefinitionV2(definition.providerId.value, operation)
+    if (definition.protocolContractId.value === 'openai-responses-v1') {
+      const priorProjection = Object.freeze({ ...projection, semanticPaths: OPENAI_RESPONSES_LEGACY_PATHS })
+      const priorImplementation = `wire-adapter-20261017-openai-responses-${surface}-4`
+      const legacyBodyContract = readLegacyOpenAIResponsesBodyRequestContractV2(operation)
+      for (const priorRevision of [
+        `encoder-v2:${hash({ projection: priorProjection, contractRevision: definition.contractRevision.value,
+          registryRevision: definition.registryRevision.value, implementationRevision: priorImplementation })}`,
+        `encoder-v3:${hash({ projection: priorProjection, bodySchemaRevision: legacyBodyContract.bodySchemaRevision,
+          transportRevision: endpointTransport.transportRevision, implementationRevision: `${priorImplementation}:api-body-v3` })}`,
+      ]) {
+        frozenRegistries.set(priorRevision, Object.freeze({ ...priorProjection, encoderRevision: priorRevision,
+          bodySchemaRevision: legacyBodyContract.bodySchemaRevision, transportRevision: endpointTransport.transportRevision }))
+        openAILegacyImageEncoderRevisions.add(priorRevision)
+        if (priorRevision.startsWith('encoder-v3:')) openAILegacyImageEncoderRevisionByOperation.set(operation, priorRevision)
+      }
+    }
+    if (definition.protocolContractId.value === 'lmstudio-openresponses') {
+      const legacyBodyContract = readLegacyLmStudioOpenResponsesBodyRequestContractV2(operation)
+      const legacyImplementationRevision = `wire-adapter-20260817-lmstudio-${surface}-1`
+      const legacyApiContractEncoderRevision = `encoder-v3:${hash({
+        projection,
+        bodySchemaRevision: legacyBodyContract.bodySchemaRevision,
+        transportRevision: endpointTransport.transportRevision,
+        implementationRevision: `${legacyImplementationRevision}:api-body-v3`,
+      })}`
+      frozenRegistries.set(legacyApiContractEncoderRevision, Object.freeze({
+        ...projection,
+        bodySchemaRevision: legacyBodyContract.bodySchemaRevision,
+        transportRevision: endpointTransport.transportRevision,
+        encoderRevision: legacyApiContractEncoderRevision,
+      }))
+      lmStudioLegacyToolEncodingRevisionByOperation.set(operation, legacyApiContractEncoderRevision)
+    }
+    if (definition.protocolContractId.value === 'anthropic-messages-2023-06-01') {
+      const legacyBodyContract = readLegacyAnthropicMessagesBodyRequestContractV2(operation)
+      const legacyApiContractEncoderRevision = `encoder-v3:${hash({
+        projection,
+        bodySchemaRevision: legacyBodyContract.bodySchemaRevision,
+        transportRevision: endpointTransport.transportRevision,
+        implementationRevision: `${implementationRevision}:api-body-v3`,
+      })}`
+      frozenRegistries.set(legacyApiContractEncoderRevision, Object.freeze({
+        ...projection,
+        bodySchemaRevision: legacyBodyContract.bodySchemaRevision,
+        transportRevision: endpointTransport.transportRevision,
+        encoderRevision: legacyApiContractEncoderRevision,
+      }))
+      anthropicLegacyBodyEncoderRevisionByOperation.set(operation, legacyApiContractEncoderRevision)
+    }
+    const apiContractEncoderRevision = `encoder-v3:${hash({
+      projection,
+      bodySchemaRevision: bodyContract.bodySchemaRevision,
+      transportRevision: endpointTransport.transportRevision,
+      implementationRevision: `${implementationRevision}:api-body-v3`,
+    })}`
+    const apiContractRegistry = Object.freeze({
+      ...projection,
+      bodySchemaRevision: bodyContract.bodySchemaRevision,
+      transportRevision: endpointTransport.transportRevision,
+      encoderRevision: apiContractEncoderRevision,
+    })
+    registries.set(registryKey, apiContractRegistry)
+    frozenRegistries.set(apiContractEncoderRevision, apiContractRegistry)
   }
 }
 
@@ -233,9 +367,11 @@ export function resolveEncodingCoverageRegistryV2(input: Readonly<{
   providerId: string
   protocolContractId: string
   operation: ProviderContractOperationV2
+  encoderRevision?: string
 }>): EncodingCoverageRegistryV2 {
-  const registry = registries.get(key(input.protocolContractId, input.operation))
-  if (!registry || registry.providerId !== input.providerId) {
+  const registry = input.encoderRevision === undefined ? registries.get(key(input.protocolContractId, input.operation))
+    : frozenRegistries.get(input.encoderRevision)
+  if (!registry || registry.providerId !== input.providerId || registry.protocolContractId !== input.protocolContractId || registry.operation !== input.operation) {
     throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_UNKNOWN')
   }
   return registry
@@ -252,6 +388,7 @@ export function assertEncodingCoverageForResolvedFieldsV2(
     protocolContractId: string
     operation: ProviderContractOperationV2
     fields: readonly PersistedRuntimeCapabilityFieldV2[]
+    encoderRevision?: string
   }>,
 ): EncodingCoverageRegistryV2 {
   const registry = resolveEncodingCoverageRegistryV2(input)
@@ -266,4 +403,48 @@ export function assertEncodingCoverageForResolvedFieldsV2(
 
 export function listEncodingCoverageRegistriesV2(): readonly EncodingCoverageRegistryV2[] {
   return Object.freeze([...registries.values()])
+}
+
+export function getLmStudioLegacyToolEncodingRevisionV2(operation: 'text' | 'tool_continue'): string {
+  const revision = lmStudioLegacyToolEncodingRevisionByOperation.get(operation)
+  if (!revision) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+  return revision
+}
+
+export function getAnthropicLegacyBodyEncoderRevisionV2(operation: 'text' | 'tool_continue'): string {
+  const revision = anthropicLegacyBodyEncoderRevisionByOperation.get(operation)
+  if (!revision) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+  return revision
+}
+
+export function isAnthropicLegacyThinkingEncoderRevisionV2(encoderRevision: string): boolean {
+  return [...anthropicLegacyEncoderRevisionByOperation.values()].includes(encoderRevision)
+}
+
+export function getAnthropicLegacyThinkingEncoderRevisionV2(operation: 'text' | 'tool_continue'): string {
+  const revision = anthropicLegacyEncoderRevisionByOperation.get(operation)
+  if (!revision) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+  return revision
+}
+
+/** Frozen Responses revisions before the explicit effort:none off encoding. */
+export function isOpenAILegacyReasoningEncoderRevisionV2(encoderRevision: string): boolean {
+  return [...openAILegacyReasoningEncoderRevisionByOperation.values()].some(revisions => revisions.includes(encoderRevision))
+}
+
+export function isOpenAILegacyImageEncoderRevisionV2(encoderRevision: string): boolean {
+  return openAILegacyImageEncoderRevisions.has(encoderRevision)
+}
+
+export function getOpenAILegacyImageEncoderRevisionV2(operation: 'text' | 'tool_continue'): string {
+  const revision = openAILegacyImageEncoderRevisionByOperation.get(operation)
+  if (!revision) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+  return revision
+}
+
+export function getOpenAILegacyReasoningEncoderRevisionV2(operation: 'text' | 'tool_continue', generation: 1 | 2 | 3 = 3): string {
+  const revisions = openAILegacyReasoningEncoderRevisionByOperation.get(operation)
+  const revision = revisions?.[3 - generation]
+  if (!revision) throw new EncodingCoverageRegistryV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+  return revision
 }

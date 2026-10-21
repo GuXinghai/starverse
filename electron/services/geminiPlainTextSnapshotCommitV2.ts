@@ -93,7 +93,7 @@ function commitCurrentSnapshot(input: Readonly<{
   const intent = input.commandFacts.semanticIntent
   const attachmentUnsupported = intent.attachments.some((attachment) => {
     if (!attachment.include || attachment.kind !== 'managed_file') return attachment.include
-    if ((attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text') ||
+    if ((attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion)) ||
         (attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
         (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) return false
     const assetRevisionId = attachment.kind === 'managed_file' ? attachment.assetRevisionId.value : null
@@ -140,6 +140,7 @@ function commitCurrentSnapshot(input: Readonly<{
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(intent),
+    ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
     })),

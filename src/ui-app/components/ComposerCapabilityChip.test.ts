@@ -125,21 +125,21 @@ describe('ComposerCapabilityChip', () => {
     await fireEvent.click(chevron)
     const options = screen.getAllByTestId('capability-chip-option')
     const highOption = options.find(el => el.textContent?.trim() === 'high')
-    expect(highOption?.className).toContain('font-medium')
+    expect(highOption?.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('applies active styling when enabled', () => {
     mountChip({ enabled: true, label: 'Think' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.className).toContain('border-gray-900')
-    expect(body.className).toContain('bg-gray-900')
+    expect(body.getAttribute('aria-pressed')).toBe('true')
+    expect(body.parentElement?.className).toContain('bg-black/[0.08]')
   })
 
   it('applies inactive styling when disabled', () => {
     mountChip({ enabled: false, label: 'Think' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.className).toContain('border-gray-200')
-    expect(body.className).toContain('bg-white')
+    expect(body.getAttribute('aria-pressed')).toBe('false')
+    expect(body.parentElement?.className).not.toContain('bg-black/[0.08]')
   })
 
   it('does not render chevron when no options provided', () => {
@@ -242,40 +242,40 @@ describe('ComposerCapabilityChip label rules', () => {
 describe('ComposerCapabilityChip fixed width', () => {
   beforeEach(() => { resetI18nForTests() })
 
-  it('applies w-[6.25rem] for reasoning kind', () => {
+  it('applies w-[7rem] for reasoning kind', () => {
     mountChip({ kind: 'reasoning', label: 'Think', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[6.25rem]')
+    expect(root.className).toContain('w-[7rem]')
   })
 
-  it('applies w-[6.25rem] for webSearch kind', () => {
+  it('applies w-[7rem] for webSearch kind', () => {
     mountChip({ kind: 'webSearch', label: 'Search', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[6.25rem]')
+    expect(root.className).toContain('w-[7rem]')
   })
 
-  it('applies w-[7.75rem] for image kind', () => {
+  it('applies w-[8.5rem] for image kind', () => {
     mountChip({ kind: 'image', label: 'Image', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.75rem]')
+    expect(root.className).toContain('w-[8.5rem]')
   })
 
   it('uses same width class when reasoning is enabled', () => {
     mountChip({ kind: 'reasoning', label: 'Think', activeLabel: 'medium', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[6.25rem]')
+    expect(root.className).toContain('w-[7rem]')
   })
 
   it('uses same width class when webSearch is enabled', () => {
     mountChip({ kind: 'webSearch', label: 'Search', activeLabel: 'high', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[6.25rem]')
+    expect(root.className).toContain('w-[7rem]')
   })
 
   it('uses same width class when image is enabled', () => {
     mountChip({ kind: 'image', label: 'Image', activeLabel: '1K · 1:1', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.75rem]')
+    expect(root.className).toContain('w-[8.5rem]')
   })
 
   it('sets data-width-kind attribute', () => {

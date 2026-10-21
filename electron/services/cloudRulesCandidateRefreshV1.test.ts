@@ -81,6 +81,44 @@ function listingFetcher(pages: readonly unknown[], docs: readonly unknown[]) {
 }
 
 describe('CloudRulesCandidateRefreshV1', () => {
+  it('retries a failed check after one minute and runs bootstrap on the later success', async () => {
+    const db = database()
+    let now = 1000
+    const afterSuccessfulCheck = vi.fn(async () => undefined)
+    const diagnostics: unknown[] = []
+    const succeeding = listingFetcher([[release('1.0.0')]], [document('1.0.0')])
+    let fail = true
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (fail) throw new Error('net::ERR_PROXY_CONNECTION_FAILED https://example.invalid/?token=private')
+      return succeeding(url, init)
+    })
+    const refresh = new CloudRulesCandidateRefreshV1({ db, fetchImpl, nowMs: () => now,
+      afterSuccessfulCheck, onDiagnostic: value => diagnostics.push(value) })
+    try {
+      expect(await refresh.refreshIfDue()).toMatchObject({ ok: false, code: 'CLOUD_RULES_FETCH_FAILED' })
+      expect(diagnostics).toEqual([{ stage: 'request', hostname: 'api.github.com', code: 'ERR_PROXY_CONNECTION_FAILED' }])
+      expect(afterSuccessfulCheck).not.toHaveBeenCalled()
+      fail = false
+      now += 60001
+      expect(await refresh.refreshIfDue()).toMatchObject({ ok: true, status: 'refreshed' })
+      expect(afterSuccessfulCheck).toHaveBeenCalledTimes(1)
+      expect(new CloudRulesDistributionV1Repo(db).readState().lastFailureCode).toBeNull()
+    } finally { await refresh.dispose(); db.close() }
+  })
+
+  it('keeps HTTP status in diagnostics and permits proxy recovery to bypass the backoff', async () => {
+    const db = database()
+    const onDiagnostic = vi.fn()
+    let fail = true
+    const refresh = new CloudRulesCandidateRefreshV1({ db, onDiagnostic,
+      fetchImpl: vi.fn(async () => fail ? new Response('denied', { status: 403 }) : jsonResponse([])) })
+    try {
+      expect(await refresh.checkNow()).toMatchObject({ ok: false, code: 'CLOUD_RULES_HTTP_INVALID' })
+      expect(onDiagnostic).toHaveBeenCalledWith({ stage: 'http', hostname: 'api.github.com', code: 'HTTP_NON_SUCCESS', httpStatus: 403 })
+      fail = false
+      expect(await refresh.networkRecovered()).toMatchObject({ ok: true, status: 'refreshed' })
+    } finally { await refresh.dispose(); db.close() }
+  })
   it('paginates the fixed authority and selects the highest valid stable Cloud release', async () => {
     const db = database()
     const fetchImpl = listingFetcher([

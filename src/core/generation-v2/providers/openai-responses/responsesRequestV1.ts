@@ -7,13 +7,19 @@ import {
   buildOpenAIResponsesReplayInputV1,
   type OpenAIResponsesContinuationArtifactV2,
 } from './continuationArtifactV2'
-import { decodeOpenAIResponsesReplayItemsV1, type OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
+import { decodeOpenAIResponsesReplayItemsV1, selectOpenAIResponsesReplayItemsV1,
+  OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1, type OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2, requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../domain/generationIntentV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
+import { getOpenAIImageToolOptionsV1, isOpenAIImageToolModelV1, isOpenAIImageToolSizeV1 } from './imageToolOptionsV1'
+import { decodeBase64Bytes, encodeBase64Bytes } from '../../../../shared/encoding/binaryEncoding'
 
 export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
 
 export function isOpenAIResponsesEncodedAttachmentV1(attachment: AttachmentIntentV2): boolean {
-  return requiresProviderFileBindingV2(attachment) ||
+  return (attachment.kind === 'managed_file' && attachment.include && attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
+    requiresProviderFileBindingV2(attachment) ||
     (attachment.kind === 'url_reference' && attachment.include && attachment.mediaKind === 'image')
 }
 
@@ -35,15 +41,20 @@ type WebSearchTool = Readonly<{
 }>
 type ImageGenerationTool = Readonly<{
   type: 'image_generation'
+  model?: string
   action?: 'auto' | 'generate' | 'edit'
-  size?: 'auto' | '1024x1024' | '1024x1536' | '1536x1024'
+  size?: string
   quality?: string
   output_format?: 'png' | 'jpeg' | 'webp'
   background?: 'auto' | 'transparent' | 'opaque'
   partial_images?: number
+  output_compression?: number
+  input_fidelity?: 'low' | 'high'
+  moderation?: 'auto' | 'low'
+  input_image_mask?: Readonly<{ image_url: string }>
 }>
 export type OpenAIResponsesToolV1 = FunctionTool | WebSearchTool | ImageGenerationTool
-type OpenAIResponsesToolChoiceV1 = 'none' | 'auto' | 'required' | Readonly<{ type: 'function'; name: string }>
+export type OpenAIResponsesToolChoiceV1 = 'none' | 'auto' | 'required' | Readonly<{ type: 'function'; name: string }> | Readonly<{ type: 'image_generation' }>
 
 export type OpenAIResponsesRequestV1 = Readonly<{
   model: string
@@ -175,15 +186,15 @@ function decodeReasoning(value: unknown): OpenAIResponsesRequestV1['reasoning'] 
   })
 }
 
-function optionalFinite(value: unknown, min: number, max: number): number | undefined {
+function optionalFinite(value: unknown, min: number, max: number, skipPolicyRange = false): number | undefined {
   if (value === undefined) return undefined
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (!skipPolicyRange && (value < min || value > max))) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   return value
 }
 
-function decodeGeneration(value: unknown): Readonly<{
+function decodeGeneration(value: unknown, skipPolicyRanges = false): Readonly<{
   temperature?: number
   topP?: number
   maxOutputTokens?: number
@@ -191,9 +202,9 @@ function decodeGeneration(value: unknown): Readonly<{
 }> {
   if (value === undefined) return Object.freeze({})
   const input = closedObject(value, ['temperature', 'topP', 'maxOutputTokens', 'verbosity'], [])
-  const temperature = optionalFinite(input.temperature, 0, 2)
-  const topP = optionalFinite(input.topP, 0, 1)
-  if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || (input.maxOutputTokens as number) < 1)) {
+  const temperature = optionalFinite(input.temperature, 0, 2, skipPolicyRanges)
+  const topP = optionalFinite(input.topP, 0, 1, skipPolicyRanges)
+  if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || (!skipPolicyRanges && (input.maxOutputTokens as number) < 1))) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   if (input.verbosity !== undefined && (typeof input.verbosity !== 'string' || input.verbosity.length === 0 || input.verbosity.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
@@ -209,7 +220,7 @@ function decodeGeneration(value: unknown): Readonly<{
 function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
   const discriminator = closedObject(value, [
     'type', 'name', 'description', 'parameters', 'strict', 'searchContextSize', 'allowedDomains',
-    'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages',
+    'model', 'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages', 'outputCompression', 'inputFidelity', 'moderation', 'inputImageMask',
   ], ['type'])
   if (discriminator.type === 'function') {
     const input = closedObject(value, ['type', 'name', 'description', 'parameters', 'strict'], ['type', 'name', 'parameters', 'strict'])
@@ -240,28 +251,45 @@ function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
     })
   }
   if (discriminator.type === 'image_generation') {
-    const input = closedObject(value, ['type', 'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages'], ['type'])
+    const input = closedObject(value, ['type', 'model', 'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages', 'outputCompression', 'inputFidelity', 'moderation', 'inputImageMask'], ['type'])
     const actions = new Set(['auto', 'generate', 'edit'])
-    const sizes = new Set(['auto', '1024x1024', '1024x1536', '1536x1024'])
+    if (input.model !== undefined && !isOpenAIImageToolModelV1(input.model)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    const options = getOpenAIImageToolOptionsV1(input.model as string | undefined)
     const formats = new Set(['png', 'jpeg', 'webp'])
     const backgrounds = new Set(['auto', 'transparent', 'opaque'])
-    if ((input.action !== undefined && !actions.has(input.action as string)) ||
-        (input.size !== undefined && !sizes.has(input.size as string)) ||
+    const invalidPartialImages = input.partialImages !== undefined && (!Number.isSafeInteger(input.partialImages) ||
+      (input.partialImages as number) < 0 || (input.partialImages as number) > 3)
+    if ((input.model !== undefined && !isOpenAIImageToolModelV1(input.model)) ||
+        (input.action !== undefined && !actions.has(input.action as string)) ||
+        (input.size !== undefined && !isOpenAIImageToolSizeV1(input.size, input.model as string | undefined)) ||
         (input.quality !== undefined && (typeof input.quality !== 'string' || input.quality.length === 0 || input.quality.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) ||
+        (input.model !== undefined && input.quality !== undefined && !options.qualities.includes(input.quality as string)) ||
         (input.outputFormat !== undefined && !formats.has(input.outputFormat as string)) ||
         (input.background !== undefined && !backgrounds.has(input.background as string)) ||
-        (input.partialImages !== undefined && (!Number.isSafeInteger(input.partialImages) ||
-          (input.partialImages as number) < 0 || (input.partialImages as number) > 3))) {
+        (input.background === 'transparent' && input.outputFormat === 'jpeg') ||
+        (input.outputCompression !== undefined && (!Number.isSafeInteger(input.outputCompression) || (input.outputCompression as number) < 0 || (input.outputCompression as number) > 100 || !['jpeg', 'webp'].includes(input.outputFormat as string))) ||
+        (input.inputFidelity !== undefined && !options.inputFidelities.includes(input.inputFidelity as never)) ||
+        (input.moderation !== undefined && !options.moderations.includes(input.moderation as never)) ||
+        invalidPartialImages) {
+      return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    }
+    const mask = input.inputImageMask === undefined ? undefined : closedObject(input.inputImageMask, ['imageUrl'])
+    if (mask !== undefined && (typeof mask.imageUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u.test(mask.imageUrl) || input.action === 'generate')) {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
     return Object.freeze({
       type: 'image_generation',
+      ...(input.model === undefined ? {} : { model: input.model as string }),
       ...(input.action === undefined ? {} : { action: input.action as ImageGenerationTool['action'] }),
       ...(input.size === undefined ? {} : { size: input.size as ImageGenerationTool['size'] }),
       ...(input.quality === undefined ? {} : { quality: input.quality as ImageGenerationTool['quality'] }),
       ...(input.outputFormat === undefined ? {} : { output_format: input.outputFormat as ImageGenerationTool['output_format'] }),
       ...(input.background === undefined ? {} : { background: input.background as ImageGenerationTool['background'] }),
       ...(input.partialImages === undefined ? {} : { partial_images: input.partialImages as number }),
+      ...(input.outputCompression === undefined ? {} : { output_compression: input.outputCompression as number }),
+      ...(input.inputFidelity === undefined ? {} : { input_fidelity: input.inputFidelity as 'low' | 'high' }),
+      ...(input.moderation === undefined ? {} : { moderation: input.moderation as 'auto' | 'low' }),
+      ...(mask === undefined ? {} : { input_image_mask: Object.freeze({ image_url: mask.imageUrl as string }) }),
     })
   }
   return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
@@ -274,7 +302,53 @@ function decodeTools(value: unknown): readonly OpenAIResponsesToolV1[] | undefin
   return Object.freeze(tools.map((tool) => decodeTool(tool, names)))
 }
 
-export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponsesCompilationV1 {
+/** Persisted tool IDs cannot be resolved under store:false. Keep source artifacts
+ * intact and send the actual historical image bytes only at the wire boundary. */
+function statelessImageReplay(items: readonly OpenAIResponsesReplayItemV1[], maskedEdit: boolean): readonly OpenAIResponsesReplayItemV1[] {
+  const projected = items.map((item): OpenAIResponsesReplayItemV1 => {
+    if (!('type' in item) || item.type !== 'image_generation_call') return item
+    if (item.status === 'failed') return Object.freeze({ role: 'user', content: Object.freeze([
+      Object.freeze({ type: 'input_text', text: '[Historical assistant image generation failed; no image output is available.]' }),
+    ]) })
+    if (!item.result || item.result.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(item.result)) {
+      return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    }
+    const bytes = decodeBase64Bytes(item.result)
+    try {
+      if (encodeBase64Bytes(bytes) !== item.result) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+      const format = [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte) ? 'png'
+        : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? 'jpeg'
+          : bytes.length >= 12 && [82, 73, 70, 70].every((byte, index) => bytes[index] === byte) &&
+            [87, 69, 66, 80].every((byte, index) => bytes[index + 8] === byte) ? 'webp' : null
+      if (!format) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+      return Object.freeze({ role: 'user', content: Object.freeze([
+        Object.freeze({ type: 'input_text', text: '[Historical image generated by the assistant; supplied inline because server-side storage is disabled.]' }),
+        Object.freeze({ type: 'input_image', image_url: `data:image/${format};base64,${item.result}` }),
+      ]) })
+    } finally { bytes.fill(0) }
+  })
+  if (maskedEdit) {
+    // A mask applies to the first image in the whole input, including history.
+    // Anchor the current reference ahead of older images without dropping or
+    // rewriting historical facts. Avoid duplicating it when it is already first.
+    const latestUser = [...items].reverse().find(item => 'role' in item && item.role === 'user')
+    const target = latestUser && 'role' in latestUser && latestUser.role === 'user'
+      ? latestUser.content.find(part => part.type === 'input_image') : undefined
+    if (!target || target.type !== 'input_image') return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    const firstImage = projected.flatMap(item => 'role' in item && item.role === 'user' ? item.content : [])
+      .find(part => part.type === 'input_image')
+    if (!firstImage || firstImage.type !== 'input_image' ||
+        firstImage.image_url !== target.image_url || firstImage.file_id !== target.file_id) {
+      projected.unshift(Object.freeze({ role: 'user', content: Object.freeze([
+        Object.freeze({ type: 'input_text', text: '[Current masked-edit target image, repeated first so the mask applies to this selected reference rather than an older historical image.]' }),
+        target,
+      ]) }))
+    }
+  }
+  return decodeOpenAIResponsesReplayItemsV1(projected, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1)
+}
+
+export function compileOpenAIResponsesRequestV1(value: unknown, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): OpenAIResponsesCompilationV1 {
   const input = closedObject(value, [
     'model', 'priorArtifact', 'clientItems', 'replayItems', 'instructions', 'reasoning', 'generation', 'tools', 'toolChoice',
     'maxToolCalls', 'parallelToolCalls', 'serviceTier',
@@ -284,21 +358,26 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   const reasoning = decodeReasoning(input.reasoning)
-  const generation = decodeGeneration(input.generation)
+  const skipPolicyRanges = bodySchemaRevision !== undefined
+  const generation = decodeGeneration(input.generation, skipPolicyRanges)
   const tools = decodeTools(input.tools)
   let toolChoice: OpenAIResponsesToolChoiceV1 | undefined
   if (input.toolChoice === 'none' || input.toolChoice === 'auto' || input.toolChoice === 'required') {
     toolChoice = input.toolChoice
   } else if (input.toolChoice !== undefined) {
-    const choice = closedObject(input.toolChoice, ['type', 'name'], ['type', 'name'])
+    const choice = closedObject(input.toolChoice, ['type', 'name'], ['type'])
+    if (choice.type === 'image_generation' && Object.keys(choice).length === 1 && tools?.some((tool) => tool.type === 'image_generation')) {
+      toolChoice = Object.freeze({ type: 'image_generation' })
+    } else {
     if (choice.type !== 'function' || typeof choice.name !== 'string' || !TOOL_NAME_PATTERN.test(choice.name) ||
         !tools?.some((tool) => tool.type === 'function' && tool.name === choice.name)) {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
     toolChoice = Object.freeze({ type: 'function', name: choice.name })
+    }
   }
   if (input.toolChoice !== undefined && tools === undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
-  if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (input.maxToolCalls as number) < 1)) {
+  if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (!skipPolicyRanges && (input.maxToolCalls as number) < 1))) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
@@ -318,12 +397,13 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     })()
     : (() => {
       if (input.priorArtifact !== undefined || input.clientItems !== undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_SHAPE')
-      return decodeOpenAIResponsesReplayItemsV1(input.replayItems)
+      return selectOpenAIResponsesReplayItemsV1(decodeOpenAIResponsesReplayItemsV1(
+        input.replayItems, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1))
     })()
   if (replay.length === 0) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   const nativeRequest: OpenAIResponsesRequestV1 = Object.freeze({
     model: input.model,
-    input: replay,
+    input: statelessImageReplay(replay, tools?.some(tool => tool.type === 'image_generation' && tool.input_image_mask !== undefined) ?? false),
     stream: true,
     store: false,
     include: Object.freeze(['reasoning.encrypted_content'] as const),
@@ -339,6 +419,7 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     ...(input.parallelToolCalls === undefined ? {} : { parallel_tool_calls: input.parallelToolCalls }),
     ...(input.serviceTier === undefined ? {} : { service_tier: input.serviceTier as 'auto' | 'default' | 'flex' | 'priority' }),
   })
+  validateApiRequestBodyV2('openai_responses', operation, nativeRequest, bodySchemaRevision)
   let preparedBody: ImmutablePreparedBodyV2
   try {
     preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(nativeRequest, OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1)

@@ -1,6 +1,12 @@
 {
   "settings": {
     "title": "设置",
+    "projectDuplicatePolicy": {
+      "label": "允许项目名称与已有项目相同",
+      "allow": "开启",
+      "deny": "关闭",
+      "ask": "询问"
+    },
     "categories": {
       "navigationLabel": "设置分类",
       "general": "常规",
@@ -403,6 +409,7 @@
         "regexMatches": "匹配",
         "regexExcludes": "不匹配",
         "assertedValue": "断言值",
+        "effect": "规则效果",
         "remoteBaseline": "远端基线",
         "localOverride": "本地覆盖",
         "effectiveActivation": "实际启用状态",

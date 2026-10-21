@@ -24,7 +24,7 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   if (intent.reasoning !== undefined) projection.reasoning = { ...intent.reasoning }
   if (intent.web !== undefined) {
     projection.web = intent.web.mode === 'disabled'
-      ? { mode: 'disabled' }
+      ? compact({ mode: 'disabled', searchPrompt: intent.web.searchPrompt })
       : compact({
           ...intent.web,
           types: [...intent.web.types],
@@ -37,7 +37,12 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
     projection.image = intent.image.mode === 'disabled' ? { mode: 'disabled' } : compact({
       ...intent.image,
       aspectRatio: intent.image.aspectRatio ? readImageAspectRatioV2(intent.image.aspectRatio) : undefined,
-      size: intent.image.size ? { ...intent.image.size } : undefined,
+      size: intent.image.size === 'auto' ? 'auto' : intent.image.size ? { ...intent.image.size } : undefined,
+      maskAsset: intent.image.maskAsset ? {
+        assetId: intent.image.maskAsset.assetId.value,
+        assetRevisionId: intent.image.maskAsset.assetRevisionId.value,
+        assetSha256: intent.image.maskAsset.assetSha256.value,
+      } : undefined,
     })
   }
   if (intent.tools !== undefined) {
@@ -77,6 +82,12 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   }
   if (intent.providerExtension !== undefined) {
     projection.providerExtension = { ...intent.providerExtension }
+  }
+  if (intent.requestedParameters !== undefined) {
+    projection.requestedParameters = Object.fromEntries(Object.entries(intent.requestedParameters).map(([key, entry]) => [key, {
+      ...entry,
+      ...(key === 'stopSequences' && entry.mode === 'custom' ? { value: [...entry.value as readonly string[]] } : {}),
+    }]))
   }
   return projection
 }

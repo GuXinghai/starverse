@@ -27,9 +27,9 @@ INSERT OR IGNORE INTO model_facts_source_priority_v1 (
 ) VALUES (
   1,
   1,
-  'source-priority-config-v1:7a9d26087a8c59524515118084e871ba713028c058e08029882d36f1572c13c7',
-  '{"priorities":{"capability_rule":1,"models_dev":2,"provider_native":3},"schemaVersion":1}',
-  '7a9d26087a8c59524515118084e871ba713028c058e08029882d36f1572c13c7',
+  'source-priority-config-v1:aa5448afd9e8e0e2cf6814f6c556d09f07c401f7b52e9acc1cd7eb4f7ccc0bad',
+  '{"priorities":{"capability_rule":2,"models_dev":1,"provider_native":3},"schemaVersion":1}',
+  'aa5448afd9e8e0e2cf6814f6c556d09f07c401f7b52e9acc1cd7eb4f7ccc0bad',
   0,
   0
 );

@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   isGeminiInteractionsImageTerminalArtifactV2,
   serializeGeminiInteractionsImageTerminalArtifactV2,
@@ -29,7 +30,10 @@ export class GeminiInteractionsImageTerminalArtifactV2Repo {
         request.operationId !== execution.operation.operationId.value ||
         request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) this.invalid()
-    const json = serializeGeminiInteractionsImageTerminalArtifactV2(artifact)
+    const codecJson = serializeGeminiInteractionsImageTerminalArtifactV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: artifact.artifactKind }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT operation_id AS operationId, codec_version AS codecVersion,
       artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
       WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
@@ -37,11 +41,15 @@ export class GeminiInteractionsImageTerminalArtifactV2Repo {
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
       if (existing.operationId !== request.operationId || existing.codecVersion !== artifact.artifactCodecVersion ||
-          existing.artifactJson !== json || existing.artifactHash !== artifact.artifactHash) {
+          !nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+            artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+          }, codecJson) ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new GeminiInteractionsImageTerminalArtifactV2RepoError('GENERATION_V2_GEMINI_INTERACTIONS_TERMINAL_CONFLICT')
       }
       return
     }
+    const json = storeNativeArtifactJsonV2(this.db, key, codecJson, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (answer_root_id, request_sequence, operation_id,
       artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'request_terminal')`).run(request.answerRootId, request.requestSequence,

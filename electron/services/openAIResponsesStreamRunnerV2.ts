@@ -1,5 +1,12 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
+import type { InterruptedNativeSnapshotV1 } from '../../src/core/generation-v2/providers/interruptedReplayV1'
 import { session } from 'electron'
+import { randomUUID } from 'node:crypto'
+import { Buffer } from 'node:buffer'
 import type BetterSqlite3 from 'better-sqlite3'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { GenerationImageOutputV2Repo } from '../../infra/db/repo/generationImageOutputV2Repo'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
@@ -7,6 +14,7 @@ import { OpenAIResponsesArtifactsV2Repo } from '../../infra/db/repo/openAIRespon
 import { OpenAIResponsesNativeHistoryV2Repo } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2, readBoundedResponseTextV2 } from '../net/boundedResponseBodyV2'
 import {
   isEpoch2RuntimeCredentialLease,
   type Epoch2RuntimeCredentialService,
@@ -20,6 +28,12 @@ import {
   type OpenAIResponsesTerminalResultV1,
 } from '../../src/core/generation-v2/providers/openai-responses/responsesStreamV1'
 import { createOpenAIResponsesTerminalArtifactV1 } from '../../src/core/generation-v2/providers/openai-responses/terminalArtifactV1'
+import type { OpenAIResponsesReturnedItemV1 } from '../../src/core/generation-v2/providers/openai-responses/nativeItemsV1'
+import {
+  createOpenAIResponsesCompletionReceiptV1,
+  restoreOpenAIResponsesCompletionReceiptV1,
+  type OpenAIResponsesCompletionReceiptV1,
+} from '../../src/core/generation-v2/providers/openai-responses/completionReceiptV1'
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import {
@@ -35,6 +49,14 @@ import {
   type ProviderFailureV2,
 } from '../../src/shared/provider/providerFailureV2'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 
 export type OpenAIResponsesStreamRunResultV2 = Readonly<{
@@ -77,9 +99,33 @@ function hasUnresolvedFunctionCall(terminal: OpenAIResponsesTerminalResultV1): b
   return terminal.output.some((item) => 'type' in item && item.type === 'function_call')
 }
 
+function completedImages(terminal: OpenAIResponsesTerminalResultV1) {
+  const items = terminal.output.filter((item) => item.type === 'image_generation_call' && item.status === 'completed')
+  if (items.length > 10) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+  return items.map((item, outputIndex) => {
+    if (item.type !== 'image_generation_call' || !item.result || item.result.length % 4 !== 0 ||
+        !/^[A-Za-z0-9+/]*={0,2}$/u.test(item.result)) {
+      throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+    }
+    const bytes = Buffer.from(item.result, 'base64')
+    if (bytes.length === 0 || bytes.toString('base64') !== item.result) {
+      throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+    }
+    // The returned item has no MIME field. Use the actual image signature,
+    // including on receipt recovery, rather than a mutable request preference.
+    const format = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? 'png'
+      : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? 'jpeg'
+        : bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP' ? 'webp'
+          : null
+    if (!format) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+    return { outputIndex, bytes, mime: `image/${format}`, filename: `generated.${format}` }
+  })
+}
+
 export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
   rawGenerationRequestStore?: RawGenerationRequestStore
   fetchImpl?: Fetch
   nowMs?: () => number
@@ -97,6 +143,8 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const historyRepo = new OpenAIResponsesNativeHistoryV2Repo(input.db)
   const artifactRepo = new OpenAIResponsesArtifactsV2Repo(input.db)
+  const assetRepo = new AttachmentAssetV2Repo(input.db, nowMs)
+  const outputRepo = new GenerationImageOutputV2Repo(input.db, nowMs)
 
   function begin(command: GenerationTextCommandResultV2): void {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -117,6 +165,22 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     })
   }
 
+  const interruptedSnapshots = new WeakMap<GenerationTextCommandResultV2, InterruptedNativeSnapshotV1>()
+  const replayOutputs = new WeakMap<GenerationTextCommandResultV2, readonly OpenAIResponsesReturnedItemV1[]>()
+  const completionReceipts = new WeakMap<GenerationTextCommandResultV2, OpenAIResponsesCompletionReceiptV1>()
+  function persistInterrupted(context: Parameters<GenerationInterruptedReplayV2Repo['insert']>[0], command: GenerationTextCommandResultV2) {
+    const native = interruptedSnapshots.get(command)
+    if (!native) return
+    const bytes = command.preparedRequest.body.copyBytes()
+    try {
+      new GenerationInterruptedReplayV2Repo(input.db).insert(context, {
+        answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence, protocol: 'openai_responses',
+        requestBody: JSON.parse(new TextDecoder().decode(bytes)), native,
+      })
+    } finally { bytes.fill(0) }
+  }
+
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -128,6 +192,12 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   ): OpenAIResponsesStreamRunResultV2 {
     const at = nowMs()
     let resultState: OpenAIResponsesStreamRunResultV2['state'] = state
+    const images = state === 'completed' && terminal ? completedImages(terminal) : []
+    const committedImages: Array<Readonly<{ outputIndex: number; assetId: string; assetRevisionId: string; mime: string }>> = []
+    for (const image of images) {
+      if (!input.attachmentBlobStore) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+      input.attachmentBlobStore.persist(image.bytes)
+    }
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
       if (!execution) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
@@ -150,18 +220,33 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       }
       const terminalRequest = requestRepo.terminalize(context, request, state, at)
       if (state === 'completed') {
-        if (!terminal || !history || !isOpenAIResponsesTerminalResultV1(terminal) || terminal.terminalKind !== 'completed') {
+        const replayOutput = replayOutputs.get(command)
+        if (!terminal || !history || !replayOutput || !isOpenAIResponsesTerminalResultV1(terminal) || terminal.terminalKind !== 'completed') {
           throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
         }
         const continuation = history.projectedPrefixItems === null
           ? completeOpenAIResponsesRequestV2({
             priorArtifact: history.priorArtifact, lineageDepth: history.lineageDepth,
-            clientItems: history.clientItems, returnedItems: terminal.output,
+            clientItems: history.clientItems, returnedItems: replayOutput,
           })
           : completeOpenAIResponsesProjectedRequestV2({
             projectedPrefixItems: history.projectedPrefixItems,
-            clientItems: history.clientItems, returnedItems: terminal.output,
+            clientItems: history.clientItems, returnedItems: replayOutput,
           })
+        for (const image of images) {
+          const blob = assetRepo.recordBlobFromBytesInAuthorityTransaction(context, image.bytes, image.mime)
+          const assetId = `asset:${randomUUID()}`
+          const assetRevisionId = `asset-revision:${randomUUID()}`
+          const revision = assetRepo.createGeneratedImageAssetInAuthorityTransaction(context, {
+            assetId, assetRevisionId, filename: image.filename, blob,
+          })
+          outputRepo.insertCompletedOutput(context, execution, terminalRequest, {
+            outputIndex: image.outputIndex, partialImageIndex: image.outputIndex, revision,
+            providerCreatedAtMs: terminal.completedAt === null ? null : terminal.completedAt * 1000,
+            providerUsage: terminal.usage ?? {},
+          })
+          committedImages.push({ outputIndex: image.outputIndex, assetId, assetRevisionId, mime: image.mime })
+        }
         if (hasUnresolvedFunctionCall(terminal)) {
           resultState = 'awaiting_tool'
           artifactRepo.insertRequestTerminal(context, execution, terminalRequest, continuation, at)
@@ -180,24 +265,71 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
             context, terminalExecution, terminalRequest, createOpenAIResponsesTerminalArtifactV1(terminal), at,
           )
         }
+        if (resultState === 'awaiting_tool') persistInterrupted(context, command)
       } else {
+        if (terminal && terminal.visibleText.length > 0) {
+          const currentBody = input.db.prepare('SELECT body_text AS body FROM message_body_v2 WHERE message_id=?')
+            .get(command.preparedRequest.answerRootId) as { body: unknown } | undefined
+          if (typeof currentBody?.body !== 'string') {
+            throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+          }
+          if (currentBody.body !== terminal.visibleText) {
+            graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId,
+              currentBody.body, terminal.visibleText, at)
+          }
+        }
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, {
           state, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage, errorFact: terminalErrorFact,
         }, at)
+        persistInterrupted(context, command)
       }
     })
+    interruptedSnapshots.delete(command)
+    replayOutputs.delete(command)
+    completionReceipts.delete(command)
     const terminalProjection = Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
       state: resultState, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
       ...(terminalErrorFact ? { errorFact: terminalErrorFact } : {}),
     })
+    for (const image of committedImages) publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'image_output', operationId: command.preparedRequest.operationId,
+      answerRootId: command.preparedRequest.answerRootId, ...image,
+    })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, {
       type: 'terminal', operationId: terminalProjection.operationId, answerRootId: terminalProjection.answerRootId,
       state: terminalProjection.state, errorCode: terminalProjection.errorCode, errorMessage: terminalProjection.errorMessage,
     })
     return terminalProjection
+  }
+
+  function providerFailureForTerminal(command: GenerationTextCommandResultV2,
+    terminal: OpenAIResponsesTerminalResultV1): ProviderFailureV2 {
+    const providerCode = terminal.terminalKind === 'failed' ? 'provider_failed' : 'provider_incomplete'
+    const providerMessage = terminal.error?.message ?? terminal.incompleteReason ?? providerCode
+    return createProviderFailureV2({
+      context: {
+        origin: 'provider_runtime', phase: 'response_body',
+        provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
+        contractId: command.preparedRequest.contractId,
+        operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence,
+        starverseDiagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+      },
+      body: { error: { code: terminal.error?.code ?? providerCode, message: providerMessage } },
+    })
+  }
+
+  function materializeProviderTerminal(command: GenerationTextCommandResultV2,
+    terminal: OpenAIResponsesTerminalResultV1): OpenAIResponsesStreamRunResultV2 {
+    if (terminal.terminalKind === 'completed') {
+      return finalize(command, 'completed', terminal, null, null, 'mid_stream')
+    }
+    const failure = providerFailureForTerminal(command, terminal)
+    return finalize(command, 'failed', terminal, failure.starverseDiagnosticCode,
+      providerFailurePrimaryMessageV2(failure), 'mid_stream', failure)
   }
 
   async function receive(
@@ -209,7 +341,11 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'text/event-stream') {
       let bodyText: string | null = null
-      try { bodyText = response.body ? await response.text() : null } catch { /* preserve the transport fact below */ }
+      try {
+        bodyText = response.body
+          ? (await readBoundedResponseTextV2(response, PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2)).text
+          : null
+      } catch { /* preserve the HTTP status if reading the diagnostic body fails */ }
       throw new ProviderFailureErrorV2(createProviderFailureV2({
         context: {
           origin: response.status === 200 ? 'response_decoder' : 'http_response',
@@ -241,6 +377,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       streamProjectionSink: input.streamProjectionSink, nowMs,
       onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
     })
+    let finalSnapshot: InterruptedNativeSnapshotV1 | null = null
     const accept = (events: readonly ReturnType<OpenAIResponsesTypedSseDecoderV1['push']>[number][]): void => {
       const reasoningBefore = assembler.readReasoningSummaryText()
       for (const event of events) assembler.push(event)
@@ -259,21 +396,38 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         checkpoint.update(next)
       }
     }
+    const decode = (bytes?: Uint8Array): readonly ReturnType<OpenAIResponsesTypedSseDecoderV1['push']>[number][] => {
+      try { return bytes === undefined ? decoder.finish() : decoder.push(bytes) } catch (error) {
+        accept(decoder.takeParsedEventsAfterError())
+        throw error
+      }
+    }
     try {
       while (true) {
         const item = await abortable(reader.read(), signal)
         if (item.done) break
         if (item.value.byteLength > 0) onStarted()
-        accept(decoder.push(item.value))
+        accept(decode(item.value))
       }
-      accept(decoder.finish())
+      accept(decode())
       const terminal = assembler.finish()
+      const replayOutput = assembler.readReplayOutput()
+      finalSnapshot = assembler.interruptedSnapshot()
+      const completionReceipt = createOpenAIResponsesCompletionReceiptV1({
+        terminalResult: terminal, replayOutput, interruptedSnapshot: finalSnapshot,
+      })
+      replayOutputs.set(command, replayOutput)
+      interruptedSnapshots.set(command, Object.freeze({ ...completionReceipt.interruptedSnapshot,
+        terminalFact: completionReceipt.terminalResult }))
+      completionReceipts.set(command, completionReceipt)
+      persistGenerationNativeCompletionReceiptV2(input.db, command, completionReceipt, nowMs())
       if (terminal.visibleText !== visible) {
         visible = terminal.visibleText
         checkpoint.update(visible)
       }
       return terminal
     } finally {
+      if (!interruptedSnapshots.has(command)) interruptedSnapshots.set(command, finalSnapshot ?? assembler.interruptedSnapshot())
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* best effort */ }
@@ -281,6 +435,26 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       }
     }
   }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'openai-responses-v1', (_receipt, command, value) => {
+    const completionReceipt = restoreOpenAIResponsesCompletionReceiptV1(value)
+    const terminal = completionReceipt.terminalResult
+    replayOutputs.set(command, completionReceipt.replayOutput)
+    interruptedSnapshots.set(command, Object.freeze({ ...completionReceipt.interruptedSnapshot,
+      terminalFact: terminal }))
+    return materializeProviderTerminal(command, terminal)
+  }, (command, value) => {
+    const completionReceipt = restoreOpenAIResponsesCompletionReceiptV1(value)
+    const terminal = completionReceipt.terminalResult
+    if (!isOpenAIResponsesTerminalResultV1(terminal)) {
+      throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+    }
+    createOpenAIResponsesTerminalArtifactV1(terminal)
+    if (terminal.terminalKind === 'completed' && hasUnresolvedFunctionCall(terminal) &&
+        command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+    }
+  })
 
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
@@ -353,29 +527,17 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
             }),
           })
         }
-        if (terminal.terminalKind === 'completed') {
-          return finalize(command, 'completed', terminal, null, null, 'mid_stream')
-        }
-        const providerCode = terminal.terminalKind === 'failed'
-          ? 'provider_failed'
-          : 'provider_incomplete'
-        const providerMessage = terminal.error?.message ?? terminal.incompleteReason ?? providerCode
-        const providerFailure = createProviderFailureV2({
-          context: {
-            origin: 'provider_runtime', phase: 'response_body',
-            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
-            contractId: command.preparedRequest.contractId,
-            operationId: command.preparedRequest.operationId,
-            requestSequence: command.preparedRequest.requestSequence,
-            starverseDiagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
-          },
-          body: { error: { code: terminal.error?.code ?? providerCode, message: providerMessage } },
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command, nativeResult: completionReceipts.get(command) ?? terminal, nowMs,
+          materialize: () => materializeProviderTerminal(command, terminal),
         })
-        return finalize(command, 'failed', terminal, providerFailure.starverseDiagnosticCode,
-          providerFailurePrimaryMessageV2(providerFailure), 'mid_stream', providerFailure)
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
-        const failure = cancelled ? null : providerFailureFromUnknownV2(error, {
+        const failureContext = {
           origin: error instanceof OpenAIResponsesStreamV1Error ? 'response_decoder'
             : responseStarted ? 'response_stream' : 'network_transport',
           phase: error instanceof OpenAIResponsesStreamV1Error ? 'stream_decode'
@@ -387,7 +549,13 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
           starverseDiagnosticCode: error instanceof OpenAIResponsesStreamV1Error
             ? 'PROVIDER_RESPONSE_DECODE_FAILED'
             : responseStarted ? 'PROVIDER_RESPONSE_STREAM_FAILED' : 'PROVIDER_REQUEST_OPEN_FAILED',
-        })
+        } as const
+        const failure = cancelled ? null : error instanceof OpenAIResponsesStreamV1Error && error.diagnostic
+          ? createProviderFailureV2({ context: failureContext,
+            body: { error: { code: error.code, message: error.message },
+              streamDiagnostic: { stage: error.diagnostic.stage, eventType: error.diagnostic.eventType } },
+            rawFrameExcerpt: error.diagnostic.rawFrameExcerpt })
+          : providerFailureFromUnknownV2(error, failureContext)
         const code = cancelled ? 'user_cancelled' : failure!.starverseDiagnosticCode
         const message = cancelled ? 'Generation cancelled by user.' : providerFailurePrimaryMessageV2(failure!)
         return finalize(command, cancelled ? 'cancelled' : 'failed', null, code, message,

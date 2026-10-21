@@ -1,4 +1,6 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   buildLmStudioOpenResponsesReplayInputV1,
   completeLmStudioOpenResponsesRequestV1,
@@ -81,7 +83,10 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     let artifact: LmStudioOpenResponsesContinuationArtifactV1
-    try { artifact = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(row.artifactJson)) } catch {
+    try { artifact = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId, answerRootId: row.answerRootId, requestSequence: row.requestSequence as number,
+      artifactKind: ARTIFACT_KIND,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     const pending = artifact.orderedItems.filter((item) => 'type' in item && item.type === 'function_call')
@@ -109,7 +114,8 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
   }
   #completeTurnItems(context: GenerationV2AuthorityTransactionContextV2, answerRootId: string): readonly LmStudioOpenResponsesReplayItemV1[] {
     const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
-      operation.operation_id AS operationId, operation.question_id AS questionId, body.body_text AS questionBody
+      artifact.operation_id AS operationId, artifact.request_sequence AS requestSequence,
+      operation.question_id AS questionId, body.body_text AS questionBody
       FROM generation_native_artifact_v2 AS artifact
       JOIN generation_request_v2 AS request ON request.operation_id=artifact.operation_id AND request.request_sequence=artifact.request_sequence
         AND request.answer_root_id=artifact.answer_root_id
@@ -124,7 +130,10 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_MISSING')
     }
     let artifact: LmStudioOpenResponsesContinuationArtifactV1
-    try { artifact = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(row.artifactJson)) } catch {
+    try { artifact = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId: row.operationId as string, answerRootId, requestSequence: row.requestSequence as number,
+      artifactKind: ARTIFACT_KIND,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, row.operationId)
@@ -157,9 +166,9 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     const row = this.db.prepare(`SELECT operation.question_id AS questionId,
       question.parent_message_id AS parentMessageId, body.body_text AS userBody,
-      request.provider_id AS providerId, request.contract_id AS contractId
+      json_extract(snapshot.canonical_json,'$.providerBinding.providerId') AS providerId, json_extract(snapshot.canonical_json,'$.providerBinding.protocolContractId') AS contractId
       FROM generation_operation_v2 AS operation
-      JOIN generation_request_v2 AS request ON request.operation_id=operation.operation_id AND request.request_sequence=1
+      JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
       JOIN message_v2 AS question ON question.message_id=operation.question_id AND question.role='user'
       JOIN message_body_v2 AS body ON body.message_id=question.message_id
       WHERE operation.operation_id=?`).get(operationId) as Readonly<Record<string, unknown>> | undefined
@@ -168,17 +177,18 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
     }
     if (typeof row.questionId !== 'string') throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationId)
-    const projectedReplayItems: LmStudioOpenResponsesReplayItemV1[] = []
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationId, 'lmstudio') as readonly LmStudioOpenResponsesReplayItemV1[] | null
+    const projectedReplayItems: LmStudioOpenResponsesReplayItemV1[] = [...(portable ?? [])]
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
         projectedReplayItems.push(Object.freeze({ role: 'user' as const,
-          content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: row.userBody })]) }))
-      } else if (turn.mode === 'included') projectedReplayItems.push(...this.#completeTurnItems(context, turn.answerRootId))
+          content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: currentGenerationQuestionWithFallbackV2(this.db, context, operationId, row.userBody) })]) }))
+      } else if (turn.mode === 'included' && portable === null) projectedReplayItems.push(...this.#completeTurnItems(context, turn.answerRootId))
     }
     if (!isUserInputItem(projectedReplayItems.at(-1))) throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     const clientItems = Object.freeze([{ role: 'user' as const,
-      content: Object.freeze([{ type: 'input_text' as const, text: row.userBody }]) }])
+      content: Object.freeze([{ type: 'input_text' as const, text: currentGenerationQuestionWithFallbackV2(this.db, context, operationId, row.userBody) }]) }])
     buildLmStudioOpenResponsesReplayInputV1({ priorArtifact: null, clientItems })
     return this.#registerFact(context, { priorArtifact: null, clientItems,
       projectedReplayItems: Object.freeze(projectedReplayItems), requestSequence: 1,
@@ -217,7 +227,8 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
         state.requestState !== 'completed') {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
-    const row = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash
+    const row = this.db.prepare(`SELECT answer_root_id AS answerRootId, artifact_json AS artifactJson,
+      artifact_hash AS artifactHash
       FROM generation_native_artifact_v2 WHERE operation_id=? AND answer_root_id=? AND request_sequence=?
         AND artifact_kind=? AND completion_scope='request_terminal'`).get(
       command.operationId.value, command.answerRootId.value, command.priorRequestSequence, ARTIFACT_KIND,
@@ -226,7 +237,10 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_MISSING')
     }
     let prior: LmStudioOpenResponsesContinuationArtifactV1
-    try { prior = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(row.artifactJson)) } catch {
+    try { prior = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId: command.operationId.value, answerRootId: command.answerRootId.value,
+      requestSequence: command.priorRequestSequence, artifactKind: ARTIFACT_KIND,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     if (prior.artifactHash !== row.artifactHash || prior.requestSequence !== command.priorRequestSequence) {
@@ -268,7 +282,8 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
     if (!Number.isSafeInteger(requestSequence) || requestSequence < 2) {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
-    const row = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash
+    const row = this.db.prepare(`SELECT answer_root_id AS answerRootId, artifact_json AS artifactJson,
+      artifact_hash AS artifactHash
       FROM generation_native_artifact_v2 WHERE operation_id=? AND request_sequence=? AND artifact_kind=?
         AND completion_scope='request_terminal'`).get(operationId, requestSequence - 1, ARTIFACT_KIND) as Readonly<Record<string, unknown>> | undefined
     const outputs = this.db.prepare(`SELECT output_index AS outputIndex, tool_call_id AS toolCallId, tool_id AS toolId,
@@ -279,7 +294,10 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_MISSING')
     }
     let prior: LmStudioOpenResponsesContinuationArtifactV1
-    try { prior = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(row.artifactJson)) } catch {
+    try { prior = decodeLmStudioOpenResponsesContinuationArtifactV1(JSON.parse(loadNativeArtifactJsonV2(this.db, {
+      operationId, answerRootId: row.answerRootId as string,
+      requestSequence: requestSequence - 1, artifactKind: ARTIFACT_KIND,
+    }, row.artifactJson, { artifactCodecVersion: 1, artifactHash: row.artifactHash }))) } catch {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     if (prior.artifactHash !== row.artifactHash || prior.requestSequence !== requestSequence - 1) {
@@ -369,22 +387,30 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
           requestSequence: input.history.requestSequence, clientItems: input.history.clientItems,
           returnedItems: input.returnedItems })
     const artifactJson = serializeLmStudioOpenResponsesContinuationArtifactV1(artifact)
+    const key = { operationId: input.request.operationId, answerRootId: input.request.answerRootId,
+      requestSequence: input.request.requestSequence, artifactKind: ARTIFACT_KIND }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT operation_id AS operationId, artifact_json AS artifactJson,
       artifact_hash AS artifactHash FROM generation_native_artifact_v2
       WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
       input.request.answerRootId, input.request.requestSequence, ARTIFACT_KIND,
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
-      if (existing.operationId !== input.request.operationId || existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash) {
+      if (existing.operationId !== input.request.operationId ||
+          !nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+            artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+          }, artifactJson) ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_CONFLICT')
       }
       return artifact
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, artifactJson, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (answer_root_id, request_sequence, operation_id,
       artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       input.request.answerRootId, input.request.requestSequence, input.request.operationId, ARTIFACT_KIND,
-      artifact.artifactCodecVersion, artifactJson, artifact.artifactHash, input.createdAtMs, input.completionScope,
+      artifact.artifactCodecVersion, storedJson, artifact.artifactHash, input.createdAtMs, input.completionScope,
     )
     return artifact
   }

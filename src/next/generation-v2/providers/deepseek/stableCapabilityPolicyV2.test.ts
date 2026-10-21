@@ -6,6 +6,13 @@ import {
 } from '../../../../core/generation-v2/providers/deepseek/stableCapabilityPolicyV2'
 
 describe('DeepSeek stable family capability policy V2', () => {
+  it('keeps hosted OpenAI image-tool fields explicitly unsupported', () => {
+    const rules = new Map(readVerifiedDeepSeekStableCapabilityPolicyV2().rules.map((entry) => [entry.path, entry]))
+    for (const path of ['image.action', 'image.toolModel', 'image.toolChoice', 'image.partialImages',
+      'image.inputFidelity', 'image.moderation', 'image.maskAsset'] as const) {
+      expect(rules.get(path)).toMatchObject({ path, kind: 'unsupported' })
+    }
+  })
   it('closes every semantic path exactly once without issuing execution authority', () => {
     const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
     expect(policy).toMatchObject({

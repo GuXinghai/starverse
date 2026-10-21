@@ -157,6 +157,22 @@ function modelSelectionCommandPlugin(command: (selection: ConversationRouteSelec
 }
 
 describe('ChatAppComposer model picker integration', () => {
+  it('keeps IME confirmation and Shift Enter local, while ordinary Enter sends', async () => {
+    const view = render(ChatAppComposer, { props: {
+      draft: '输入中', disabled: false, isRunning: false, canSend: true,
+      sessionConfig: { ...createSessionConfig(), routeSelection: {
+        schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      } }, modelCatalog: [],
+    } })
+    const draft = screen.getByTestId('composer-draft')
+    await fireEvent.keyDown(draft, { key: 'Enter', isComposing: true })
+    await fireEvent.keyDown(draft, { key: 'Enter', keyCode: 229 })
+    await fireEvent.keyDown(draft, { key: 'Enter', shiftKey: true })
+    expect(view.emitted().send).toBeUndefined()
+    expect(draft).toHaveValue('输入中')
+    await fireEvent.keyDown(draft, { key: 'Enter' })
+    expect(view.emitted().send).toHaveLength(1)
+  })
   const originalDbBridge = (globalThis as any).dbBridge
 
   beforeEach(() => {
@@ -1664,6 +1680,7 @@ describe('ChatAppComposer model picker integration', () => {
     await fireEvent.update(screen.getByTestId('composer-google-thinking-budget'), '4096')
     expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
       thinkingLevel: { mode: 'omit' },
+      thinkingEnabled: { mode: 'custom', value: true },
       thinkingBudget: { mode: 'custom', value: 4096 },
       includeThoughts: { mode: 'custom', value: false },
     }])
@@ -1690,6 +1707,9 @@ describe('ChatAppComposer model picker integration', () => {
     })
 
     expect(screen.queryByTestId('composer-google-thinking-controls')).not.toBeInTheDocument()
+    const requiredChip = screen.getByTestId('google-thinking-chip')
+    expect(within(requiredChip).getByTestId('capability-chip-body')).toBeDisabled()
+    expect(within(requiredChip).getByTestId('capability-chip-chevron')).toBeEnabled()
     await openGoogleThinkingMenu()
 
     expect(screen.getByTestId('composer-google-thinking-level')).toHaveValue('high')
@@ -1749,6 +1769,37 @@ describe('ChatAppComposer model picker integration', () => {
     await fireEvent.click(within(imageMenu).getByText('2K'))
     expect(view.emitted('updateImageGenerationResolution')).toEqual([['2K']])
     expect(view.emitted('updateImageGenerationEnabled')).toBeUndefined()
+  })
+
+  it('shows provider default without substituting the only supported image resolution', async () => {
+    const sessionConfig = createSessionConfig()
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...sessionConfig,
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash-image' },
+          imageGeneration: { ...sessionConfig.imageGeneration, enabled: true, resolution: '' },
+        },
+        capabilityProjection: geminiCapabilityProjection({
+          imageSizes: ['1K'],
+          aspectRatios: ['1:1'],
+          outputModes: ['image_only'],
+        }),
+        modelCatalog: [],
+      },
+    })
+
+    const imageChip = screen.getByTestId('image-chip')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('Default · 1:1')
+    const imageMenu = await openImageMenu()
+    await fireEvent.click(within(imageMenu).getByText('1K'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['1K']])
+    const defaultMenu = await openImageMenu()
+    await fireEvent.click(within(defaultMenu).getByText('Default'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['1K'], ['']])
   })
 
   it('forces image generation on and disables reasoning for legacy Nano Banana', async () => {

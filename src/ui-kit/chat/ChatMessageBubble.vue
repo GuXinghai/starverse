@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ErrorPanelViewModel, MessageVM } from './types'
 import ChatErrorPanel from './ChatErrorPanel.vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import RichTextContent from './richtext/RichTextContent.vue'
 import RichTextFinal from './richtext/RichTextFinal.vue'
 import { sanitizeGoogleSearchSuggestions } from './googleSearchSuggestionsSanitizer'
@@ -38,6 +39,7 @@ const showGenerating = computed(
 type ImageBlockItem = Readonly<{
   index: number
   url: string
+  persisted: boolean
 }>
 
 const textBlocks = computed(() =>
@@ -50,7 +52,7 @@ const imageBlocks = computed<ImageBlockItem[]>(() => {
   for (let i = 0; i < props.message.contentBlocks.length; i += 1) {
     const block = props.message.contentBlocks[i]
     if (block.type !== 'image') continue
-    out.push({ index: i, url: block.url })
+    out.push({ index: i, url: block.url, persisted: Boolean(block.assetRevisionId) })
   }
   return out
 })
@@ -194,45 +196,34 @@ const citations = computed<UrlCitationItem[]>(() => {
 function bubbleClass(role: MessageVM['role']) {
   switch (role) {
     case 'user':
-      return 'bg-blue-600 text-white shadow-sm'
-    case 'assistant':
-      return 'bg-white text-gray-900 ring-1 ring-gray-200 shadow-sm'
+      return 'bg-[var(--sv-selected)] px-4 py-2.5 text-[var(--sv-text)]'
     case 'tool':
-      return 'bg-amber-50 text-amber-900 ring-1 ring-amber-200 shadow-sm'
+      return 'border border-[var(--sv-line)] px-3 py-2 text-[var(--sv-text)]'
+    case 'assistant':
     default:
-      return 'bg-white text-gray-900 ring-1 ring-gray-200 shadow-sm'
+      return 'text-[var(--sv-text)]'
   }
 }
 </script>
 
 <template>
-  <div class="flex gap-3" :class="isUser ? 'justify-end' : 'justify-start'">
-    <div v-if="!isUser" class="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
-      <span class="text-[11px] font-semibold text-gray-600">{{ isTool ? t('chat.message.avatar.tool') : t('chat.message.avatar.assistant') }}</span>
-    </div>
-
-    <div class="w-full max-w-[80%]" :class="isUser ? 'max-w-[85%]' : 'max-w-[80%]'">
-      <div class="rounded-2xl px-4 py-3 text-sm" :class="bubbleClass(props.message.role)">
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">
+  <div class="flex" :data-role="props.message.role" :class="isUser ? 'justify-end' : 'justify-start'">
+    <div class="min-w-0" :class="isUser ? 'max-w-[85%]' : 'w-full'">
+      <div class="rounded-2xl text-sm" :class="bubbleClass(props.message.role)">
+        <div :class="isTool ? 'mb-1.5 flex items-center justify-between gap-2' : 'sr-only'">
+          <div :class="isTool ? 'sv-label' : ''">
             {{ isUser ? t('chat.message.role.user') : isTool ? t('chat.message.role.tool') : t('chat.message.role.assistant') }}
-          </div>
-          <div class="flex items-center gap-2">
-            <slot name="header-right" />
-            <div v-if="showGenerating" class="text-[11px] font-medium text-blue-700">
-              {{ t('common.generating') }}<span class="font-mono">▍</span>
-            </div>
           </div>
         </div>
 
-        <div class="space-y-2">
+        <div class="flex flex-col gap-3">
           <slot name="before-content" />
 
           <div v-for="(b, idx) in textBlocks" :key="`text-${idx}`">
             <template v-if="b.type === 'text'">
               <pre
                 v-if="isTool"
-                class="whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 p-2 text-[11px]"
+                class="whitespace-pre-wrap break-words rounded-md bg-[var(--sv-sunken)] p-2 text-xs"
               >{{ b.text }}</pre>
               <RichTextContent
                 v-else-if="isAssistant && !props.message.streaming.isComplete"
@@ -247,20 +238,20 @@ function bubbleClass(role: MessageVM['role']) {
                 v-else-if="isUser && props.renderUserMessageRichText"
                 :text="b.text"
               />
-              <div v-else class="whitespace-pre-wrap break-words">{{ b.text }}</div>
+              <div v-else class="whitespace-pre-wrap break-words leading-relaxed">{{ b.text }}</div>
             </template>
           </div>
 
           <div
             v-if="imageBlocks.length > 0"
-            class="rounded-lg border border-black/10 bg-white/70 p-3 text-xs text-gray-700"
+            class="text-xs text-[var(--sv-text-2)]"
             data-testid="message-image-section"
           >
             <div class="mb-2 flex items-center justify-between gap-2">
-              <div class="font-semibold">{{ t('common.images') }} ({{ imageBlocks.length }})</div>
+              <div class="sv-label">{{ t('common.images') }} ({{ imageBlocks.length }})</div>
               <div
                 v-if="isAssistant && !props.message.streaming.isComplete"
-                class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700"
+                class="sv-meta"
               >
                 {{ t('common.streaming') }}
               </div>
@@ -283,7 +274,7 @@ function bubbleClass(role: MessageVM['role']) {
               >
                 <button
                   type="button"
-                  class="block w-full overflow-hidden rounded border border-black/10 bg-white"
+                  class="block w-full overflow-hidden rounded-xl border border-[var(--sv-line)] bg-white"
                   :data-testid="`message-image-preview-open-${image.index}`"
                   @click="openPreview(image.url, image.index)"
                 >
@@ -293,10 +284,10 @@ function bubbleClass(role: MessageVM['role']) {
                     :alt="tf('chat.message.imageAlt', { index: image.index + 1 })"
                   />
                 </button>
-                <div class="mt-1 flex flex-wrap gap-1">
+                <div class="mt-1 flex min-h-4 flex-wrap gap-1">
                   <span
-                    v-if="isTransientDataImageUrl(image.url)"
-                    class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700"
+                    v-if="!image.persisted && isTransientDataImageUrl(image.url)"
+                    class="sv-meta"
                     :data-testid="`message-image-persisting-${image.index}`"
                   >
                     {{ t('chat.message.persisting') }}
@@ -308,34 +299,34 @@ function bubbleClass(role: MessageVM['role']) {
 
           <div
             v-else-if="showImagePlaceholder"
-            class="rounded-lg border border-dashed border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-700"
+            class="flex h-48 items-center justify-center rounded-xl border border-dashed border-[var(--sv-line-strong)] text-xs text-[var(--sv-text-3)]"
             data-testid="message-image-placeholder"
           >
             {{ t('chat.message.imageGenerating') }}
           </div>
 
           <div v-for="(b, idx) in otherBlocks" :key="`other-${idx}`">
-            <div class="rounded-lg border border-black/10 bg-black/5 p-2">
+            <div class="rounded-md bg-[var(--sv-sunken)] p-2">
               <pre class="whitespace-pre-wrap text-xs">{{ JSON.stringify(b, null, 2) }}</pre>
             </div>
           </div>
 
           <div
             v-if="isAssistant && searchSuggestions.length > 0"
-            class="mt-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3"
+            class="border-l border-[var(--sv-line-strong)] pl-3"
             data-testid="google-search-suggestions"
           >
-            <div class="text-[11px] font-semibold uppercase tracking-wide text-blue-800">
+            <div class="sv-label">
               {{ t('chat.message.googleSearchSuggestions') }}
             </div>
             <div
               v-for="(suggestion, idx) in searchSuggestions"
               :key="`google-search-suggestion-${idx}`"
-              class="mt-2 rounded border border-blue-100 bg-white/80 p-2 text-xs text-gray-700"
+              class="mt-2 text-xs text-[var(--sv-text-2)]"
             >
               <div v-if="suggestion.html" v-html="suggestion.html" />
               <pre v-else class="whitespace-pre-wrap">{{ suggestion.plainText || suggestion.raw }}</pre>
-              <div v-if="suggestion.removed" class="mt-1 text-[10px] text-amber-700">
+              <div v-if="suggestion.removed" class="mt-1 text-xs text-[var(--sv-warning)]">
                 {{ t('chat.message.googleSearchSuggestionsFiltered') }}
               </div>
             </div>
@@ -344,16 +335,16 @@ function bubbleClass(role: MessageVM['role']) {
 
         <div
           v-if="isAssistant && citations.length > 0"
-          class="mt-3 rounded-lg border border-gray-200 bg-white/70 p-3"
+          class="mt-4"
         >
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+          <div class="sv-label">
             {{ t('common.references') }} ({{ citations.length }})
           </div>
           <div class="mt-2 flex flex-wrap gap-1">
             <a
               v-for="item in citations"
               :key="`jump-${item.key}`"
-              class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50"
+              class="sv-chip hover:bg-[var(--sv-selected)] hover:text-[var(--sv-text)]"
               :href="`#${item.id}`"
             >
               [{{ item.rank }}]
@@ -362,65 +353,66 @@ function bubbleClass(role: MessageVM['role']) {
               </template>
             </a>
           </div>
-          <ol class="mt-2 space-y-2">
+          <ol class="mt-3 flex flex-col gap-2">
             <li
               v-for="item in citations"
               :id="item.id"
               :key="item.key"
-              class="rounded border border-gray-200 bg-white/80 p-2 text-xs text-gray-700"
+              class="text-xs text-[var(--sv-text-2)]"
             >
               <div class="flex items-start gap-2">
-                <span class="font-mono text-[11px] text-gray-500">[{{ item.rank }}]</span>
+                <span class="font-mono text-xs text-[var(--sv-text-3)]">[{{ item.rank }}]</span>
                 <a
                   v-if="item.url"
-                  class="break-all text-blue-700 underline hover:text-blue-800"
+                  class="min-w-0 break-all text-[var(--sv-text)] underline decoration-black/30 underline-offset-2 hover:decoration-current"
                   :href="item.url"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   {{ item.title || item.domain || item.url }}
                 </a>
-                <span v-else class="break-all text-gray-700">
+                <span v-else class="min-w-0 break-all text-[var(--sv-text-2)]">
                   {{ item.title || item.domain || t('chat.message.untitledSource') }}
                 </span>
                 <span
                   v-if="item.startIndex !== undefined && item.endIndex !== undefined"
-                  class="ml-auto shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-500"
+                  class="sv-meta ml-auto shrink-0 font-mono"
                 >
                   {{ item.startIndex }}-{{ item.endIndex }}
                 </span>
               </div>
-              <div v-if="item.excerpt" class="mt-1 whitespace-pre-wrap break-words text-[11px] text-gray-600">
+              <div v-if="item.excerpt" class="mt-1 whitespace-pre-wrap break-words pl-7 text-xs text-[var(--sv-text-3)]">
                 {{ item.excerpt }}
               </div>
             </li>
           </ol>
         </div>
 
-        <div v-if="props.message.toolCalls.length" class="mt-3 space-y-2">
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+        <div v-if="props.message.toolCalls.length" class="mt-4 flex flex-col gap-2">
+          <div class="sv-label">
             {{ t('common.toolCalls') }} ({{ props.message.toolCalls.length }})
           </div>
 
           <details
             v-for="tc in props.message.toolCalls"
             :key="tc.index"
-            class="rounded-lg border border-black/10 bg-white/60 p-2"
+            class="group/tool border-l border-[var(--sv-line-strong)] pl-3"
             :open="props.message.toolCalls.length === 1"
           >
-            <summary class="cursor-pointer select-none text-xs text-gray-800">
+            <summary class="flex cursor-pointer select-none items-center gap-1 [&::-webkit-details-marker]:hidden text-xs text-[var(--sv-text-2)]">
+              <span class="inline-flex h-3.5 w-3.5 flex-none items-center justify-center transition-transform group-open/tool:rotate-90"><UiIcon name="chevronRight" :size="14" /></span>
               <span class="font-mono">#{{ tc.index }}</span>
-              <span class="ml-2 font-semibold">{{ tc.name || `(${t('chat.message.unknownTool')})` }}</span>
-              <span v-if="tc.id" class="ml-2 font-mono text-[11px] text-gray-500">{{ tc.id }}</span>
+              <span class="ml-1 font-medium text-[var(--sv-text)]">{{ tc.name || `(${t('chat.message.unknownTool')})` }}</span>
+              <span v-if="tc.id" class="ml-1 font-mono text-xs text-[var(--sv-text-3)]">{{ tc.id }}</span>
             </summary>
 
-            <div class="mt-2 space-y-2 text-xs text-gray-700">
+            <div class="mt-2 flex flex-col gap-2 text-xs text-[var(--sv-text-2)]">
               <div v-if="tc.type">
                 {{ t('chat.message.type') }}: <span class="font-mono">{{ tc.type }}</span>
               </div>
               <div>
-                <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600">{{ t('chat.message.arguments') }}</div>
-                <pre class="whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 p-2 text-[11px]">{{ tc.argumentsText }}</pre>
+                <div class="sv-label mb-1">{{ t('chat.message.arguments') }}</div>
+                <pre class="whitespace-pre-wrap break-words rounded-md bg-[var(--sv-sunken)] p-2 text-xs">{{ tc.argumentsText }}</pre>
               </div>
             </div>
           </details>
@@ -437,11 +429,23 @@ function bubbleClass(role: MessageVM['role']) {
 
         <div
           v-if="props.showDebug"
-          class="mt-3 rounded-lg border border-black/10 bg-white/60 p-3 text-xs text-gray-700"
+          class="mt-3 rounded-md bg-[var(--sv-sunken)] p-3 text-xs text-[var(--sv-text-2)]"
         >
           <div>id: <span class="font-mono">{{ props.message.messageId }}</span></div>
           <div>role: <span class="font-mono">{{ props.message.role }}</span></div>
           <div>streaming: <span class="font-mono">{{ JSON.stringify(props.message.streaming) }}</span></div>
+        </div>
+
+        <!-- Fixed-height status row, always reserved for assistant messages so the
+             streaming indicator appearing or disappearing never moves the content. -->
+        <div
+          v-if="isAssistant || $slots['header-right']"
+          class="mt-1 flex h-5 items-center gap-2 text-xs text-[var(--sv-text-3)]"
+        >
+          <slot name="header-right" />
+          <div v-if="showGenerating" class="flex items-center gap-1.5">
+            {{ t('common.generating') }}<span class="sv-stream-caret" aria-hidden="true" />
+          </div>
         </div>
       </div>
     </div>
@@ -453,21 +457,21 @@ function bubbleClass(role: MessageVM['role']) {
     data-testid="message-image-preview"
     @click="onPreviewBackdropClick"
   >
-    <div class="max-h-full w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
-      <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
+    <div class="max-h-full w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-lg">
+      <div class="flex items-center justify-between border-b border-[var(--sv-line)] px-3 py-2 text-xs text-[var(--sv-text-3)]">
         <div>{{ t('common.images') }} #{{ (previewImageIndex ?? 0) + 1 }}</div>
         <button
           type="button"
-          class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+          class="sv-btn sv-btn-sm"
           data-testid="message-image-preview-close"
           @click="closePreview"
         >
           {{ t('common.closePreview') }}
         </button>
       </div>
-      <div class="max-h-[80vh] overflow-auto bg-gray-50 p-3">
+      <div class="max-h-[80vh] overflow-auto bg-[var(--sv-sunken)] p-3">
         <img
-          class="mx-auto h-auto max-h-[74vh] w-auto max-w-full rounded border border-gray-200 bg-white object-contain"
+          class="mx-auto h-auto max-h-[74vh] w-auto max-w-full rounded-md border border-[var(--sv-line)] bg-white object-contain"
           :src="previewImageUrl"
           :alt="t('chat.message.imagePreviewAlt')"
           data-testid="message-image-preview-image"
@@ -476,3 +480,21 @@ function bubbleClass(role: MessageVM['role']) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.sv-stream-caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: sv-stream-caret-pulse 1s ease-in-out infinite;
+}
+@keyframes sv-stream-caret-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sv-stream-caret { animation: none; opacity: 0.6; }
+}
+</style>

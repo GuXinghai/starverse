@@ -3,11 +3,12 @@ import {
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export const ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1 = 'anthropic_messages_native_history_v1' as const
 export const ANTHROPIC_NATIVE_HISTORY_CODEC_VERSION_V1 = 1 as const
 export const ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1 = 4_096
-export const ANTHROPIC_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1 = 20 * 1_024 * 1_024
+export const ANTHROPIC_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 export type AnthropicTextBlockV1 = Readonly<{
   type: 'text'

@@ -86,7 +86,7 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
   }
   const intent = input.commandFacts.semanticIntent
   if (intent.attachments.length !== input.commandFacts.attachmentSet.attachments.length ||
-      intent.image.mode !== 'disabled' || intent.providerExtension.kind !== 'none' ||
+      intent.image.mode !== 'disabled' || !['none', 'openrouter_chat'].includes(intent.providerExtension.kind) ||
       (intent.tools.mode === 'enabled') !== (input.toolRegistry !== null) ||
       (input.toolRegistry !== null && !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context))) {
     throw new OpenRouterChatSnapshotCommitV2Error('GENERATION_V2_OPENROUTER_CHAT_SNAPSHOT_AUTHORITY_INVALID')
@@ -115,6 +115,7 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(intent),
+    ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
     })),
@@ -218,6 +219,7 @@ function commitCurrentAnswerSnapshot(input: Readonly<{
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: readVerifiedOpenRouterChatBindingRecordV2(input.binding),
     capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value,

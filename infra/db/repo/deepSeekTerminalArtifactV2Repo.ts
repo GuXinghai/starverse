@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   isDeepSeekStableTerminalArtifactV1,
   serializeDeepSeekStableTerminalArtifactV1,
@@ -58,7 +59,10 @@ export class DeepSeekTerminalArtifactV2Repo {
         'GENERATION_V2_DEEPSEEK_TERMINAL_ARTIFACT_STATE_INVALID',
       )
     }
-    const artifactJson = serializeDeepSeekStableTerminalArtifactV1(artifact)
+    const codecJson = serializeDeepSeekStableTerminalArtifactV1(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: artifact.artifactKind }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.#db.prepare(`SELECT operation_id AS operationId,
       codec_version AS codecVersion, artifact_json AS artifactJson, artifact_hash AS artifactHash
       FROM generation_native_artifact_v2
@@ -68,13 +72,17 @@ export class DeepSeekTerminalArtifactV2Repo {
     if (existing) {
       if (existing.operationId !== request.operationId ||
           existing.codecVersion !== artifact.artifactCodecVersion ||
-          existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash) {
+          !nativeArtifactJsonMatchesV2(this.#db, key, existing.artifactJson as string, {
+            artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+          }, codecJson) ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new DeepSeekTerminalArtifactV2RepoError(
           'GENERATION_V2_DEEPSEEK_TERMINAL_ARTIFACT_CONFLICT',
         )
       }
       return
     }
+    const artifactJson = storeNativeArtifactJsonV2(this.#db, key, codecJson, envelope)
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
       artifact_json, artifact_hash, created_at_ms, completion_scope

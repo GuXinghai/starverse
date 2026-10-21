@@ -1,3 +1,5 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
+import type { InterruptedNativeSnapshotV1 } from '../../src/core/generation-v2/providers/interruptedReplayV1'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -7,6 +9,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2, readBoundedResponseTextV2 } from '../net/boundedResponseBodyV2'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 // Approved main-process Gemini GenerateContent Generation V2 execution boundary.
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
@@ -15,17 +18,27 @@ import {
   GeminiGenerateContentStreamV1Error,
   type GeminiGenerateContentStreamResultV1,
 } from '../../src/core/generation-v2/providers/gemini/generateContentStreamV1'
+import { decodeGeminiGenerateContentNativeContentV1 } from '../../src/core/generation-v2/providers/gemini/generateContentNativeHistoryV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 import {
   createProviderFailureV2,
+  ProviderFailureErrorV2,
   providerFailureFromUnknownV2,
   providerFailurePrimaryMessageV2,
   type ProviderFailureV2,
 } from '../../src/shared/provider/providerFailureV2'
 import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 export type GeminiGenerateContentStreamRunResultV2 = Readonly<{
   operationId: string
@@ -94,6 +107,20 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
     })
   }
 
+  const interruptedSnapshots = new WeakMap<GenerationTextCommandResultV2, InterruptedNativeSnapshotV1>()
+  function persistInterrupted(context: Parameters<GenerationInterruptedReplayV2Repo['insert']>[0], command: GenerationTextCommandResultV2) {
+    const native = interruptedSnapshots.get(command)
+    if (!native) return
+    const bytes = command.preparedRequest.body.copyBytes()
+    try {
+      new GenerationInterruptedReplayV2Repo(input.db).insert(context, {
+        answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence, protocol: 'gemini',
+        requestBody: JSON.parse(new TextDecoder().decode(bytes)), native,
+      })
+    } finally { bytes.fill(0) }
+  }
+
   function finalize(command: GenerationTextCommandResultV2, state: 'completed' | 'failed' | 'cancelled',
     stream: GeminiGenerateContentStreamResultV1 | null, errorCode: string | null, errorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream', errorFact: ProviderFailureV2 | null = null): GeminiGenerateContentStreamRunResultV2 {
@@ -137,11 +164,14 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
           historyRepo.persistTerminalArtifact(context, terminalExecution, terminalRequest, stream.assistantContent, at)
           historyRepo.persistResponseArtifact(context, terminalExecution, terminalRequest, stream, at)
         }
+        if (resultState === 'awaiting_tool') persistInterrupted(context, command)
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage, errorFact }, at)
+        persistInterrupted(context, command)
       }
     })
+    interruptedSnapshots.delete(command)
     const result = Object.freeze({ operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId, state: resultState, errorCode, errorMessage })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, {
@@ -154,9 +184,22 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
     started: () => void): Promise<GeminiGenerateContentStreamResultV1> {
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/event-stream') {
-      try { await response.body?.cancel() } catch { /* release only */ }
-      throw new GeminiGenerateContentStreamRunnerV2Error(response.status === 200
-        ? 'GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID' : 'GENERATION_V2_GEMINI_RUNNER_HTTP_FAILED')
+      let bodyText: string | null = null
+      try {
+        bodyText = response.body
+          ? (await readBoundedResponseTextV2(response, PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2)).text
+          : null
+      } catch { /* retain the HTTP fact */ }
+      throw new ProviderFailureErrorV2(createProviderFailureV2({
+        context: { origin: response.status === 200 ? 'response_decoder' : 'http_response',
+          phase: response.status === 200 ? 'response_headers' : 'response_body',
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
+          contractId: command.preparedRequest.contractId, operationId: command.preparedRequest.operationId,
+          requestSequence: command.preparedRequest.requestSequence,
+          starverseDiagnosticCode: response.status === 200 ? 'PROVIDER_RESPONSE_DECODE_FAILED' : 'PROVIDER_RESPONSE_HTTP_ERROR' },
+        httpStatus: response.status, httpStatusText: response.statusText, bodyText,
+        headers: Object.fromEntries(response.headers.entries()),
+      }))
     }
     const stream = new GeminiGenerateContentChatStreamV1()
     const reader = response.body.getReader()
@@ -188,8 +231,11 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
           }
         }
       }
-      return stream.finish()
+      const result = stream.finish()
+      persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
+      return result
     } finally {
+      interruptedSnapshots.set(command, stream.interruptedSnapshot())
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* release only */ }
@@ -197,6 +243,41 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
       }
     }
   }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'gemini-generate-content-v1beta', (_receipt, command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    const item = value as Record<string, unknown>
+    if (typeof item.finishReason !== 'string' || !Array.isArray(item.candidateMetadata) || !Array.isArray(item.rawChunks)) {
+      throw new Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    }
+    const assistantContent = decodeGeminiGenerateContentNativeContentV1(item.assistantContent)
+    const streamResult = Object.freeze({ ...item, assistantContent }) as GeminiGenerateContentStreamResultV1
+    const items = JSON.parse(JSON.stringify(assistantContent.parts)) as Readonly<Record<string, unknown>>[]
+    interruptedSnapshots.set(command, Object.freeze({ items: Object.freeze(items),
+      completeIndexes: Object.freeze(items.map((_, index) => index)), text: '', complete: streamResult.finishReason === 'STOP' }))
+    return finalize(command, 'completed', streamResult, null, null, 'mid_stream')
+  }, (command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    }
+    const item = value as Record<string, unknown>
+    if (typeof item.finishReason !== 'string' || !Array.isArray(item.candidateMetadata) || !Array.isArray(item.rawChunks)) {
+      throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    }
+    const content = decodeGeminiGenerateContentNativeContentV1(item.assistantContent)
+    const calls = content.parts.filter((part) => 'functionCall' in part)
+    if (calls.length === 0) return
+    if (command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    }
+    const allowedNames = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+      const registry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, command.execution)
+      return new Set(registry?.selectedDefinitions.map((tool) => tool.function.name) ?? [])
+    })
+    if (calls.some((part) => !allowedNames.has(part.functionCall.name))) {
+      throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_RESPONSE_INVALID')
+    }
+  })
 
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal): Promise<GeminiGenerateContentStreamRunResultV2> => {
@@ -241,8 +322,15 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
           },
         })
         const streamResult = await receive(command, response, scope.signal, () => { started = true })
-        return finalize(command, 'completed', streamResult, null, null, 'mid_stream')
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command, nativeResult: streamResult, nowMs,
+          materialize: () => finalize(command, 'completed', streamResult, null, null, 'mid_stream'),
+        })
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
         if (error instanceof GeminiGenerateContentStreamV1Error &&
             error.diagnostic?.reason === 'native_content_invalid') {

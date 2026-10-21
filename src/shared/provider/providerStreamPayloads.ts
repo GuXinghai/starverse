@@ -4,7 +4,7 @@ export type RequestedReasoningMode = 'auto' | 'effort'
 
 export type ContentBlock =
   | Readonly<{ type: 'text'; text: string }>
-  | Readonly<{ type: 'image'; url: string }>
+  | Readonly<{ type: 'image'; url: string; assetId?: string; assetRevisionId?: string }>
   | Readonly<{ type: 'unknown'; raw: unknown }>
 
 export type MessageAnnotation = Readonly<Record<string, unknown>>

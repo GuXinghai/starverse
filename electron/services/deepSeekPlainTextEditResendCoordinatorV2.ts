@@ -1,3 +1,6 @@
+import { projectGenerationCommandAttachmentsV2 } from '../../src/core/generation-v2/domain/commandAttachmentsV2'
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveDeepSeekStableCapabilityV2 } from './deepSeekStableGenerationAuthorityV2Service'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -134,7 +137,7 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
                 createdAtMs,
               })
               return withSynchronousGenerationCommandFactsAuthorityV2(
-                context, configRepo, attachmentRepo, pending.conversationId.value, [], undefined,
+                context, configRepo, attachmentRepo, pending.conversationId.value, projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined,
                 (commandFacts) => {
                   const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
                   return withVerifiedDeepSeekStableGenerationAuthoritiesV2({
@@ -162,7 +165,7 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
                     })
                   },
                   })
-                },
+                }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveDeepSeekStableCapabilityV2(modelEvidence), request.expectedCredentialRevision) },
               )
             },
           ),

@@ -18,6 +18,7 @@ import {
   type CloudRulesActionErrorKind,
   type CloudRulesDocumentDiff,
 } from '@/shared/model-facts/cloudRulesPresentation'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import CapabilityRulesUserPanel from './CapabilityRulesUserPanel.vue'
 
 type Selector = Readonly<{ kind: 'exact'; nativeModelIds: readonly string[] } |
@@ -40,7 +41,10 @@ type Rule = Readonly<{
   providerAuthorityId?: string
   endpointProfileId?: string
   selector?: Selector
-  assertion: Readonly<{ path: string; value?: unknown }>
+  assertion?: Readonly<{ path: string; value?: unknown }>
+  category?: string
+  effect?: Readonly<{ kind: string; path?: string; value?: unknown; code?: string; operationId?: string;
+    mappings?: readonly Readonly<{ from: string; to: string }>[] }>
   evidence?: Evidence | null
 }>
 type Pack = Readonly<{ packId: string; displayName: string; priority: number; mode: 'override' | 'default_only' | 'no_control'; target: 'enabled' | 'disabled'; rules: readonly Rule[] }>
@@ -236,6 +240,22 @@ function configuredText(configured: Rule['configured']): string {
   return t(`settings.modelsCapabilities.cloud.configuredValue.${configured}`)
 }
 
+function ruleEffectPath(rule: Rule): string {
+  return rule.assertion?.path ?? rule.effect?.path ?? rule.category ?? ''
+}
+
+function ruleEffectText(rule: Rule): string {
+  if (rule.assertion) return modelFactValueText(rule.assertion.value) ?? ''
+  const effect = rule.effect
+  if (!effect) return ''
+  if (effect.kind === 'fact_assertion' || effect.kind === 'fact_default') {
+    return modelFactValueText(effect.value) ?? ''
+  }
+  if (effect.kind === 'enum_mapping') return JSON.stringify(effect.mappings ?? [])
+  if (effect.kind === 'validation') return effect.code ?? effect.kind
+  return effect.operationId ?? effect.kind
+}
+
 function exactModelIds(rule: Rule): readonly string[] {
   return rule.selector?.kind === 'exact' ? rule.selector.nativeModelIds : []
 }
@@ -405,208 +425,225 @@ watch(() => props.active, (active, previous) => {
 </script>
 
 <template>
-  <section class="space-y-3" :data-testid="`capability-rules-${props.ownership}-overview`">
+  <section class="flex min-w-0 flex-col gap-4" :data-testid="`capability-rules-${props.ownership}-overview`">
     <CapabilityRulesUserPanel v-if="props.ownership === 'user'" />
     <template v-else>
-    <header class="flex flex-wrap items-start justify-between gap-2">
-      <div>
+    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div class="min-w-0 flex-1">
         <h3 class="text-sm font-semibold text-gray-900">
           {{ props.ownership === 'cloud' ? t('settings.modelsCapabilities.cloudTitle') : t('settings.modelsCapabilities.userTitle') }}
         </h3>
-        <p class="mt-1 text-xs text-gray-500">
+        <p class="sv-meta mt-1">
           {{ props.ownership === 'cloud' ? t('settings.modelsCapabilities.cloudDescription') : t('settings.modelsCapabilities.userDescription') }}
         </p>
       </div>
-      <div class="flex gap-2">
-        <button type="button" class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50" :disabled="loading" @click="load">{{ t('common.refresh') }}</button>
-        <button v-if="props.ownership === 'cloud'" type="button" class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50" :disabled="loading" @click="checkCloud">{{ t('settings.modelsCapabilities.checkUpdates') }}</button>
+      <div class="flex shrink-0 gap-2">
+        <button type="button" class="sv-btn sv-btn-sm" :disabled="loading" @click="load">{{ t('common.refresh') }}</button>
+        <button v-if="props.ownership === 'cloud'" type="button" class="sv-btn sv-btn-sm" :disabled="loading" @click="checkCloud">{{ t('settings.modelsCapabilities.checkUpdates') }}</button>
       </div>
     </header>
-    <div v-if="error" class="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800" role="alert" data-testid="cloud-rules-error">
-      <p>{{ t(cloudRulesActionErrorKey(error)) }}</p>
-      <details v-if="errorDetail" class="mt-1 text-[10px] text-red-700"><summary>{{ t('settings.modelsCapabilities.cloud.diagnostics') }}</summary><span class="break-all font-mono">{{ errorDetail }}</span></details>
+    <div v-if="error" class="sv-notice sv-notice-danger" role="alert" data-testid="cloud-rules-error">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <div class="min-w-0 flex-1">
+        <p>{{ t(cloudRulesActionErrorKey(error)) }}</p>
+        <details v-if="errorDetail" class="mt-1"><summary class="cursor-pointer">{{ t('settings.modelsCapabilities.cloud.diagnostics') }}</summary><span class="break-all font-mono">{{ errorDetail }}</span></details>
+      </div>
     </div>
-    <div v-if="props.ownership === 'cloud' && cloud?.application.appliedIntegrity === 'invalid'" class="rounded border border-red-300 bg-red-50 p-2 text-xs text-red-900" role="alert" data-testid="cloud-rules-integrity-invalid">
-      <p class="font-semibold">{{ t('settings.modelsCapabilities.cloud.integrityInvalidTitle') }}</p>
-      <p class="mt-1">{{ t('settings.modelsCapabilities.cloud.integrityInvalidBody') }} {{ t(integrityRecoveryKey()) }}</p>
+    <div v-if="props.ownership === 'cloud' && cloud?.application.appliedIntegrity === 'invalid'" class="sv-notice sv-notice-danger" role="alert" data-testid="cloud-rules-integrity-invalid">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <div class="min-w-0 flex-1">
+        <p class="font-medium">{{ t('settings.modelsCapabilities.cloud.integrityInvalidTitle') }}</p>
+        <p class="mt-1">{{ t('settings.modelsCapabilities.cloud.integrityInvalidBody') }} {{ t(integrityRecoveryKey()) }}</p>
+      </div>
     </div>
-    <div v-if="props.ownership === 'cloud' && cloud" class="space-y-1 rounded border border-gray-200 bg-white p-2 text-xs text-gray-700" data-testid="cloud-rules-freshness">
-      <p :data-state="freshness()" class="font-medium" :class="freshness() === 'check_failed' ? 'text-red-800' : freshness() === 'up_to_date' ? 'text-green-800' : 'text-gray-900'">{{ t(cloudRulesFreshnessKey(freshness())) }}</p>
-      <p v-if="freshness() === 'check_failed'" class="text-red-800" data-testid="cloud-rules-check-failure">
-        {{ t(cloudRulesCheckFailureKey(failureCode())) }}
-        <span class="ml-1 text-[10px] text-red-600">{{ t('settings.modelsCapabilities.cloud.diagnosticCode') }}: <span class="font-mono">{{ failureCode() }}</span></span>
+    <div v-if="props.ownership === 'cloud' && cloud" class="flex flex-col gap-1 text-xs text-gray-700" data-testid="cloud-rules-freshness">
+      <p :data-state="freshness()" class="flex items-center gap-1.5 text-[13px] font-medium" :class="freshness() === 'check_failed' ? 'text-[var(--sv-danger)]' : 'text-gray-900'">
+        <UiIcon v-if="freshness() === 'check_failed'" name="alert" :size="14" class="shrink-0" />
+        <UiIcon v-else-if="freshness() === 'up_to_date'" name="check" :size="14" class="shrink-0" />
+        <span class="min-w-0">{{ t(cloudRulesFreshnessKey(freshness())) }}</span>
       </p>
-      <p class="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
+      <p v-if="freshness() === 'check_failed'" class="text-[var(--sv-danger)]" data-testid="cloud-rules-check-failure">
+        {{ t(cloudRulesCheckFailureKey(failureCode())) }}
+        <span class="ml-1">{{ t('settings.modelsCapabilities.cloud.diagnosticCode') }}: <span class="break-all font-mono">{{ failureCode() }}</span></span>
+      </p>
+      <p class="sv-meta flex flex-wrap gap-x-3 gap-y-0.5">
         <span v-if="cloud.application.applied">{{ t('settings.modelsCapabilities.appliedRelease') }}: {{ cloud.application.applied.releaseVersion }}<span v-if="cloud.application.applied.contentRevision" class="font-mono" :title="cloud.application.applied.contentRevision"> ({{ cloudRulesShortRevision(cloud.application.applied.contentRevision) }})</span><span v-if="typeof cloud.application.applied.appliedAtMs === 'number'"> · {{ t('settings.modelsCapabilities.cloud.appliedAt') }} {{ timeText(cloud.application.applied.appliedAtMs) }}</span></span>
         <span>{{ t('settings.modelsCapabilities.cloud.lastSuccessfulCheck') }}: {{ timeText(cloud.distribution.lastSuccessfulCheckAtMs) }}</span>
         <span>{{ t('settings.modelsCapabilities.cloud.latestRelease') }}: {{ cloud.distribution.latestObserved?.releaseVersion ?? t('settings.modelsCapabilities.cloud.noneObserved') }}</span>
         <span v-if="cloud.distribution.candidate">{{ t('settings.modelsCapabilities.candidateAvailable') }}: {{ cloud.distribution.candidate.releaseVersion }}</span>
       </p>
     </div>
-    <div v-if="props.ownership === 'cloud' && cloud?.application.policy" class="rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
-      <div class="flex flex-wrap items-center gap-2">
-        <span>{{ t('settings.modelsCapabilities.historyLimit') }}</span>
-        <select :value="cloud.application.policy.historyLimit" class="rounded border border-gray-300 bg-white px-1 py-0.5" :disabled="loading" @change="setCloudHistoryLimit(($event.target as HTMLSelectElement).value)">
-          <option v-for="limit in 21" :key="limit - 1" :value="limit - 1">{{ limit - 1 }}</option>
-        </select>
-        <span v-if="cloud.application.policy.pin"> · {{ t('settings.modelsCapabilities.updatesPinned') }}: {{ cloud.application.policy.pin.releaseVersion }}<span v-if="cloud.distribution.latestObserved && cloud.distribution.latestObserved.releaseVersion !== cloud.application.policy.pin.releaseVersion"> · {{ tf('settings.modelsCapabilities.cloud.latestWhilePinned', { version: cloud.distribution.latestObserved.releaseVersion }) }}</span></span>
-        <button v-if="cloud.application.policy.pin" type="button" class="rounded border border-gray-300 bg-white px-2 py-0.5" :disabled="loading" @click="resumeCloudUpdates">{{ t('settings.modelsCapabilities.resumeUpdates') }}</button>
-      </div>
+    <div v-if="props.ownership === 'cloud' && cloud?.application.policy" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700">
+      <span>{{ t('settings.modelsCapabilities.historyLimit') }}</span>
+      <select :value="cloud.application.policy.historyLimit" class="sv-select sv-select-sm w-16" :disabled="loading" @change="setCloudHistoryLimit(($event.target as HTMLSelectElement).value)">
+        <option v-for="limit in 21" :key="limit - 1" :value="limit - 1">{{ limit - 1 }}</option>
+      </select>
+      <span v-if="cloud.application.policy.pin" class="sv-meta"> · {{ t('settings.modelsCapabilities.updatesPinned') }}: {{ cloud.application.policy.pin.releaseVersion }}<span v-if="cloud.distribution.latestObserved && cloud.distribution.latestObserved.releaseVersion !== cloud.application.policy.pin.releaseVersion"> · {{ tf('settings.modelsCapabilities.cloud.latestWhilePinned', { version: cloud.distribution.latestObserved.releaseVersion }) }}</span></span>
+      <button v-if="cloud.application.policy.pin" type="button" class="sv-btn sv-btn-sm" :disabled="loading" @click="resumeCloudUpdates">{{ t('settings.modelsCapabilities.resumeUpdates') }}</button>
     </div>
-    <div v-if="props.ownership === 'cloud' && cloud?.distribution.candidate" class="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-      <div>{{ t('settings.modelsCapabilities.candidateRelease') }}: {{ cloud.distribution.candidate.releaseVersion }}</div>
-      <div v-if="cloud.distribution.candidate.releaseMetadata?.publishedAt" class="text-[11px] text-amber-800">{{ t('settings.modelsCapabilities.cloud.publishedAt') }}: {{ new Date(cloud.distribution.candidate.releaseMetadata.publishedAt).toLocaleString() }}</div>
-      <div class="mt-2 flex flex-wrap gap-2">
-        <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 hover:bg-amber-100" :disabled="loading || applying" @click="viewChanges">{{ t('settings.modelsCapabilities.viewChanges') }}</button>
-        <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 hover:bg-amber-100" :disabled="loading || applying" @click="applyConfirming = true">{{ t(applyButtonKey()) }}</button>
+    <div v-if="props.ownership === 'cloud' && cloud?.distribution.candidate" class="sv-divider-t flex flex-col gap-3 pt-4 text-xs text-gray-700">
+      <div class="flex flex-col gap-0.5">
+        <div class="text-[13px] font-medium text-gray-900">{{ t('settings.modelsCapabilities.candidateRelease') }}: {{ cloud.distribution.candidate.releaseVersion }}</div>
+        <div v-if="cloud.distribution.candidate.releaseMetadata?.publishedAt" class="sv-meta">{{ t('settings.modelsCapabilities.cloud.publishedAt') }}: {{ new Date(cloud.distribution.candidate.releaseMetadata.publishedAt).toLocaleString() }}</div>
       </div>
-      <section v-if="candidateDiff" class="mt-2 space-y-2 rounded bg-white p-2 text-[11px] text-gray-700" data-testid="cloud-candidate-diff">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="sv-btn sv-btn-sm" :disabled="loading || applying" @click="viewChanges">{{ t('settings.modelsCapabilities.viewChanges') }}</button>
+        <button type="button" class="sv-btn sv-btn-sm sv-btn-primary" :disabled="loading || applying" @click="applyConfirming = true">{{ t(applyButtonKey()) }}</button>
+      </div>
+      <section v-if="candidateDiff" class="flex flex-col gap-3 border-l border-[var(--sv-line-strong)] pl-3 text-xs text-gray-700" data-testid="cloud-candidate-diff">
         <p v-if="candidateDiff.firstInstall">{{ t('settings.modelsCapabilities.cloud.diffFirstInstall') }}</p>
         <p v-else>{{ tf('settings.modelsCapabilities.cloud.diffBetween', { current: candidateDiff.currentReleaseVersion ?? '', candidate: candidateDiff.candidateReleaseVersion ?? '' }) }}</p>
-        <p data-testid="cloud-candidate-diff-summary">{{ tf('settings.modelsCapabilities.cloud.diffSummary', {
+        <p class="sv-meta" data-testid="cloud-candidate-diff-summary">{{ tf('settings.modelsCapabilities.cloud.diffSummary', {
           packsAdded: candidateDiff.packs.added.length, packsRemoved: candidateDiff.packs.removed.length, packsChanged: candidateDiff.packs.changed.length,
           rulesAdded: candidateDiff.rules.added.length, rulesRemoved: candidateDiff.rules.removed.length, rulesChanged: candidateDiff.rules.changed.length,
           rulesUnchanged: candidateDiff.unchangedRuleCount }) }}</p>
         <p v-if="candidateDiff.packs.added.length + candidateDiff.packs.removed.length + candidateDiff.packs.changed.length + candidateDiff.rules.added.length + candidateDiff.rules.removed.length + candidateDiff.rules.changed.length === 0">{{ t('settings.modelsCapabilities.cloud.diffNoChanges') }}</p>
         <div v-if="candidateDiff.packs.added.length || candidateDiff.packs.removed.length || candidateDiff.packs.changed.length" data-testid="cloud-candidate-diff-packs">
-          <div class="font-medium">{{ t('settings.modelsCapabilities.packs') }}</div>
-          <ul class="space-y-0.5">
+          <div class="sv-label mb-1">{{ t('settings.modelsCapabilities.packs') }}</div>
+          <ul class="flex flex-col gap-0.5">
             <li v-for="pack in candidateDiff.packs.added" :key="`added-${pack.packId}`">+ {{ pack.displayName }} ({{ pack.ruleCount }} {{ t('settings.modelsCapabilities.rules') }})</li>
             <li v-for="pack in candidateDiff.packs.removed" :key="`removed-${pack.packId}`">− {{ pack.displayName }} ({{ pack.ruleCount }} {{ t('settings.modelsCapabilities.rules') }})</li>
             <li v-for="pack in candidateDiff.packs.changed" :key="`changed-${pack.packId}`">~ {{ pack.displayName }}: <span v-for="change in pack.fields" :key="change.field">{{ diffFieldText(change.field) }} {{ change.before }} → {{ change.after }}; </span></li>
           </ul>
         </div>
         <div v-if="candidateDiff.rules.changed.length" data-testid="cloud-candidate-diff-rules-changed">
-          <div class="font-medium">{{ t('settings.modelsCapabilities.cloud.diffRulesChanged') }}</div>
-          <ul class="space-y-1">
+          <div class="sv-label mb-1">{{ t('settings.modelsCapabilities.cloud.diffRulesChanged') }}</div>
+          <ul class="flex flex-col gap-1.5">
             <li v-for="rule in candidateDiff.rules.changed.slice(0, DIFF_LIST_LIMIT)" :key="rule.ruleId" class="break-all">
               <span class="font-medium">{{ rule.title }}</span>
               <ul class="ml-3">
                 <li v-for="change in rule.changes" :key="change.field">{{ diffFieldText(change.field) }}: <span class="font-mono">{{ clip(change.before) || '∅' }}</span> → <span class="font-mono">{{ clip(change.after) || '∅' }}</span></li>
               </ul>
             </li>
-            <li v-if="remaining(candidateDiff.rules.changed.length)" class="text-gray-500">{{ tf('settings.modelsCapabilities.cloud.diffMore', { count: remaining(candidateDiff.rules.changed.length) }) }}</li>
+            <li v-if="remaining(candidateDiff.rules.changed.length)" class="sv-meta">{{ tf('settings.modelsCapabilities.cloud.diffMore', { count: remaining(candidateDiff.rules.changed.length) }) }}</li>
           </ul>
         </div>
         <div v-for="group in ([{ id: 'added', sign: '+', rules: candidateDiff.rules.added }, { id: 'removed', sign: '−', rules: candidateDiff.rules.removed }] as const)" v-show="group.rules.length" :key="group.id" :data-testid="`cloud-candidate-diff-rules-${group.id}`">
-          <div class="font-medium">{{ t(`settings.modelsCapabilities.cloud.diffRules.${group.id}`) }}</div>
-          <ul class="space-y-0.5">
+          <div class="sv-label mb-1">{{ t(`settings.modelsCapabilities.cloud.diffRules.${group.id}`) }}</div>
+          <ul class="flex flex-col gap-0.5">
             <li v-for="rule in group.rules.slice(0, DIFF_LIST_LIMIT)" :key="rule.ruleId" class="break-all">{{ group.sign }} <span class="font-medium">{{ rule.title }}</span> · {{ rule.path }} · {{ rule.selector }} · <span class="font-mono">{{ clip(rule.value) }}</span></li>
-            <li v-if="remaining(group.rules.length)" class="text-gray-500">{{ tf('settings.modelsCapabilities.cloud.diffMore', { count: remaining(group.rules.length) }) }}</li>
+            <li v-if="remaining(group.rules.length)" class="sv-meta">{{ tf('settings.modelsCapabilities.cloud.diffMore', { count: remaining(group.rules.length) }) }}</li>
           </ul>
         </div>
-        <button v-if="rawCandidate" type="button" class="rounded border border-gray-300 px-1.5 py-0.5 text-[10px]" @click="showRawCandidate = !showRawCandidate">{{ t('settings.modelsCapabilities.cloud.rawJson') }}</button>
-        <pre v-if="showRawCandidate && rawCandidate" class="max-h-48 overflow-auto rounded bg-gray-50 p-2 text-[10px] text-gray-700" data-testid="cloud-candidate-raw">{{ rawCandidate.length > 20000 ? `${rawCandidate.slice(0, 20000)}…` : rawCandidate }}</pre>
+        <div v-if="rawCandidate" class="flex">
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost" :aria-expanded="showRawCandidate" @click="showRawCandidate = !showRawCandidate">{{ t('settings.modelsCapabilities.cloud.rawJson') }}</button>
+        </div>
+        <pre v-if="showRawCandidate && rawCandidate" class="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--sv-sunken)] p-2 text-xs text-gray-700" data-testid="cloud-candidate-raw">{{ rawCandidate.length > 20000 ? `${rawCandidate.slice(0, 20000)}…` : rawCandidate }}</pre>
       </section>
-      <div v-if="applyConfirming" class="mt-2 rounded border border-amber-300 bg-white p-2">
-        <p>{{ t(applyConfirmationKey()) }}</p>
-        <div class="mt-2 flex gap-2">
-          <button type="button" class="rounded bg-amber-600 px-2 py-1 text-white hover:bg-amber-700" :disabled="applying" @click="applyCandidate">{{ applying ? t('common.loading') : t('common.confirm') }}</button>
-          <button type="button" class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50" :disabled="applying" @click="applyConfirming = false">{{ t('common.cancel') }}</button>
+      <div v-if="applyConfirming" class="sv-notice sv-notice-warning flex-wrap items-center">
+        <UiIcon name="alert" :size="14" class="shrink-0" />
+        <p class="min-w-0 flex-1">{{ t(applyConfirmationKey()) }}</p>
+        <div class="flex gap-2">
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-primary min-w-16" :disabled="applying" @click="applyCandidate">{{ applying ? t('common.loading') : t('common.confirm') }}</button>
+          <button type="button" class="sv-btn sv-btn-sm" :disabled="applying" @click="applyConfirming = false">{{ t('common.cancel') }}</button>
         </div>
       </div>
     </div>
-    <div v-if="props.ownership === 'cloud' && cloud?.history?.length" class="rounded border border-gray-200 bg-white p-3">
-      <h4 class="text-xs font-semibold text-gray-800">{{ t('settings.modelsCapabilities.appliedHistory') }}</h4>
-      <ul class="mt-2 space-y-1 text-[11px] text-gray-600">
-        <li v-for="entry in cloud.history" :key="entry.appliedRecordRevision" class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-1">
-          <span>{{ entry.releaseVersion }} · <span class="font-mono" :title="entry.contentRevision">{{ cloudRulesShortRevision(entry.contentRevision) }}</span></span>
-          <span v-if="rollbackConfirming === entry.appliedRecordRevision" class="flex flex-wrap items-center gap-1">
-            <label class="flex items-center gap-1"><input v-model="rollbackPin" type="checkbox" />{{ t('settings.modelsCapabilities.pinAfterRollback') }}</label>
-            <button type="button" class="rounded bg-amber-600 px-1.5 py-0.5 text-white" :disabled="rollingBack" @click="rollbackCloud">{{ t('common.confirm') }}</button>
-            <button type="button" class="rounded border border-gray-300 px-1.5 py-0.5" :disabled="rollingBack" @click="rollbackConfirming = null">{{ t('common.cancel') }}</button>
+    <div v-if="props.ownership === 'cloud' && cloud?.history?.length" class="sv-divider-t pt-4">
+      <h4 class="sv-label">{{ t('settings.modelsCapabilities.appliedHistory') }}</h4>
+      <ul class="mt-2 text-xs text-gray-600">
+        <li v-for="entry in cloud.history" :key="entry.appliedRecordRevision" class="sv-divider-t flex min-h-9 flex-wrap items-center justify-between gap-2 py-1 first:border-t-0">
+          <span class="min-w-0 break-all">{{ entry.releaseVersion }} · <span class="font-mono" :title="entry.contentRevision">{{ cloudRulesShortRevision(entry.contentRevision) }}</span></span>
+          <span v-if="rollbackConfirming === entry.appliedRecordRevision" class="flex flex-wrap items-center gap-2">
+            <label class="flex items-center gap-1.5"><input v-model="rollbackPin" type="checkbox" />{{ t('settings.modelsCapabilities.pinAfterRollback') }}</label>
+            <button type="button" class="sv-btn sv-btn-sm sv-btn-primary" :disabled="rollingBack" @click="rollbackCloud">{{ t('common.confirm') }}</button>
+            <button type="button" class="sv-btn sv-btn-sm" :disabled="rollingBack" @click="rollbackConfirming = null">{{ t('common.cancel') }}</button>
           </span>
-          <button v-else type="button" class="rounded border border-gray-300 px-1.5 py-0.5" :disabled="loading || rollingBack" @click="rollbackConfirming = entry.appliedRecordRevision">{{ t('settings.modelsCapabilities.rollback') }}</button>
+          <button v-else type="button" class="sv-btn sv-btn-sm" :disabled="loading || rollingBack" @click="rollbackConfirming = entry.appliedRecordRevision">{{ t('settings.modelsCapabilities.rollback') }}</button>
         </li>
       </ul>
     </div>
-    <nav v-if="selectedPack()" class="flex items-center gap-1 text-xs text-gray-500" aria-label="Rule navigation">
-      <button type="button" class="text-blue-700 hover:underline" @click="backToPacks">{{ t('settings.modelsCapabilities.packs') }}</button>
-      <span aria-hidden="true">/</span>
-      <button v-if="selectedRule()" type="button" class="text-blue-700 hover:underline" @click="backToRules">{{ selectedPack()?.displayName }}</button>
-      <template v-if="selectedRule()"><span aria-hidden="true">/</span><span>{{ cloudRuleTitle(selectedRule()!) }}</span></template>
-      <span v-else>{{ selectedPack()?.displayName }}</span>
+    <nav v-if="selectedPack()" class="sv-divider-t flex flex-wrap items-center gap-1 pt-4 text-xs text-gray-500" aria-label="Rule navigation">
+      <button type="button" class="rounded px-1 text-gray-700 hover:bg-[var(--sv-hover)] hover:text-gray-900" @click="backToPacks">{{ t('settings.modelsCapabilities.packs') }}</button>
+      <UiIcon name="chevronRight" :size="12" />
+      <button v-if="selectedRule()" type="button" class="rounded px-1 text-gray-700 hover:bg-[var(--sv-hover)] hover:text-gray-900" @click="backToRules">{{ selectedPack()?.displayName }}</button>
+      <template v-if="selectedRule()"><UiIcon name="chevronRight" :size="12" /><span class="px-1 text-gray-900">{{ cloudRuleTitle(selectedRule()!) }}</span></template>
+      <span v-else class="px-1 text-gray-900">{{ selectedPack()?.displayName }}</span>
     </nav>
 
     <div v-if="!selectedPack()">
-      <ul class="space-y-2">
-        <li v-for="pack in packs()" :key="pack.packId">
-          <button type="button" class="w-full rounded border border-gray-200 bg-white p-3 text-left hover:bg-gray-50" @click="showPack(pack.packId)">
-            <div class="flex items-center justify-between gap-2 text-xs">
-              <span class="font-medium text-gray-900">{{ pack.displayName }}</span>
-              <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
-            </div>
-            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
-              <span>{{ packModeText(pack.mode) }}</span><span>{{ packTargetText(pack.target) }}</span><span>{{ pack.rules.length }} {{ t('settings.modelsCapabilities.rules') }}</span>
-            </div>
+      <ul class="flex flex-col">
+        <li v-for="pack in packs()" :key="pack.packId" class="sv-divider-t first:border-t-0">
+          <button type="button" class="sv-row flex w-full items-center gap-3 px-2 py-2.5 text-left" @click="showPack(pack.packId)">
+            <span class="min-w-0 flex-1">
+              <span class="flex items-center justify-between gap-2 text-[13px]">
+                <span class="min-w-0 break-words font-medium text-gray-900">{{ pack.displayName }}</span>
+                <span class="sv-meta shrink-0">{{ t('settings.modelsCapabilities.priority') }}: {{ pack.priority }}</span>
+              </span>
+              <span class="sv-meta mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                <span>{{ packModeText(pack.mode) }}</span><span>{{ packTargetText(pack.target) }}</span><span>{{ pack.rules.length }} {{ t('settings.modelsCapabilities.rules') }}</span>
+              </span>
+            </span>
+            <UiIcon name="chevronRight" :size="14" class="shrink-0 text-gray-400" />
           </button>
         </li>
-        <li v-if="!loading && packs().length === 0 && cloud?.application.appliedIntegrity !== 'invalid'" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500" data-testid="cloud-rules-empty">
+        <li v-if="!loading && packs().length === 0 && cloud?.application.appliedIntegrity !== 'invalid'" class="sv-meta py-4" data-testid="cloud-rules-empty">
           {{ t(cloud?.application.appliedIntegrity === 'valid' ? 'settings.modelsCapabilities.noPacks' : emptyCloudKey()) }}
         </li>
       </ul>
     </div>
 
     <template v-else-if="!selectedRule()">
-      <section class="rounded border border-gray-200 bg-white p-3">
-        <div class="flex items-center justify-between gap-2 text-xs">
-          <span class="font-medium text-gray-900">{{ selectedPack()!.displayName }}</span>
-          <span class="text-gray-500">{{ t('settings.modelsCapabilities.priority') }}: {{ selectedPack()!.priority }}</span>
+      <section class="flex flex-col gap-1">
+        <div class="flex items-center justify-between gap-2 text-[13px]">
+          <span class="min-w-0 break-words font-medium text-gray-900">{{ selectedPack()!.displayName }}</span>
+          <span class="sv-meta shrink-0">{{ t('settings.modelsCapabilities.priority') }}: {{ selectedPack()!.priority }}</span>
         </div>
-        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+        <div class="sv-meta flex flex-wrap gap-x-3 gap-y-0.5">
           <span>{{ t('settings.modelsCapabilities.packModeLabel') }}: {{ packModeText(selectedPack()!.mode) }}</span>
           <span>{{ t('settings.modelsCapabilities.packTargetLabel') }}: {{ packTargetText(selectedPack()!.target) }}</span>
           <span>{{ t('settings.modelsCapabilities.rewriteCount') }}: {{ rewriteCount(selectedPack()!) }}</span>
         </div>
       </section>
-      <ul class="space-y-2">
-        <li v-for="rule in selectedPack()!.rules" :key="rule.ruleId">
-          <button type="button" class="w-full rounded border border-gray-200 bg-white p-3 text-left text-[11px] text-gray-700 hover:bg-gray-50" @click="showRule(rule.ruleId)">
-            <span class="font-medium text-gray-900">{{ cloudRuleTitle(rule) }}</span> · {{ rule.assertion.path }}<span v-if="cloudRuleSelectorHint(rule.selector)"> · <span class="font-mono">{{ cloudRuleSelectorHint(rule.selector) }}</span></span> · {{ t('settings.modelsCapabilities.configured') }}: {{ configuredText(rule.configured) }}
-            <span v-if="cloudRuleOverride(rule.ruleId)" class="ml-1 rounded bg-blue-50 px-1 text-[10px] text-blue-800">{{ t('settings.modelsCapabilities.cloud.overriddenBadge') }}</span>
+      <ul class="flex flex-col">
+        <li v-for="rule in selectedPack()!.rules" :key="rule.ruleId" class="sv-divider-t first:border-t-0">
+          <button type="button" class="sv-row flex w-full items-center gap-3 px-2 py-2.5 text-left text-xs text-gray-500" @click="showRule(rule.ruleId)">
+            <span class="min-w-0 flex-1 break-words"><span class="text-[13px] font-medium text-gray-900">{{ cloudRuleTitle(rule) }}</span> · {{ ruleEffectPath(rule) }}<span v-if="cloudRuleSelectorHint(rule.selector)"> · <span class="break-all font-mono">{{ cloudRuleSelectorHint(rule.selector) }}</span></span> · {{ t('settings.modelsCapabilities.configured') }}: {{ configuredText(rule.configured) }}
+              <span v-if="cloudRuleOverride(rule.ruleId)" class="sv-chip ml-1">{{ t('settings.modelsCapabilities.cloud.overriddenBadge') }}</span></span>
+            <UiIcon name="chevronRight" :size="14" class="shrink-0 text-gray-400" />
           </button>
         </li>
-        <li v-if="selectedPack()!.rules.length === 0" class="rounded border border-dashed border-gray-200 px-3 py-4 text-xs text-gray-500">{{ t('settings.modelsCapabilities.noRules') }}</li>
+        <li v-if="selectedPack()!.rules.length === 0" class="sv-meta py-4">{{ t('settings.modelsCapabilities.noRules') }}</li>
       </ul>
     </template>
 
-    <section v-else class="rounded border border-gray-200 bg-white p-3" data-testid="cloud-rule-detail">
-      <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <h4 class="font-semibold text-gray-900">{{ cloudRuleTitle(selectedRule()!) }}</h4>
-        <span class="font-mono text-[10px] text-gray-500">{{ selectedRule()!.ruleId }}</span>
+    <section v-else class="flex flex-col gap-3" data-testid="cloud-rule-detail">
+      <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h4 class="min-w-0 break-words text-sm font-semibold text-gray-900">{{ cloudRuleTitle(selectedRule()!) }}</h4>
+        <span class="sv-meta break-all font-mono">{{ selectedRule()!.ruleId }}</span>
       </div>
-      <p v-if="selectedRule()!.description" class="mt-1 text-[11px] text-gray-600">{{ selectedRule()!.description }}</p>
-      <dl class="mt-3 grid gap-1 text-[11px] text-gray-700">
-        <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.providerProfile') }}: </dt><dd class="inline font-mono">{{ selectedRule()!.providerAuthorityId ?? '' }} / {{ selectedRule()!.endpointProfileId ?? '' }}</dd></div>
+      <p v-if="selectedRule()!.description" class="text-xs text-gray-600">{{ selectedRule()!.description }}</p>
+      <dl class="grid gap-1.5 text-xs text-gray-700">
+        <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.providerProfile') }}: </dt><dd class="inline break-all font-mono">{{ selectedRule()!.providerAuthorityId ?? '' }} / {{ selectedRule()!.endpointProfileId ?? '' }}</dd></div>
         <div v-if="selectedRule()!.selector"><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.selector') }}: </dt>
           <dd class="inline">{{ t(`settings.modelsCapabilities.cloud.selectorKind.${selectedRule()!.selector!.kind}`) }}</dd>
-          <ul v-if="selectedRule()!.selector!.kind === 'exact'" class="ml-3 list-disc font-mono" data-testid="cloud-rule-model-ids">
+          <ul v-if="selectedRule()!.selector!.kind === 'exact'" class="ml-3 list-disc break-all font-mono" data-testid="cloud-rule-model-ids">
             <li v-for="modelId in exactModelIds(selectedRule()!)" :key="modelId">{{ modelId }}</li>
           </ul>
           <div v-else class="ml-3" data-testid="cloud-rule-regex">
-            <div class="font-mono">{{ cloudRuleSelectorSummary(selectedRule()!.selector) }}</div>
-            <div v-if="regexExamples(selectedRule()!, 'positive').length">{{ t('settings.modelsCapabilities.cloud.regexMatches') }}: <span class="font-mono">{{ regexExamples(selectedRule()!, 'positive').join(', ') }}</span></div>
-            <div v-if="regexExamples(selectedRule()!, 'negative').length">{{ t('settings.modelsCapabilities.cloud.regexExcludes') }}: <span class="font-mono">{{ regexExamples(selectedRule()!, 'negative').join(', ') }}</span></div>
+            <div class="break-all font-mono">{{ cloudRuleSelectorSummary(selectedRule()!.selector) }}</div>
+            <div v-if="regexExamples(selectedRule()!, 'positive').length">{{ t('settings.modelsCapabilities.cloud.regexMatches') }}: <span class="break-all font-mono">{{ regexExamples(selectedRule()!, 'positive').join(', ') }}</span></div>
+            <div v-if="regexExamples(selectedRule()!, 'negative').length">{{ t('settings.modelsCapabilities.cloud.regexExcludes') }}: <span class="break-all font-mono">{{ regexExamples(selectedRule()!, 'negative').join(', ') }}</span></div>
           </div>
         </div>
-        <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.assertionPath') }}: </dt><dd class="inline font-mono">{{ selectedRule()!.assertion.path }}</dd></div>
-        <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.assertedValue') }}: </dt><dd class="inline break-all font-mono" data-testid="cloud-rule-asserted-value">{{ modelFactValueText(selectedRule()!.assertion.value) ?? '' }}</dd></div>
+        <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.assertionPath') }}: </dt><dd class="inline break-all font-mono">{{ ruleEffectPath(selectedRule()!) }}</dd></div>
+        <div><dt class="inline text-gray-500">{{ selectedRule()!.assertion ? t('settings.modelsCapabilities.cloud.assertedValue') : t('settings.modelsCapabilities.cloud.effect') }}: </dt><dd class="inline break-all font-mono" data-testid="cloud-rule-asserted-value">{{ ruleEffectText(selectedRule()!) }}</dd></div>
         <div data-testid="cloud-rule-baseline"><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.remoteBaseline') }}: </dt><dd class="inline">{{ configuredText(remoteBaseline(selectedRule()!)) }}</dd>
           · <dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.localOverride') }}: </dt><dd class="inline">{{ localOverrideText(selectedRule()!.ruleId) }}</dd></div>
         <div><dt class="inline text-gray-500">{{ t('settings.modelsCapabilities.cloud.effectiveActivation') }}: </dt><dd class="inline">{{ activationText(selectedPack()!, selectedRule()!) }} ({{ activationSourceText(selectedPack()!, selectedRule()!) }})</dd></div>
         <div v-if="selectedRule()!.evidence" data-testid="cloud-rule-evidence"><dt class="text-gray-500">{{ t('settings.modelsCapabilities.cloud.evidence') }}</dt>
-          <dd class="ml-3 space-y-0.5">
-            <div v-if="selectedRule()!.evidence!.evidenceKind">{{ t('settings.modelsCapabilities.cloud.evidenceKind') }}: {{ selectedRule()!.evidence!.evidenceKind }}<span v-if="selectedRule()!.evidence!.evidenceSourceRef" class="font-mono"> · {{ selectedRule()!.evidence!.evidenceSourceRef }}</span></div>
-            <div v-if="selectedRule()!.evidence!.identityEvidenceKind">{{ t('settings.modelsCapabilities.cloud.identityEvidence') }}: {{ selectedRule()!.evidence!.identityEvidenceKind }}<span v-if="selectedRule()!.evidence!.identityEvidenceSourceRef" class="font-mono"> · {{ selectedRule()!.evidence!.identityEvidenceSourceRef }}</span></div>
+          <dd class="ml-3 flex flex-col gap-0.5">
+            <div v-if="selectedRule()!.evidence!.evidenceKind">{{ t('settings.modelsCapabilities.cloud.evidenceKind') }}: {{ selectedRule()!.evidence!.evidenceKind }}<span v-if="selectedRule()!.evidence!.evidenceSourceRef" class="break-all font-mono"> · {{ selectedRule()!.evidence!.evidenceSourceRef }}</span></div>
+            <div v-if="selectedRule()!.evidence!.identityEvidenceKind">{{ t('settings.modelsCapabilities.cloud.identityEvidence') }}: {{ selectedRule()!.evidence!.identityEvidenceKind }}<span v-if="selectedRule()!.evidence!.identityEvidenceSourceRef" class="break-all font-mono"> · {{ selectedRule()!.evidence!.identityEvidenceSourceRef }}</span></div>
             <div v-if="selectedRule()!.evidence!.evidenceNote" class="text-gray-600">{{ selectedRule()!.evidence!.evidenceNote }}</div>
             <div v-if="selectedRule()!.evidence!.provenanceUrl" class="break-all font-mono">{{ selectedRule()!.evidence!.provenanceUrl }}</div>
             <div v-if="selectedRule()!.evidence!.verifiedAt">{{ t('settings.modelsCapabilities.cloud.verifiedAt') }}: {{ selectedRule()!.evidence!.verifiedAt }}</div>
-            <div v-if="selectedRule()!.evidence!.derivation?.derivationId">{{ t('settings.modelsCapabilities.cloud.derivation') }}: <span class="font-mono">{{ selectedRule()!.evidence!.derivation!.derivationId }}</span></div>
+            <div v-if="selectedRule()!.evidence!.derivation?.derivationId">{{ t('settings.modelsCapabilities.cloud.derivation') }}: <span class="break-all font-mono">{{ selectedRule()!.evidence!.derivation!.derivationId }}</span></div>
           </dd>
         </div>
       </dl>
-      <label class="mt-3 block text-[11px] text-gray-700">{{ t('settings.modelsCapabilities.cloud.localActivation') }}
-        <select class="ml-1 rounded border border-gray-300 bg-white px-1 py-0.5" :value="cloudRuleSelection(selectedRule()!.ruleId, remoteBaseline(selectedRule()!))" :disabled="changingActivation === selectedRule()!.ruleId" @change="setCloudRuleSelection(selectedRule()!.ruleId, ($event.target as HTMLSelectElement).value)">
+      <label class="sv-divider-t flex flex-wrap items-center gap-2 pt-3 text-xs text-gray-700">{{ t('settings.modelsCapabilities.cloud.localActivation') }}
+        <select class="sv-select sv-select-sm max-w-full" :value="cloudRuleSelection(selectedRule()!.ruleId, remoteBaseline(selectedRule()!))" :disabled="changingActivation === selectedRule()!.ruleId" @change="setCloudRuleSelection(selectedRule()!.ruleId, ($event.target as HTMLSelectElement).value)">
           <option :value="`remote:${remoteBaseline(selectedRule()!)}`">{{ t('settings.modelsCapabilities.followRemoteBaseline') }} ({{ configuredText(remoteBaseline(selectedRule()!)) }})</option>
           <option value="default">{{ t('settings.modelsCapabilities.activationDefault') }}</option>
           <option value="on">{{ t('common.on') }}</option>

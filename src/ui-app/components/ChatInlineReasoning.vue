@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ReasoningView } from '@/next/state/types'
 import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { t } from '@/shared/i18n'
 
 const props = withDefaults(
@@ -46,6 +47,19 @@ const indicator = computed(() => {
   return props.collapsed ? 'v' : '^'
 })
 
+const indicatorIcon = computed(() => {
+  switch (indicator.value) {
+    case '<':
+      return 'chevronLeft'
+    case '>':
+      return 'chevronRight'
+    case 'v':
+      return 'chevronDown'
+    default:
+      return 'chevronUp'
+  }
+})
+
 const displayBlocks = computed(() => {
   const blocks = props.reasoningView?.displayBlocks
   if (!Array.isArray(blocks)) return []
@@ -76,10 +90,11 @@ function opaqueLabel(block: Readonly<{ label: string; opaqueKind?: string }>): s
 </script>
 
 <template>
-  <div class="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+  <div>
     <button
       type="button"
-      class="flex w-full items-center justify-between gap-2 text-left text-[11px] font-medium text-gray-700"
+      class="-ml-1.5 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-left text-[13px] text-[var(--sv-text-3)] hover:bg-[var(--sv-hover)] hover:text-[var(--sv-text)]"
+      :aria-expanded="!props.collapsed"
       @mousedown="onPressStart"
       @mouseup="onPressEnd"
       @mouseleave="onPressCancel"
@@ -88,13 +103,18 @@ function opaqueLabel(block: Readonly<{ label: string; opaqueKind?: string }>): s
       @touchcancel="onPressCancel"
     >
       <span>{{ t('chat.reasoning.title') }}</span>
-      <span aria-hidden="true">{{ indicator }}</span>
+      <span class="inline-flex h-3.5 w-3.5 items-center justify-center" aria-hidden="true" :data-indicator="indicator">
+        <UiIcon :name="indicatorIcon" :size="14" />
+      </span>
     </button>
 
-    <div v-if="props.displayMode === 'inline' && !props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
+    <div
+      v-if="props.displayMode === 'inline' && !props.collapsed"
+      class="mt-1 flex flex-col gap-2 border-l border-[var(--sv-line-strong)] pl-3 text-xs text-[var(--sv-text-2)]"
+    >
       <template v-for="block in displayBlocks" :key="block.blockId">
-        <div v-if="block.type === 'text'" class="space-y-1">
-          <div v-if="semanticLabel(block.semanticRole)" class="text-[10px] font-semibold text-gray-500">
+        <div v-if="block.type === 'text'" class="flex flex-col gap-1">
+          <div v-if="semanticLabel(block.semanticRole)" class="sv-label">
             {{ semanticLabel(block.semanticRole) }}
           </div>
           <ReasoningRichText
@@ -102,19 +122,19 @@ function opaqueLabel(block: Readonly<{ label: string; opaqueKind?: string }>): s
             :streaming="props.isStreaming"
           />
         </div>
-        <div v-if="block.type === 'image'" class="space-y-1">
-          <div v-if="semanticLabel(block.semanticRole)" class="text-[10px] font-semibold text-gray-500">
+        <div v-if="block.type === 'image'" class="flex flex-col gap-1">
+          <div v-if="semanticLabel(block.semanticRole)" class="sv-label">
             {{ semanticLabel(block.semanticRole) }}
           </div>
           <img
             :src="block.url"
-            class="max-h-72 max-w-full rounded border border-gray-200 object-contain"
+            class="max-h-72 max-w-full rounded-md border border-[var(--sv-line)] object-contain"
             alt=""
           />
         </div>
         <div
           v-if="block.type === 'opaque'"
-          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+          class="sv-meta"
         >
           {{ opaqueLabel(block) }}
         </div>

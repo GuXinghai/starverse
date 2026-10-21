@@ -3,8 +3,9 @@ import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSe
 import { buildCompatibleChatRequest } from '../../../../shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
 import type { CompatibleRequestMessage } from '../../../../shared/provider/openai-chat-compatible/request/messageTypes'
 import type { CompatibleHistoryReasoningReplay } from '../../../../shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
-const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024
+const MAX_ARTIFACT_BYTES = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 const validationProfile = Object.freeze({ schemaVersion: 1 as const, standardFieldOwnership: 'builder' as const,
   unsupportedFieldPolicy: 'error_before_fetch' as const, defaults: Object.freeze({}),
   extraBody: Object.freeze({ enabled: false, maxDepth: 1, maxKeys: 1, maxBytes: 1 }) })

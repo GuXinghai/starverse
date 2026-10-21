@@ -23,13 +23,18 @@ type AttachmentSemanticFieldV2 = AttachmentIntentV2 extends infer Attachment
 type ModelCapabilityRequiredSemanticPathV2 =
   | `generation.${Extract<keyof SamplingIntentV2, string>}`
   | `reasoning.${Extract<keyof Extract<ReasoningIntentV2, { mode: 'enabled' }>, string>}`
-  | `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`
+  | Exclude<`web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`, 'web.searchPrompt'>
   | `image.${Extract<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, string>}`
   | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
   | `attachments[].${AttachmentSemanticFieldV2}`
   | 'providerExtension.kind'
   | 'providerExtension.responseFormat'
   | `providerExtension.${ProviderExtensionSemanticFieldV2}`
+
+/** Request text is retained in raw intent for Rule evaluation, but is not a model capability fact. */
+export const MODEL_CAPABILITY_RAW_ONLY_SEMANTIC_PATHS_V2 = Object.freeze([
+  'web.searchPrompt',
+] as const satisfies readonly `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`[])
 
 /**
  * Canonical semantic vocabulary for model capability facts.  The vocabulary
@@ -64,16 +69,23 @@ export const MODEL_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'generation.topA',
   'generation.topK',
   'generation.topP',
+  'image.action',
   'image.aspectRatio',
   'image.background',
   'image.format',
+  'image.inputFidelity',
+  'image.maskAsset',
   'image.mode',
+  'image.moderation',
   'image.outputCompression',
   'image.outputMode',
+  'image.partialImages',
   'image.quality',
   'image.resolution',
   'image.size',
   'image.stream',
+  'image.toolChoice',
+  'image.toolModel',
   'providerExtension.includeThoughts',
   'providerExtension.kind',
   'providerExtension.manualThinkingBudgetTokens',
@@ -114,6 +126,14 @@ export const MODEL_CAPABILITY_SEMANTIC_PATHS_V2_COMPLETE:
     : false = true
 
 export type ModelCapabilitySemanticPathV2 = typeof MODEL_CAPABILITY_SEMANTIC_PATHS_V2[number]
+/** Preserve the exact pre-image-tool field set when decoding frozen records.
+ * No fields are synthesized: hashes and old encoder scope stay unchanged. */
+export const MODEL_CAPABILITY_PRE_IMAGE_TOOL_PATHS_V2 = Object.freeze(MODEL_CAPABILITY_SEMANTIC_PATHS_V2.filter((path) =>
+  !['image.action', 'image.toolModel', 'image.toolChoice', 'image.partialImages', 'image.inputFidelity', 'image.moderation', 'image.maskAsset'].includes(path)))
+export function isCompleteModelCapabilityFieldSetV2(paths: readonly string[]): boolean {
+  return [MODEL_CAPABILITY_SEMANTIC_PATHS_V2, MODEL_CAPABILITY_PRE_IMAGE_TOOL_PATHS_V2].some((expected) =>
+    paths.length === expected.length && paths.every((path, index) => path === expected[index]))
+}
 export type ModelCapabilityFieldStateV2 =
   | 'supported'
   | 'unsupported'
@@ -132,7 +152,7 @@ export type ModelCapabilityDomainV2 =
   | Readonly<{ kind: 'enum'; values: readonly ModelCapabilityScalarV2[] }>
   | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
   | Readonly<{ kind: 'enum_list'; values: readonly ModelCapabilityScalarV2[]; maxItems: number }>
-  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean; excludedValues?: readonly number[] }>
+  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean; includedValues?: readonly number[]; excludedValues?: readonly number[] }>
   | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
   | Readonly<{ kind: 'identity_list'; maxItems: number }>
   | Readonly<{ kind: 'approximate_location'; maxFieldLength: number }>
@@ -152,6 +172,8 @@ export type ModelCapabilityConstraintV2 = Readonly<{
   kind: 'requires_value' | 'forbids_value'
   path: ModelCapabilitySemanticPathV2
   values: readonly ModelCapabilityScalarV2[]
+  /** Restrict this constraint to these values of the field that owns it. */
+  whenValues?: readonly ModelCapabilityScalarV2[]
 }>
 
 export type ModelCapabilityEvidenceKindV2 =
@@ -201,6 +223,13 @@ export const MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2: Readonly<Partial<Record<
   'attachments[].urlDigest': 'identity',
   'attachments[].capturedAtMs': 'range',
   'image.aspectRatio': 'enum',
+  'image.action': 'enum',
+  'image.toolModel': 'enum',
+  'image.toolChoice': 'enum',
+  'image.partialImages': 'range',
+  'image.inputFidelity': 'enum',
+  'image.moderation': 'enum',
+  'image.maskAsset': 'identity',
   'image.background': 'enum',
   'image.format': 'enum',
   'image.mode': 'enum',
@@ -208,7 +237,7 @@ export const MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2: Readonly<Partial<Record<
   'image.outputMode': 'enum',
   'image.quality': 'enum',
   'image.resolution': 'enum',
-  'image.size': Object.freeze(['dimensions', 'dimensions_enum'] as const),
+  'image.size': Object.freeze(['dimensions', 'dimensions_enum', 'enum'] as const),
   'image.stream': 'boolean',
   'generation.candidateCount': 'range',
   'generation.frequencyPenalty': 'range',

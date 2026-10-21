@@ -21,6 +21,7 @@ const props = defineProps<{
   initialIndex: number
   /** Position revision this list was mounted for; echoed with first-visible reports so stale ones can be ignored. */
   epoch: number
+  selectedKey?: string | null
   disabled?: boolean
   projectNames: ReadonlyMap<string, string>
   convoTitles: ReadonlyMap<string, string>
@@ -180,19 +181,23 @@ function splitSnippet(value: string): SnippetPart[] {
         type="button"
         :disabled="props.disabled"
         :data-testid="`search-hit-${row.hit.entityId}`"
-        class="absolute left-0 right-0 box-border flex flex-col justify-center overflow-hidden border-b border-gray-100 bg-white px-3 text-left hover:bg-gray-50 disabled:opacity-60"
+        class="sv-row absolute inset-x-2 box-border flex flex-col justify-center gap-0.5 overflow-hidden px-3 text-left disabled:opacity-60 focus-visible:-outline-offset-2"
+        :aria-current="props.selectedKey === `${row.hit.entityType}:${row.hit.entityId}` ? 'true' : undefined"
         :style="{ top: `${row.top}px`, height: `${SEARCH_RESULT_ROW_HEIGHT}px` }"
         @click="emit('activate', row.hit)"
       >
-        <span class="flex items-center justify-between gap-2">
-          <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ typeLabel(row.hit) }}</span>
-          <span class="shrink-0 text-[11px] text-gray-400">{{ formatTime(row.hit.createdAtSec) }}</span>
-        </span>
-        <span class="truncate text-sm font-semibold text-gray-900">{{ titleOf(row.hit) }}</span>
-        <span v-if="row.hit.snippet" class="truncate text-sm text-gray-600">
+        <span class="truncate text-[13px] font-medium leading-5 text-[color:var(--sv-text)]">{{ titleOf(row.hit) }}</span>
+        <span v-if="row.hit.snippet" class="line-clamp-2 text-[13px] leading-[18px] text-[color:var(--sv-text-2)]">
           <template v-for="(part, idx) in splitSnippet(row.hit.snippet)" :key="idx">
-            <mark v-if="part.highlight" class="rounded bg-yellow-200 px-0.5">{{ part.text }}</mark>
+            <mark v-if="part.highlight" class="rounded-[3px] bg-black/10 text-inherit">{{ part.text }}</mark>
             <span v-else>{{ part.text }}</span>
+          </template>
+        </span>
+        <span class="sv-meta flex min-w-0 items-center gap-1.5 leading-4">
+          <span class="shrink-0">{{ typeLabel(row.hit) }}</span>
+          <template v-if="formatTime(row.hit.createdAtSec)">
+            <span aria-hidden="true">·</span>
+            <span class="truncate">{{ formatTime(row.hit.createdAtSec) }}</span>
           </template>
         </span>
       </button>

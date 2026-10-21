@@ -54,10 +54,8 @@ export async function preflightOpenAIResponsesAttachmentDescriptorsV2(input: Rea
   signal?: AbortSignal
 }>): Promise<readonly OpenAIResponsesFileDescriptorV2[]> {
   const includedProviderFiles = input.commandAttachments.filter(isIncludedOpenAIResponsesFileIntentV2)
-  if (input.commandAttachments.some((attachment) =>
-    attachment.kind === 'managed_file' && attachment.include && !isIncludedOpenAIResponsesFileIntentV2(attachment))) {
-    throw new OpenAIResponsesAttachmentPreflightV2Error('GENERATION_V2_OPENAI_ATTACHMENT_SHAPE_UNSUPPORTED')
-  }
+  // Inline images and text do not need provider-file descriptors. Their exact
+  // request representation is resolved later under the attachment authority.
   if (includedProviderFiles.length === 0) return Object.freeze([])
   const upload = createOpenAIResponsesFileUploadV2Service({
     credentialService: input.credentialService,

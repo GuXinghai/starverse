@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveGeminiGenerateContentCapabilityV2 } from './geminiGenerateContentGenerationAuthorityV2Service'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -129,7 +131,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
                     })
                   },
                 })
-              },
+              }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveGeminiGenerateContentCapabilityV2(modelEvidence), request.expectedCredentialRevision) },
             )
           }),
         })

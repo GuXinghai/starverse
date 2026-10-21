@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -89,6 +91,8 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
         : graph.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value, sourceQuestionId: command.sourceQuestionId.value,
           sourceAnswerRootId: command.sourceAnswerRootId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
           questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
+    const providerBinding = createLmStudioOpenResponsesProviderBindingV2(profile, command.modelId.value)
+    const adaptationCapability = composeLmStudioOpenResponsesBaselineCapabilityV2({ binding: providerBinding, resolvedAt: new Date(at).toISOString() })
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
       projectGenerationCommandAttachmentsV2(command.kind === 'lmstudio_plain_text_regenerate' ? readRegenerateSourceAttachmentsV2({ db: input.db, context: context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }) : command.commandAttachments), undefined, (facts) => {
         const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, facts)
@@ -112,7 +116,7 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
           : graph.getGenerationReplayProjectionInTransaction(context, command.operationId.value)
         return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle, projection,
           preparedRequest, request: requests.createPrepared(context, persisted.bundle, preparedRequest) })
-      })
+      }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolvedCapabilityFromRuntimeSnapshotV2(adaptationCapability), profile.revisionGeneration) })
   }
 
   async function submitCurrent(command: CurrentCommand, action: 'initial_send' | 'regenerate_question' | 'edit_resend') {

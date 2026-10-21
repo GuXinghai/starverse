@@ -1,8 +1,10 @@
-import { render, screen, within } from '@testing-library/vue'
+import { fireEvent, render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 import { t, tf } from '@/shared/i18n'
+import type { ChatSessionConfig } from '@/ui-app/app/chatSessionConfig'
+import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 
 function defaultSessionConfig() {
   return {
@@ -40,6 +42,81 @@ function reasoningCapabilityProjection() {
 }
 
 describe('ChatSessionConsole OpenAI Responses chat controls', () => {
+  it('keeps the chat model fixed while editing image tools and restores controls across Gemini switches', async () => {
+    let config: ChatSessionConfig = { ...openAIResponsesSessionConfig(), imageGeneration: {
+      enabled: true, resolution: '1K', aspectRatio: '16:9', mode: 'custom',
+      detail: { enabled: true, imageSize: '1K', aspectRatio: '16:9', outputMode: 'image_and_text', openAI: { toolModel: 'gpt-image-1-mini', quality: 'low' } },
+    } }
+    const view = render(ChatSessionConsole, { props: {
+      disabled: false, isRunning: false, sessionConfig: config, reasoningDisplayMode: 'inline', modelCatalog: [], webSearchResolved: null, generationParamsResolved: null,
+    } })
+    const commit = async () => {
+      const detail = (view.emitted('updateImageGeneration') as unknown[][])?.at(-1)?.[0] as ImageGenerationUserConfig
+      config = { ...config, imageGeneration: { ...config.imageGeneration, detail } }
+      await view.rerender({ sessionConfig: config })
+    }
+    expect(screen.getByTestId('openai-image-tool-model')).toHaveValue('gpt-image-1-mini')
+    await fireEvent.update(screen.getByTestId('openai-image-tool-model'), 'gpt-image-2.5-flare')
+    await commit()
+    await fireEvent.update(screen.getByTestId('openai-image-quality'), 'max')
+    await commit()
+    await fireEvent.update(screen.getByTestId('openai-image-size'), 'custom')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI?.size).toBe('1536x864')
+    expect(view.emitted('updateRouteSelection')).toBeUndefined()
+    expect(config.routeSelection).toMatchObject({ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' })
+    const openAIRoute = config.routeSelection
+    config = { ...config, routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio', modelId: 'gemini-3.1-flash-image-preview' } }
+    await view.rerender({ sessionConfig: config })
+    expect(screen.queryByTestId('openai-image-settings')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('openai-image-tool-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('openai-image-tool-choice')).not.toBeInTheDocument()
+    config = { ...config, routeSelection: openAIRoute }
+    await view.rerender({ sessionConfig: config })
+    expect(screen.getByTestId('openai-image-quality')).toHaveValue('max')
+    expect(screen.getByTestId('openai-image-size')).toHaveValue('custom')
+    await fireEvent.update(screen.getByTestId('openai-image-tool-model'), 'gpt-image-1-mini')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI).toMatchObject({ toolModel: 'gpt-image-1-mini' })
+    expect(config.imageGeneration.detail?.openAI?.quality).toBeUndefined()
+    expect(config.imageGeneration.detail?.openAI?.size).toBeUndefined()
+    expect(config.imageGeneration.detail?.imageSize).toBe('1K')
+    expect(config.imageGeneration.detail?.aspectRatio).toBe('16:9')
+  })
+
+  it('retains explicit compression and mask choices and asks before resolving transparent JPEG', async () => {
+    let config: ChatSessionConfig = { ...openAIResponsesSessionConfig(), imageGeneration: {
+      enabled: true, resolution: '', aspectRatio: '1:1', mode: 'custom',
+      detail: { enabled: true, imageSize: '', aspectRatio: '1:1', outputMode: 'auto', openAI: { format: 'jpeg', background: 'transparent', action: 'edit', outputCompression: 0 } },
+    } }
+    const mask = { assetId: 'mask', assetRevisionId: 'rev', assetSha256: 'sha', label: '遮罩.png' }
+    const view = render(ChatSessionConsole, { props: { disabled: false, isRunning: false, sessionConfig: config, reasoningDisplayMode: 'inline', modelCatalog: [], imageMaskOptions: [mask], webSearchResolved: null, generationParamsResolved: null } })
+    const commit = async () => {
+      const detail = (view.emitted('updateImageGeneration') as unknown[][])?.at(-1)?.[0] as ImageGenerationUserConfig
+      config = { ...config, imageGeneration: { ...config.imageGeneration, detail } }
+      await view.rerender({ sessionConfig: config })
+    }
+    expect(screen.getByTestId('openai-image-format-error')).toBeInTheDocument()
+    expect(screen.getByTestId('openai-image-format')).toHaveValue('jpeg')
+    await fireEvent.update(screen.getByTestId('openai-image-mask'), 'mask:rev')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI?.maskAsset).toEqual({ assetId: 'mask', assetRevisionId: 'rev', assetSha256: 'sha' })
+    await fireEvent.update(screen.getByTestId('openai-image-action'), 'generate')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI?.maskAsset).toBeUndefined()
+    expect(screen.getByTestId('openai-image-mask')).toBeDisabled()
+    await fireEvent.click(screen.getByTestId('openai-image-use-png'))
+    await commit()
+    expect(screen.queryByTestId('openai-image-format-error')).not.toBeInTheDocument()
+    expect(screen.getByTestId('openai-image-compression')).toBeDisabled()
+    expect(config.imageGeneration.detail?.openAI?.outputCompression).toBe(0)
+    await fireEvent.update(screen.getByTestId('openai-image-tool-choice'), 'auto')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI?.toolChoice).toBe('auto')
+    await fireEvent.update(screen.getByTestId('openai-image-tool-choice'), '')
+    await commit()
+    expect(config.imageGeneration.detail?.openAI?.toolChoice).toBeUndefined()
+  })
   it('exposes explicit experimental OpenAI Responses text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
     const view = render(ChatSessionConsole, {

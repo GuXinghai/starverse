@@ -62,6 +62,36 @@ describe('Generation Config V2 scope semantics', () => {
     expect(resolved.tools.mode === 'enabled' && resolved.tools.toolChoice.mode).toBe('omitted')
   })
 
+  it('merges raw cross-provider parameters with source metadata through resolved config', () => {
+    const resolved = mergeGenerationConfigLayersV2([
+      decodeGenerationConfigLayerV2({
+        schemaVersion: 2,
+        requestedParameters: {
+          verbosity: { mode: 'custom', value: 'high', source: 'global' },
+          temperature: { mode: 'custom', value: 0.4, source: 'global' },
+          stopSequences: { mode: 'custom', value: ['END'], source: 'global' },
+        },
+      }),
+      decodeGenerationConfigLayerV2({
+        schemaVersion: 2,
+        requestedParameters: {
+          thinkingBudget: { mode: 'custom', value: 0, source: 'project' },
+          thinkingLevel: { mode: 'custom', value: 'high', source: 'project' },
+          temperature: { mode: 'omit', source: 'project' },
+          includeThoughts: { mode: 'custom', value: false, source: 'project' },
+        },
+      }),
+    ])
+    expect(resolved.requestedParameters).toEqual({
+      verbosity: { mode: 'custom', value: 'high', source: 'global' },
+      temperature: { mode: 'omit', source: 'project' },
+      stopSequences: { mode: 'custom', value: ['END'], source: 'global' },
+      thinkingBudget: { mode: 'custom', value: 0, source: 'project' },
+      thinkingLevel: { mode: 'custom', value: 'high', source: 'project' },
+      includeThoughts: { mode: 'custom', value: false, source: 'project' },
+    })
+  })
+
   it('forbids attachments in inherited scope configuration', () => {
     expect(() => decodeGenerationConfigLayerV2({ schemaVersion: 2, attachments: [] }))
       .toThrow('GENERATION_V2_CONFIG_ATTACHMENTS_NOT_SCOPE_CONFIG')

@@ -1,15 +1,34 @@
+import {
+  generationRequestBodyMaxBytesForContractV1,
+  GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+} from '../../capacity/generationCapacityV1'
+
 export const OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1 = 4_096
 export const OPENAI_RESPONSES_MAX_REPLAY_NODES_V1 = 32_768
 export const OPENAI_RESPONSES_MAX_ITEM_STRING_BYTES_V1 = 4 * 1_024 * 1_024
 export const OPENAI_RESPONSES_MAX_REPLAY_STRING_BYTES_V1 = 24 * 1_024 * 1_024
+export const OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1 = Object.freeze({
+  maxItemStringBytes: generationRequestBodyMaxBytesForContractV1('openai-responses-v1'),
+  maxReplayStringBytes: generationRequestBodyMaxBytesForContractV1('openai-responses-v1'),
+})
+export const OPENAI_RESPONSES_RESPONSE_DECODE_LIMITS_V1 = Object.freeze({
+  maxItemStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+  maxReplayStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+})
 
 type TerminalStatus = 'completed' | 'incomplete'
-type Budget = { bytes: number; nodes: number }
+export type OpenAIResponsesNativeItemDecodeLimitsV1 = Readonly<{
+  maxItemStringBytes?: number
+  maxReplayStringBytes?: number
+  maxReplayNodes?: number
+}>
+type Budget = { bytes: number; nodes: number; maxItemStringBytes: number; maxReplayStringBytes: number; maxReplayNodes: number }
 type ClosedObject = Readonly<Record<string, unknown>>
 
 export type OpenAIResponsesUserInputContentPartV1 =
   | Readonly<{ type: 'input_text'; text: string }>
   | Readonly<{ type: 'input_file'; file_id: string }>
+  | Readonly<{ type: 'input_file'; filename: string; file_data: string }>
   | Readonly<{ type: 'input_image'; file_id?: string; image_url?: string; detail?: 'low' | 'high' | 'auto' }>
 
 export type OpenAIResponsesUserInputItemV1 = Readonly<{
@@ -49,7 +68,7 @@ export type OpenAIResponsesReasoningItemV1 = Readonly<{
   status?: TerminalStatus
   summary: readonly Readonly<{ type: 'summary_text'; text: string }>[]
   content?: readonly Readonly<{ type: 'reasoning_text'; text: string }>[]
-  encrypted_content: string
+  encrypted_content?: string | null
 }>
 
 export type OpenAIResponsesFunctionCallItemV1 = Readonly<{
@@ -85,6 +104,12 @@ export type OpenAIResponsesImageGenerationCallItemV1 = Readonly<{
   type: 'image_generation_call'
   result: string
   status: 'completed' | 'failed'
+  action?: 'generate' | 'edit' | 'auto' | null
+  background?: 'transparent' | 'opaque' | 'auto' | null
+  output_format?: 'png' | 'webp' | 'jpeg' | null
+  quality?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto' | null
+  revised_prompt?: string | null
+  size?: string | null
 }>
 
 export type OpenAIResponsesReturnedItemV1 =
@@ -150,7 +175,7 @@ function denseArray(value: unknown, max: number, allowEmpty = true): readonly un
 
 function node(budget: Budget, count = 1): void {
   budget.nodes += count
-  if (budget.nodes > OPENAI_RESPONSES_MAX_REPLAY_NODES_V1) fail('GENERATION_V2_OPENAI_NATIVE_ITEM_LIMIT_EXCEEDED')
+  if (budget.nodes > budget.maxReplayNodes) fail('GENERATION_V2_OPENAI_NATIVE_ITEM_LIMIT_EXCEEDED')
 }
 
 function stringValue(value: unknown, budget: Budget, identifier = false): string {
@@ -159,7 +184,7 @@ function stringValue(value: unknown, budget: Budget, identifier = false): string
     return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
   }
   const bytes = new TextEncoder().encode(value).byteLength
-  if (bytes > OPENAI_RESPONSES_MAX_ITEM_STRING_BYTES_V1 || budget.bytes + bytes > OPENAI_RESPONSES_MAX_REPLAY_STRING_BYTES_V1) {
+  if (bytes > budget.maxItemStringBytes || budget.bytes + bytes > budget.maxReplayStringBytes) {
     return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_LIMIT_EXCEEDED')
   }
   budget.bytes += bytes
@@ -206,12 +231,20 @@ function userInputParts(
   const parts = denseArray(value, OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1, false)
   node(budget, parts.length)
   return Object.freeze(parts.map((raw) => {
-    const discriminator = closedObject(raw, ['type', 'text', 'file_id', 'image_url', 'detail'], ['type'])
+    const discriminator = closedObject(raw, ['type', 'text', 'file_id', 'filename', 'file_data', 'image_url', 'detail'], ['type'])
     if (discriminator.type === 'input_text') {
       const input = closedObject(raw, ['type', 'text'], ['type', 'text'])
       return Object.freeze({ type: 'input_text' as const, text: stringValue(input.text, budget) })
     }
     if (discriminator.type === 'input_file') {
+      if (discriminator.file_data !== undefined) {
+        const input = closedObject(raw, ['type', 'filename', 'file_data'], ['type', 'filename', 'file_data'])
+        const filename = stringValue(input.filename, budget, true)
+        const data = stringValue(input.file_data, budget)
+        if (!/^data:application\/pdf;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(data) ||
+          data.length <= 'data:application/pdf;base64,'.length) return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+        return Object.freeze({ type: 'input_file' as const, filename, file_data: data })
+      }
       const input = closedObject(raw, ['type', 'file_id'], ['type', 'file_id'])
       return Object.freeze({ type: 'input_file' as const, file_id: stringValue(input.file_id, budget, true) })
     }
@@ -345,6 +378,7 @@ function decodeItem(value: unknown, budget: Budget): OpenAIResponsesReplayItemV1
   const discriminator = closedObject(value, [
     'id', 'type', 'role', 'status', 'phase', 'content', 'summary', 'encrypted_content',
     'call_id', 'name', 'arguments', 'output', 'action', 'result',
+    'background', 'output_format', 'quality', 'revised_prompt', 'size',
   ], [])
   if (discriminator.role === 'user' && discriminator.type === undefined) {
     const input = closedObject(value, ['role', 'content'])
@@ -361,12 +395,13 @@ function decodeItem(value: unknown, budget: Budget): OpenAIResponsesReplayItemV1
     })
   }
   if (discriminator.type === 'reasoning') {
-    const input = closedObject(value, ['id', 'type', 'status', 'summary', 'content', 'encrypted_content'], ['id', 'type', 'summary', 'encrypted_content'])
+    const input = closedObject(value, ['id', 'type', 'status', 'summary', 'content', 'encrypted_content'], ['id', 'type', 'summary'])
     return Object.freeze({
       id: stringValue(input.id, budget, true), type: 'reasoning', ...optionalStatus(input.status),
       summary: textParts(input.summary, 'summary_text', budget, true),
       ...(input.content === undefined ? {} : { content: textParts(input.content, 'reasoning_text', budget, true) }),
-      encrypted_content: stringValue(input.encrypted_content, budget),
+      ...(input.encrypted_content === undefined ? {} : { encrypted_content: input.encrypted_content === null
+        ? null : stringValue(input.encrypted_content, budget) }),
     })
   }
   if (discriminator.type === 'function_call') {
@@ -391,20 +426,60 @@ function decodeItem(value: unknown, budget: Budget): OpenAIResponsesReplayItemV1
     return Object.freeze({ id: stringValue(input.id, budget, true), type: 'web_search_call', status: input.status, action: decodeSearchAction(input.action, budget) })
   }
   if (discriminator.type === 'image_generation_call') {
-    const input = closedObject(value, ['id', 'type', 'status', 'result'])
+    const input = closedObject(value, ['id', 'type', 'status', 'result',
+      'action', 'background', 'output_format', 'quality', 'revised_prompt', 'size'], ['id', 'type', 'status', 'result'])
     if (input.status !== 'completed' && input.status !== 'failed') return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
-    return Object.freeze({ id: stringValue(input.id, budget, true), type: 'image_generation_call', status: input.status, result: stringValue(input.result, budget) })
+    const optionalEnum = <T extends string>(key: string, allowed: readonly T[]): T | null | undefined => {
+      const value = input[key]
+      if (value === undefined || value === null) return value
+      if (typeof value !== 'string' || !allowed.includes(value as T)) return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+      return stringValue(value, budget) as T
+    }
+    return Object.freeze({ id: stringValue(input.id, budget, true), type: 'image_generation_call', status: input.status,
+      result: stringValue(input.result, budget),
+      ...(input.action === undefined ? {} : { action: optionalEnum('action', ['generate', 'edit', 'auto']) }),
+      ...(input.background === undefined ? {} : { background: optionalEnum('background', ['transparent', 'opaque', 'auto']) }),
+      ...(input.output_format === undefined ? {} : { output_format: optionalEnum('output_format', ['png', 'webp', 'jpeg']) }),
+      ...(input.quality === undefined ? {} : { quality: optionalEnum('quality', ['low', 'medium', 'high', 'xhigh', 'max', 'auto']) }),
+      ...(input.revised_prompt === undefined ? {} : { revised_prompt: input.revised_prompt === null ? null : stringValue(input.revised_prompt, budget) }),
+      ...(input.size === undefined ? {} : { size: input.size === null ? null : stringValue(input.size, budget) }),
+    })
   }
   return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_UNKNOWN_TYPE')
 }
 
-export function decodeOpenAIResponsesReplayItemsV1(value: unknown): readonly OpenAIResponsesReplayItemV1[] {
-  const budget = { bytes: 0, nodes: 0 }
+function createBudget(limits: OpenAIResponsesNativeItemDecodeLimitsV1 = {}): Budget {
+  const budget = {
+    bytes: 0,
+    nodes: 0,
+    maxItemStringBytes: limits.maxItemStringBytes ?? OPENAI_RESPONSES_MAX_ITEM_STRING_BYTES_V1,
+    maxReplayStringBytes: limits.maxReplayStringBytes ?? OPENAI_RESPONSES_MAX_REPLAY_STRING_BYTES_V1,
+    maxReplayNodes: limits.maxReplayNodes ?? OPENAI_RESPONSES_MAX_REPLAY_NODES_V1,
+  }
+  if (![budget.maxItemStringBytes, budget.maxReplayStringBytes, budget.maxReplayNodes]
+    .every((value) => Number.isSafeInteger(value) && value >= 0)) fail('GENERATION_V2_OPENAI_NATIVE_ITEM_LIMIT_EXCEEDED')
+  return budget
+}
+
+export function decodeOpenAIResponsesReplayItemsV1(
+  value: unknown,
+  limits?: OpenAIResponsesNativeItemDecodeLimitsV1,
+): readonly OpenAIResponsesReplayItemV1[] {
+  const budget = createBudget(limits)
   return Object.freeze(denseArray(value, OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1, true).map((item) => decodeItem(item, budget)))
 }
 
-export function decodeOpenAIResponsesReturnedItemsV1(value: unknown): readonly OpenAIResponsesReturnedItemV1[] {
-  return Object.freeze(decodeOpenAIResponsesReplayItemsV1(value).map((item) => {
+/** Wire facts remain intact; only complete, nonempty reasoning ciphertext is replayable. */
+export function selectOpenAIResponsesReplayItemsV1<T extends OpenAIResponsesReplayItemV1>(items: readonly T[]): readonly T[] {
+  return Object.freeze(items.filter(item => !('type' in item) || item.type !== 'reasoning' ||
+    item.status !== 'incomplete' && typeof item.encrypted_content === 'string' && item.encrypted_content.length > 0))
+}
+
+export function decodeOpenAIResponsesReturnedItemsV1(
+  value: unknown,
+  limits?: OpenAIResponsesNativeItemDecodeLimitsV1,
+): readonly OpenAIResponsesReturnedItemV1[] {
+  return Object.freeze(decodeOpenAIResponsesReplayItemsV1(value, limits).map((item) => {
     if (('role' in item && item.role === 'user') || item.type === 'function_call_output') {
       return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_DIRECTION_INVALID')
     }
@@ -412,8 +487,11 @@ export function decodeOpenAIResponsesReturnedItemsV1(value: unknown): readonly O
   }))
 }
 
-export function decodeOpenAIResponsesClientItemsV1(value: unknown): readonly OpenAIResponsesClientItemV1[] {
-  return Object.freeze(decodeOpenAIResponsesReplayItemsV1(value).map((item) => {
+export function decodeOpenAIResponsesClientItemsV1(
+  value: unknown,
+  limits?: OpenAIResponsesNativeItemDecodeLimitsV1,
+): readonly OpenAIResponsesClientItemV1[] {
+  return Object.freeze(decodeOpenAIResponsesReplayItemsV1(value, limits).map((item) => {
     if (('role' in item && item.role === 'user') || item.type === 'function_call_output') return item
     return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_DIRECTION_INVALID')
   }))

@@ -2,12 +2,16 @@ import { utf8ByteLength } from '@/shared/encoding/binaryEncoding'
 import { sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import { decodeOpenAIResponsesReturnedItemsV1 } from './nativeItemsV1'
 import {
+  GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1,
+  GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+} from '../../capacity/generationCapacityV1'
+import {
   isOpenAIResponsesTerminalResultV1,
   type OpenAIResponsesTerminalResultV1,
 } from './responsesStreamV1'
 
 export const OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1 = 'openai_responses_terminal_v1' as const
-export const OPENAI_RESPONSES_TERMINAL_ARTIFACT_MAX_BYTES_V1 = 20 * 1_024 * 1_024
+export const OPENAI_RESPONSES_TERMINAL_ARTIFACT_MAX_BYTES_V1 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 export type OpenAIResponsesTerminalArtifactV1 = Readonly<{
   schemaVersion: 1
@@ -50,7 +54,7 @@ function exactObject(value: unknown, keys: readonly string[]): Readonly<Record<s
 }
 
 function boundedString(value: unknown, allowEmpty = false): string {
-  if (typeof value !== 'string' || (!allowEmpty && value.length === 0) || value.length > 4 * 1024 * 1024 || /\u0000/u.test(value)) {
+  if (typeof value !== 'string' || (!allowEmpty && value.length === 0) || value.length > GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 || /\u0000/u.test(value)) {
     return invalid()
   }
   return value
@@ -139,7 +143,10 @@ export function decodeOpenAIResponsesTerminalArtifactV1(canonicalJson: string): 
     'terminalKind', 'usage', 'visibleText',
   ]) as Record<string, unknown>
   let output
-  try { output = decodeOpenAIResponsesReturnedItemsV1(raw.output) } catch { return invalid() }
+  try { output = decodeOpenAIResponsesReturnedItemsV1(raw.output, {
+    maxItemStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+    maxReplayStringBytes: GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1,
+  }) } catch { return invalid() }
   const terminalKind = raw.terminalKind
   const error = decodeError(raw.error)
   const usage = decodeUsage(raw.usage)

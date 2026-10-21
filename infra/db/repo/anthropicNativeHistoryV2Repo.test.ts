@@ -1,3 +1,5 @@
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
+import { ConversationGraphV2Repo } from './conversationGraphV2Repo'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -265,6 +267,59 @@ function runnerCredentialService(scope: string) {
 }
 
 describe('Anthropic native history V2 repository', () => {
+  it.each([true, false])('atomically keeps cancelled native blocks and continues after reopen (closed thinking=%s)', async closed => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'starverse-interrupted-'))
+    const filename = path.join(directory, 'test.sqlite')
+    let db = createDb(filename, false)
+    try {
+      const command = createRunnerCommand(db)
+      const controller = new AbortController()
+      const frame = (type: string, data: Record<string, unknown>) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`
+      const wire = frame('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', content: [],
+        stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } }) +
+        frame('content_block_start', { index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } }) +
+        frame('content_block_delta', { index: 0, delta: { type: 'thinking_delta', thinking: 'reasoning received' } }) +
+        (closed ? frame('content_block_delta', { index: 0, delta: { type: 'signature_delta', signature: 'opaque-signature' } }) +
+          frame('content_block_stop', { index: 0 }) +
+          frame('content_block_start', { index: 1, content_block: { type: 'text', text: '' } }) +
+          frame('content_block_delta', { index: 1, delta: { type: 'text_delta', text: 'partial answer' } }) : '')
+      const readerCancelled = vi.fn()
+      const response = new Response(new ReadableStream({ start(source) { source.enqueue(new TextEncoder().encode(wire)) },
+        cancel: readerCancelled }), { headers: { 'content-type': 'text/event-stream' } })
+      const result = await createAnthropicMessagesStreamRunnerV2({ db,
+        credentialService: runnerCredentialService(command.preparedRequest.credentialScopeId), fetchImpl: async () => response,
+        nowMs: (() => { let now = 40; return () => now++ })(),
+        streamProjectionSink: { publish(event) { if (event.type === 'reasoning_detail') controller.abort() } },
+      }).run(command, controller.signal)
+      expect(result.state).toBe('cancelled')
+      expect(readerCancelled).toHaveBeenCalled()
+      expect(db.prepare('SELECT count(*) AS n FROM generation_native_artifact_v2').get()).toEqual({ n: 0 })
+      expect(db.prepare('SELECT count(*) AS n FROM generation_interrupted_replay_v2').get()).toEqual({ n: 1 })
+      db.close(); db = new BetterSqlite3(filename)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context => {
+        const replay = new GenerationInterruptedReplayV2Repo(db).load(context, 'answer:1', 'anthropic')!
+        expect(JSON.stringify(replay)).toContain(closed ? 'opaque-signature' : 'question')
+        if (!closed) expect(replay).toEqual([{ role: 'user', content: 'question' }])
+        const graph = new ConversationGraphV2Repo(db)
+        const pending = graph.beginInitialTurn(context, { operationId: 'operation:2', branchId: 'branch:1', expectedHeadMessageId: 'answer:1',
+          questionId: 'question:2', answerRootId: 'answer:2', userBody: 'follow up', createdAtMs: 100 })
+        const record = JSON.parse(snapshotJson()); delete record.snapshotHash
+        record.operationId = 'operation:2'; record.answerRootId = 'answer:2'
+        new GenerationExecutionV2Repo(db).insertOperationAndSnapshot(context, { operationId: 'operation:2', actionKind: 'initial_send', branchId: 'branch:1',
+          conversationId: 'conversation:1', questionId: 'question:2', sourceAnswerId: null, targetAnswerId: 'answer:2',
+          snapshot: decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(record)).canonicalJson, commandFingerprint: HASH_B, createdAtMs: 100 })
+        graph.commitInitialTurnProjection(context, pending)
+        const history = new AnthropicNativeHistoryV2Repo(db).loadRequestHistory(context, 'operation:2')
+        expect(history.messages).toEqual([...replay, { role: 'user', content: 'follow up' }])
+      })
+      expect(db.pragma('foreign_key_check')).toEqual([])
+      expect(() => db.prepare('UPDATE generation_interrupted_replay_v2 SET snapshot_hash=?').run(HASH_A)).toThrow('GENERATION_V2_INTERRUPTED_REPLAY_IMMUTABLE')
+      expect(() => db.prepare('DELETE FROM generation_interrupted_replay_v2').run()).toThrow('GENERATION_V2_INTERRUPTED_REPLAY_DELETE_FORBIDDEN')
+      db.prepare("DELETE FROM project_v2 WHERE project_id='project:1'").run()
+      expect(db.prepare('SELECT count(*) AS n FROM generation_interrupted_replay_v2').get()).toEqual({ n: 0 })
+    } finally { db.close(); rmSync(directory, { recursive: true, force: true }) }
+  })
+
   it('sends the same persisted body, exact Anthropic headers, and atomically keeps the new answer terminal', async () => {
     const db = createDb(':memory:', false)
     try {
@@ -466,6 +521,32 @@ describe('Anthropic native history V2 repository', () => {
         .toEqual({ scope: 'request_terminal' })
     } finally { db.close() }
   })
+
+  it('stores and replays a large native artifact through deduplicated chunks', () => {
+    const db = createDb()
+    try {
+      setProjection(db, 'completed')
+      const largeArtifact = artifact(false, 'x'.repeat(21 * 1024 * 1024))
+      const expectedCodecJson = serializeAnthropicNativeHistoryArtifactV1(largeArtifact)
+      withAuthorities(db, (repo, context, execution, request) => {
+        repo.insertRequestTerminalArtifact(context, execution, request, largeArtifact, 32)
+        const fact = repo.loadCompletedAnswerArtifact(context, 'answer:1')
+        expect(serializeAnthropicNativeHistoryArtifactV1(fact.artifact)).toBe(expectedCodecJson)
+      })
+
+      const stored = db.prepare(`SELECT artifact_json AS json, artifact_hash AS hash
+        FROM generation_native_artifact_v2`).get() as { json: string; hash: string }
+      expect(Buffer.byteLength(stored.json, 'utf8')).toBeLessThan(64 * 1024)
+      expect(stored.hash).toBe(largeArtifact.artifactHash)
+      expect(JSON.parse(stored.json).chunkHashes).toHaveLength(22)
+      expect(db.prepare('SELECT count(*) AS n FROM generation_native_artifact_content_chunk_v2').get())
+        .toEqual({ n: 3 })
+
+      db.prepare("DELETE FROM project_v2 WHERE project_id='project:1'").run()
+      expect(db.prepare('SELECT count(*) AS n FROM generation_native_artifact_content_chunk_v2').get())
+        .toEqual({ n: 0 })
+    } finally { db.close() }
+  }, 30_000)
 
   it('survives database reopen and decodes a verified artifact', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'starverse-anthropic-repo-'))

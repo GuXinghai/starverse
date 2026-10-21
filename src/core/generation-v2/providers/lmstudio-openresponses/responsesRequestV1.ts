@@ -1,12 +1,15 @@
 import { ImmutablePreparedBodyV2, stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
 import { buildLmStudioOpenResponsesReplayInputV1, type LmStudioOpenResponsesContinuationArtifactV1 } from './continuationArtifactV1'
+import { isLegacyLmStudioOpenResponsesBodySchemaRevisionV2, validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 import { decodeLmStudioOpenResponsesReplayItemsV1,
+  LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1,
   type LmStudioOpenResponsesClientItemV1, type LmStudioOpenResponsesReplayItemV1 } from './nativeItemsV1'
 
 const MAX_REQUEST_BYTES = 24 * 1_024 * 1_024
 export type LmStudioOpenResponsesFunctionToolV1 = Readonly<{
-  type: 'function'; name: string; description?: string; parameters: Readonly<Record<string, unknown>>; strict: true
+  type: 'function'; name: string; description?: string; parameters: Readonly<Record<string, unknown>>; strict: boolean
 }>
 export type LmStudioOpenResponsesToolChoiceV1 = 'none' | 'required'
 export type LmStudioOpenResponsesRequestV1 = Readonly<{
@@ -35,16 +38,16 @@ export class LmStudioOpenResponsesRequestV1Error extends Error {
   }
 }
 function fail(code: LmStudioOpenResponsesRequestV1Error['code']): never { throw new LmStudioOpenResponsesRequestV1Error(code) }
-function finite(value: unknown, min: number, max: number): number | undefined {
+function finite(value: unknown, min: number, max: number, skipPolicyRange = false): number | undefined {
   if (value === undefined) return undefined
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
+  if (typeof value !== 'number' || !Number.isFinite(value) || (!skipPolicyRange && (value < min || value > max))) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   return value
 }
 function schema(value: unknown): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   return Object.freeze(JSON.parse(stableSerializeProviderRequestBoundedV2(value, 1024 * 1024)) as Record<string, unknown>)
 }
-function tools(value: unknown): readonly LmStudioOpenResponsesFunctionToolV1[] | undefined {
+function tools(value: unknown, allowBooleanStrict: boolean): readonly LmStudioOpenResponsesFunctionToolV1[] | undefined {
   if (value === undefined) return undefined
   if (!Array.isArray(value) || value.length < 1 || value.length > 128) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   const names = new Set<string>()
@@ -53,10 +56,11 @@ function tools(value: unknown): readonly LmStudioOpenResponsesFunctionToolV1[] |
     const item = raw as Record<string, unknown>
     if (Object.keys(item).some((key) => !['type', 'name', 'description', 'parameters', 'strict'].includes(key)) ||
         item.type !== 'function' || typeof item.name !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/u.test(item.name) || names.has(item.name) ||
-        (item.description !== undefined && typeof item.description !== 'string') || item.strict !== true) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
+        (item.description !== undefined && typeof item.description !== 'string') || typeof item.strict !== 'boolean' ||
+        (!allowBooleanStrict && item.strict !== true)) return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
     names.add(item.name)
     return Object.freeze({ type: 'function' as const, name: item.name,
-      ...(item.description === undefined ? {} : { description: item.description }), parameters: schema(item.parameters), strict: true })
+      ...(item.description === undefined ? {} : { description: item.description }), parameters: schema(item.parameters), strict: item.strict })
   }))
 }
 
@@ -70,16 +74,17 @@ export function compileLmStudioOpenResponsesRequestV1(input: Readonly<{
   reasoningEffort?: string
   tools?: unknown
   toolChoice?: LmStudioOpenResponsesToolChoiceV1
-}>): LmStudioOpenResponsesRequestCompilationV1 {
+}>, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): LmStudioOpenResponsesRequestCompilationV1 {
+  const skipPolicyRanges = bodySchemaRevision !== undefined
   if (typeof input.model !== 'string' || input.model.length < 1 || input.model.length > 512 || input.model.trim() !== input.model) {
     return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   }
   const generation = input.generation ?? {}
-  const temperature = finite(generation.temperature, 0, 2)
-  const topP = finite(generation.topP, 0, 1)
-  const frequencyPenalty = finite(generation.frequencyPenalty, -2, 2)
-  const presencePenalty = finite(generation.presencePenalty, -2, 2)
-  if (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || generation.maxOutputTokens < 1)) {
+  const temperature = finite(generation.temperature, 0, 2, skipPolicyRanges)
+  const topP = finite(generation.topP, 0, 1, skipPolicyRanges)
+  const frequencyPenalty = finite(generation.frequencyPenalty, -2, 2, skipPolicyRanges)
+  const presencePenalty = finite(generation.presencePenalty, -2, 2, skipPolicyRanges)
+  if (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || (!skipPolicyRanges && generation.maxOutputTokens < 1))) {
     return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   }
   const explicitReplay = input.replayItems !== undefined
@@ -90,9 +95,10 @@ export function compileLmStudioOpenResponsesRequestV1(input: Readonly<{
     return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   }
   const replay = explicitReplay
-    ? decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems)
+    ? decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems, LMSTUDIO_OPENRESPONSES_REQUEST_DECODE_LIMITS_V1)
     : buildLmStudioOpenResponsesReplayInputV1({ priorArtifact: input.priorArtifact!, clientItems: input.clientItems! })
-  const functionTools = tools(input.tools)
+  const allowBooleanStrict = bodySchemaRevision !== undefined && !isLegacyLmStudioOpenResponsesBodySchemaRevisionV2(bodySchemaRevision)
+  const functionTools = tools(input.tools, allowBooleanStrict)
   if (input.reasoningEffort !== undefined && (typeof input.reasoningEffort !== 'string' || input.reasoningEffort.length === 0 || input.reasoningEffort.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
     return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
   }
@@ -110,6 +116,7 @@ export function compileLmStudioOpenResponsesRequestV1(input: Readonly<{
     ...(functionTools === undefined ? {} : { tools: functionTools }),
     ...(input.toolChoice === undefined ? {} : { tool_choice: input.toolChoice }),
   })
+  validateApiRequestBodyV2('lmstudio', operation, nativeRequest, bodySchemaRevision)
   return Object.freeze({ nativeRequest,
     preparedBody: ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(nativeRequest, MAX_REQUEST_BYTES) })
 }

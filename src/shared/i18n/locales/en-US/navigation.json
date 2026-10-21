@@ -6,6 +6,8 @@
       "renameProject": "Rename project",
       "deleteProject": "Delete project",
       "projectName": "Project name",
+      "duplicateName": "Duplicate name",
+      "duplicateConfirm": "A project with this name already exists. Continue?",
       "deleteConfirm": "Delete project \"{name}\"? Conversations under it will be moved to Inbox.",
       "systemProjectNoRename": "System project cannot be renamed",
       "systemProjectNoDelete": "System project (Inbox) cannot be deleted",
@@ -32,6 +34,9 @@
       "bulkDelete": "Bulk delete",
       "selected": "Selected:",
       "moreActions": "More actions"
+    },
+    "workspace": {
+      "local": "Local workspace"
     }
   }
 }

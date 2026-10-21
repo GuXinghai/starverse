@@ -33,6 +33,7 @@ import {
   type OpenAIResponsesReasoningSummarySetting,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
 import { t, tf } from '@/shared/i18n'
@@ -96,7 +97,7 @@ const defaultSessionConfig: ChatSessionConfig = {
   },
   imageGeneration: {
     enabled: false,
-    resolution: '1K',
+    resolution: '',
     aspectRatio: '1:1',
     mode: 'default',
     detail: null,
@@ -116,6 +117,7 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationEnabled', value: boolean): void
   (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
   (e: 'updateImageGenerationAspectRatio', value: ChatSessionConfigAspectRatio): void
+  (e: 'openImageSettings'): void
   (e: 'attachFilesRequested'): void
   (e: 'attachImagesRequested'): void
   (e: 'attachUrlRequested', value?: string | null): void
@@ -135,6 +137,17 @@ const recentModels = ref<ModelPrefsRecent[]>([])
 const maxRecentModels = ref(8)
 const modelDisplayNameOverrides = ref<Record<string, string>>({})
 const modelQuickMode = ref<'favorites' | 'recents' | null>(null)
+const modelControlsRef = ref<HTMLElement | null>(null)
+
+function dismissQuickModels(event: PointerEvent) {
+  if (event.target instanceof Node && !modelControlsRef.value?.contains(event.target)) modelQuickMode.value = null
+}
+
+function onQuickModelsKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !modelQuickMode.value) return
+  modelControlsRef.value?.querySelector<HTMLButtonElement>(`[data-testid="model-main-tab-${modelQuickMode.value}"]`)?.focus()
+  modelQuickMode.value = null
+}
 const modelQuickSelectionError = ref<string | null>(null)
 const modelPickerOpen = ref(false)
 const attachmentMenuOpen = ref(false)
@@ -402,19 +415,26 @@ const googleThinkingConfig = computed(() => {
   return {
     thinkingBudget: typeof budget === 'number'
       ? budget
-      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 8192,
+      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 0,
     thinkingLevel: typeof level === 'string'
       ? level as GeminiThinkingLevel
-      : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
+      : capability.kind === 'level' ? capability.defaultLevel : '' as GeminiThinkingLevel,
     includeThoughts: isGoogleImageGenerationModel.value
       ? customGoogleGenerationParamValue('thoughtSummaryMode') === 'auto'
       : customGoogleGenerationParamValue('includeThoughts') === true,
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportsThoughtSummaries ||
+  if (isGoogleImageGenerationModel.value) return googleThinkingCapability.value.required || googleImageGenerationPolicy.value.supportsThoughtSummaries ||
     googleImageGenerationPolicy.value.thinkingLevels.length > 0
-  return googleThinkingCapability.value.kind === 'level' || googleThinkingCapability.value.kind === 'budget'
+  const capability = googleThinkingCapability.value
+  if (capability.kind === 'unsupported') return false
+  if (capability.required) return true
+  const budget = customGoogleGenerationParamValue('thinkingBudget')
+  if (budget === 0 && capability.allowOff) return false
+  const enabled = resolvedSessionConfig.value.generationParams.detail?.thinkingEnabled
+  if (enabled?.mode === 'custom' && enabled.value === false && capability.allowOff) return false
+  return budget !== undefined || capability.defaultEnabled !== false
 })
 const googleThinkingLevelSelection = computed(() => {
   const capability = googleThinkingCapability.value
@@ -464,7 +484,7 @@ const googleThinkingActiveLabel = computed(() => {
   }
   if (googleThinkingCapability.value.kind === 'level') {
     const selection = googleThinkingLevelSelection.value
-    if (selection === 'default') return tf('chat.console.reasoning.default', { value: googleThinkingCapability.value.defaultLevel })
+    if (selection === 'default') return tf('chat.console.reasoning.default', { value: googleThinkingCapability.value.defaultLevel || t('chat.console.reasoning.providerManaged') })
     return googleThinkingLevelLabel(selection)
   }
   return null
@@ -547,10 +567,7 @@ const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || resolvedSessionConfig.value.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  imageGenerationSizeOptions.value.length > 0 &&
-    !imageGenerationSizeOptions.value.includes(resolvedSessionConfig.value.imageGeneration.resolution)
-    ? imageGenerationSizeOptions.value[0]
-    : resolvedSessionConfig.value.imageGeneration.resolution
+  resolvedSessionConfig.value.imageGeneration.resolution
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
   imageGenerationAspectRatioOptions.value.length > 0 &&
@@ -559,13 +576,17 @@ const effectiveImageGenerationAspectRatio = computed(() =>
     : resolvedSessionConfig.value.imageGeneration.aspectRatio
 )
 const imageChipOptions = computed(() => {
-  const sizeOptions = showImageGenerationSizeControl.value ? [...imageGenerationSizeOptions.value, '—'] : []
-  return [...sizeOptions, ...imageGenerationAspectRatioOptions.value]
+  if (isOpenAIResponsesSelected.value) return ['__more_image_settings']
+  const sizeOptions = showImageGenerationSizeControl.value ? ['Default', ...imageGenerationSizeOptions.value, '—'] : []
+  return [...sizeOptions, ...imageGenerationAspectRatioOptions.value, '—', '__more_image_settings']
 })
 const effectiveImageGenerationSizeLabel = computed(() =>
-  showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : null
+  showImageGenerationSizeControl.value ? (effectiveImageGenerationResolution.value || 'Default') : null
 )
 const effectiveImageGenerationActiveLabel = computed(() =>
+  isOpenAIResponsesSelected.value
+    ? [resolvedSessionConfig.value.imageGeneration.detail?.openAI?.size, resolvedSessionConfig.value.imageGeneration.detail?.openAI?.quality].filter(Boolean).join(' · ') || null
+    :
   effectiveImageGenerationEnabled.value
     ? effectiveImageGenerationSizeLabel.value
       ? `${effectiveImageGenerationSizeLabel.value} · ${effectiveImageGenerationAspectRatio.value}`
@@ -611,11 +632,9 @@ const currentModelKey = computed(() => {
   return selectedProvider.value && normalized.length > 0 ? `${selectedProvider.value}::${normalized}` : ''
 })
 const attachmentFeedbackClass = computed(() => {
-  if (props.attachmentFeedbackTone === 'error') return 'border-red-200 bg-red-50 text-red-800'
-  if (props.attachmentFeedbackTone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-800'
-  if (props.attachmentFeedbackTone === 'success') return 'border-green-200 bg-green-50 text-green-800'
-  if (props.attachmentFeedbackTone === 'info') return 'border-blue-200 bg-blue-50 text-blue-800'
-  return 'border-gray-200 bg-gray-50 text-gray-700'
+  if (props.attachmentFeedbackTone === 'error') return 'sv-notice-danger'
+  if (props.attachmentFeedbackTone === 'warning') return 'sv-notice-warning'
+  return ''
 })
 const currentModelIsFavorite = computed(() => favoriteModelKeySet.value.has(currentModelKey.value))
 const favoriteModelKeys = computed(() => favoriteModels.value.map((item) => item.modelKey))
@@ -668,12 +687,6 @@ const currentModelDisplayName = computed(() => {
 
 function isSelectedModel(modelId: string): boolean {
   return normalizeModelKey(modelId) === selectedModel.value
-}
-
-function modelChipClass(modelId: string): string {
-  return isSelectedModel(modelId)
-    ? 'border-blue-300 bg-blue-50 text-blue-700'
-    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number): number {
@@ -748,7 +761,7 @@ function onDraftInput(event: Event) {
 }
 
 function onDraftKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.shiftKey) return
+  if (event.isComposing || event.keyCode === 229 || event.key !== 'Enter' || event.shiftKey) return
   event.preventDefault()
   if (isSendButtonEnabled.value) emit('send')
 }
@@ -807,9 +820,15 @@ function onPaste(event: ClipboardEvent) {
 }
 
 function onImageChipOption(value: string) {
+  if (value === '__more_image_settings') {
+    emit('openImageSettings')
+    return
+  }
   const resolutions = imageGenerationSizeOptions.value
   const aspectRatios = imageGenerationAspectRatioOptions.value
-  if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
+  if (showImageGenerationSizeControl.value && value === 'Default') {
+    emit('updateImageGenerationResolution', '')
+  } else if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
     emit('updateImageGenerationResolution', value as ChatSessionConfigImageResolution)
   } else if ((aspectRatios as readonly string[]).includes(value)) {
     emit('updateImageGenerationAspectRatio', value as ChatSessionConfigAspectRatio)
@@ -818,29 +837,15 @@ function onImageChipOption(value: string) {
 
 function onGoogleThinkingToggle() {
   if (isGoogleImageGenerationModel.value) return
-  if (googleThinkingCapability.value.kind === 'unsupported') return
-  const current = resolvedSessionConfig.value.generationParams.detail ?? {}
-  if (googleThinkingEnabled.value) {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      ...(googleThinkingCapability.value.kind === 'budget' ? { thinkingBudget: { mode: 'omit' } as const } : {}),
-      ...(googleThinkingCapability.value.kind === 'level' ? { thinkingLevel: { mode: 'omit' } as const } : {}),
-    })
-    return
-  }
-  if (googleThinkingCapability.value.kind === 'budget') {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudgetMode === 'dynamic' ? -1 : 0 },
-    })
-    return
-  }
-  if (googleThinkingCapability.value.kind === 'level') {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      thinkingLevel: { mode: 'custom', value: googleThinkingCapability.value.defaultLevel },
-    })
-  }
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget' || !capability.allowOff || capability.required) return
+  const enabledValue = !googleThinkingEnabled.value
+  emit('updateGenerationParamsLayer', {
+    ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+    thinkingEnabled: { mode: 'custom', value: enabledValue },
+    thinkingLevel: { mode: 'omit' },
+    thinkingBudget: { mode: 'custom', value: enabledValue ? (capability.allowDynamic ? -1 : capability.minBudget) : 0 },
+  })
 }
 
 function onGoogleThinkingBudgetInput(event: Event) {
@@ -850,6 +855,7 @@ function onGoogleThinkingBudgetInput(event: Event) {
   emit('updateGenerationParamsLayer', {
     ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
     thinkingLevel: { mode: 'omit' },
+    thinkingEnabled: { mode: 'custom', value: true },
     thinkingBudget: { mode: 'custom', value: raw },
   })
 }
@@ -860,16 +866,18 @@ function onGoogleThinkingBudgetModeInput(event: Event) {
   if (capability.kind !== 'budget') return
   const current = resolvedSessionConfig.value.generationParams.detail ?? {}
   if (mode === 'default') {
-    emit('updateGenerationParamsLayer', { ...current, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingEnabled: { mode: 'omit' }, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
   } else if (mode === 'dynamic') {
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: -1 } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingEnabled: { mode: 'custom', value: true },
+    thinkingBudget: { mode: 'custom', value: -1 } })
   } else if (mode === 'off' && capability.allowOff) {
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: 0 } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingEnabled: { mode: 'custom', value: false },
+    thinkingBudget: { mode: 'custom', value: 0 } })
   } else if (mode === 'fixed') {
     const existing = current.thinkingBudget
     const value = existing?.mode === 'custom' && isProjectedGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
       ? existing.value : capability.minBudget
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingEnabled: { mode: 'custom', value: true }, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
   }
 }
 
@@ -1109,9 +1117,13 @@ watch(() => compatibleRouteIntent.value?.providerInstanceId ?? null, (providerIn
 
 onMounted(() => {
   void hydrateModelPickerPrefs()
+  document.addEventListener('pointerdown', dismissQuickModels)
+  document.addEventListener('keydown', onQuickModelsKeydown)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', dismissQuickModels)
+  document.removeEventListener('keydown', onQuickModelsKeydown)
   removeAttachmentMenuListeners()
   cancelAttachmentMenuFrame()
   window.removeEventListener('settings:maxRecentModelsUpdated', onMaxRecentModelsUpdated)
@@ -1123,10 +1135,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-3 px-4 py-3" @dragover.prevent @drop="onDrop" @paste="onPaste">
-    <div class="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+  <div class="flex flex-col gap-1 px-4 pb-1 pt-2" @dragover.prevent @drop="onDrop" @paste="onPaste">
+    <div class="flex flex-col rounded-2xl border border-gray-300 bg-white transition-colors focus-within:border-gray-500">
       <textarea
-        class="min-h-[96px] w-full resize-none border-0 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
+        class="block max-h-60 min-h-[56px] w-full resize-none overflow-y-auto border-0 bg-transparent px-4 pb-1 pt-3.5 text-sm leading-6 text-gray-900 outline-none [field-sizing:content] disabled:text-gray-500"
         :disabled="props.disabled"
         :value="props.draft"
         :placeholder="t('composer.placeholder.default')"
@@ -1137,15 +1149,16 @@ onBeforeUnmount(() => {
 
       <div
         v-if="historyIncompatibleSummary?.hasItems"
-        class="mt-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
+        class="sv-notice sv-notice-warning mx-3 mb-1 items-center"
         data-testid="composer-history-incompatible-warning"
       >
-        <span class="truncate">
+        <UiIcon name="alert" :size="14" class="shrink-0" />
+        <span class="min-w-0 flex-1 truncate">
           {{ historyIncompatibleSummary.warningText }}
         </span>
         <button
           type="button"
-          class="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] text-amber-800 hover:bg-amber-100"
+          class="sv-btn sv-btn-sm shrink-0"
           data-testid="composer-history-incompatible-review"
           @click="emit('reviewHistoryIncompatible')"
         >
@@ -1154,29 +1167,33 @@ onBeforeUnmount(() => {
         <template v-if="historyIncompatibleSummary.navigationActive">
           <button
             type="button"
-            class="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-100"
+            class="sv-icon-btn shrink-0"
+            :aria-label="t('chat.attachmentConfirm.previous')"
+            :title="t('chat.attachmentConfirm.previous')"
             data-testid="composer-history-incompatible-prev"
             @click="emit('navigateHistoryIncompatiblePrev')"
           >
-            &lt;
+            <UiIcon name="chevronLeft" :size="14" />
           </button>
-          <span class="shrink-0 font-mono text-[11px]" data-testid="composer-history-incompatible-index">
+          <span class="shrink-0 font-mono text-xs" data-testid="composer-history-incompatible-index">
             {{ `${historyIncompatibleSummary.currentIndex}/${historyIncompatibleSummary.count}` }}
           </span>
           <button
             type="button"
-            class="shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-100"
+            class="sv-icon-btn shrink-0"
+            :aria-label="t('chat.attachmentConfirm.next')"
+            :title="t('chat.attachmentConfirm.next')"
             data-testid="composer-history-incompatible-next"
             @click="emit('navigateHistoryIncompatibleNext')"
           >
-            &gt;
+            <UiIcon name="chevronRight" :size="14" />
           </button>
         </template>
       </div>
 
       <div
         v-if="props.attachmentFeedbackMessage"
-        class="mt-2 rounded-md border px-3 py-2 text-[11px]"
+        class="sv-notice mx-3 mb-1"
         :class="attachmentFeedbackClass"
         data-testid="composer-attachment-feedback"
       >
@@ -1185,7 +1202,7 @@ onBeforeUnmount(() => {
 
       <div
         v-if="attachmentMenuError"
-        class="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800"
+        class="sv-notice sv-notice-danger mx-3 mb-1"
         role="status"
         aria-live="polite"
         data-testid="composer-attachment-menu-error"
@@ -1193,17 +1210,21 @@ onBeforeUnmount(() => {
         {{ attachmentMenuError }}
       </div>
 
-      <div class="mt-3 flex items-center justify-between gap-3">
-        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+      <div class="flex items-end justify-between gap-2 px-2 pb-2 pt-1">
+        <div class="flex min-w-0 flex-wrap items-center gap-1">
           <button
             ref="attachmentToggleRef"
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            class="sv-icon-btn"
             :disabled="props.disabled || props.isRunning"
+            :aria-label="t('composer.actions.attach')"
+            :title="t('composer.actions.attach')"
+            aria-haspopup="menu"
+            :aria-expanded="attachmentMenuOpen"
             data-testid="composer-attach-toggle"
             @click="toggleAttachmentMenu"
           >
-            +
+            <UiIcon name="plus" :size="16" />
           </button>
           <ComposerCapabilityChip
             v-if="isOpenAIResponsesSelected"
@@ -1216,25 +1237,17 @@ onBeforeUnmount(() => {
             data-test-id="reasoning-chip"
             @toggle="onOpenAIResponsesReasoningToggle"
           >
-            <template #icon>
-              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="6" r="3" />
-                <path d="M8 9v3" />
-                <path d="M5 14h6" />
-                <path d="M6 12h4" />
-              </svg>
-            </template>
             <template #menu="{ close }">
-              <div class="w-56 space-y-3 px-3 py-2 text-[11px] text-gray-700" data-testid="composer-openai-responses-reasoning-controls">
-                <div class="space-y-1.5">
-                  <div class="font-medium text-gray-600">{{ t('chat.generationParams.reasoning.effort') }}</div>
+              <div class="flex w-56 flex-col gap-2 px-1 py-1 text-xs text-gray-700" data-testid="composer-openai-responses-reasoning-controls">
+                <div class="flex flex-col gap-1">
+                  <div class="sv-label px-2">{{ t('chat.generationParams.reasoning.effort') }}</div>
                   <div class="grid grid-cols-2 gap-1">
                     <button
                       v-for="option in openAIResponsesReasoningOptions"
                       :key="option"
                       type="button"
-                      class="rounded border px-2 py-1 text-left transition-colors hover:bg-gray-50"
-                      :class="openAIResponsesReasoningValue === option ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'"
+                      class="sv-menu-item"
+                      :aria-pressed="openAIResponsesReasoningValue === option"
                       data-testid="composer-openai-responses-reasoning-effort-option"
                       @click="() => { onOpenAIResponsesReasoningSelect(option); close() }"
                     >
@@ -1242,15 +1255,15 @@ onBeforeUnmount(() => {
                     </button>
                   </div>
                 </div>
-                <div class="space-y-1.5 border-t border-gray-100 pt-2">
-                  <div class="font-medium text-gray-600">{{ t('chat.generationParams.reasoning.summary') }}</div>
+                <div class="sv-divider-t flex flex-col gap-1 pt-2">
+                  <div class="sv-label px-2">{{ t('chat.generationParams.reasoning.summary') }}</div>
                   <div class="grid grid-cols-2 gap-1">
                     <button
                       v-for="option in openAIResponsesReasoningSummaryOptions"
                       :key="option"
                       type="button"
-                      class="rounded border px-2 py-1 text-left transition-colors hover:bg-gray-50"
-                      :class="openAIResponsesReasoningSummaryValue === option ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'"
+                      class="sv-menu-item"
+                      :aria-pressed="openAIResponsesReasoningSummaryValue === option"
                       data-testid="composer-openai-responses-reasoning-summary-option"
                       @click="() => { onOpenAIResponsesReasoningSummarySelect(option); close() }"
                     >
@@ -1274,45 +1287,29 @@ onBeforeUnmount(() => {
             data-test-id="reasoning-chip"
             @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
             @select-option="(v) => emit('updateReasoningEffort', v as ChatSessionConfigReasoningEffort)"
-          >
-            <template #icon>
-              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="6" r="3" />
-                <path d="M8 9v3" />
-                <path d="M5 14h6" />
-                <path d="M6 12h4" />
-              </svg>
-            </template>
-          </ComposerCapabilityChip>
+          />
           <ComposerCapabilityChip
-            v-else-if="!(isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0)"
+            v-else-if="googleThinkingCapability.required || !(isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0)"
             :enabled="googleThinkingEnabled"
             :label="t('composer.capabilities.reasoning')"
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
-            :disabled="disabled || (isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0) || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :disabled="disabled || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :toggle-disabled="isGoogleImageGenerationModel || !googleThinkingCapability.allowOff || googleThinkingCapability.required"
             :unavailable-reason="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported' ? googleThinkingUnavailableReason : null"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >
-            <template #icon>
-              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="6" r="3" />
-                <path d="M8 9v3" />
-                <path d="M5 14h6" />
-                <path d="M6 12h4" />
-              </svg>
-            </template>
             <template #menu>
               <div
-                class="w-52 space-y-2 px-3 py-2 text-[11px] text-gray-700"
+                class="flex w-56 flex-col gap-2 px-3 py-2 text-xs text-gray-700"
                 data-testid="composer-google-thinking-controls"
               >
                 <template v-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'">
-                  <label class="space-y-1">
-                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingBudget') }}</span>
+                  <label class="flex flex-col gap-1">
+                    <span class="sv-label">{{ t('chat.console.reasoning.thinkingBudget') }}</span>
                     <select
-                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      class="sv-select sv-select-sm"
                       :value="googleThinkingBudgetMode"
                       :disabled="disabled"
                       data-testid="composer-google-thinking-budget-mode"
@@ -1324,11 +1321,11 @@ onBeforeUnmount(() => {
                       <option value="fixed">{{ t('chat.console.reasoning.fixedBudget') }}</option>
                     </select>
                   </label>
-                  <label v-if="googleThinkingBudgetMode === 'fixed'" class="space-y-1">
-                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.fixedBudget') }}</span>
+                  <label v-if="googleThinkingBudgetMode === 'fixed'" class="flex flex-col gap-1">
+                    <span class="sv-label">{{ t('chat.console.reasoning.fixedBudget') }}</span>
                     <input
                       type="number"
-                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      class="sv-input sv-input-sm"
                       :min="googleThinkingCapability.minBudget"
                       :max="googleThinkingCapability.maxBudget"
                       :value="googleThinkingBudgetInput"
@@ -1336,14 +1333,14 @@ onBeforeUnmount(() => {
                       data-testid="composer-google-thinking-budget"
                       @input="onGoogleThinkingBudgetInput"
                     />
-                    <span class="block text-[10px] text-gray-500">{{ tf('chat.console.reasoning.allowedRange', { min: googleThinkingCapability.minBudget, max: googleThinkingCapability.maxBudget }) }}</span>
+                    <span class="sv-meta">{{ tf('chat.console.reasoning.allowedRange', { min: googleThinkingCapability.minBudget, max: googleThinkingCapability.maxBudget }) }}</span>
                   </label>
                 </template>
                 <template v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0">
-                  <label class="space-y-1">
-                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+                  <label class="flex flex-col gap-1">
+                    <span class="sv-label">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
                     <select
-                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      class="sv-select sv-select-sm"
                       :value="googleThinkingActiveLabel"
                       :disabled="disabled"
                       data-testid="composer-google-thinking-level"
@@ -1354,23 +1351,23 @@ onBeforeUnmount(() => {
                   </label>
                 </template>
                 <template v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'level'">
-                  <label class="space-y-1">
-                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+                  <label class="flex flex-col gap-1">
+                    <span class="sv-label">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
                     <select
-                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      class="sv-select sv-select-sm"
                       :value="googleThinkingLevelSelection"
                       :disabled="disabled"
                       data-testid="composer-google-thinking-level"
                       @change="onGoogleThinkingLevelInput"
                     >
-                      <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel }) }}</option>
+                      <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel || t('chat.console.reasoning.providerManaged') }) }}</option>
                       <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ googleThinkingLevelLabel(level) }}</option>
                     </select>
                   </label>
                 </template>
                 <label
                   v-if="isGoogleImageGenerationModel ? googleImageGenerationPolicy.supportsThoughtSummaries : googleThinkingCapability.kind !== 'unsupported'"
-                  class="flex items-center gap-1.5"
+                  class="flex items-center gap-2"
                 >
                   <input
                     type="checkbox"
@@ -1383,7 +1380,7 @@ onBeforeUnmount(() => {
                 </label>
                 <div
                   v-if="isGoogleImageGenerationModel"
-                  class="text-[11px] text-gray-500"
+                  class="sv-meta"
                   data-testid="composer-google-thinking-provider-managed"
                 >
                   {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
@@ -1402,16 +1399,7 @@ onBeforeUnmount(() => {
             data-test-id="web-search-chip"
             @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
             @select-option="(v) => emit('updateWebSearchLevel', v as 'low' | 'high')"
-          >
-            <template #icon>
-              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="8" r="5" />
-                <path d="M3 8h10" />
-                <path d="M8 3c1.5 1.5 2 3 2 5s-.5 3.5-2 5" />
-                <path d="M8 3c-1.5 1.5-2 3-2 5s.5 3.5 2 5" />
-              </svg>
-            </template>
-          </ComposerCapabilityChip>
+          />
           <ComposerCapabilityChip
             :enabled="effectiveImageGenerationEnabled"
             :label="t('composer.capabilities.image')"
@@ -1419,41 +1407,36 @@ onBeforeUnmount(() => {
             kind="image"
             :disabled="disabled"
             :options="imageChipOptions"
+            :option-labels="{ __more_image_settings: t('chat.console.imageSettings.more') }"
+            :toggle-disabled="isGoogleImageGenerationModel"
             :selected-option="null"
-            :unavailable-reason="imageGenerationAspectRatioOptions.length === 0 ? imageGenerationUnavailableReason : null"
+            :unavailable-reason="!isOpenAIResponsesSelected && imageGenerationAspectRatioOptions.length === 0 ? imageGenerationUnavailableReason : null"
             data-test-id="image-chip"
             @toggle="isGoogleImageGenerationModel ? emit('updateImageGenerationEnabled', true) : emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
             @select-option="onImageChipOption"
-          >
-            <template #icon>
-              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="2" width="12" height="12" rx="1.5" />
-                <circle cx="5.5" cy="5.5" r="1" />
-                <path d="M14 10l-3-3-7 7" />
-              </svg>
-            </template>
-          </ComposerCapabilityChip>
+          />
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex shrink-0 items-center">
           <button
             v-if="isSendButtonStop"
             type="button"
-            class="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            class="sv-btn w-[74px] px-0"
             data-testid="composer-stop"
             @click="emit('abort')"
           >
+            <UiIcon name="stop" :size="12" />
             {{ t('composer.actions.stop') }}
           </button>
           <button
             v-else
             type="button"
-            class="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            class="sv-btn sv-btn-primary relative w-[74px] px-0"
             :disabled="!isSendButtonEnabled"
             :title="sendPlanBlockingSummary ? t(sendPlanBlockingSummary) : undefined"
             data-testid="composer-send"
             @click="emit('send')"
           >
-            <span v-if="isSendButtonBusy" class="inline-block animate-spin mr-1">⟳</span>
+            <UiIcon v-if="isSendButtonBusy" name="spinner" :size="14" class="absolute left-2" />
             {{ t('composer.actions.send') }}
           </button>
         </div>
@@ -1461,76 +1444,76 @@ onBeforeUnmount(() => {
 
       <div
         v-if="props.isSendPlanLoading"
-        class="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
+        class="sv-notice mx-3 mb-2"
         data-testid="composer-send-gate-loading"
       >
         {{ t('composer.status.updatingSendPlan') }}
       </div>
       <div
         v-else-if="sendPlanBlockingSummary"
-        class="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800"
+        class="sv-notice sv-notice-danger mx-3 mb-2"
         data-testid="composer-send-gate-block"
       >
         {{ t(sendPlanBlockingSummary) }}
       </div>
       <div
         v-else-if="sendPlanWarningSummary"
-        class="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
+        class="sv-notice sv-notice-warning mx-3 mb-2"
         data-testid="composer-send-gate-warning"
       >
         {{ t(sendPlanWarningSummary) }}
       </div>
     </div>
 
-    <div class="space-y-2 text-xs text-gray-600">
-      <div class="flex min-w-0 flex-wrap items-center gap-2">
-        <div class="font-semibold uppercase tracking-wide text-gray-500">Model</div>
+    <div ref="modelControlsRef" class="relative flex flex-col gap-1">
+      <div class="flex h-8 min-w-0 items-center gap-1 text-xs text-gray-600">
+        <div class="sr-only">Model</div>
         <button
           type="button"
-          class="max-w-[20rem] truncate rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-2 text-left text-[13px] text-gray-600 transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400"
           :disabled="props.disabled"
           data-testid="current-model-pill"
           @click="openModelPicker"
         >
-          {{ currentModelDisplayName }}
+          <span class="min-w-0 truncate">{{ currentModelDisplayName }}</span>
+          <UiIcon name="chevronDown" :size="12" class="shrink-0" />
         </button>
         <button
           type="button"
-          class="rounded-md border px-2 py-1 text-[11px] leading-none shadow-sm disabled:opacity-50"
-          :class="
-            currentModelIsFavorite
-              ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-          "
+          class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400 aria-pressed:text-gray-900"
           :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProvider !== OPENROUTER_PROVIDER_ID"
+          :aria-pressed="currentModelIsFavorite"
+          :aria-label="t('composer.modelPicker.favorites')"
+          :title="t('composer.modelPicker.favorites')"
           data-testid="current-model-favorite-toggle"
           @click="onToggleCurrentModelFavorite"
         >
-          {{ currentModelIsFavorite ? '★' : '☆' }}
+          <UiIcon name="star" :size="15" :filled="currentModelIsFavorite" />
         </button>
-        <div class="grid w-44 grid-cols-2 gap-1" data-testid="model-quick-mode-tabs">
+        <div class="min-w-0 flex-1" aria-hidden="true"></div>
+        <div class="flex shrink-0 items-center gap-1" data-testid="model-quick-mode-tabs">
           <button
             type="button"
-            class="flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-            :class="modelQuickMode === 'favorites' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+            class="inline-flex h-7 w-16 items-center justify-center gap-1 rounded-md text-xs text-gray-600 transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400 aria-expanded:bg-black/[0.08] aria-expanded:text-gray-900"
             :disabled="props.disabled"
             title="Favorite models"
+            :aria-expanded="modelQuickMode === 'favorites'"
             data-testid="model-main-tab-favorites"
             @click="setModelQuickMode('favorites')"
           >
-            <span aria-hidden="true">★</span>
+            <UiIcon name="star" :size="13" />
             <span>Fav</span>
           </button>
           <button
             type="button"
-            class="flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-            :class="modelQuickMode === 'recents' ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+            class="inline-flex h-7 w-16 items-center justify-center gap-1 rounded-md text-xs text-gray-600 transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400 aria-expanded:bg-black/[0.08] aria-expanded:text-gray-900"
             :disabled="props.disabled"
             title="Recent models in this session"
+            :aria-expanded="modelQuickMode === 'recents'"
             data-testid="model-main-tab-recents"
             @click="setModelQuickMode('recents')"
           >
-            <span aria-hidden="true">↺</span>
+            <UiIcon name="history" :size="13" />
             <span>Rec</span>
           </button>
         </div>
@@ -1538,12 +1521,12 @@ onBeforeUnmount(() => {
 
       <div
         v-if="modelQuickMode"
-        class="flex max-w-full items-center gap-1 overflow-x-auto pl-[3.25rem]"
+        class="sv-popover absolute bottom-full right-0 z-30 mb-2 flex max-h-64 w-[min(340px,100%)] flex-col gap-0.5 overflow-y-auto"
         data-testid="favorites-strip"
       >
         <div
           v-if="activeQuickModelItems.length === 0"
-          class="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-500"
+          class="px-2.5 py-2 text-xs text-gray-500"
           data-testid="model-main-empty-state"
         >
           {{ activeQuickModelEmptyText }}
@@ -1553,20 +1536,19 @@ onBeforeUnmount(() => {
             v-for="item in activeQuickModelItems"
             :key="`${modelQuickMode}-model-${item.modelId}`"
             type="button"
-            class="rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-            :class="modelChipClass(item.modelId)"
+            class="sv-menu-item"
             :disabled="disabled"
             :data-testid="`${modelQuickMode === 'favorites' ? 'favorite' : 'recent'}-model-${item.modelId}`"
             :aria-pressed="isSelectedModel(item.modelId)"
             @click="onSelectQuickModel(item.providerId, item.modelId)"
           >
-            {{ item.name }}
+            <span class="min-w-0 truncate">{{ item.name }}</span>
           </button>
         </template>
       </div>
       <div
         v-if="modelQuickSelectionError"
-        class="ml-[3.25rem] mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700"
+        class="sv-notice sv-notice-danger"
         data-testid="model-quick-selection-error"
       >
         {{ modelQuickSelectionError }}
@@ -1574,45 +1556,48 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-    <Teleport to="body">
-      <div
-        v-if="attachmentMenuOpen"
-        ref="attachmentMenuRef"
-        class="overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg"
-        :style="attachmentMenuReady ? attachmentMenuStyle : attachmentMenuHiddenStyle"
-        :aria-hidden="!attachmentMenuReady"
-        data-testid="composer-attach-menu"
+  <Teleport to="body">
+    <div
+      v-if="attachmentMenuOpen"
+      ref="attachmentMenuRef"
+      class="sv-popover flex flex-col gap-0.5 overflow-y-auto"
+      :style="attachmentMenuReady ? attachmentMenuStyle : attachmentMenuHiddenStyle"
+      :aria-hidden="!attachmentMenuReady"
+      data-testid="composer-attach-menu"
+    >
+      <button
+        type="button"
+        class="sv-menu-item"
+        :disabled="props.disabled || props.isRunning"
+        data-testid="composer-attach-file"
+        @click="requestAttachFiles"
       >
-        <button
-          type="button"
-          class="block w-full rounded px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
-          :disabled="props.disabled || props.isRunning"
-          data-testid="composer-attach-file"
-          @click="requestAttachFiles"
-        >
-          {{ t('composer.actions.uploadFile') }}
-        </button>
-        <button
-          type="button"
-          class="block w-full rounded px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
-          :disabled="props.disabled || props.isRunning || props.imageInputSupported === false"
-          :title="props.imageInputSupported === false ? props.imageInputDisabledReason ?? t('errors.attachment.modelNoImageSupport') : undefined"
-          data-testid="composer-attach-image"
-          @click="requestAttachImages"
-        >
-          {{ t('composer.actions.uploadImage') }}
-        </button>
-        <button
-          type="button"
-          class="block w-full rounded px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
-          :disabled="props.disabled || props.isRunning"
-          data-testid="composer-attach-url"
-          @click="requestAttachUrl"
-        >
-          {{ t('composer.actions.uploadLink') }}
-        </button>
-      </div>
-    </Teleport>
+        <UiIcon name="file" :size="15" class="shrink-0" />
+        <span>{{ t('composer.actions.uploadFile') }}</span>
+      </button>
+      <button
+        type="button"
+        class="sv-menu-item"
+        :disabled="props.disabled || props.isRunning || props.imageInputSupported === false"
+        :title="props.imageInputSupported === false ? props.imageInputDisabledReason ?? t('errors.attachment.modelNoImageSupport') : undefined"
+        data-testid="composer-attach-image"
+        @click="requestAttachImages"
+      >
+        <UiIcon name="image" :size="15" class="shrink-0" />
+        <span>{{ t('composer.actions.uploadImage') }}</span>
+      </button>
+      <button
+        type="button"
+        class="sv-menu-item"
+        :disabled="props.disabled || props.isRunning"
+        data-testid="composer-attach-url"
+        @click="requestAttachUrl"
+      >
+        <UiIcon name="link" :size="15" class="shrink-0" />
+        <span>{{ t('composer.actions.uploadLink') }}</span>
+      </button>
+    </div>
+  </Teleport>
 
   <ModelPickerDialog
     :open="modelPickerOpen"
@@ -1632,7 +1617,7 @@ onBeforeUnmount(() => {
     @toggleFavorite="onToggleModelPickerFavorite"
     @reorderFavorites="onReorderModelPickerFavorites"
   />
-  <div v-if="compatibleRouteIntent" class="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900" data-testid="compatible-send-selection">
+  <div v-if="compatibleRouteIntent" class="sv-meta mx-4 mb-1" data-testid="compatible-send-selection">
     {{ compatibleRouteSources.find((source) => source.providerInstanceId === compatibleRouteIntent?.providerInstanceId)?.providerName ?? compatibleRouteIntent.providerInstanceId }} · {{ compatibleRouteIntent.modelId }}
   </div>
 </template>

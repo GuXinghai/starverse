@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { visiblePageWindow } from '@/next/search/searchPagination'
 import { t, tf } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 /**
  * Presentational page rail. It owns no navigation state: it renders `currentPage` (results on screen) and
@@ -61,12 +62,12 @@ function labelOf(page: number): string {
   return tf('search.paginator.page', { page })
 }
 
-// The glyph keeps its layout space in the current-page square but is painted transparent.
+// Fill and inset ring keep the same page-button geometry in all navigation states.
 const STATE_CLASS: Record<ReturnType<typeof stateOf>, string> = {
-  plain: 'text-gray-600 hover:bg-gray-100',
-  selected: 'text-gray-900 ring-1 ring-inset ring-blue-500',
-  current: 'bg-blue-600 text-transparent',
-  both: 'bg-blue-600 text-transparent ring-2 ring-inset ring-blue-300',
+  plain: 'text-[color:var(--sv-text-2)] hover:bg-[var(--sv-hover)]',
+  selected: 'text-[color:var(--sv-text)] ring-1 ring-inset ring-[color:var(--sv-text)]',
+  current: 'bg-[var(--sv-selected)] text-[color:var(--sv-text)]',
+  both: 'bg-[var(--sv-selected)] text-[color:var(--sv-text)] ring-1 ring-inset ring-[color:var(--sv-text)]',
 }
 
 function focusRoot() {
@@ -90,7 +91,7 @@ function onKeydown(event: KeyboardEvent) {
 <template>
   <nav
     ref="root"
-    class="flex shrink-0 items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+    class="sv-divider-t flex h-11 shrink-0 items-center gap-1 bg-[var(--sv-surface)] px-3 focus-visible:-outline-offset-2"
     :aria-label="t('search.paginator.label')"
     :aria-busy="props.navigating"
     tabindex="0"
@@ -100,65 +101,68 @@ function onKeydown(event: KeyboardEvent) {
     <button
       v-if="props.canReadapt"
       type="button"
-      class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+      class="sv-icon-btn shrink-0"
+      :aria-label="t('search.paginator.readapt')"
       :title="t('search.paginator.readaptTitle')"
       data-testid="search-readapt"
       @click="emit('readapt')"
     >
-      {{ t('search.paginator.readapt') }}
+      <UiIcon name="refresh" :size="14" />
     </button>
 
-    <div class="flex min-w-0 flex-1 items-center justify-center gap-1">
-      <button
-        type="button"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-        :aria-label="t('search.paginator.previous')"
-        :disabled="props.selectedPage <= 1"
-        data-testid="search-page-prev"
-        @click="emit('arrow', -1)"
-      >
-        &lsaquo;
-      </button>
+    <button
+      type="button"
+      class="sv-icon-btn shrink-0"
+      :aria-label="t('search.paginator.previous')"
+      :disabled="props.selectedPage <= 1"
+      data-testid="search-page-prev"
+      @click="emit('arrow', -1)"
+    >
+      <UiIcon name="chevronLeft" :size="15" />
+    </button>
 
-      <div
-        ref="rail"
-        class="search-rail flex min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden"
-        data-testid="search-page-rail"
-      >
-        <button
-          v-for="page in pages"
-          :key="page"
-          type="button"
-          class="h-7 min-w-7 shrink-0 rounded-md px-1.5 text-center text-xs font-medium tabular-nums"
-          :class="STATE_CLASS[stateOf(page)]"
-          :aria-label="labelOf(page)"
-          :aria-current="page === props.currentPage ? 'page' : undefined"
-          :data-state="stateOf(page)"
-          :data-testid="`search-page-${page}`"
-          @click="emit('page', page)"
-        >
-          {{ page }}
-        </button>
-      </div>
-
+    <div
+      ref="rail"
+      class="search-rail flex min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden"
+      data-testid="search-page-rail"
+    >
       <button
+        v-for="page in pages"
+        :key="page"
         type="button"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-        :aria-label="t('search.paginator.next')"
-        :disabled="props.selectedPage >= props.maxPage"
-        data-testid="search-page-next"
-        @click="emit('arrow', 1)"
+        class="h-7 min-w-7 shrink-0 rounded-md px-1.5 text-center text-xs font-medium tabular-nums"
+        :class="STATE_CLASS[stateOf(page)]"
+        :aria-label="labelOf(page)"
+        :aria-current="page === props.currentPage ? 'page' : undefined"
+        :data-state="stateOf(page)"
+        :data-testid="`search-page-${page}`"
+        @click="emit('page', page)"
       >
-        &rsaquo;
+        {{ page }}
       </button>
     </div>
 
-    <span v-if="props.navigating" class="shrink-0 text-xs text-gray-500" role="status">{{ t('search.paginator.navigating') }}</span>
+    <button
+      type="button"
+      class="sv-icon-btn shrink-0"
+      :aria-label="t('search.paginator.next')"
+      :disabled="props.selectedPage >= props.maxPage"
+      data-testid="search-page-next"
+      @click="emit('arrow', 1)"
+    >
+      <UiIcon name="chevronRight" :size="15" />
+    </button>
+
+    <!-- Fixed 28px box: the spinner appears inside it, so loading never changes the rail width. -->
+    <span class="inline-flex size-7 shrink-0 items-center justify-center text-[color:var(--sv-text-3)]" :aria-hidden="!props.navigating" role="status">
+      <UiIcon name="spinner" :size="14" :class="{ invisible: !props.navigating }" />
+      <span class="sr-only">{{ t('search.paginator.navigating') }}</span>
+    </span>
   </nav>
 </template>
 
 <style scoped>
-/* Subtle fade at both rail ends, like frosted glass; the arrows stay fixed outside the rail and fully hittable. */
+/* Subtle fade at both rail ends; the arrows stay fixed outside the rail and fully hittable. */
 .search-rail {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 10px), transparent);
   mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 10px), transparent);

@@ -3,6 +3,7 @@ import { decodeProviderBindingRecordV2 } from '../../../../core/generation-v2/do
 import { listReviewedProviderContractDefinitionsV2 } from '../../../../core/generation-v2/contracts/providerContractRegistryV2'
 import { decodeCanonicalOpenRouterImageDescriptorSetV2 } from '../../../../core/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import { compileOpenRouterImageRequestV1 } from '../../../../core/generation-v2/providers/openrouter-images/imageRequestV1'
+import { readApiRequestBodyContractV2 } from '../../../../core/generation-v2/contracts/apiRequestBodyContractV2'
 
 const definition = listReviewedProviderContractDefinitionsV2()
   .find((item) => item.protocolContractId.value === 'openrouter-images-v1')!
@@ -106,5 +107,10 @@ describe('OpenRouter Images V1 exact request compiler', () => {
       prompt: 'two images', wireFields: wireFields(0, 2),
       modelId: set.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio', descriptorSet: set,
     })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_RESULT_CARDINALITY_UNSUPPORTED')
+    expect(() => compileOpenRouterImageRequestV1({
+      prompt: 'two images', wireFields: wireFields(0, 2),
+      modelId: set.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio', descriptorSet: set,
+    }, 'image_generate', readApiRequestBodyContractV2('openrouter', 'image_generate').bodySchemaRevision))
+      .toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_RESULT_CARDINALITY_UNSUPPORTED')
   })
 })

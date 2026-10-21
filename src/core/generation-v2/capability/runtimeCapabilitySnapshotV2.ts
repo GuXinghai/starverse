@@ -24,6 +24,7 @@ import { canonicalizeModelFactsV2, projectCanonicalModelIdentityV2 } from './can
 import type { ResolvedModelFactsSnapshotBindingV1 } from '../model-facts/resolvedModelFactsV1'
 import {
   MODEL_CAPABILITY_SEMANTIC_PATHS_V2,
+  isCompleteModelCapabilityFieldSetV2,
   MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2,
   MODEL_CAPABILITY_IDENTITY_PATHS_V2,
   isModelCapabilityDomainCompatibleWithPathV2,
@@ -320,7 +321,7 @@ function decodeScalarSet(value: unknown): readonly RuntimeCapabilityScalarV2[] {
 function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   const discriminator = closedObject(value, [
     'kind', 'types', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength', 'maxLength',
-    'maxFieldLength', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+    'maxFieldLength', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'includedValues', 'excludedValues',
   ])
   if (discriminator.kind === 'boolean' || discriminator.kind === 'identity') {
     if (Object.keys(discriminator).length !== 1) {
@@ -360,14 +361,15 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   }
   if (discriminator.kind === 'range') {
     const raw = value as Record<string, unknown>
-    const input = closedObject(value, raw.excludedValues === undefined
-      ? ['kind', 'min', 'max', 'integer'] : ['kind', 'min', 'max', 'integer', 'excludedValues'])
+    const input = closedObject(value, ['kind', 'min', 'max', 'integer', ...(raw.includedValues === undefined ? [] : ['includedValues']), ...(raw.excludedValues === undefined ? [] : ['excludedValues'])])
     if (typeof input.min !== 'number' || !Number.isFinite(input.min) ||
         typeof input.max !== 'number' || !Number.isFinite(input.max) || input.min > input.max ||
         typeof input.integer !== 'boolean' || (input.integer &&
           (!Number.isSafeInteger(input.min) || !Number.isSafeInteger(input.max)))) {
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
+    const includedValues = input.includedValues === undefined ? undefined : closedDenseArray(input.includedValues)
+    if (includedValues && (new Set(includedValues).size !== includedValues.length || includedValues.some(item => typeof item !== 'number' || !Number.isFinite(item) || input.integer === true && !Number.isSafeInteger(item)))) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     const excludedValues = input.excludedValues === undefined ? undefined : closedDenseArray(input.excludedValues)
     if (excludedValues?.some((item) => typeof item !== 'number' || !Number.isFinite(item) ||
         item < (input.min as number) || item > (input.max as number) ||
@@ -375,7 +377,7 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
         excludedValues && new Set(excludedValues).size !== excludedValues.length) {
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
-    return Object.freeze({ kind: 'range', min: input.min, max: input.max, integer: input.integer,
+    return Object.freeze({ ...(includedValues === undefined ? {} : { includedValues: Object.freeze([...(includedValues as number[])].sort((a, b) => a - b)) }), kind: 'range', min: input.min, max: input.max, integer: input.integer,
       ...(excludedValues === undefined ? {} : { excludedValues: Object.freeze([...excludedValues].sort((left, right) =>
         (left as number) - (right as number)) as number[]) }) })
   }
@@ -453,7 +455,36 @@ const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>(MODEL_CAPABILITY
  * revision alongside the codec grammar and validation tables so a codec
  * change cannot silently reuse an installed database schema digest.
  */
-export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v5-goal3-conflict-facts'
+const PRE_REQUEST_CONTRACT_RUNTIME_CODEC_SCHEMA_PROJECTION_V2 = {
+  revision: 'runtime-capability-codec-v5-goal3-conflict-facts',
+  schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
+  maxUtf8Bytes: RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES,
+  maxEvidence: MAX_EVIDENCE,
+  maxConstraintsPerField: MAX_CONSTRAINTS_PER_FIELD,
+  maxEnumValues: MAX_ENUM_VALUES,
+  maxToolCapabilities: MAX_TOOL_CAPABILITIES,
+  semanticPaths: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  fieldStates: FIELD_STATES,
+  evidenceKinds: EVIDENCE_KINDS,
+  evidenceEffects: EVIDENCE_EFFECTS,
+  domainKinds: ['boolean', 'identity', 'string', 'enum', 'response_format', 'enum_list', 'range',
+    'string_list', 'identity_list', 'approximate_location', 'dimensions', 'dimensions_enum'],
+  constraintKinds: ['requires_value', 'forbids_value'],
+  modelFactsResolution: {
+    optional: true,
+    keys: ['resolvedSnapshotRevision', 'sourceScopeSelection', 'sourcePriorityConfigRevision',
+      'resolverRevision', 'ontologyRevision', 'capabilityRevision'],
+    sourceScopeSelectionKeys: ['providerNative', 'modelsDev', 'capabilityRules'],
+  },
+  domainKindsByPath: Object.entries(DOMAIN_KIND_BY_PATH).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
+  identityPaths: [...IDENTITY_PATHS].sort(),
+} as const
+
+export const PRE_REQUEST_CONTRACT_RUNTIME_CODEC_SCHEMA_DIGEST_V2 = sha256PreparedBytesV2(
+  new TextEncoder().encode(stableSerializeProviderRequestV2(PRE_REQUEST_CONTRACT_RUNTIME_CODEC_SCHEMA_PROJECTION_V2)),
+)
+
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v7-conditional-constraints-and-range-values'
 export const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   revision: RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
   schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
@@ -469,6 +500,8 @@ export const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   domainKinds: ['boolean', 'identity', 'string', 'enum', 'response_format', 'enum_list', 'range',
     'string_list', 'identity_list', 'approximate_location', 'dimensions', 'dimensions_enum'],
   constraintKinds: ['requires_value', 'forbids_value'],
+  constraintWhenValues: { optional: true, scalarSet: true },
+  rangeDomainOptionalKeys: ['includedValues', 'excludedValues'],
   modelFactsResolution: {
     optional: true,
     keys: ['resolvedSnapshotRevision', 'sourceScopeSelection', 'sourcePriorityConfigRevision',
@@ -497,13 +530,17 @@ function decodeSemanticPath(value: unknown): RuntimeCapabilitySemanticPathV2 {
 }
 
 function decodeConstraint(value: unknown, ownerPath: RuntimeCapabilitySemanticPathV2): RuntimeCapabilityConstraintV2 {
-  const input = closedObject(value, ['kind', 'path', 'values'])
+  const raw = value as Record<string, unknown>
+  const input = closedObject(value, raw.whenValues === undefined
+    ? ['kind', 'path', 'values'] : ['kind', 'path', 'values', 'whenValues'])
   if (input.kind !== 'requires_value' && input.kind !== 'forbids_value') {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const path = decodeSemanticPath(input.path)
   if (path === ownerPath) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-  return Object.freeze({ kind: input.kind, path, values: decodeScalarSet(input.values) })
+  const whenValues = input.whenValues === undefined ? undefined : decodeScalarSet(input.whenValues)
+  return Object.freeze({ kind: input.kind, path, values: decodeScalarSet(input.values),
+    ...(whenValues === undefined ? {} : { whenValues }) })
 }
 
 function serializeBounded(value: unknown): string {
@@ -574,7 +611,7 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
         (domain.kind === 'identity' || domain.kind === 'string') && typeof defaultValue !== 'string' ||
         domain.kind === 'string' && typeof defaultValue === 'string' && defaultValue.length > domain.maxLength ||
         domain.kind === 'enum' && !domain.values.includes(defaultValue) ||
-        domain.kind === 'range' && (typeof defaultValue !== 'number' || defaultValue < domain.min || defaultValue > domain.max ||
+        domain.kind === 'range' && (typeof defaultValue !== 'number' || (defaultValue < domain.min || defaultValue > domain.max) && !domain.includedValues?.includes(defaultValue) ||
           domain.integer && !Number.isSafeInteger(defaultValue) || domain.excludedValues?.includes(defaultValue))))) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
@@ -711,7 +748,8 @@ function domainContainsScalar(domain: RuntimeCapabilityDomainV2 | undefined, val
   if (domain.kind === 'string') return typeof value === 'string' && value.length <= domain.maxLength
   if (domain.kind === 'enum') return domain.values.some((item) => scalarKey(item) === scalarKey(value))
   if (domain.kind === 'range') {
-    return typeof value === 'number' && value >= domain.min && value <= domain.max &&
+    return typeof value === 'number' && (value >= domain.min && value <= domain.max || domain.includedValues?.includes(value) === true) &&
+      !domain.excludedValues?.includes(value) &&
       (!domain.integer || Number.isSafeInteger(value))
   }
   return false
@@ -720,27 +758,33 @@ function domainContainsScalar(domain: RuntimeCapabilityDomainV2 | undefined, val
 function validateConstraints(fields: readonly PersistedRuntimeCapabilityFieldV2[]): void {
   const byPath = new Map(fields.map((field) => [field.path, field]))
   for (const field of fields) {
-    const requires = new Set<string>()
-    const forbids = new Set<string>()
-    const constraintKindsByPath = new Set<string>()
+    const seen = new Set<string>()
     for (const constraint of field.constraints) {
-      const kindPath = `${constraint.kind}\u0000${constraint.path}`
-      if (constraintKindsByPath.has(kindPath)) {
+      const ownerDomain = field.domain
+      if (constraint.whenValues !== undefined && (ownerDomain?.kind !== 'enum' || constraint.whenValues.length === 0 ||
+          constraint.whenValues.some((value) => !ownerDomain.values.includes(value)))) {
         throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
       }
-      constraintKindsByPath.add(kindPath)
+      const key = serializeBounded({ kind: constraint.kind, path: constraint.path, values: constraint.values,
+        ...(constraint.whenValues === undefined ? {} : { whenValues: constraint.whenValues }) })
+      if (seen.has(key)) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+      seen.add(key)
       const target = byPath.get(constraint.path)
       for (const value of constraint.values) {
         if (!domainContainsScalar(target?.domain, value)) {
           throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
         }
-        const key = `${constraint.path}\u0000${scalarKey(value)}`
-        const own = constraint.kind === 'requires_value' ? requires : forbids
-        const opposite = constraint.kind === 'requires_value' ? forbids : requires
-        if (opposite.has(key)) {
-          throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-        }
-        own.add(key)
+      }
+    }
+    for (let leftIndex = 0; leftIndex < field.constraints.length; leftIndex += 1) {
+      const left = field.constraints[leftIndex]
+      for (let rightIndex = leftIndex + 1; rightIndex < field.constraints.length; rightIndex += 1) {
+        const right = field.constraints[rightIndex]
+        if (left.kind === right.kind || left.path !== right.path ||
+            !left.values.some((value) => right.values.includes(value))) continue
+        const scopesOverlap = left.whenValues === undefined || right.whenValues === undefined ||
+          left.whenValues.some((value) => right.whenValues!.includes(value))
+        if (scopesOverlap) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
       }
     }
   }
@@ -802,8 +846,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   }
   const fields = closedDenseArray(input.fields).map(decodeField)
   fields.sort((left, right) => compareCodePoints(left.path, right.path))
-  if (fields.length !== RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.length ||
-      fields.some((field, index) => field.path !== RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2[index])) {
+  if (!isCompleteModelCapabilityFieldSetV2(fields.map((field) => field.path))) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INCOMPLETE_FIELDS')
   }
   validateConstraints(fields)
@@ -857,12 +900,13 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   })
 }
 
-function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2 {
+function buildRecord(draft: DraftSnapshot, encoderRevision?: string): PersistedRuntimeCapabilitySnapshotV2 {
   const binding = decodeProviderBindingRecordV2(draft.binding)
   const encodingCoverage = resolveEncodingCoverageRegistryV2({
     providerId: binding.providerId.value,
     protocolContractId: binding.protocolContractId.value,
     operation: binding.operation,
+    encoderRevision,
   })
   try {
     assertEncodingCoverageForResolvedFieldsV2({
@@ -870,6 +914,7 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
       protocolContractId: binding.protocolContractId.value,
       operation: binding.operation,
       fields: draft.fields,
+      encoderRevision,
     })
   } catch (error) {
     if (error instanceof EncodingCoverageRegistryV2Error) {
@@ -908,13 +953,13 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
   return Object.freeze(record)
 }
 
-export function canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value: unknown): PersistedRuntimeCapabilitySnapshotV2 {
-  return buildRecord(decodeDraft(value, false).draft)
+export function canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value: unknown, encoderRevision?: string): PersistedRuntimeCapabilitySnapshotV2 {
+  return buildRecord(decodeDraft(value, false).draft, encoderRevision)
 }
 
 export function decodeRuntimeCapabilitySnapshotV2(value: unknown): DecodedRuntimeCapabilitySnapshotV2 {
   const decodedInput = decodeDraft(value, true)
-  const expected = buildRecord(decodedInput.draft)
+  const expected = buildRecord(decodedInput.draft, decodedInput.supplied!.encoderRevision)
   const supplied = decodedInput.supplied!
   if (supplied.evidenceDigest !== expected.evidenceDigest ||
       supplied.semanticFieldsDigest !== expected.semanticFieldsDigest ||

@@ -187,8 +187,9 @@ export function isOpenRouterChatAttachmentAdmissibleV2(input: Readonly<{
   const { attachment, revision } = input
   return attachment.sendAs === 'image_reference' && attachment.conversion === 'none' &&
     revision.assetKind === 'image' && revision.blob.mime.startsWith('image/') ||
-    attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' &&
-    revision.revisionKind === 'derived' && revision.conversionKind === 'plain_text' &&
+    attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion) &&
+    (attachment.conversion === 'none' && revision.revisionKind === 'source' && revision.conversionKind === 'none' ||
+      attachment.conversion === 'plain_text' && revision.revisionKind === 'derived' && revision.conversionKind === 'plain_text') &&
     revision.assetKind === 'file' && revision.blob.mime.startsWith('text/') ||
     attachment.sendAs === 'provider_file' && attachment.conversion === 'none' &&
     revision.revisionKind === 'source' && revision.blob.mime === 'application/pdf' ||

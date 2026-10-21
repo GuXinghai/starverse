@@ -1,4 +1,9 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
+import { decodeAssistantAnswerGenerationSnapshotV2 } from '../../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { decodeDeepSeekNativeMessageV1 } from '../../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
   DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2,
@@ -101,7 +106,7 @@ function incompleteContextTurn(): never {
   throw new DeepSeekNativeHistoryV2RepoError('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
 }
 
-function decodeArtifactRow(row: ArtifactRow, allowActive = false): Readonly<{
+function decodeArtifactRow(db: BetterSqlite3.Database, row: ArtifactRow, allowActive = false): Readonly<{
   answerRootId: string
   requestSequence: number
   operationId: string
@@ -116,7 +121,19 @@ function decodeArtifactRow(row: ArtifactRow, allowActive = false): Readonly<{
       !((row.operation_state === 'completed' && row.message_status === 'completed') ||
         (allowActive && row.operation_state === 'streaming' && row.message_status === 'streaming'))) invalidState()
   let artifact: DeepSeekNativeHistoryArtifactV2
-  try { artifact = decodeDeepSeekNativeHistoryArtifactV2(JSON.parse(row.artifact_json)) } catch {
+  let codecJson: string
+  try {
+    codecJson = loadNativeArtifactJsonV2(db, {
+      operationId: row.operation_id as string,
+      answerRootId: row.answer_root_id as string,
+      requestSequence: row.request_sequence as number,
+      artifactKind: row.artifact_kind as string,
+    }, row.artifact_json, {
+      artifactCodecVersion: row.codec_version as number,
+      artifactHash: row.artifact_hash as string,
+    })
+    artifact = decodeDeepSeekNativeHistoryArtifactV2(JSON.parse(codecJson))
+  } catch {
     throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID')
   }
   if (artifact.artifactHash !== row.artifact_hash) {
@@ -176,11 +193,27 @@ export class DeepSeekNativeHistoryV2Repo {
     })])
   }
 
+  #requiresThinkingHistory(operationId: string): boolean {
+    const row = this.#db.prepare('SELECT canonical_json AS json FROM assistant_generation_snapshot_v2 WHERE operation_id=?').get(operationId) as {json:string}
+    return decodeAssistantAnswerGenerationSnapshotV2(JSON.parse(row.json)).semanticIntent.tools.mode === 'enabled'
+  }
+
   #turnBundle(
     context: GenerationV2AuthorityTransactionContextV2,
     answerRootId: string,
     seen: Set<string>,
+    requireCompleteReasoning = false,
   ): readonly DeepSeekNativeHistoryEntryV1[] {
+    const interrupted = new GenerationInterruptedReplayV2Repo(this.#db).load(context, answerRootId, 'deepseek', requireCompleteReasoning)
+    if (interrupted !== null) {
+      const snapshot = this.#db.prepare('SELECT canonical_json AS json FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?').get(answerRootId) as {json:string}
+      const thinking = decodeAssistantAnswerGenerationSnapshotV2(JSON.parse(snapshot.json)).semanticIntent.reasoning.mode
+      return interrupted.map(raw => {
+        const message = decodeDeepSeekNativeMessageV1(raw)
+        return message.role === 'assistant' ? { kind: 'assistant' as const, generatedWithThinking: thinking, message }
+          : { kind: 'client' as const, message }
+      })
+    }
     if (seen.has(answerRootId) || seen.size >= MAX_LINEAGE_DEPTH) return incompleteContextTurn()
     seen.add(answerRootId)
     try {
@@ -194,7 +227,7 @@ export class DeepSeekNativeHistoryV2Repo {
       const prefix: DeepSeekNativeHistoryEntryV1[] = [...this.#systemEntries(operation.conversationId, operation.questionId)]
       for (const turn of projection.turns) {
         if (turn.answerRootId === null) break
-        if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, seen))
+        if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, seen, this.#requiresThinkingHistory(operation.operationId)))
       }
       if (prefix.length > artifact.orderedEntries.length ||
           stableSerializeProviderRequestV2(prefix) !== stableSerializeProviderRequestV2(artifact.orderedEntries.slice(0, prefix.length))) {
@@ -222,7 +255,7 @@ export class DeepSeekNativeHistoryV2Repo {
     const prefix: DeepSeekNativeHistoryEntryV1[] = [...this.#systemEntries(conversationId, questionId)]
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) break
-      if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, new Set()))
+      if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, new Set(), this.#requiresThinkingHistory(projection.operationId)))
     }
     return Object.freeze(prefix)
   }
@@ -278,14 +311,16 @@ export class DeepSeekNativeHistoryV2Repo {
     } else invalidState()
     clientEntries.push(Object.freeze({
       kind: 'client' as const,
-      message: Object.freeze({ role: 'user' as const, content: row.questionBody }),
+      message: Object.freeze({ role: 'user' as const, content: currentGenerationQuestionWithFallbackV2(this.#db, context, operationId.value, row.questionBody) }),
     }))
 
     const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
-    const projectionActive = contextProjection.turns.some((turn) => turn.mode === 'excluded')
-    const projectedPrefixEntries = projectionActive
+    const portable = loadPortableGenerationHistoryV2(this.#db, context, operationId.value, 'deepseek') as readonly DeepSeekNativeHistoryEntryV1[] | null
+    const projectionActive = portable !== null || contextProjection.turns.some((turn) => turn.mode === 'excluded' ||
+      turn.answerRootId !== null && new GenerationInterruptedReplayV2Repo(this.#db).hasInterruptedTurn(turn.answerRootId))
+    const projectedPrefixEntries = portable !== null ? [...clientEntries.filter(entry => entry.message.role === 'system'), ...portable] : (projectionActive
       ? this.#projectedPrefix(context, contextProjection, row.conversationId, row.questionId)
-      : null
+      : null)
     const priorArtifact = projectionActive ? null : priorAnswerRootId === null ? null : this.#loadAndVerifyLineage(context, priorAnswerRootId)
     const fact = Object.freeze({
       trust: 'deepseek_initial_send_history_repository_fact_v2' as const,
@@ -368,7 +403,7 @@ export class DeepSeekNativeHistoryV2Repo {
       DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
     ) as ArtifactRow | undefined
     if (!artifactRow) invalidState()
-    const decoded = decodeArtifactRow(artifactRow, true)
+    const decoded = decodeArtifactRow(this.#db, artifactRow, true)
     this.#assertOperationArtifactLineage(
       context, command.operationId.value, command.answerRootId.value,
       command.priorRequestSequence, decoded.artifact,
@@ -468,7 +503,7 @@ export class DeepSeekNativeHistoryV2Repo {
       DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
     ) as ArtifactRow | undefined
     if (!artifactRow) invalidState()
-    const priorArtifact = decodeArtifactRow(artifactRow, true).artifact
+    const priorArtifact = decodeArtifactRow(this.#db, artifactRow, true).artifact
     this.#assertOperationArtifactLineage(
       context, operationIdValue, executionRow.answerRootId,
       requestSequence - 1, priorArtifact,
@@ -599,6 +634,9 @@ export class DeepSeekNativeHistoryV2Repo {
       throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
     }
     const canonicalJson = serializeDeepSeekNativeHistoryArtifactV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: artifact.artifactKind }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.#db.prepare(`SELECT operation_id AS operationId, artifact_json AS artifactJson,
       artifact_hash AS artifactHash, codec_version AS codecVersion
       FROM generation_native_artifact_v2
@@ -606,19 +644,23 @@ export class DeepSeekNativeHistoryV2Repo {
       request.answerRootId, request.requestSequence, artifact.artifactKind,
     ) as { operationId: unknown; artifactJson: unknown; artifactHash: unknown; codecVersion: unknown } | undefined
     if (existing) {
-      if (existing.operationId !== request.operationId || existing.artifactJson !== canonicalJson ||
+      if (existing.operationId !== request.operationId ||
+          !nativeArtifactJsonMatchesV2(this.#db, key, existing.artifactJson as string, {
+            artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+          }, canonicalJson) ||
           existing.artifactHash !== artifact.artifactHash ||
           existing.codecVersion !== artifact.artifactCodecVersion) {
         throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID')
       }
       return
     }
+    const storedJson = storeNativeArtifactJsonV2(this.#db, key, canonicalJson, envelope)
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
       artifact_json, artifact_hash, created_at_ms, completion_scope
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'request_terminal')`).run(
       request.answerRootId, request.requestSequence, request.operationId, artifact.artifactKind,
-      artifact.artifactCodecVersion, canonicalJson, artifact.artifactHash, createdAtMs,
+      artifact.artifactCodecVersion, storedJson, artifact.artifactHash, createdAtMs,
     )
   }
 
@@ -660,7 +702,7 @@ export class DeepSeekNativeHistoryV2Repo {
       operationId, requestSequence - 1, answerRootId, DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
     ) as ArtifactRow | undefined
     if (!predecessorRow) invalidState()
-    const predecessor = decodeArtifactRow(predecessorRow, true).artifact
+    const predecessor = decodeArtifactRow(this.#db, predecessorRow, true).artifact
     this.#assertOperationArtifactLineage(context, operationId, answerRootId, requestSequence - 1, predecessor)
     if (artifact.lineageDepth !== predecessor.lineageDepth + 1 ||
         artifact.parentArtifactHash !== predecessor.artifactHash || !exactPrefix(predecessor, artifact)) {
@@ -707,7 +749,7 @@ export class DeepSeekNativeHistoryV2Repo {
           currentAnswerRootId, expectedRequestSequence, DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
         ) as ArtifactRow | undefined
       if (!row) throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_NOT_FOUND')
-      const decoded = decodeArtifactRow(row)
+      const decoded = decodeArtifactRow(this.#db, row)
       const key = `${decoded.operationId}\0${decoded.requestSequence}\0${decoded.answerRootId}`
       if (visited.has(key)) {
         throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID')

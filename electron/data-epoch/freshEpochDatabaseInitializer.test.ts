@@ -50,6 +50,7 @@ vi.mock('electron', () => ({
 import {
   initializeOrVerifyFreshEpoch2Database,
   verifyExistingFreshEpoch2Database,
+  upgradeAndVerifyExistingFreshEpoch2Database,
 } from './freshEpochDatabaseInitializer'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
@@ -181,6 +182,34 @@ function seedLegacyEdit(db:BetterSqlite3.Database):void {
     VALUES('conversation:legacy','url_reference',NULL,NULL,NULL,'url:legacy','url-revision:legacy',0,1,'url_reference','none',3,3)`).run()
 }
 
+function preImageToolSql(sql: string): string {
+  const predecessor = sql.replace(
+    /      -- OpenAI Responses generated image tool V1: scoped text-operation exception\.[\s\S]*?      -- End OpenAI Responses generated image tool V1\./u,
+    "      AND json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'image_generate'",
+  )
+  expect(predecessor).not.toBe(sql)
+  return predecessor
+}
+
+// The SQL fixture is frozen at 4ac2de5; freeze its historical semantic identity too.
+// Installing it with today's ontology alone would create a different predecessor.
+async function initializeReviewedComposerPredecessor(value: ReturnType<typeof fixture>, lineEnding: 'lf' | 'crlf' = 'lf') {
+  const initialized = await initializeOrVerifyFreshEpoch2Database(value)
+  const digest = lineEnding === 'lf' ? '95267d0affa2648b9ebb568b4ed76da2c8404104f78801dd3b228135b8ff4681'
+    : 'dbc731ea21ed71aacd13963bcb0be554dc4a03fbdbe4d5fc18a2dfa1ae74595d'
+  const db = new BetterSqlite3(value.layout.databasePath)
+  try {
+    const trigger = db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as { sql: string }
+    db.transaction(() => {
+      db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+      db.prepare('UPDATE app_meta_v2 SET schema_digest=?').run(digest)
+      db.exec(trigger.sql)
+      db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?').run(digest)
+    })()
+  } finally { db.close() }
+  return { ...initialized, schemaDigest: digest }
+}
+
 beforeEach(() => {
   safeStorageMock.available = true
   safeStorageMock.appRoot = repositoryRoot
@@ -196,11 +225,50 @@ afterEach(() => {
 })
 
 describe('fresh epoch-2 database initializer', () => {
+  windowsIt('upgrades a populated image-tool predecessor during startup and preserves identity, envelope and drafts on reopen', async () => {
+    const value = fixture('starverse-image-tool-upgrade')
+    const oldRoot = createEditSessionSchemaRoot(false)
+    const executionPath = path.join(oldRoot, 'infra', 'db', 'v2', 'generationExecutionSchema.sql')
+    fs.writeFileSync(executionPath, preImageToolSql(fs.readFileSync(executionPath, 'utf8')))
+    try {
+      safeStorageMock.appRoot = oldRoot
+      const predecessor = await initializeOrVerifyFreshEpoch2Database(value)
+      const db = new BetterSqlite3(value.layout.databasePath)
+      let oldMeta: Record<string, unknown>
+      let oldEnvelope: unknown
+      try {
+        db.prepare("INSERT INTO project_v2 VALUES('image:preserved','Image project',1,1)").run()
+        db.prepare("INSERT INTO conversation_v2 VALUES('image:preserved','image:preserved','Image history',1,1)").run()
+        db.prepare("INSERT INTO composer_draft_v2(conversation_id,draft_text,draft_mode,editing_source_question_id,revision,updated_at_ms) VALUES('image:preserved','preserved image draft','compose',NULL,7,1)").run()
+        oldMeta = db.prepare('SELECT * FROM app_meta_v2').get() as Record<string, unknown>
+        oldEnvelope = db.prepare('SELECT * FROM epoch_scope_key_envelope_v2').get()
+      } finally { db.close() }
+      safeStorageMock.appRoot = repositoryRoot
+      const upgraded = await initializeOrVerifyFreshEpoch2Database(value)
+      expect(upgraded.created).toBe(false)
+      expect(upgraded.databaseFileId).toBe(predecessor.databaseFileId)
+      expect(upgraded.schemaDigest).not.toBe(predecessor.schemaDigest)
+      expect(await initializeOrVerifyFreshEpoch2Database(value)).toEqual(upgraded)
+      expect(await verifyExistingFreshEpoch2Database(value)).toMatchObject({ schemaDigest: upgraded.schemaDigest })
+      const check = new BetterSqlite3(value.layout.databasePath, { readonly: true })
+      try {
+        expect(check.prepare('SELECT * FROM app_meta_v2').get()).toEqual({ ...oldMeta!, schema_digest: upgraded.schemaDigest })
+        expect(check.prepare('SELECT * FROM epoch_scope_key_envelope_v2').get()).toEqual(oldEnvelope)
+        expect(check.prepare('SELECT draft_text,revision FROM composer_draft_v2').get())
+          .toEqual({ draft_text: 'preserved image draft', revision: 7 })
+        expect(check.prepare('SELECT count(*) AS n FROM project_v2').get()).toEqual({ n: 1 })
+        expect(check.prepare("SELECT sql FROM sqlite_master WHERE name='trg_generation_image_output_v2_validate_insert'").get())
+          .toMatchObject({ sql: expect.stringContaining("request.provider_id = 'openai_responses'") })
+        expect(check.pragma('foreign_key_check')).toEqual([])
+      } finally { check.close() }
+    } finally { value.lease.release() }
+  })
+
   windowsIt.each(['lf','crlf'] as const)('upgrades only the intact populated committed %s predecessor and preserves legacy edit content on reopen',async(lineEnding)=>{
     const value=fixture('starverse-edit-upgrade-success')
     try {
       safeStorageMock.appRoot=createEditSessionSchemaRoot(true,false,lineEnding)
-      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const predecessor=await initializeReviewedComposerPredecessor(value,lineEnding)
       expect(predecessor.schemaDigest).toBe(lineEnding==='lf'
         ? '95267d0affa2648b9ebb568b4ed76da2c8404104f78801dd3b228135b8ff4681'
         : 'dbc731ea21ed71aacd13963bcb0be554dc4a03fbdbe4d5fc18a2dfa1ae74595d')
@@ -237,7 +305,7 @@ describe('fresh epoch-2 database initializer', () => {
     const value=fixture('starverse-edit-upgrade-tampered')
     try {
       safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
-      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const predecessor=await initializeReviewedComposerPredecessor(value)
       const db=new BetterSqlite3(value.layout.databasePath)
       seedLegacyEdit(db)
       db.exec('DROP TRIGGER trg_composer_draft_v2_validate_edit_source_update')
@@ -286,7 +354,7 @@ describe('fresh epoch-2 database initializer', () => {
     const value=fixture('starverse-edit-upgrade-wrong-root')
     try {
       safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
-      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const predecessor=await initializeReviewedComposerPredecessor(value)
       const db=new BetterSqlite3(value.layout.databasePath)
       seedLegacyEdit(db)
       const trigger=db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as {sql:string}
@@ -311,7 +379,7 @@ describe('fresh epoch-2 database initializer', () => {
     const value=fixture('starverse-edit-upgrade-meta-rollback')
     try {
       safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
-      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const predecessor=await initializeReviewedComposerPredecessor(value)
       const db=new BetterSqlite3(value.layout.databasePath)
       seedLegacyEdit(db)
       const metaBefore=db.prepare('SELECT * FROM app_meta_v2').get()
@@ -375,7 +443,7 @@ describe('fresh epoch-2 database initializer', () => {
     const value=fixture('starverse-edit-upgrade-rollback')
     try {
       safeStorageMock.appRoot=createEditSessionSchemaRoot(true)
-      const predecessor=await initializeOrVerifyFreshEpoch2Database(value)
+      const predecessor=await initializeReviewedComposerPredecessor(value)
       const db=new BetterSqlite3(value.layout.databasePath)
       seedLegacyEdit(db)
       db.close()
@@ -390,11 +458,68 @@ describe('fresh epoch-2 database initializer', () => {
       }finally{retained.close()}
     }finally{value.lease.release()}
   })
+  windowsIt('adds interrupted replay storage to the intact current predecessor without changing drafts or identity', async () => {
+    const value = fixture('starverse-interrupted-upgrade')
+    const oldRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-before-interrupted-'))
+    roots.push(oldRoot)
+    fs.mkdirSync(path.join(oldRoot, 'infra', 'db'), { recursive: true })
+    fs.cpSync(path.join(repositoryRoot, 'infra', 'db', 'v2'), path.join(oldRoot, 'infra', 'db', 'v2'), { recursive: true })
+    const executionPath = path.join(oldRoot, 'infra', 'db', 'v2', 'generationExecutionSchema.sql')
+    const sql = preImageToolSql(fs.readFileSync(executionPath, 'utf8'))
+    fs.writeFileSync(executionPath, sql.slice(0, sql.indexOf('-- Interrupted native replay V1:')).replace(/\r?\n$/u, '')
+      .replace('prepared_body_byte_length BETWEEN 2 AND 29360128', 'prepared_body_byte_length BETWEEN 2 AND 20971520')
+      .replace('length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 3145728', 'length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 1048576'))
+    const corePath = path.join(oldRoot, 'infra', 'db', 'v2', 'coreConversationSchema.sql')
+    fs.writeFileSync(corePath, fs.readFileSync(corePath, 'utf8')
+      .replace('length(CAST(body_text AS BLOB)) <= 67108864', 'length(CAST(body_text AS BLOB)) <= 20971520'))
+    try {
+      safeStorageMock.appRoot = oldRoot
+      const predecessor = await initializeOrVerifyFreshEpoch2Database(value)
+      const db = new BetterSqlite3(value.layout.databasePath)
+      db.pragma('foreign_keys = ON')
+      // Pin this historical fixture's semantic grammar as well as its SQL.
+      const predecessorDigest = '911c2cd3045ddfc17649ab7c9c06c4fb0fa17740843cab112a32976242381746'
+      const identityTrigger = db.prepare("SELECT sql FROM sqlite_master WHERE name='trg_app_meta_v2_immutable'").get() as {sql: string}
+      db.transaction(() => {
+        db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+        db.prepare('UPDATE app_meta_v2 SET schema_digest=?').run(predecessorDigest)
+        db.exec(identityTrigger.sql)
+        db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=?').run(predecessorDigest)
+      })()
+      db.prepare("INSERT INTO project_v2 VALUES('preserved','Preserved',1,1)").run()
+      db.prepare("INSERT INTO conversation_v2 VALUES('preserved','preserved','History',1,1)").run()
+      db.prepare("INSERT INTO composer_draft_v2 VALUES('preserved','keep this draft','compose',NULL,3,1)").run()
+      db.close()
+      safeStorageMock.appRoot = repositoryRoot
+      const upgraded = await upgradeAndVerifyExistingFreshEpoch2Database(value)
+      expect(upgraded.databaseFileId).toBe(predecessor.databaseFileId)
+      expect(upgraded.schemaDigest).not.toBe(predecessor.schemaDigest)
+      const check = new BetterSqlite3(value.layout.databasePath, { readonly: true })
+      try {
+        expect(check.prepare('SELECT count(*) AS n FROM generation_interrupted_replay_v2').get()).toEqual({ n: 0 })
+        expect(check.prepare("SELECT draft_text,revision FROM composer_draft_v2 WHERE conversation_id='preserved'").get())
+          .toEqual({ draft_text: 'keep this draft', revision: 3 })
+      } finally { check.close() }
+      expect(await initializeOrVerifyFreshEpoch2Database(value)).toEqual({ ...upgraded, created: false })
+    } finally { value.lease.release() }
+  })
+
+  windowsIt.each([Buffer.alloc(0), Buffer.from('not a sqlite database')])('does not replace an empty or truncated existing database (%s)', async bytes => {
+    const value = fixture('starverse-upgrade-existing-invalid')
+    try {
+      fs.mkdirSync(path.dirname(value.layout.databasePath), { recursive: true })
+      fs.writeFileSync(value.layout.databasePath, bytes)
+      await expect(upgradeAndVerifyExistingFreshEpoch2Database(value)).rejects.toThrow()
+      expect(fs.readFileSync(value.layout.databasePath)).toEqual(bytes)
+    } finally { value.lease.release() }
+  })
+
   windowsIt('verify-existing rejects a missing database without creating a file', async () => {
     const value = fixture('starverse-fresh-db-verify-missing')
     try {
       expect(fs.existsSync(value.layout.databasePath)).toBe(false)
       await expect(verifyExistingFreshEpoch2Database(value)).rejects.toThrow()
+      await expect(upgradeAndVerifyExistingFreshEpoch2Database(value)).rejects.toThrow()
       expect(fs.existsSync(value.layout.databasePath)).toBe(false)
     } finally { value.lease.release() }
   })

@@ -1,9 +1,15 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 const anthropicCompiler = vi.hoisted(() => ({ compile: vi.fn() }))
+const runtimeCredentialMocks = vi.hoisted(() => ({ leases: new WeakSet<object>() }))
 vi.mock('./anthropicMessagesPreparedRequestCompilerV2', () => ({
   compileAnthropicMessagesPreparedRequestV2: anthropicCompiler.compile,
 }))
+vi.mock('../credentials/epoch2RuntimeCredentialService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../credentials/epoch2RuntimeCredentialService')>()
+  return { ...actual, isEpoch2RuntimeCredentialLease: (value: unknown) =>
+    Boolean(value && typeof value === 'object' && runtimeCredentialMocks.leases.has(value)) }
+})
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
@@ -20,6 +26,15 @@ import { createAnthropicPlainTextInitialSendCoordinatorV2 } from './anthropicPla
 import { createAnthropicPlainTextRegenerateCoordinatorV2 } from './anthropicPlainTextRegenerateCoordinatorV2'
 import { createAnthropicPlainTextEditResendCoordinatorV2 } from './anthropicPlainTextEditResendCoordinatorV2'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
+import { createAnthropicMessagesStreamRunnerV2 } from './anthropicMessagesStreamRunnerV2'
+import { AnthropicNativeHistoryV2Repo } from '../../infra/db/repo/anthropicNativeHistoryV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
+import { GenerationNativeCompletionReceiptV2Repo } from '../../infra/db/repo/generationNativeCompletionReceiptV2Repo'
+import { recoverPendingGenerationNativeCompletionsV2 } from './generationNativeCompletionV2'
+import { loadNativeArtifactJsonV2 } from '../../infra/db/repo/nativeArtifactStorageV2'
+import { UserCapabilityRulesV2Service } from './userCapabilityRulesV2Service'
+import { buildAuthoritativeModelSubjectSetV1 } from '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { createReviewedRequestRulePacksV2 } from '../../scripts/rules/reviewedRequestRulePacksV2'
 
 const modelId = 'claude-opus-4-6'
 const credentialScopeId = `credential-scope-v2:${'a'.repeat(64)}` as never
@@ -80,6 +95,158 @@ function insertManagedFile(db: BetterSqlite3.Database, input: Readonly<{
 describe('Anthropic plain-text regenerate coordinator V2', () => {
   const databases: BetterSqlite3.Database[] = []
   afterEach(() => { while (databases.length) databases.pop()!.close(); anthropicCompiler.compile.mockReset() })
+
+  it('resolves V2 thinking and preserves actual function tools through the Messages compiler ledger', async () => {
+    const actual = await vi.importActual<typeof import('./anthropicMessagesPreparedRequestCompilerV2')>('./anthropicMessagesPreparedRequestCompilerV2')
+    anthropicCompiler.compile.mockImplementation(actual.compileAnthropicMessagesPreparedRequestV2)
+    const db = database(); databases.push(db); seedConversation(db, 4096); seedActiveModel(db)
+    const subjects = buildAuthoritativeModelSubjectSetV1([{ subject: { providerAuthorityId: 'anthropic',
+      endpointProfileId: 'anthropic-developer-api-2023-06-01', nativeModelId: modelId }, proof: { kind: 'provider_native_catalog',
+      providerKey: 'anthropic_messages', scopeId: 'scope:anthropic', credentialScopeId, credentialRevision: 1,
+      endpointProfileId: 'anthropic-developer-api-2023-06-01', operationContractId: 'anthropic-models-2023-06-01',
+      catalogCategory: '', activeSnapshotDigest: '1'.repeat(64) } }])
+    const service = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects })
+    let draft = service.openDraft({ sessionId: 'anthropic:v2-rules' })
+    for (const transfer of createReviewedRequestRulePacksV2()) draft = service.importPack({ sessionId: draft.sessionId,
+      expectedDraftRevision: draft.draftRevision, transfer })
+    await service.saveDraft({ sessionId: draft.sessionId, expectedDraftRevision: draft.draftRevision })
+    new ToolRegistryV2Repo(db).installAndSelect({ schemaVersion: 2, definitions: [{ toolId: 'tool:weather', kind: 'function',
+      function: { name: 'weather', parameters: { type: 'object' } }, sideEffectPolicy: 'none' }] }, null)
+    const configs = new GenerationConfigV2Repo(db)
+    configs.compareAndSetScope('conversation', 'conversation:anthropic', configs.getScope('conversation', 'conversation:anthropic').configRevision.value,
+      { schemaVersion: 2, generation: { maxOutputTokens: 4096 }, reasoning: { mode: 'enabled', effort: 'medium' },
+        providerExtension: { kind: 'anthropic_messages', thinkingMode: 'model_recommended', thinkingDisplay: 'summarized' },
+        tools: { mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'auto' }, sideEffectConfirmation: 'required_each_retry' } })
+    const credentialService = { withCredentialScopeBindingAuthority: async ({ consume }: { consume: (authority: never) => Promise<unknown> }) =>
+      consume({ assertCurrent: () => undefined } as never) } as never
+    const result = await createAnthropicPlainTextInitialSendCoordinatorV2({ db, credentialService }).submit({
+      expectedCredentialRevision: 1, expectedCredentialScopeId: credentialScopeId,
+      command: { operationId: 'operation:anthropic-v2-rules', branchId: 'branch:anthropic', expectedHeadMessageId: null,
+        userBody: 'Describe weather.', modelId, commandAttachments: [] } })
+    const body = JSON.parse(result.preparedRequest.body.copyUtf8Text())
+    expect(result.execution.snapshot.requestPlan?.schemaVersion).toBe(2)
+    expect(body).toMatchObject({ max_tokens: 4096, thinking: { type: 'adaptive', display: 'summarized' },
+      tools: [{ name: 'weather', input_schema: { type: 'object' } }], tool_choice: { type: 'auto' } })
+    expect(result.preparedRequest.ledger.entries).toContainEqual(expect.objectContaining({ path: 'providerExtension.thinkingDisplay', nativeField: 'thinking.display', disposition: 'encoded' }))
+    expect(result.preparedRequest.wireEncodingProof).toBeDefined()
+  })
+
+  it('replays a provider-complete tool-use SSE receipt after native save failure without another fetch', async () => {
+    let db = database()
+    databases.push(db)
+    seedConversation(db)
+    seedActiveModel(db)
+    const tools = new ToolRegistryV2Repo(db)
+    tools.installAndSelect({ schemaVersion: 2, definitions: [{
+      toolId: 'tool:weather', kind: 'function',
+      function: { name: 'weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } },
+      sideEffectPolicy: 'none',
+    }] }, null)
+    const configs = new GenerationConfigV2Repo(db, () => 20)
+    const current = configs.getScope('conversation', 'conversation:anthropic')
+    configs.compareAndSetScope('conversation', 'conversation:anthropic', current.configRevision.value, {
+      schemaVersion: 2,
+      generation: { maxOutputTokens: 4096 },
+      providerExtension: { kind: 'anthropic_messages', thinkingMode: 'disabled', thinkingDisplay: 'provider_default' },
+      tools: { mode: 'enabled', allowedToolIds: ['tool:weather'],
+        toolChoice: { mode: 'auto' }, sideEffectConfirmation: 'required_each_retry' },
+    } as never)
+    let fetchCount = 0
+    const credentialService = {
+      withCredentialScopeBindingAuthority: async ({ expectedRevision, expectedCredentialScopeId, consume }: any) =>
+        consume(Object.freeze({ providerKey: 'anthropic', credentialRevision: expectedRevision,
+          credentialScopeId: expectedCredentialScopeId, assertCurrent: () => undefined })),
+      getStatus: async () => ({ configured: true, revision: 1, credentialScopeId }),
+      withCredential: async ({ consume }: any) => {
+        const lease = Object.freeze({ providerKey: 'anthropic', credential: 'test-only', revision: 1,
+          credentialScopeId, assertCurrent: () => undefined })
+        runtimeCredentialMocks.leases.add(lease)
+        try { return await consume(lease) } finally { runtimeCredentialMocks.leases.delete(lease) }
+      },
+    } as never
+    const makePrepared = ({ execution, history }: any) => {
+      const endpoint = resolveAnthropicDeveloperApiEndpointV2(readAnthropicDeveloperApiContractV2(), {
+        surfaceId: 'anthropic-messages-2023-06-01', operation: 'create_message',
+      })
+      return issuePreparedProviderRequestV2({
+        operationId: execution.operation.operationId.value,
+        answerRootId: execution.operation.targetAnswerId.value,
+        requestSequence: history.requestSequence,
+        providerId: 'anthropic',
+        endpointProfileId: execution.snapshot.providerBinding.endpointProfileId.value,
+        credentialScopeId: execution.snapshot.providerBinding.credentialScopeId.value,
+        contractId: 'anthropic-messages-2023-06-01',
+        modelId,
+        effectiveEndpointId: execution.snapshot.providerBinding.endpointBinding.descriptors[0]!.endpointId.value,
+        endpoint: endpoint.url,
+        headersPlan: createAnthropicMessagesNonSecretHeaderPlanV2(),
+        body: ImmutablePreparedBodyV2.fromNativeRequest({ model: modelId, messages: history.messages,
+          tools: [{ name: 'weather', input_schema: { type: 'object', properties: { city: { type: 'string' } } } }] }),
+        ledger: createSemanticConsumptionLedgerV2([{ kind: 'consumed', path: 'modelId', disposition: 'encoded',
+          nativeField: 'model', encodingKind: 'identity', evidence: 'Anthropic receipt test compiler' }]),
+        capabilityRevision: execution.capability.revision.value,
+        encoderRevision: execution.capability.encoderRevision,
+        snapshotHash: execution.snapshot.snapshotHash.value,
+      })
+    }
+    anthropicCompiler.compile.mockImplementation(makePrepared)
+    const initial = await createAnthropicPlainTextInitialSendCoordinatorV2({ db, credentialService, nowMs: () => 100,
+      createGraphId: kind => `${kind}:receipt-test` }).submit({ expectedCredentialRevision: 1,
+      expectedCredentialScopeId: credentialScopeId,
+      command: { operationId: 'operation:anthropic-receipt', branchId: 'branch:anthropic',
+        expectedHeadMessageId: null, userBody: 'check weather', modelId, commandAttachments: [] },
+    })
+    const frames = [
+      ['message_start', { type: 'message_start', message: { id: 'msg:tool', type: 'message', role: 'assistant',
+        model: modelId, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } }],
+      ['content_block_start', { type: 'content_block_start', index: 0,
+        content_block: { type: 'tool_use', id: 'toolu:weather', name: 'weather', input: {}, caller: { type: 'direct' } } }],
+      ['content_block_delta', { type: 'content_block_delta', index: 0,
+        delta: { type: 'input_json_delta', partial_json: '{"city":"Tokyo"}' } }],
+      ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+      ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null },
+        usage: { output_tokens: 1 } }],
+      ['message_stop', { type: 'message_stop' }],
+    ] as const
+    const sse = frames.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('')
+    const makeRunner = (target: BetterSqlite3.Database) => createAnthropicMessagesStreamRunnerV2({ db: target,
+      credentialService, nowMs: () => 200, fetchImpl: async () => {
+        fetchCount += 1
+        return new Response(sse, { headers: { 'content-type': 'text/event-stream' } })
+      } })
+    const saveSpy = vi.spyOn(AnthropicNativeHistoryV2Repo.prototype, 'insertRequestTerminalArtifact')
+      .mockImplementationOnce(() => { throw new Error('injected Anthropic native save failure') })
+    await expect(makeRunner(db).run(initial)).rejects.toMatchObject({
+      code: 'GENERATION_V2_NATIVE_COMPLETION_MATERIALIZATION_PENDING', receiptPersisted: true,
+    })
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    saveSpy.mockRestore()
+    expect(fetchCount).toBe(1)
+    expect(new GenerationNativeCompletionReceiptV2Repo(db).listPending()).toHaveLength(1)
+    const image = db.serialize()
+    db.close()
+    db = new BetterSqlite3(image)
+    databases[databases.length - 1] = db
+    makeRunner(db)
+    const recoveryResult = recoverPendingGenerationNativeCompletionsV2(db, () => 300)
+    expect(recoveryResult).toEqual({ recovered: 1, pending: 0, unavailable: 0 })
+    expect(fetchCount).toBe(1)
+    expect(new GenerationNativeCompletionReceiptV2Repo(db).listPending()).toHaveLength(0)
+    expect(db.prepare('SELECT state FROM generation_request_v2 WHERE operation_id=?').get('operation:anthropic-receipt'))
+      .toEqual({ state: 'completed' })
+    const nativeRow = db.prepare(`SELECT operation_id AS operationId, answer_root_id AS answerRootId,
+      request_sequence AS requestSequence, artifact_kind AS artifactKind, codec_version AS codecVersion,
+      artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
+      WHERE operation_id=?`).get('operation:anthropic-receipt') as {
+        operationId: string; answerRootId: string; requestSequence: number; artifactKind: string
+        codecVersion: number; artifactJson: string; artifactHash: string
+      }
+    const nativeJson = db.transaction(() => loadNativeArtifactJsonV2(db, {
+      operationId: nativeRow.operationId, answerRootId: nativeRow.answerRootId,
+      requestSequence: nativeRow.requestSequence, artifactKind: nativeRow.artifactKind,
+    }, nativeRow.artifactJson, { artifactCodecVersion: nativeRow.codecVersion, artifactHash: nativeRow.artifactHash }))()
+    expect(JSON.parse(nativeJson)).toMatchObject({ stopReason: 'tool_use' })
+  })
 
   it('projects the frozen excluded source file into command facts and ignores a different composer file at the compiler boundary', async () => {
     // This test stubs only final request compilation (attachment coverage itself is covered in anthropicAttachmentEncodingCoverageV2.test.ts)

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ErrorPanelViewModel } from './types'
 import { t, tf } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 const props = defineProps<{
   messageId: string
@@ -34,12 +35,12 @@ const summaryText = computed(() => {
 const panelTone = computed(() => {
   switch (completionClass.value) {
     case 'aborted':
-      return 'border-gray-200 bg-gray-50 text-gray-700'
+      return 'sv-notice'
     case 'truncated':
-      return 'border-amber-200 bg-amber-50 text-amber-900'
+      return 'sv-notice sv-notice-warning'
     case 'error':
     default:
-      return 'border-red-200 bg-red-50 text-red-900'
+      return 'sv-notice sv-notice-danger'
   }
 })
 
@@ -81,56 +82,58 @@ async function copyJson() {
 </script>
 
 <template>
-  <div class="mt-3 rounded-xl border p-3 text-xs" :class="panelTone">
+  <div class="mt-3 flex-col items-stretch gap-0 p-3 text-xs" :class="panelTone">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <div class="flex items-center gap-2">
-          <div class="truncate font-semibold uppercase tracking-wide">
+        <div class="flex items-baseline gap-2">
+          <div class="truncate font-medium">
             {{ completionClass }}
           </div>
           <span
             v-if="isTruncatedClass"
-            class="rounded-full border border-amber-300/80 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800"
+            class="shrink-0 opacity-80"
           >
             {{ t('chat.errorPanel.truncated') }}<span v-if="props.errorView?.truncated" class="ml-1 opacity-70">{{ t('chat.errorPanel.trimmed') }}</span>
           </span>
         </div>
         <div class="mt-1 break-words">{{ summaryText }}</div>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          class="rounded border border-black/10 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
+          class="sv-btn sv-btn-sm sv-btn-ghost w-[88px] justify-end gap-1 px-1.5"
+          :aria-expanded="expanded"
           @click="toggleExpanded"
         >
           {{ expanded ? t('chat.errorPanel.collapse') : t('chat.errorPanel.expand') }}
+          <span class="inline-flex h-3.5 w-3.5 items-center justify-center"><UiIcon :name="expanded ? 'chevronUp' : 'chevronDown'" :size="14" /></span>
         </button>
       </div>
     </div>
 
-    <div v-if="expanded" class="mt-2 space-y-2">
+    <div v-if="expanded" class="mt-2 flex flex-col gap-2">
       <div class="flex items-center justify-between">
-        <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">{{ t('chat.errorPanel.details') }}</div>
+        <div class="font-medium opacity-80">{{ t('chat.errorPanel.details') }}</div>
         <div class="flex items-center gap-2">
-          <div v-if="jsonBytes != null" class="text-[10px] uppercase tracking-wide opacity-60">{{ tf('chat.errorPanel.bytes', { count: jsonBytes }) }}</div>
+          <div v-if="jsonBytes != null" class="opacity-70">{{ tf('chat.errorPanel.bytes', { count: jsonBytes }) }}</div>
           <button
             v-if="props.errorView?.details"
             type="button"
-            class="rounded border border-black/10 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
+            class="sv-btn sv-btn-sm sv-btn-ghost"
             @click="copyJson"
           >
             {{ t('common.copy') }}
           </button>
         </div>
       </div>
-      <div v-if="!props.errorView?.details" class="rounded border border-black/10 bg-black/5 p-2 text-[11px] text-gray-600">
+      <div v-if="!props.errorView?.details" class="rounded-md bg-[var(--sv-sunken)] p-2 text-xs text-[var(--sv-text-2)]">
         <div v-if="props.loading">{{ t('chat.errorPanel.detailsLoading') }}</div>
         <div v-else-if="props.detailsUnavailable">{{ t('chat.errorPanel.detailsUnavailable') }}</div>
         <div v-else>{{ t('chat.errorPanel.detailsPending') }}</div>
       </div>
       <pre
         v-else-if="props.errorView?.details"
-        class="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 p-2 font-mono text-[11px]"
+        class="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--sv-sunken)] p-2 font-mono text-xs text-[var(--sv-text-2)]"
       >{{ jsonText }}</pre>
     </div>
   </div>

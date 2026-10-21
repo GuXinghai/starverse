@@ -1,10 +1,12 @@
-import type { GenerationIntentLayerV2 } from '../domain/generationIntentV2'
+import { decodeGenerationIntentLayerV2, type GenerationIntentLayerV2 } from '../domain/generationIntentV2'
 import { projectGenerationIntentLayerV2 } from '../domain/generationIntentProjectionV2'
 import {
   decodeResolvedGenerationIntentV2,
   type ResolvedGenerationIntentV2,
 } from '../domain/resolvedGenerationIntentV2'
 import type { GenerationConfigLayerV2 } from './generationConfigLayerV2'
+import { selectTargetThinkingV2, type ThinkingTargetV2 } from './targetThinkingPreferencesV2'
+import { selectTargetImageV2 } from './targetImagePreferencesV2'
 
 export const DEFAULT_RESOLVED_GENERATION_INTENT_V2: ResolvedGenerationIntentV2 =
   decodeResolvedGenerationIntentV2({
@@ -20,18 +22,27 @@ export const DEFAULT_RESOLVED_GENERATION_INTENT_V2: ResolvedGenerationIntentV2 =
 
 export function mergeGenerationConfigLayersV2(
   layers: readonly GenerationConfigLayerV2[],
+  target?: ThinkingTargetV2,
 ): ResolvedGenerationIntentV2 {
   let current: GenerationIntentLayerV2 = DEFAULT_RESOLVED_GENERATION_INTENT_V2
-  for (const layer of layers) {
+  let requestedParameters: Record<string, unknown> | undefined
+  for (const source of layers) {
+    const layer = selectTargetImageV2(selectTargetThinkingV2(source, target), target) as GenerationConfigLayerV2
+    if (layer.requestedParameters !== undefined) {
+      requestedParameters = { ...requestedParameters, ...layer.requestedParameters }
+    }
     current = Object.freeze({
       schemaVersion: 2,
       generation: layer.generation ?? current.generation,
       reasoning: layer.reasoning ?? current.reasoning,
       web: layer.web ?? current.web,
-      image: layer.image ?? current.image,
+      image: source.targetImagePreferences !== undefined
+        ? decodeGenerationIntentLayerV2({ schemaVersion: 2, image: layer.image }).image ?? current.image
+        : layer.image ?? current.image,
       tools: layer.tools ?? current.tools,
       attachments: [],
       providerExtension: layer.providerExtension ?? current.providerExtension,
+      requestedParameters,
     })
   }
   return decodeResolvedGenerationIntentV2(projectGenerationIntentLayerV2(current)).value

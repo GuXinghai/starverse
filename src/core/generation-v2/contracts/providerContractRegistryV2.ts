@@ -33,6 +33,11 @@ import type { OpenAIResponsesApiSurfaceDefinitionV2 } from './openAIResponsesApi
 import { readOpenAIResponsesApiContractV2 } from './openAIResponsesApiContractV2'
 import type { ContractEvidenceStabilityV2 } from './contractEvidenceV2'
 
+/**
+ * Historical mixed provider contract projections remain immutable identity inputs for saved bindings.
+ * New execution request-body shape authority lives in ApiRequestBodyContractV2; endpoint/auth/version
+ * authority lives in EndpointTransportDefinitionV2.
+ */
 export type ProviderContractOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
 export type ProviderContractApiSurfaceV2 = Readonly<

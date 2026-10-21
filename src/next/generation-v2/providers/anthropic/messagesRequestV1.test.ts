@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import type { ResolvedCapabilityV2 } from '../../../../core/generation-v2/capability/resolvedCapabilityV2'
+import { decodeGenerationIntentLayerV2 } from '../../../../core/generation-v2/domain/generationIntentV2'
 import { decodeResolvedGenerationIntentV2 } from '../../../../core/generation-v2/domain/resolvedGenerationIntentV2'
+import { getAnthropicLegacyThinkingEncoderRevisionV2 } from '../../../../core/generation-v2/capability/encodingCoverageRegistryV2'
 import {
   AnthropicMessagesRequestV1Error,
   compileAnthropicMessagesRequestV1,
 } from '../../../../core/generation-v2/providers/anthropic/messagesRequestV1'
+import { resolveAnthropicRequestIntentV2 } from '../../../../core/generation-v2/providers/anthropic/thinkingPolicyV2'
 
 function intent(overrides: Record<string, unknown> = {}) {
   return decodeResolvedGenerationIntentV2({
@@ -64,6 +68,103 @@ describe('compileAnthropicMessagesRequestV1', () => {
     expect(result.issues).toContainEqual(expect.objectContaining({ code: 'ANTHROPIC_MANUAL_THINKING_BUDGET_NOT_BELOW_MAX_TOKENS' }))
     expect(result.nativeRequest).toBeUndefined()
     expect(result.preparedBody).toBeUndefined()
+  })
+
+  it('emits distinct enabled and disabled bodies and does not claim omitted display was encoded', () => {
+    const messages = [{ role: 'user', content: 'question' }]
+    const enabled = compileAnthropicMessagesRequestV1({
+      modelId: 'claude-sonnet-5',
+      intent: intent({ reasoning: { mode: 'enabled', effort: 'high' }, providerExtension: {
+        kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'adaptive',
+      } }),
+      messages,
+    })
+    const disabled = compileAnthropicMessagesRequestV1({
+      modelId: 'claude-sonnet-5',
+      intent: intent({ reasoning: { mode: 'disabled' }, providerExtension: {
+        kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'disabled',
+      } }),
+      messages,
+    })
+
+    expect(enabled.issues).toEqual([])
+    expect(enabled.nativeRequest?.thinking).toEqual({ type: 'adaptive' })
+    expect(disabled.issues).toEqual([])
+    expect(disabled.nativeRequest?.thinking).toEqual({ type: 'disabled' })
+    expect(enabled.preparedBody?.copyUtf8Text()).not.toBe(disabled.preparedBody?.copyUtf8Text())
+    expect(enabled.dispositions.find(item => item.semanticPath === 'providerExtension.thinkingDisplay')).toMatchObject({
+      outcome: 'accepted_no_wire',
+    })
+  })
+
+  it('preserves frozen disabled-body omission while current explicit disabled thinking is encoded', () => {
+    const disabledIntent = intent({ reasoning: { mode: 'disabled' }, providerExtension: {
+      kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'disabled',
+    } })
+    const messages = [{ role: 'user', content: 'question' }]
+    const historical = compileAnthropicMessagesRequestV1({ modelId: 'claude-opus-4-5-20251101',
+      encoderRevision: getAnthropicLegacyThinkingEncoderRevisionV2('text'), intent: disabledIntent, messages })
+    const current = compileAnthropicMessagesRequestV1({ modelId: 'claude-opus-4-5-20251101', intent: disabledIntent, messages })
+    expect(historical.issues).toEqual([])
+    expect(historical.nativeRequest).not.toHaveProperty('thinking')
+    expect(historical.dispositions.find(item => item.semanticPath === 'providerExtension.thinkingMode')).toMatchObject({
+      outcome: 'accepted_no_wire',
+    })
+    expect(current.issues).toEqual([])
+    expect(current.nativeRequest?.thinking).toEqual({ type: 'disabled' })
+    expect(current.dispositions.find(item => item.semanticPath === 'providerExtension.thinkingMode')).toMatchObject({
+      outcome: 'encoded',
+    })
+    expect(historical.preparedBody?.copyUtf8Text()).not.toBe(current.preparedBody?.copyUtf8Text())
+  })
+
+  it('accepts a fact-resolved omitted provider default with the documented off default', () => {
+    const result = compileAnthropicMessagesRequestV1({
+      modelId: 'claude-opus-4-8',
+      intent: intent({ reasoning: { mode: 'disabled' }, providerExtension: {
+        kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'provider_default',
+      } }),
+      messages: [{ role: 'user', content: 'question' }],
+    })
+    expect(result.issues).toEqual([])
+    expect(result.nativeRequest).not.toHaveProperty('thinking')
+    expect(result.dispositions.find(item => item.semanticPath === 'providerExtension.thinkingMode')).toMatchObject({
+      outcome: 'accepted_no_wire',
+    })
+  })
+
+  it('raises max_tokens above a manual thinking budget at the exact legal boundary', () => {
+    const capability = { modelFacts: { fields: [
+      { path: 'reasoning.mode', state: 'supported', domain: { kind: 'enum', values: ['enabled', 'disabled'] },
+        defaultValue: 'disabled', constraints: [] },
+      { path: 'providerExtension.thinkingMode', state: 'supported', domain: { kind: 'enum',
+        values: ['manual', 'adaptive', 'provider_default', 'disabled'] }, defaultValue: 'manual', constraints: [] },
+      { path: 'providerExtension.thinkingDisplay', state: 'supported', domain: { kind: 'enum',
+        values: ['provider_default', 'summarized', 'omitted'] }, defaultValue: 'summarized', constraints: [] },
+      { path: 'providerExtension.manualThinkingBudgetTokens', state: 'supported', domain: { kind: 'range',
+        min: 1_024, max: 8_192, integer: true }, constraints: [] },
+      { path: 'generation.maxOutputTokens', state: 'supported', domain: { kind: 'range',
+        min: 1, max: 8_192, integer: true }, constraints: [] },
+    ] } } as unknown as ResolvedCapabilityV2
+    const resolved = resolveAnthropicRequestIntentV2(decodeGenerationIntentLayerV2({ schemaVersion: 2,
+      generation: { maxOutputTokens: 1_024 }, reasoning: { mode: 'enabled', effort: 'high' },
+      providerExtension: { kind: 'anthropic_messages', thinkingMode: 'manual', thinkingDisplay: 'provider_default',
+        manualThinkingBudgetTokens: 1_024 },
+    }), capability)
+    const effectiveGeneration = resolved.generation ?? {}
+    expect(effectiveGeneration.maxOutputTokens).toBe(1_025)
+    expect(resolved.providerExtension).toMatchObject({ thinkingMode: 'manual', manualThinkingBudgetTokens: 1_024 })
+    expect(resolved.decisions).toContainEqual(expect.objectContaining({ path: 'generation.maxOutputTokens', source: {
+      from: 1_024, value: 1_025, source: 'capability_adjustment',
+    } }))
+    const compilation = compileAnthropicMessagesRequestV1({ modelId: 'claude-opus-4-5-20251101',
+      intent: decodeResolvedGenerationIntentV2({ schemaVersion: 2, generation: effectiveGeneration,
+        reasoning: resolved.reasoning, web: { mode: 'disabled' }, image: { mode: 'disabled' },
+        tools: { mode: 'disabled' }, attachments: [], providerExtension: resolved.providerExtension }).value,
+      messages: [{ role: 'user', content: 'question' }] })
+    expect(compilation.issues).toEqual([])
+    expect(compilation.nativeRequest).toMatchObject({ max_tokens: 1_025,
+      thinking: { type: 'enabled', budget_tokens: 1_024 } })
   })
 
   it('encodes client tools and preserves tool_use followed immediately by the exact tool_result error block', () => {

@@ -5,6 +5,7 @@ import {
   type ImageGenerationIntentV2,
   type ProviderSemanticExtensionV2,
   type ReasoningIntentV2,
+  type RequestedParametersV2,
   type SamplingIntentV2,
   type ToolPolicyIntentV2,
   type WebSearchIntentV2,
@@ -19,6 +20,7 @@ export type ResolvedGenerationIntentV2 = Readonly<{
   tools: ToolPolicyIntentV2
   attachments: readonly AttachmentIntentV2[]
   providerExtension: ProviderSemanticExtensionV2
+  requestedParameters?: RequestedParametersV2
 }>
 
 export type DecodedResolvedGenerationIntentV2 = Readonly<{
@@ -59,6 +61,7 @@ export function decodeResolvedGenerationIntentV2(value: unknown): DecodedResolve
       tools: decoded.tools,
       attachments: decoded.attachments,
       providerExtension: decoded.providerExtension,
+      ...(decoded.requestedParameters === undefined ? {} : { requestedParameters: decoded.requestedParameters }),
     }),
   })
   decodedResolvedGenerationIntentsV2.add(result)

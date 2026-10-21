@@ -23,6 +23,15 @@ export function isSchemaMismatchRecoveryAutomaticallyApproved(
   return env[SCHEMA_MISMATCH_RECOVERY_AUTHORITY] === '1'
 }
 
+export function shouldAttemptSchemaMismatchRecovery(
+  failureCode: string,
+  agentAutomation: boolean,
+  env: SchemaMismatchRecoveryEnvironment = process.env,
+): boolean {
+  return failureCode === 'EPOCH2_DATABASE_SCHEMA_MISMATCH' &&
+    (!agentAutomation || isSchemaMismatchRecoveryAutomaticallyApproved(env))
+}
+
 export async function confirmSchemaMismatchRecovery(
   env: SchemaMismatchRecoveryEnvironment = process.env,
 ): Promise<boolean> {

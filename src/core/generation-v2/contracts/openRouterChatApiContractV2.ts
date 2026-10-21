@@ -1,3 +1,4 @@
+/** Frozen mixed API-surface identity input retained for legacy provider bindings. New request-body shape authority is ApiRequestBodyContractV2; endpoint/auth/version authority is EndpointTransportDefinitionV2. */
 export type OpenRouterChatApiSurfaceDefinitionV2 = Readonly<{
   surfaceId: 'openrouter-chat-completions-v1'
   codecKind: 'openrouter_chat_completions_v1'

@@ -162,8 +162,46 @@ function seedCompletedInitial(
 }
 
 describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
+  it('persists assistant responses above the user-input cap through streaming CAS and completion', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const execution = new GenerationExecutionV2Repo(db)
+      seedContainer(db, graph)
+      const body = 'x'.repeat(20 * 1024 * 1024 + 1)
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context =>
+        graph.beginInitialTurn(context, beginInput({ userBody: body }))))
+        .toThrow('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+      expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 0 })
+
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context => {
+        const pending = graph.beginInitialTurn(context, beginInput())
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:1',
+          actionKind: 'initial_send',
+          branchId: 'branch:1',
+          conversationId: 'conversation:1',
+          questionId: 'question:1',
+          sourceAnswerId: null,
+          targetAnswerId: 'answer:1',
+          snapshot: snapshotJson('operation:1', 'answer:1'),
+          commandFingerprint: HASH_A,
+          createdAtMs: 3,
+        })
+        graph.commitInitialTurnProjection(context, pending)
+        graph.compareAndSetStreamingAssistantBody(context, 'answer:1', '', body, 4)
+        graph.terminalizeAssistantMessage(context, 'answer:1', 'completed', body, 5)
+      })
+      expect(db.prepare('SELECT length(CAST(body_text AS BLOB)) AS bytes FROM message_body_v2 WHERE message_id=?')
+        .get('answer:1')).toEqual({ bytes: Buffer.byteLength(body, 'utf8') })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get('answer:1'))
+        .toEqual({ status: 'completed' })
+    } finally { db.close() }
+  })
+
   it('promotes the hidden New Chat template and creates its successor in the initial-command transaction', () => {
     const db = createDb()
+    const acceptedAt = new Date(2026, 9, 17, 14, 5, 25).getTime()
     try {
       const graph = new ConversationGraphV2Repo(db)
       const execution = new GenerationExecutionV2Repo(db)
@@ -189,20 +227,28 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
       })
 
       const projection = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
-        const pending = graph.beginInitialTurn(context, beginInput())
+        const pending = graph.beginInitialTurn(context, beginInput({ createdAtMs: acceptedAt }))
         execution.insertOperationAndSnapshot(context, {
           operationId: 'operation:1', actionKind: 'initial_send', branchId: 'branch:1',
           conversationId: 'conversation:1', questionId: 'question:1', sourceAnswerId: null,
           targetAnswerId: 'answer:1', snapshot: snapshotJson('operation:1', 'answer:1'),
-          commandFingerprint: HASH_A, createdAtMs: 3,
+          commandFingerprint: HASH_A, createdAtMs: acceptedAt,
         })
         return graph.commitInitialTurnProjection(context, pending)
       })
 
       const next = templateRepo.get()
+      expect(db.prepare('SELECT title FROM conversation_v2 WHERE conversation_id=?').get('conversation:1'))
+        .toEqual({ title: '会话2026年10月17日14时05分25秒' })
+      expect(next.conversation.title).toBe('')
       expect(next.conversation.id).not.toBe('conversation:1')
       expect(next.conversation.branchId).not.toBe('branch:1')
       expect(next.draft).toMatchObject({ draftText: '', draftMode: 'compose', attachments: [] })
+      const submittedDrafts = new ComposerDraftV2Repo(db, () => 4)
+      const submittedDraft = submittedDrafts.read('conversation:1')
+      expect(submittedDraft.draftText).toBe('hello')
+      expect(submittedDrafts.clearCommitted({ conversationId: 'conversation:1', expectedRevision: submittedDraft.revision })
+        .draftText).toBe('')
       expect(templateRepo.getLastFormalConversationId()).toBe('conversation:1')
       expect(new ConversationRoutePreferenceV2Repo(db).get(next.conversation.id)?.selection).toEqual({
         schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek', modelId: 'deepseek-v4-flash',

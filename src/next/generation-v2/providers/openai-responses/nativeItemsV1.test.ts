@@ -29,6 +29,25 @@ const returnedItems = [
 ] as const
 
 describe('OpenAI Responses V1 native replay items', () => {
+  it('preserves optional official image metadata and rejects malformed values', () => {
+    const image = { id: 'ig_1', type: 'image_generation_call', status: 'completed', result: 'base64',
+      action: 'generate', background: 'opaque', output_format: 'png', quality: 'low',
+      revised_prompt: 'Rewritten prompt', size: '1024x1024' }
+    expect(decodeOpenAIResponsesReturnedItemsV1([image])).toEqual([image])
+    expect(decodeOpenAIResponsesReplayItemsV1(JSON.parse(JSON.stringify([image])))).toEqual([image])
+    const nullable = { ...image, action: null, background: null, output_format: null, quality: null,
+      revised_prompt: null, size: null }
+    expect(decodeOpenAIResponsesReturnedItemsV1([nullable])).toEqual([nullable])
+    for (const [key, value] of Object.entries({ action: 'invalid', background: 5, output_format: 'gif',
+      quality: 'invalid', revised_prompt: {}, size: 1024 })) {
+      expect(() => decodeOpenAIResponsesReturnedItemsV1([{ ...image, [key]: value }])).toThrow(
+        'GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+    }
+    expect(() => decodeOpenAIResponsesReturnedItemsV1([{ ...image, unknown_image_field: true }])).toThrow(
+      'GENERATION_V2_OPENAI_NATIVE_ITEM_UNKNOWN_FIELD')
+    expect(() => decodeOpenAIResponsesReturnedItemsV1([{ ...image, revised_prompt: 'x'.repeat(100) }],
+      { maxItemStringBytes: 32 })).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_LIMIT_EXCEEDED')
+  })
   it('accepts the official terminal message shape where status and logprobs are omitted', () => {
     expect(decodeOpenAIResponsesReturnedItemsV1([{
       id: 'msg_123', type: 'message', role: 'assistant',
@@ -81,10 +100,18 @@ describe('OpenAI Responses V1 native replay items', () => {
     ])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_DIRECTION_INVALID')
   })
 
-  it('rejects missing encrypted reasoning, transient terminal items and unsupported native variants', () => {
-    expect(() => decodeOpenAIResponsesReturnedItemsV1([{
-      id: 'rs_1', type: 'reasoning', summary: [],
-    }])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_SHAPE')
+  it('preserves absent, null and empty wire ciphertext without accepting malformed values', () => {
+    const item = { id: 'rs_1', type: 'reasoning', summary: [] }
+    for (const value of [item, { ...item, encrypted_content: null }, { ...item, encrypted_content: '' }]) {
+      expect(decodeOpenAIResponsesReturnedItemsV1([value])).toEqual([value])
+    }
+    for (const encrypted_content of [123, {}, []]) {
+      expect(() => decodeOpenAIResponsesReturnedItemsV1([{ ...item, encrypted_content }]))
+        .toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+    }
+  })
+
+  it('rejects transient terminal items and unsupported native variants', () => {
     expect(() => decodeOpenAIResponsesReturnedItemsV1([{
       id: 'msg_1', type: 'message', role: 'assistant', status: 'in_progress',
       content: [{ type: 'output_text', text: '', annotations: [], logprobs: [] }],

@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onBeforeUnmount, useSlots } from 'vue'
 import { useFloatingDropdown } from '@/ui-app/composables/useFloatingDropdown'
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 const props = defineProps<{
   enabled: boolean
@@ -9,6 +10,7 @@ const props = defineProps<{
   activeLabel?: string | null
   kind?: 'reasoning' | 'webSearch' | 'image'
   disabled?: boolean
+  toggleDisabled?: boolean
   options?: readonly string[]
   optionLabels?: Readonly<Record<string, string>>
   selectedOption?: string | null
@@ -31,12 +33,19 @@ const { dropdownStyle, update: updateMenuPosition } = useFloatingDropdown(trigge
   padding: 8,
 })
 
+// Fixed widths per kind so toggling or changing the active label never moves siblings.
 const widthClass = computed(() => {
   switch (props.kind) {
-    case 'reasoning': return 'w-[6.25rem]'
-    case 'webSearch': return 'w-[6.25rem]'
-    case 'image': return 'w-[7.75rem]'
-    default: return ''
+    case 'image': return 'w-[8.5rem]'
+    default: return 'w-[7rem]'
+  }
+})
+
+const iconName = computed(() => {
+  switch (props.kind) {
+    case 'webSearch': return 'globe'
+    case 'image': return 'image'
+    default: return 'reasoning'
   }
 })
 
@@ -100,7 +109,7 @@ function toggleMenu() {
 }
 
 function onChipClick() {
-  if (props.disabled) return
+  if (props.disabled || props.toggleDisabled) return
   emit('toggle')
 }
 
@@ -121,59 +130,46 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="relative inline-flex items-center"
-    :class="widthClass"
+    class="relative inline-flex h-7 flex-none items-center rounded-md transition-colors"
+    :class="[widthClass, enabled ? 'bg-black/[0.08] text-gray-900' : 'text-gray-500']"
     :data-testid="dataTestId"
     :data-width-kind="kind"
   >
     <button
       type="button"
-      class="flex w-full items-center rounded-l-md border px-1.5 py-1 text-[11px] leading-tight transition-colors disabled:opacity-50"
-      :class="
-        enabled
-          ? 'border-gray-900 bg-gray-900 text-white'
-          : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-      "
-      :disabled="disabled"
+      class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-[13px] leading-none transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400"
+      :disabled="disabled || toggleDisabled"
       :title="titleText"
       :aria-label="titleText"
+      :aria-pressed="enabled"
       data-testid="capability-chip-body"
       @click="onChipClick"
     >
-      <slot name="icon" />
-      <span class="flex-1 text-center">{{ displayText }}</span>
+      <slot name="icon">
+        <UiIcon :name="iconName" :size="15" class="shrink-0" />
+      </slot>
+      <span class="min-w-0 flex-1 truncate text-left">{{ displayText }}</span>
     </button>
     <button
       v-if="hasMenu"
       ref="triggerRef"
       type="button"
-      class="shrink-0 inline-flex items-center rounded-r-md border border-l-0 px-0.5 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
-      :class="
-        enabled
-          ? 'border-gray-900 bg-gray-800 text-gray-300 hover:bg-gray-700'
-          : 'border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-      "
+      class="inline-flex h-7 w-5 shrink-0 items-center justify-center rounded-md transition-colors enabled:hover:bg-black/5 enabled:hover:text-gray-900 disabled:text-gray-400"
       :disabled="disabled"
+      :aria-label="fullLabel"
+      aria-haspopup="menu"
+      :aria-expanded="menuOpen"
       data-testid="capability-chip-chevron"
       @click="toggleMenu"
     >
-      <svg
-        class="h-3 w-3 transition-transform"
-        :class="{ 'rotate-180': menuOpen }"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="M4 6l4 4 4-4" />
-      </svg>
+      <UiIcon name="chevronDown" :size="12" class="transition-transform" :class="{ 'rotate-180': menuOpen }" />
     </button>
 
     <Teleport to="body">
       <div
         v-if="menuOpen && hasMenu"
         ref="menuRef"
-        class="fixed z-[var(--z-popover)] min-w-[80px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+        class="sv-popover fixed z-[var(--z-popover)] min-w-[120px] py-1"
         :style="dropdownStyle"
         data-testid="capability-chip-menu"
       >
@@ -182,22 +178,21 @@ onBeforeUnmount(() => {
           <template v-for="option in options" :key="option">
             <div
               v-if="option === '—'"
-              class="my-1 border-t border-gray-100"
+              class="sv-divider-t my-1"
               data-testid="capability-chip-divider"
             />
             <button
               v-else
               type="button"
-              class="block w-full px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-gray-50"
-              :class="
-                selectedOption === option
-                  ? 'font-medium text-gray-900'
-                  : 'text-gray-600'
-              "
+              class="sv-menu-item"
+              :aria-pressed="selectedOption === option"
               data-testid="capability-chip-option"
               @click="onOptionClick(option)"
             >
-              {{ optionLabel(option) }}
+              <span class="min-w-0 flex-1 truncate">{{ optionLabel(option) }}</span>
+              <span class="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+                <UiIcon v-if="selectedOption === option" name="check" :size="14" />
+              </span>
             </button>
           </template>
         </template>

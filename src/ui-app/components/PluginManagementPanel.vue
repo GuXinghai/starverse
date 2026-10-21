@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import {
   cancelInstallOperation,
   disablePlugin,
@@ -896,52 +897,56 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
 </script>
 
 <template>
-  <section class="rounded-lg border border-gray-200 bg-white p-3">
-    <div class="flex items-center justify-between gap-2">
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Plugin Management</div>
-        <div class="mt-1 text-[11px] text-gray-500">
+  <section class="flex min-w-0 flex-col gap-3">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="sv-label">Plugin Management</div>
+        <div class="sv-meta mt-1">
           Built-in Magika installs through the official verify-before-install release path. LibreOffice Office-to-PDF is owner-gated and experimental.
         </div>
       </div>
-      <button
-        type="button"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-        :disabled="loading"
-        @click="() => loadData()"
-      >
-        {{ loading ? 'Loading...' : 'Refresh' }}
-      </button>
+      <div class="flex min-w-0 shrink-0 items-center gap-2">
+        <span v-if="!error && statusMessage" class="flex min-w-0 items-center gap-1 text-xs text-gray-700">
+          <UiIcon name="check" :size="14" class="shrink-0" />
+          <span class="min-w-0 break-words">{{ statusMessage }}</span>
+        </span>
+        <button
+          type="button"
+          class="sv-btn sv-btn-sm min-w-24 shrink-0"
+          :disabled="loading"
+          @click="() => loadData()"
+        >
+          {{ loading ? 'Loading...' : 'Refresh' }}
+        </button>
+      </div>
     </div>
 
-    <div class="mt-3 space-y-2">
-      <div v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
-        {{ error }}
-      </div>
-      <div v-else-if="statusMessage" class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
-        {{ statusMessage }}
-      </div>
+    <div v-if="error" class="sv-notice sv-notice-danger" role="alert">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <span class="min-w-0 break-words">{{ error }}</span>
+    </div>
 
-      <div class="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-        {{ summaryText }}
-      </div>
+    <div class="sv-meta">
+      {{ summaryText }}
+    </div>
 
-      <div v-if="rows.length === 0 && !loading" class="text-[11px] text-gray-500">
-        No official plugins or registered plugin metadata available.
-      </div>
+    <div v-if="rows.length === 0 && !loading" class="sv-meta">
+      No official plugins or registered plugin metadata available.
+    </div>
 
+    <div v-if="rows.length > 0" class="flex flex-col">
       <article
         v-for="row in rows"
         :key="`${row.plugin.id}:${row.plugin.pluginVersion}`"
-        class="rounded-md border border-gray-100 bg-white px-3 py-2"
+        class="sv-divider-t flex flex-col gap-3 py-4 first:border-t-0 first:pt-0"
       >
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold text-gray-900">{{ row.plugin.displayName }}</div>
-            <div class="text-[11px] text-gray-500">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div class="min-w-0 flex-1">
+            <div class="break-words text-[13px] font-medium text-gray-900">{{ row.plugin.displayName }}</div>
+            <div class="sv-meta break-all">
               {{ row.plugin.id }} v{{ row.plugin.pluginVersion }} · official plugin
             </div>
-            <div class="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-gray-500 sm:grid-cols-2">
+            <div class="sv-meta mt-2 grid gap-x-4 gap-y-0.5 sm:grid-cols-2 [&>div]:min-w-0 [&>div]:break-words">
               <div>Installed version: {{ displayOptional(row.plugin.installedVersion) }}</div>
               <div>Available version: {{ displayOptional(row.plugin.availableVersion) }}</div>
               <div>Model: {{ displayOptional(row.plugin.modelVersion) }}</div>
@@ -979,29 +984,30 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             </div>
           </div>
           <div class="flex flex-wrap gap-1">
-            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700">
+            <span class="sv-chip">
               {{ labelPdpInstallState(row.plugin.status.installState).label }}
             </span>
-            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700">
+            <span class="sv-chip">
               {{ labelPdpVerificationStatus(row.plugin.status.verificationStatus).label }}
             </span>
-            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700">
+            <span class="sv-chip">
               {{ labelPdpHealthStatus(row.plugin.status.healthStatus).label }}
             </span>
           </div>
         </div>
 
-        <div class="mt-2 grid gap-1 text-[11px] text-gray-600 sm:grid-cols-2">
+        <div class="grid gap-x-4 gap-y-0.5 text-xs text-gray-600 sm:grid-cols-2 [&>div]:min-w-0 [&>div]:break-words">
           <div>Catalog: {{ catalogStatusText(row) }}</div>
           <div>Lifecycle: {{ row.plugin.status.lifecycle }}</div>
           <div>Update: {{ updateStatusText(row) }}</div>
           <div>Rollback: {{ row.plugin.status.rollbackState }}</div>
-          <div v-if="registryFailurePrimary(row)" class="flex items-center gap-2">
+          <div v-if="registryFailurePrimary(row)" class="flex flex-wrap items-center gap-x-2 text-[var(--sv-danger)]">
             <span>Failure: {{ registryFailurePrimary(row) }}</span>
             <button
               v-if="hasRegistryErrorChain(row)"
               type="button"
-              class="text-[10px] font-medium text-red-700 underline decoration-red-300 underline-offset-2 hover:text-red-900"
+              class="sv-btn sv-btn-sm sv-btn-ghost min-w-20"
+              :aria-expanded="isRegistryErrorChainExpanded(row)"
               @click="toggleRegistryErrorChain(row)"
             >
               {{ isRegistryErrorChainExpanded(row) ? 'Hide details' : 'Details' }}
@@ -1011,6 +1017,7 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             <div
               v-for="detail in registryErrorDetailRows(row)"
               :key="detail.label"
+              class="text-[var(--sv-danger)]"
             >
               {{ detail.label }}: {{ detail.value }}
             </div>
@@ -1018,7 +1025,7 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
           <div v-if="row.installOperation">
             Install: {{ installOperationDisplaySummary(row.installOperation) }}
           </div>
-          <div v-if="row.installOperation?.failureReason" data-testid="plugin-install-failure">
+          <div v-if="row.installOperation?.failureReason" class="text-[var(--sv-danger)]" data-testid="plugin-install-failure">
             Failure: {{ installOperationFailureReason(row.installOperation) }}
           </div>
           <template v-if="row.plugin.productGate">
@@ -1038,29 +1045,30 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
           </template>
         </div>
 
-        <div v-if="row.plugin.reasonCodes.length > 0" class="mt-2 flex flex-wrap gap-1">
+        <div v-if="row.plugin.reasonCodes.length > 0" class="flex flex-wrap gap-1">
           <span
             v-for="label in row.plugin.labels"
             :key="label.code"
-            class="rounded bg-gray-50 px-2 py-0.5 text-[10px] text-gray-700"
+            class="sv-chip"
           >
             {{ label.label }}
           </span>
         </div>
 
-        <div class="mt-2 flex flex-wrap gap-1">
+        <div class="flex flex-wrap gap-2">
           <button
             v-for="action in uiActions(row)"
             :key="action.id"
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            class="sv-btn sv-btn-sm h-auto min-h-7 max-w-full whitespace-normal py-1 text-left"
+            :class="{ 'sv-btn-primary': action.id === 'install_official_plugin' }"
             :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && action.id !== 'cancel_official_install' && action.id !== 'view_details' && !(isLibreOfficeRow(row) && (action.id === 'manual_local_package_registration' || action.id === 'acknowledge_quarantine')) && !row.engineId)"
             :title="action.enabled ? displayActionLabel(row, action) : actionReasonText(action)"
             :data-reason-codes="!action.enabled ? actionReason(action) : undefined"
             @click="runAction(row, action)"
           >
             {{ displayActionLabel(row, action) }}
-            <span v-if="!action.enabled" class="ml-1 text-gray-400">({{ actionReasonText(action) }})</span>
+            <span v-if="!action.enabled" class="ml-1 text-gray-500">({{ actionReasonText(action) }})</span>
           </button>
         </div>
       </article>
@@ -1068,34 +1076,34 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
 
     <div
       v-if="selectedDetails"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      class="sv-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="plugin-details-title"
     >
-      <div class="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-4 shadow-lg">
+      <div class="sv-dialog max-h-[85vh] w-full max-w-xl overflow-y-auto p-5">
         <div class="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="plugin-details-title" class="text-sm font-semibold text-gray-900">
+          <div class="min-w-0">
+            <h2 id="plugin-details-title" class="break-words text-sm font-semibold text-gray-900">
               {{ selectedDetails.identity.displayName }}
             </h2>
-            <div class="mt-1 text-[11px] text-gray-500">
+            <div class="sv-meta mt-1 break-all">
               {{ selectedDetails.identity.pluginId }} v{{ selectedDetails.identity.pluginVersion }}
             </div>
           </div>
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+            class="sv-btn sv-btn-sm shrink-0"
             @click="closeDetails"
           >
             Close
           </button>
         </div>
 
-        <div class="mt-4 grid gap-3 text-[11px] text-gray-700 sm:grid-cols-2">
-          <section>
-            <div class="font-semibold text-gray-900">Sanitized metadata</div>
-            <dl class="mt-1 space-y-1">
+        <div class="mt-4 grid gap-x-6 gap-y-4 text-xs text-gray-700 sm:grid-cols-2">
+          <section class="min-w-0 break-words">
+            <div class="sv-label">Sanitized metadata</div>
+            <dl class="mt-1 flex flex-col gap-1">
               <div>Publisher: {{ selectedDetails.identity.publisher }}</div>
               <div>Runtime: {{ selectedDetails.identity.runtimeKind }}</div>
               <div>Capabilities: {{ selectedDetails.identity.capabilities.join(', ') || 'Unavailable' }}</div>
@@ -1103,27 +1111,27 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             </dl>
           </section>
 
-          <section>
-            <div class="font-semibold text-gray-900">Verification</div>
-            <dl class="mt-1 space-y-1">
+          <section class="min-w-0 break-words">
+            <div class="sv-label">Verification</div>
+            <dl class="mt-1 flex flex-col gap-1">
               <div>Status: {{ selectedDetails.verification.label.label }}</div>
               <div>Cryptographic check: {{ selectedDetails.verification.cryptographicVerificationPerformed ? 'Completed' : 'Not completed' }}</div>
               <div>Signature: {{ selectedDetails.verification.signatureAlgorithm.label }}</div>
             </dl>
           </section>
 
-          <section>
-            <div class="font-semibold text-gray-900">Health</div>
-            <dl class="mt-1 space-y-1">
+          <section class="min-w-0 break-words">
+            <div class="sv-label">Health</div>
+            <dl class="mt-1 flex flex-col gap-1">
               <div>Status: {{ selectedDetails.health.label.label }}</div>
               <div>Quarantine: {{ selectedDetails.quarantine.label }}</div>
             </dl>
           </section>
 
-          <section>
-            <div class="font-semibold text-gray-900">Diagnostics</div>
+          <section class="min-w-0 break-words">
+            <div class="sv-label">Diagnostics</div>
             <div v-if="selectedDetails.diagnostics.length === 0" class="mt-1">No diagnostics.</div>
-            <ul v-else class="mt-1 space-y-1">
+            <ul v-else class="mt-1 flex flex-col gap-1">
               <li v-for="diagnostic in selectedDetails.diagnostics" :key="diagnostic">{{ diagnostic }}</li>
             </ul>
           </section>

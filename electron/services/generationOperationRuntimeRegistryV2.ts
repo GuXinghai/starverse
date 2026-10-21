@@ -17,6 +17,10 @@ import {
   type GenerationStreamProjectionV2,
 } from './generationStreamProjectionV2'
 import { GenerationRecentUsageAuthorityV2 } from './generationRecentUsageAuthorityV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+} from './generationNativeCompletionV2'
 
 type RuntimeEntry = {
   snapshot: GenerationOperationRuntimeSnapshotV2
@@ -121,11 +125,32 @@ export class GenerationOperationRuntimeRegistryV2 {
   }
 
   listSnapshots(): readonly GenerationOperationRuntimeSnapshotV2[] {
-    return Object.freeze([...this.#entries.values()].map((entry) => entry.snapshot))
+    const snapshots: GenerationOperationRuntimeSnapshotV2[] = []
+    for (const [operationId, entry] of this.#entries) {
+      const bundle = this.#execution.findOperation(operationId)
+      if (!bundle) continue
+      entry.snapshot = this.#hydrate(bundle, entry.snapshot.lastSequence)
+      if (entry.snapshot.status !== 'generating') entry.abort = null
+      snapshots.push(entry.snapshot)
+    }
+    return Object.freeze(snapshots)
   }
 
   getSnapshot(operationId: string): GenerationOperationRuntimeSnapshotV2 | null {
-    return this.#entries.get(operationId)?.snapshot ?? null
+    const bundle = this.#execution.findOperation(operationId)
+    if (!bundle) return null
+    const existing = this.#entries.get(operationId)
+    if (existing && !sameBinding(existing.snapshot.binding, bindingOf(bundle))) {
+      throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BINDING_CONFLICT')
+    }
+    const snapshot = this.#hydrate(bundle, existing?.snapshot.lastSequence ?? 0)
+    if (existing) {
+      existing.snapshot = snapshot
+      if (snapshot.status !== 'generating') existing.abort = null
+    } else {
+      this.#entries.set(operationId, { snapshot, abort: null })
+    }
+    return snapshot
   }
 
   register(result: StartableGenerationResultV2): GenerationOperationRuntimeSnapshotV2 {
@@ -206,6 +231,10 @@ export class GenerationOperationRuntimeRegistryV2 {
 
   #terminalizeUnhandledRunFailure(result: StartableGenerationResultV2, error: unknown): void {
     const operationId = result.execution.operation.operationId.value
+    if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) return
+    try {
+      if (hasPendingGenerationNativeCompletionForOperationV2(this.db, operationId)) return
+    } catch { /* The normal unhandled-run fallback remains available if the receipt table is unavailable. */ }
     const current = this.#execution.findOperation(operationId)
     if (!current || ['completed', 'failed', 'cancelled'].includes(current.operation.state)) return
     const rawMessage = error instanceof Error ? error.message : String(error)
@@ -433,7 +462,9 @@ export class GenerationOperationRuntimeRegistryV2 {
     entry.snapshot = this.#reduce(entry.snapshot, payload, sequence)
     if (payload.type === 'terminal' && payload.state !== 'awaiting_tool') entry.abort = null
     const event = Object.freeze({ operationId: binding.operationId, sequence, payload })
-    for (const listener of this.#listeners) listener(event)
+    for (const listener of this.#listeners) {
+      try { listener(event) } catch { /* One observer cannot block the persisted runtime snapshot. */ }
+    }
     return event
   }
 

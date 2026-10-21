@@ -19,6 +19,17 @@ export const ANTHROPIC_ASSISTANT_SNAPSHOT_KEY = 'assistant' as const
 
 export const MAX_ANTHROPIC_NATIVE_BLOCK_BYTES = 2 * 1024 * 1024
 export const MAX_ANTHROPIC_NATIVE_SNAPSHOT_BYTES = 8 * 1024 * 1024
+const MAX_ANTHROPIC_NATIVE_CAPACITY_BYTES = 64 * 1024 * 1024
+
+export type AnthropicProviderNativeSnapshotCapacityV1 = Readonly<{
+  maxBlockBytes: number
+  maxSnapshotBytes: number
+}>
+
+const LEGACY_SNAPSHOT_CAPACITY: AnthropicProviderNativeSnapshotCapacityV1 = Object.freeze({
+  maxBlockBytes: MAX_ANTHROPIC_NATIVE_BLOCK_BYTES,
+  maxSnapshotBytes: MAX_ANTHROPIC_NATIVE_SNAPSHOT_BYTES,
+})
 
 export class AnthropicProviderNativeValidationError extends ProviderNativeValidationError {
   constructor(message: string) {
@@ -27,7 +38,25 @@ export class AnthropicProviderNativeValidationError extends ProviderNativeValida
   }
 }
 
-export function normalizeAnthropicProviderNativeSnapshot(value: unknown): AnthropicProviderNativeSnapshot {
+function snapshotCapacity(
+  value?: AnthropicProviderNativeSnapshotCapacityV1,
+): AnthropicProviderNativeSnapshotCapacityV1 {
+  const capacity = value ?? LEGACY_SNAPSHOT_CAPACITY
+  if (!capacity || typeof capacity !== 'object' ||
+      !Number.isSafeInteger(capacity.maxBlockBytes) || capacity.maxBlockBytes < 1 ||
+      capacity.maxBlockBytes > MAX_ANTHROPIC_NATIVE_CAPACITY_BYTES ||
+      !Number.isSafeInteger(capacity.maxSnapshotBytes) || capacity.maxSnapshotBytes < capacity.maxBlockBytes ||
+      capacity.maxSnapshotBytes > MAX_ANTHROPIC_NATIVE_CAPACITY_BYTES) {
+    throw new AnthropicProviderNativeValidationError('Anthropic native snapshot capacity is invalid')
+  }
+  return capacity
+}
+
+export function normalizeAnthropicProviderNativeSnapshot(
+  value: unknown,
+  capacityValue?: AnthropicProviderNativeSnapshotCapacityV1,
+): AnthropicProviderNativeSnapshot {
+  const capacity = snapshotCapacity(capacityValue)
   const record = clonePlainJsonObject(value, '$')
   if (record.providerKey !== ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY) {
     throw new AnthropicProviderNativeValidationError('Anthropic native snapshot providerKey is invalid')
@@ -45,7 +74,7 @@ export function normalizeAnthropicProviderNativeSnapshot(value: unknown): Anthro
     throw new AnthropicProviderNativeValidationError('Anthropic native snapshot status is invalid')
   }
 
-  const content = normalizeAnthropicNativeContentBlocks(record.content)
+  const content = normalizeAnthropicNativeContentBlocks(record.content, capacity.maxBlockBytes)
   const normalized: Record<string, unknown> = {
     providerKey: ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
     sourceApi: ANTHROPIC_MESSAGES_SOURCE_API,
@@ -77,30 +106,43 @@ export function normalizeAnthropicProviderNativeSnapshot(value: unknown): Anthro
     if (diagnostics.length > 0) normalized.diagnostics = diagnostics
   }
 
-  validateJsonByteLimit(normalized, MAX_ANTHROPIC_NATIVE_SNAPSHOT_BYTES, 'Anthropic native snapshot is too large')
+  validateJsonByteLimit(normalized, capacity.maxSnapshotBytes, 'Anthropic native snapshot is too large')
   return normalized as AnthropicProviderNativeSnapshot
 }
 
-export function normalizeAnthropicNativeContentBlocks(value: unknown): AnthropicNativeContentBlock[] {
+export function normalizeAnthropicNativeContentBlocks(
+  value: unknown,
+  maxBlockBytes = MAX_ANTHROPIC_NATIVE_BLOCK_BYTES,
+): AnthropicNativeContentBlock[] {
+  if (!Number.isSafeInteger(maxBlockBytes) || maxBlockBytes < 1 ||
+      maxBlockBytes > MAX_ANTHROPIC_NATIVE_CAPACITY_BYTES) {
+    throw new AnthropicProviderNativeValidationError('Anthropic native content block capacity is invalid')
+  }
   const blocks = clonePlainJsonArray(value, '$.content')
   return blocks.map((block, index) => {
     const cloned = clonePlainJsonObject(block, `$.content[${index}]`)
-    validateJsonByteLimit(cloned, MAX_ANTHROPIC_NATIVE_BLOCK_BYTES, `Anthropic native content block ${index} is too large`)
+    validateJsonByteLimit(cloned, maxBlockBytes, `Anthropic native content block ${index} is too large`)
     return cloned
   })
 }
 
-export function isFinalAnthropicProviderNativeSnapshot(value: unknown): value is AnthropicProviderNativeSnapshot {
+export function isFinalAnthropicProviderNativeSnapshot(
+  value: unknown,
+  capacity?: AnthropicProviderNativeSnapshotCapacityV1,
+): value is AnthropicProviderNativeSnapshot {
   try {
-    const snapshot = normalizeAnthropicProviderNativeSnapshot(value)
+    const snapshot = normalizeAnthropicProviderNativeSnapshot(value, capacity)
     return snapshot.status === 'final'
   } catch {
     return false
   }
 }
 
-export function assertFinalAnthropicProviderNativeSnapshot(value: unknown): AnthropicProviderNativeSnapshot {
-  const snapshot = normalizeAnthropicProviderNativeSnapshot(value)
+export function assertFinalAnthropicProviderNativeSnapshot(
+  value: unknown,
+  capacity?: AnthropicProviderNativeSnapshotCapacityV1,
+): AnthropicProviderNativeSnapshot {
+  const snapshot = normalizeAnthropicProviderNativeSnapshot(value, capacity)
   if (snapshot.status !== 'final') {
     throw new AnthropicProviderNativeValidationError(`Anthropic native snapshot is not final: ${snapshot.status}`)
   }

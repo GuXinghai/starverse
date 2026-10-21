@@ -84,6 +84,7 @@ function commitCurrent(input: Readonly<{
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind,
       ownerId: entry.ownerId, revision: entry.revision.value })),
     providerBinding: readVerifiedGeminiInteractionsImageProviderBindingRecordV2(input.binding),

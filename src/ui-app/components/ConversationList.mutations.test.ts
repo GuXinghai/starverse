@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/vue'
 import { t } from '@/shared/i18n'
 import ConversationList from './ConversationList.vue'
 
@@ -15,6 +15,78 @@ const props = {
 }
 
 afterEach(cleanup)
+
+describe.each(['create', 'rename'] as const)('project name %s', (action) => {
+  async function open(listeners: Record<string, unknown> = {}) {
+    const view = render(ConversationList, { props: { ...props, ...listeners } })
+    await fireEvent.click(screen.getByRole('button', { name: t(action === 'create' ? 'navigation.project.newProject' : 'navigation.project.renameProject') }))
+    return { view, input: screen.getByPlaceholderText(t('navigation.project.projectName')),
+      submit: screen.getByRole('button', { name: t(action === 'create' ? 'common.create' : 'common.save') }) }
+  }
+  const listener = (submit: (name: string, confirmed: boolean, done: (result: any) => void) => void) => action === 'create'
+    ? { onCreateProject: submit } : { onRenameProject: (_id: string, ...args: Parameters<typeof submit>) => submit(...args) }
+
+  it('disables empty and whitespace names and guards Enter', async () => {
+    const handler = vi.fn()
+    const { input, submit } = await open(listener(handler))
+    await fireEvent.update(input, '   ')
+    expect(submit).toBeDisabled()
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    expect(handler).not.toHaveBeenCalled()
+    await fireEvent.update(input, 'Valid')
+    expect(submit).not.toBeDisabled()
+  })
+
+  it('keeps the duplicate hint through edits and updates it only after another submission', async () => {
+    const handler = vi.fn((_name, _confirmed, done) => done({ status: 'duplicate', policy: 'deny' }))
+    const { input, submit } = await open(listener(handler))
+    await fireEvent.update(input, 'Duplicate')
+    expect(screen.queryByTestId('project-name-error')).toBeNull()
+    await fireEvent.click(submit)
+    expect(await screen.findByTestId('project-name-error')).toHaveTextContent(t('navigation.project.duplicateName'))
+    await fireEvent.update(input, '')
+    expect(screen.getByTestId('project-name-error')).toBeInTheDocument()
+    await fireEvent.update(input, 'Unique')
+    expect(screen.getByTestId('project-name-error')).toBeInTheDocument()
+    await fireEvent.click(submit)
+    expect(screen.getByTestId('project-name-error')).toBeInTheDocument()
+    handler.mockImplementationOnce((_name, _confirmed, done) => done({ status: 'saved', projectId: 'new' }))
+    await fireEvent.click(submit)
+    await waitFor(() => expect(screen.queryByPlaceholderText(t('navigation.project.projectName'))).toBeNull())
+    expect(screen.queryByTestId('project-name-error')).toBeNull()
+  })
+
+  it('asks before applying a duplicate and supports cancellation without applying', async () => {
+    const handler = vi.fn((_name, confirmed, done) => done(confirmed
+      ? { status: 'saved', projectId: 'new' } : { status: 'duplicate', policy: 'ask' }))
+    const { input, submit } = await open(listener(handler))
+    await fireEvent.update(input, ' Duplicate ')
+    await fireEvent.click(submit)
+    let confirmation = await screen.findByRole('dialog')
+    expect(input).toBeDisabled()
+    expect(screen.queryByTestId('project-name-error')).toBeNull()
+    await fireEvent.click(within(confirmation).getByRole('button', { name: t('common.cancel') }))
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(input).not.toBeDisabled()
+    await fireEvent.click(submit)
+    confirmation = await screen.findByRole('dialog')
+    await fireEvent.click(within(confirmation).getByRole('button', { name: t('common.confirm') }))
+    expect(handler.mock.calls.map(([name, confirmed]) => [name, confirmed])).toEqual([
+      ['Duplicate', false], ['Duplicate', false], ['Duplicate', true],
+    ])
+    await waitFor(() => expect(screen.queryByPlaceholderText(t('navigation.project.projectName'))).toBeNull())
+  })
+
+  it('prevents repeated submissions while the mutation is pending', async () => {
+    const handler = vi.fn()
+    const { input, submit } = await open(listener(handler))
+    await fireEvent.update(input, 'Valid')
+    await fireEvent.click(submit)
+    expect(submit).toBeDisabled()
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('ConversationList mutation guards', () => {
   it('keeps search, new conversation, and selection navigation available while mutations are disabled', async () => {

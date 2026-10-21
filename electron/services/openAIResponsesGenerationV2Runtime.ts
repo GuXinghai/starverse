@@ -67,6 +67,7 @@ export function createOpenAIResponsesGenerationV2Runtime(input: Readonly<{
   const runner = createOpenAIResponsesStreamRunnerV2({
     db: input.db,
     credentialService: input.credentialService,
+    attachmentBlobStore: input.attachmentBlobStore,
     fetchImpl: input.fetchImpl,
     rawGenerationRequestStore: input.rawGenerationRequestStore,
     streamProjectionSink: input.streamProjectionSink,

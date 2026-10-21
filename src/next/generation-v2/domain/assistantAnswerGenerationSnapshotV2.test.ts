@@ -218,9 +218,11 @@ describe('AssistantAnswerGenerationSnapshotV2 persisted value codec', () => {
       .toThrow('GENERATION_V2_SNAPSHOT_DUPLICATE_VALUE')
   })
 
-  it('requires exact provider-file and tool authority bindings without confirmation results', () => {
+  it('validates retained provider-file bindings and tool authority without confirmation results', () => {
     const noAttachmentBinding = payload()
     noAttachmentBinding.attachmentProviderFileBindings = []
+    expect(() => canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(noAttachmentBinding)).not.toThrow()
+    noAttachmentBinding.attachmentProviderFileBindings = [{...payload().attachmentProviderFileBindings[0], assetRevisionId: 'asset-revision:wrong'}]
     expect(() => canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(noAttachmentBinding))
       .toThrow('GENERATION_V2_SNAPSHOT_ATTACHMENT_BINDING_MISMATCH')
 

@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -188,8 +190,10 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
         sourceAttachments, undefined, (commandFacts) => {
           const selected = currentSelection(context, command, descriptor, commandFacts, freshness)
+          return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
+            sourceAttachments, undefined, (compatibleFacts) => {
           const persisted = commitOpenRouterImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo, pending, command,
-            commandFacts, binding: selected.binding, capability: selected.capability, credentialRevision: status.revision })
+            commandFacts: compatibleFacts, binding: selected.binding, capability: selected.capability, credentialRevision: status.revision })
           if (command.kind === 'openrouter_image_regenerate') {
             if (!isPendingAnswerActionForContextV2(pending, context)) throw new Error('GENERATION_V2_OPENROUTER_IMAGE_GRAPH_INVALID')
             graphRepo.commitAnswerActionProjection(context, pending)
@@ -202,6 +206,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
           return Object.freeze({ kind: 'created' as const, execution: persisted.bundle,
             projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
             request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
+          }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolvedCapabilityFromRuntimeSnapshotV2(selected.capability), status.revision) })
         })
       }),
     }) } catch (error) {

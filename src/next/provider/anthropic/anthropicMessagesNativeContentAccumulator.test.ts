@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createAnthropicMessagesNativeContentAccumulator } from '../../../core/provider/anthropic/anthropicMessagesNativeContentAccumulator'
+import { normalizeAnthropicProviderNativeSnapshot } from '../../../core/provider/anthropic/anthropicProviderNativeContent'
 import type { AnthropicProviderNativeSnapshot } from '@/shared/provider/providerNativeContracts'
 
 function start(index: number, contentBlock: Record<string, unknown>) {
@@ -25,6 +26,21 @@ function finalSnapshot(
 }
 
 describe('AnthropicMessagesNativeContentAccumulator', () => {
+  it('keeps legacy normalization bounded while permitting an explicit V2 response capacity', () => {
+    const text = 'x'.repeat(2 * 1024 * 1024 + 1)
+    const snapshot = {
+      providerKey: 'anthropic', sourceApi: 'anthropic_messages', snapshotKey: 'assistant', role: 'assistant', status: 'final',
+      content: [{ type: 'text', text }],
+    }
+    expect(() => normalizeAnthropicProviderNativeSnapshot(snapshot)).toThrow('Anthropic native content block 0 is too large')
+    expect(normalizeAnthropicProviderNativeSnapshot(snapshot, {
+      maxBlockBytes: 64 * 1024 * 1024, maxSnapshotBytes: 64 * 1024 * 1024,
+    }).content[0]).toMatchObject({ type: 'text', text })
+    expect(() => normalizeAnthropicProviderNativeSnapshot(snapshot, {
+      maxBlockBytes: 157 * 1024 * 1024, maxSnapshotBytes: 157 * 1024 * 1024,
+    })).toThrow('Anthropic native snapshot capacity is invalid')
+  })
+
   it('preserves content block order across mixed indexed deltas', () => {
     const accumulator = createAnthropicMessagesNativeContentAccumulator({ messageId: 'assistant_1' })
     accumulator.ingestEvent({ type: 'message_start', message: { model: 'claude-sonnet-4-5', usage: { input_tokens: 3 } } })

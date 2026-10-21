@@ -185,6 +185,13 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
       rejectionCode: 'DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED',
     }),
     unsupported('image.aspectRatio'),
+    unsupported('image.action'),
+    unsupported('image.toolModel'),
+    unsupported('image.toolChoice'),
+    unsupported('image.partialImages'),
+    unsupported('image.inputFidelity'),
+    unsupported('image.moderation'),
+    unsupported('image.maskAsset'),
     unsupported('image.background'),
     unsupported('image.format'),
     rule('image.mode', 'accepted_no_wire', STARVERSE_POLICY, {

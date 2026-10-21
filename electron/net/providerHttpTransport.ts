@@ -1,4 +1,5 @@
 import { session } from 'electron'
+import { electronManualRedirectFetch } from './electronManualRedirectFetch'
 
 export type ProviderFetch = typeof fetch
 
@@ -28,6 +29,7 @@ export type ProviderHttpTransportDiagnostic =
   | string
 
 export function classifyProviderHttpTransportDiagnostic(error: unknown): ProviderHttpTransportDiagnostic {
+  if (error instanceof ProviderHttpTransportError) return error.diagnosticCode
   const record = error && typeof error === 'object' ? error as { name?: unknown; message?: unknown; cause?: unknown } : null
   const cause = record?.cause && typeof record.cause === 'object'
     ? record.cause as { code?: unknown; message?: unknown }
@@ -83,6 +85,9 @@ export function createElectronSessionProviderFetch(input?: Readonly<{
     try {
       input?.beforeRequest?.(sessionInput as string | Request)
       const electronSession = input?.session ?? session.defaultSession
+      if ((init?.redirect ?? (sessionInput instanceof Request ? sessionInput.redirect : undefined)) === 'manual') {
+        return await electronManualRedirectFetch(electronSession as Electron.Session, sessionInput as string | Request, init)
+      }
       return await electronSession.fetch(sessionInput as string | Request, init)
     } catch (error) {
       const classified = new ProviderHttpTransportError(error)

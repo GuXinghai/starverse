@@ -1,6 +1,12 @@
 {
   "settings": {
     "title": "Settings",
+    "projectDuplicatePolicy": {
+      "label": "Allow duplicate project names",
+      "allow": "On",
+      "deny": "Off",
+      "ask": "Ask"
+    },
     "categories": {
       "navigationLabel": "Settings categories",
       "general": "General",
@@ -403,6 +409,7 @@
         "regexMatches": "Matches",
         "regexExcludes": "Does not match",
         "assertedValue": "Asserted value",
+        "effect": "Rule effect",
         "remoteBaseline": "Remote baseline",
         "localOverride": "Local override",
         "effectiveActivation": "Effective activation",

@@ -45,6 +45,23 @@ type Claim = Readonly<{
   completenessDisposition: ResolvedModelFactCompletenessV1
 }>
 
+/** Shared arbitration primitive for persisted facts and request-context Rule overlays. */
+export function highestPriorityFactClaimsV2<T>(claims: readonly T[], metadata: (claim: T) => Readonly<{
+  sourceKind: CanonicalSourceKindV1; sourcePriority: number; selectorKind?: 'exact' | 'regex'; rulePriority?: number
+}>): readonly T[] {
+  const local: T[] = []
+  for (const kind of ['provider_native', 'models_dev', 'capability_rule'] as const) {
+    const source = claims.filter(claim => metadata(claim).sourceKind === kind)
+    if (kind !== 'capability_rule') { local.push(...source); continue }
+    const exact = source.filter(claim => metadata(claim).selectorKind === 'exact')
+    const eligible = exact.length ? exact : source
+    const priority = Math.max(...eligible.map(claim => metadata(claim).rulePriority ?? 0))
+    local.push(...eligible.filter(claim => (metadata(claim).rulePriority ?? 0) === priority))
+  }
+  const priority = Math.max(...local.map(claim => metadata(claim).sourcePriority))
+  return Object.freeze(local.filter(claim => metadata(claim).sourcePriority === priority))
+}
+
 const SOURCE_SLOTS = Object.freeze([
   Object.freeze({ key: 'providerNative' as const, kind: 'provider_native' as const }),
   Object.freeze({ key: 'modelsDev' as const, kind: 'models_dev' as const }),
@@ -235,7 +252,11 @@ function fieldForPath(path: CanonicalSemanticPathV1, slots: readonly SourceSlot[
       supportingProvenance: Object.freeze([]), opposingProvenance: Object.freeze([]), overriddenProvenance: Object.freeze([]), diagnostics })
   }
   const highestPriority = claims[0].provenance.sourcePriority
-  const priorityClaims = claims.filter((claim) => claim.provenance.sourcePriority === highestPriority)
+  const priorityClaims = highestPriorityFactClaimsV2(claims, claim => ({
+    sourceKind: claim.provenance.sourceKind, sourcePriority: claim.provenance.sourcePriority,
+    selectorKind: claim.assertion.provenance.ruleClaim?.selectorKind,
+    rulePriority: claim.assertion.provenance.ruleClaim?.effectiveRulePriority,
+  }))
   const eligibleClaims = priorityClaims
   const supplementClaims = eligibleClaims.every((claim) => (claim.completenessDisposition === 'partial' ||
     claim.completenessDisposition === 'partial_bounds') &&

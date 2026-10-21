@@ -16,6 +16,7 @@
 
 import { ref, computed } from 'vue'
 import { t, tf } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 export type ProjectItem = Readonly<{
   id: string
@@ -126,40 +127,40 @@ function cancelDialog() {
 </script>
 
 <template>
-  <div class="flex h-full w-48 flex-col border-r border-gray-200 bg-gray-50">
+  <div class="sv-divider-r flex h-full w-48 flex-col bg-[var(--sv-sidebar)]">
     <!-- 标题栏 -->
-    <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-      <span class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.project.title') }}</span>
+    <div class="flex items-center justify-between px-3 py-2">
+      <span class="sv-label">{{ t('navigation.project.title') }}</span>
       <button
         type="button"
-        class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+        class="sv-icon-btn"
         :disabled="props.disabled"
         @click="openCreate"
         :aria-label="t('navigation.project.newProject')"
       >
-        +
+        <UiIcon name="plus" :size="15" />
       </button>
     </div>
 
     <!-- 错误提示 -->
     <div
       v-if="errorMessage"
-      class="mx-2 mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"
+      class="sv-notice sv-notice-danger mx-2 mb-1"
     >
       {{ errorMessage }}
     </div>
 
     <!-- 项目列表 -->
-    <div class="min-h-0 flex-1 overflow-auto p-2">
+    <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto p-2">
       <!-- 全部对话（无筛选） -->
       <button
         type="button"
-        class="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-        :class="props.activeProjectId === null ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+        class="nav-row flex h-8 w-full items-center gap-2 px-2 text-left text-[13px]"
+        :aria-current="props.activeProjectId === null ? 'true' : undefined"
         :disabled="props.disabled"
         @click="onSelect(null)"
       >
-        <span class="text-base">📋</span>
+        <UiIcon name="list" :size="16" class="flex-none" />
         <span class="min-w-0 flex-1 truncate">{{ t('navigation.empty.allConversations') }}</span>
       </button>
 
@@ -167,66 +168,64 @@ function cancelDialog() {
       <button
         v-if="inboxProject"
         type="button"
-        class="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-        :class="props.activeProjectId === inboxProject.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+        class="nav-row flex h-8 w-full items-center gap-2 px-2 text-left text-[13px]"
+        :aria-current="props.activeProjectId === inboxProject.id ? 'true' : undefined"
         :disabled="props.disabled"
         @click="onSelect(inboxProject.id)"
         @contextmenu.prevent
       >
-        <span class="text-base">📥</span>
+        <UiIcon name="folder" :size="16" class="flex-none" />
         <span class="min-w-0 flex-1 truncate">{{ inboxProject.name }}</span>
-        <span v-if="inboxProject.convoCount !== undefined" class="text-[10px] text-gray-500">
+        <span v-if="inboxProject.convoCount !== undefined" class="sv-meta">
           {{ inboxProject.convoCount }}
         </span>
       </button>
-
-      <!-- 分隔线 -->
-      <div v-if="userProjects.length > 0" class="my-2 border-t border-gray-200" />
 
       <!-- 用户项目列表 -->
       <div
         v-for="project in userProjects"
         :key="project.id"
-        class="group relative mb-1"
+        class="nav-row group relative"
+        :class="{ 'is-current': props.activeProjectId === project.id }"
       >
         <button
           type="button"
-          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-          :class="props.activeProjectId === project.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+          class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px]"
+          :aria-current="props.activeProjectId === project.id ? 'true' : undefined"
           :disabled="props.disabled"
           @click="onSelect(project.id)"
         >
-          <span class="text-base">📁</span>
+          <UiIcon name="folder" :size="16" class="flex-none" />
           <span class="min-w-0 flex-1 truncate">{{ project.name }}</span>
-          <span v-if="project.convoCount !== undefined" class="text-[10px] text-gray-500">
+          <span v-if="project.convoCount !== undefined" class="sv-meta">
             {{ project.convoCount }}
           </span>
         </button>
 
         <!-- 操作按钮（hover 显示） -->
-        <div class="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 group-hover:flex">
+        <div class="nav-actions absolute inset-y-0 right-0 flex items-center rounded-r-md pl-4 pr-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
           <button
             type="button"
-            class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
+            class="sv-icon-btn"
             :disabled="props.disabled"
             @click.stop="openRename(project)"
             :aria-label="t('navigation.project.renameProject')"
           >
-            ✏️
+            <UiIcon name="edit" :size="14" />
           </button>
           <button
             type="button"
-            class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
+            class="sv-icon-btn"
             :disabled="props.disabled"
             @click.stop="openDelete(project)"
             :aria-label="t('navigation.project.deleteProject')"
           >
-            🗑️
+            <UiIcon name="trash" :size="14" />
           </button>
         </div>
       </div>
 
-      <div v-if="userProjects.length === 0 && !inboxProject" class="px-2 py-3 text-xs text-gray-400">
+      <div v-if="userProjects.length === 0 && !inboxProject" class="sv-meta px-2 py-3">
         {{ t('navigation.empty.noProjects') }}
       </div>
     </div>
@@ -234,15 +233,15 @@ function cancelDialog() {
     <!-- 创建对话框 -->
     <div
       v-if="showCreateDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      class="sv-backdrop"
       @click.self="cancelDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.newProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.newProject') }}</div>
         <input
           v-model="createName"
           type="text"
-          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="sv-input mb-3"
           :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmCreate"
           @keydown.escape="cancelDialog"
@@ -250,14 +249,14 @@ function cancelDialog() {
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            class="sv-btn sv-btn-primary"
             @click="confirmCreate"
           >
             {{ t('common.create') }}
@@ -269,15 +268,15 @@ function cancelDialog() {
     <!-- 重命名对话框 -->
     <div
       v-if="renameDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      class="sv-backdrop"
       @click.self="cancelDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.renameProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.renameProject') }}</div>
         <input
           v-model="renameDialog.name"
           type="text"
-          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="sv-input mb-3"
           :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmRename"
           @keydown.escape="cancelDialog"
@@ -285,14 +284,14 @@ function cancelDialog() {
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            class="sv-btn sv-btn-primary"
             @click="confirmRename"
           >
             {{ t('common.save') }}
@@ -304,25 +303,25 @@ function cancelDialog() {
     <!-- 删除确认对话框 -->
     <div
       v-if="deleteDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      class="sv-backdrop"
       @click.self="cancelDialog"
     >
-      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.deleteProject') }}</div>
+      <div class="sv-dialog w-72 p-4">
+        <div class="mb-3 text-sm font-medium">{{ t('navigation.project.deleteProject') }}</div>
         <p class="mb-4 text-sm text-gray-600">
           {{ tf('navigation.project.deleteConfirm', { name: deleteDialog.name }) }}
         </p>
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="cancelDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             type="button"
-            class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+            class="sv-btn sv-btn-danger"
             @click="confirmDelete"
           >
             {{ t('common.delete') }}
@@ -332,3 +331,12 @@ function cancelDialog() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Flat sidebar row: hover/current by background fill only (no border/weight/size change). */
+.nav-row { --row-bg: transparent; border-radius: var(--sv-radius-control); background: var(--row-bg); color: var(--sv-text); }
+.nav-row:hover { --row-bg: color-mix(in srgb, var(--sv-sidebar), #000 5%); }
+.nav-row.is-current, .nav-row[aria-current='true'] { --row-bg: color-mix(in srgb, var(--sv-sidebar), #000 8%); }
+.nav-row:disabled { color: var(--sv-text-disabled); }
+.nav-actions { background: linear-gradient(to left, var(--row-bg) 75%, transparent); }
+</style>

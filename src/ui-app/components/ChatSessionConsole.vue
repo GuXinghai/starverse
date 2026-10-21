@@ -7,7 +7,7 @@ import type {
   GenerationParamsLayer,
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
-import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
+import type { ImageGenerationImageSize, ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import type {
   OpenAIModelAvailabilityResult,
   OpenAIProviderModelAvailability,
@@ -35,6 +35,8 @@ import {
   projectGeminiImageGenerationPolicyV2,
   projectImageGenerationControlDomainsV2,
   projectGeminiThinkingCapabilityV2,
+  projectAnthropicThinkingCapabilityV2,
+  projectOpenAIResponsesThinkingCapabilityV2,
 } from '../app/generationV2CapabilityUiProjection'
 import type {
   AnthropicModelAvailabilityResult,
@@ -51,7 +53,9 @@ import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import { projectGenerationV2WebSearchControls, webSearchBindingForRouteV2 } from '../app/generationV2WebSearchProjection'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
+import OpenAIImageGenerationSettingsEditor from './OpenAIImageGenerationSettingsEditor.vue'
 import ModelFactControlReason from './ModelFactControlReason.vue'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import { modelFactControlReasonV1, type ModelFactControlExplanationsV1 } from '../app/modelFactControlExplanations'
 import type { OpenRouterImageEndpointSelectionClientStateV2 } from '@/next/generation-v2/renderer/openRouterImageEndpointClientV2'
 import { t, tf } from '@/shared/i18n'
@@ -188,6 +192,7 @@ const props = defineProps<{
   openRouterImageEndpointSelection?: OpenRouterImageEndpointSelectionClientStateV2 | null
   openRouterImageEndpointSelectionLoading?: boolean
   openRouterImageEndpointSelectionError?: string | null
+  imageMaskOptions?: readonly Readonly<{ assetId: string; assetRevisionId: string; assetSha256: string; label: string }>[]
 }>()
 
 const emit = defineEmits<{
@@ -273,6 +278,7 @@ const openRouterModelValue = computed(() => (
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProvider.value === 'google_ai_studio')
 const isOpenAIResponsesSelected = computed(() => selectedProvider.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const isAnthropicSelected = computed(() => selectedProvider.value === 'anthropic_messages')
 const showOpenRouterImageEndpointControls = computed(() =>
   selectedProvider.value === OPENROUTER_PROVIDER_ID && props.sessionConfig.imageGeneration.enabled)
 const openRouterImageEndpointState = computed(() =>
@@ -303,6 +309,9 @@ const webSearchControls = computed(() => projectGenerationV2WebSearchControls(pr
 const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModelIdentity.value))
+const anthropicThinkingCapability = computed(() => projectAnthropicThinkingCapabilityV2(
+  props.capabilityProjection, props.sessionConfig.reasoning.effort,
+))
 const canInspectModelFacts = computed(() => props.controlExplanations?.subject != null)
 const reasoningEffortReason = computed(() => modelFactControlReasonV1(props.controlExplanations, 'reasoning.effort'))
 const googleThinkingReason = computed(() =>
@@ -327,17 +336,24 @@ const googleThinkingConfig = computed(() => {
   return {
     thinkingBudget: typeof budget === 'number'
       ? budget
-      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 8192,
+      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 0,
     thinkingLevel: typeof level === 'string'
       ? level as GeminiThinkingLevel
-      : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
+      : capability.kind === 'level' ? capability.defaultLevel : '' as GeminiThinkingLevel,
     includeThoughts: isGoogleImageGenerationModel.value ? imageSummaryMode === 'auto' : textIncludeThoughts,
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportsThoughtSummaries ||
+  if (isGoogleImageGenerationModel.value) return googleThinkingCapability.value.required || googleImageGenerationPolicy.value.supportsThoughtSummaries ||
     googleImageGenerationPolicy.value.thinkingLevels.length > 0
-  return googleThinkingCapability.value.kind === 'level' || googleThinkingCapability.value.kind === 'budget'
+  const capability = googleThinkingCapability.value
+  if (capability.kind === 'unsupported') return false
+  if (capability.required) return true
+  const budget = customGenerationParamValue('thinkingBudget')
+  if (budget === 0 && capability.allowOff) return false
+  const enabled = props.sessionConfig.generationParams.detail?.thinkingEnabled
+  if (enabled?.mode === 'custom' && enabled.value === false && capability.allowOff) return false
+  return budget !== undefined || capability.defaultEnabled !== false
 })
 const googleImageThinkingLevelSelection = computed(() => {
   const policy = googleImageGenerationPolicy.value
@@ -351,8 +367,8 @@ const googleImageDefaultThinkingLevel = computed(() => {
   const policy = googleImageGenerationPolicy.value
   return policy.thinkingLevels[0] ?? ''
 })
-const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
-  return imageGenerationControlDomains.value.resolutions
+const imageGenerationSizeOptions = computed<readonly ImageGenerationImageSize[]>(() => {
+  return imageGenerationControlDomains.value.resolutions.filter((value): value is ImageGenerationImageSize => value !== '')
 })
 const imageGenerationAspectRatioOptions = computed<readonly ChatSessionConfigAspectRatio[]>(() => {
   return imageGenerationControlDomains.value.aspectRatios
@@ -370,7 +386,7 @@ const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  imageGenerationSizeOptions.value.length > 0 &&
+  props.sessionConfig.imageGeneration.resolution !== '' && imageGenerationSizeOptions.value.length > 0 &&
     !imageGenerationSizeOptions.value.includes(props.sessionConfig.imageGeneration.resolution)
     ? imageGenerationSizeOptions.value[0]
     : props.sessionConfig.imageGeneration.resolution
@@ -395,6 +411,9 @@ const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoni
 const openAIResponsesReasoningSupported = computed(() =>
   isOpenAIResponsesSelected.value && genericReasoningEffortOptions.value.length > 0
 )
+const openAIResponsesThinkingCapability = computed(() => projectOpenAIResponsesThinkingCapabilityV2(props.capabilityProjection))
+const openAIResponsesReasoningEnabled = computed(() => openAIResponsesThinkingCapability.value.required || props.sessionConfig.reasoning.enabled)
+const openAIResponsesReasoningControlsEnabled = computed(() => !openAIResponsesThinkingCapability.value.canDisable || props.sessionConfig.reasoning.enabled)
 const openAIResponsesReasoningOptions = computed<readonly OpenAIResponsesReasoningEffortSetting[]>(() =>
   openAIResponsesReasoningSupported.value
     ? Object.freeze(['auto', ...genericReasoningEffortOptions.value] as OpenAIResponsesReasoningEffortSetting[])
@@ -724,10 +743,13 @@ const deepSeekAvailabilitySummary = computed(() => {
   return tf('chat.console.availability.records', { count: result.models.length, source, observedAt: formatObservedAt(result.observedAtMs) })
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
+  ...props.sessionConfig.imageGeneration.detail,
   enabled: effectiveImageGenerationEnabled.value,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? imageGenerationOutputModeOptions.value[0] ?? 'auto',
   aspectRatio: effectiveImageGenerationAspectRatio.value,
-  imageSize: showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : '',
+  imageSize: isOpenAIResponsesSelected.value
+    ? props.sessionConfig.imageGeneration.resolution
+    : showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : '',
 }))
 
 function formatObservedAt(observedAtMs: number): string {
@@ -751,28 +773,15 @@ function networkFailureMessage(result: unknown): string {
 
 function onGoogleThinkingEnabledChange(enabled: boolean) {
   if (isGoogleImageGenerationModel.value) return
-  const current = props.sessionConfig.generationParams.detail ?? {}
-  if (!enabled) {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      ...(googleThinkingCapability.value.kind === 'budget' ? { thinkingBudget: { mode: 'omit' } as const } : {}),
-      ...(googleThinkingCapability.value.kind === 'level' ? { thinkingLevel: { mode: 'omit' } as const } : {}),
-    })
-    return
-  }
-  if (googleThinkingCapability.value.kind === 'budget') {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudgetMode === 'dynamic' ? -1 : 0 },
-    })
-    return
-  }
-  if (googleThinkingCapability.value.kind === 'level') {
-    emit('updateGenerationParamsLayer', {
-      ...current,
-      thinkingLevel: { mode: 'custom', value: googleThinkingCapability.value.defaultLevel },
-    })
-  }
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget' || !capability.allowOff || capability.required) return
+  const enabledValue = enabled
+  emit('updateGenerationParamsLayer', {
+    ...(props.sessionConfig.generationParams.detail ?? {}),
+    thinkingEnabled: { mode: 'custom', value: enabledValue },
+    thinkingLevel: { mode: 'omit' },
+    thinkingBudget: { mode: 'custom', value: enabledValue ? (capability.allowDynamic ? -1 : capability.minBudget) : 0 },
+  })
 }
 
 function onGoogleThinkingBudgetChange(event: Event) {
@@ -792,16 +801,18 @@ function onGoogleThinkingBudgetModeChange(event: Event) {
   if (capability.kind !== 'budget') return
   const current = props.sessionConfig.generationParams.detail ?? {}
   if (mode === 'default') {
-    emit('updateGenerationParamsLayer', { ...current, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingEnabled: { mode: 'omit' }, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
   } else if (mode === 'dynamic') {
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: -1 } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingEnabled: { mode: 'custom', value: true },
+    thinkingBudget: { mode: 'custom', value: -1 } })
   } else if (mode === 'off' && capability.allowOff) {
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: 0 } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingEnabled: { mode: 'custom', value: false },
+    thinkingBudget: { mode: 'custom', value: 0 } })
   } else if (mode === 'fixed') {
     const existing = current.thinkingBudget
     const value = existing?.mode === 'custom' && isProjectedGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
       ? existing.value : capability.minBudget
-    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
+    emit('updateGenerationParamsLayer', { ...current, thinkingEnabled: { mode: 'custom', value: true }, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
   }
 }
 
@@ -1054,7 +1065,7 @@ function formatOpenAIResponsesReasoningOption(option: OpenAIResponsesReasoningEf
 }
 
 function onOpenAIResponsesReasoningSelect(option: OpenAIResponsesReasoningEffortSetting) {
-  if (!openAIResponsesReasoningSupported.value) return
+  if (!openAIResponsesReasoningSupported.value || !openAIResponsesReasoningControlsEnabled.value) return
   const current = props.sessionConfig.generationParams.detail ?? {}
   emit('updateGenerationParamsLayer', {
     ...current,
@@ -1069,7 +1080,7 @@ function formatOpenAIResponsesReasoningSummaryOption(option: OpenAIResponsesReas
 }
 
 function onOpenAIResponsesReasoningSummarySelect(option: OpenAIResponsesReasoningSummarySetting) {
-  if (!openAIResponsesReasoningSupported.value) return
+  if (!openAIResponsesReasoningSupported.value || !openAIResponsesReasoningControlsEnabled.value) return
   const current = props.sessionConfig.generationParams.detail ?? {}
   emit('updateGenerationParamsLayer', {
     ...current,
@@ -1082,66 +1093,62 @@ function onOpenAIResponsesReasoningSummarySelect(option: OpenAIResponsesReasonin
 function formatWebSearchLevel(level: string): string {
   return t(`chat.console.webSearch.level.${level}`)
 }
-
-function chipClass(active: boolean): string {
-  return active
-    ? 'border-gray-900 bg-gray-900 text-white'
-    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-}
 </script>
 
 <template>
-  <div class="h-full min-h-0 overflow-y-auto p-3" data-testid="chat-session-console-scroll">
-    <div class="space-y-4">
-      <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.display') }}</div>
-        <div class="grid grid-cols-2 gap-2">
+  <div class="h-full min-h-0 overflow-y-auto px-4 pb-2" data-testid="chat-session-console-scroll">
+    <div class="flex flex-col">
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0">
+        <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.display') }}</div>
+        <div class="sv-segmented w-full">
           <button
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.reasoningDisplayMode === 'inline')"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="props.reasoningDisplayMode === 'inline'"
             @click="emit('updateReasoningDisplayMode', 'inline')"
           >
             {{ t('chat.console.display.inlineReasoning') }}
           </button>
           <button
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.reasoningDisplayMode === 'rail')"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="props.reasoningDisplayMode === 'rail'"
             @click="emit('updateReasoningDisplayMode', 'rail')"
           >
             {{ t('chat.console.display.rightRailReasoning') }}
           </button>
         </div>
-        <label class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            class="h-4 w-4 rounded border-gray-300"
-            :checked="reasoningPanelDefaultExpanded"
-            :disabled="disabled"
-            data-testid="session-reasoning-panel-default-expanded"
-            @change="emit('updateReasoningPanelDefaultExpanded', ($event.target as HTMLInputElement).checked)"
-          />
-          <span>{{ t('chat.console.display.expandReasoningWhileThinking') }}</span>
-        </label>
-        <label class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            class="h-4 w-4 rounded border-gray-300"
-            :checked="reasoningPanelAutoCollapseAfterReasoning"
-            :disabled="disabled"
-            data-testid="session-reasoning-panel-auto-collapse-after-reasoning"
-            @change="emit('updateReasoningPanelAutoCollapseAfterReasoning', ($event.target as HTMLInputElement).checked)"
-          />
-          <span>{{ t('chat.console.display.collapseReasoningWhenAnswerStarts') }}</span>
-        </label>
+        <div class="flex flex-col">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
+            <input
+              type="checkbox"
+              class="size-4 shrink-0"
+              :checked="reasoningPanelDefaultExpanded"
+              :disabled="disabled"
+              data-testid="session-reasoning-panel-default-expanded"
+              @change="emit('updateReasoningPanelDefaultExpanded', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ t('chat.console.display.expandReasoningWhileThinking') }}</span>
+          </label>
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
+            <input
+              type="checkbox"
+              class="size-4 shrink-0"
+              :checked="reasoningPanelAutoCollapseAfterReasoning"
+              :disabled="disabled"
+              data-testid="session-reasoning-panel-auto-collapse-after-reasoning"
+              @change="emit('updateReasoningPanelAutoCollapseAfterReasoning', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ t('chat.console.display.collapseReasoningWhenAnswerStarts') }}</span>
+          </label>
+        </div>
       </section>
 
-      <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.model') }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0">
+        <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.model') }}</div>
         <select
           data-testid="session-openrouter-model"
-          class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          class="sv-select"
           :disabled="disabled"
           :value="openRouterModelValue"
           @change="selectProviderModel(OPENROUTER_PROVIDER_ID, ($event.target as HTMLSelectElement).value)"
@@ -1153,15 +1160,16 @@ function chipClass(active: boolean): string {
         </select>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3" data-testid="openrouter-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-700">{{ t('chat.console.provider.openRouter.title') }}</div>
-            <div class="mt-1 text-[11px] text-gray-600">{{ openRouterChat.providerLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="openrouter-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.openRouter.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ openRouterChat.providerLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-gray-800">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="openRouterChat.enabled"
               :disabled="disabled"
               data-testid="openrouter-chat-enabled"
@@ -1170,25 +1178,26 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="text-[11px] text-gray-700" data-testid="openrouter-chat-warning">
+        <div class="sv-meta" data-testid="openrouter-chat-warning">
           {{ t('chat.console.provider.openRouter.warning') }}
         </div>
-        <div class="rounded border border-gray-100 bg-white px-2 py-1.5 text-[11px] text-gray-800" data-testid="openrouter-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="openrouter-chat-selected-status">
           <div>{{ tf('chat.console.provider.openRouter.status', { status: openRouterChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.openRouter.selectedModel', { model: selectedModelFor(OPENROUTER_PROVIDER_ID) || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.openRouter.notFallback') }}</div>
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-3" data-testid="openai-responses-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">{{ t('chat.console.provider.openAIResponses.title') }}</div>
-            <div class="mt-1 text-[11px] text-blue-700">{{ openAIResponsesChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="openai-responses-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.openAIResponses.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ openAIResponsesChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-blue-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="openAIResponsesChat.enabled"
               :disabled="disabled"
               data-testid="openai-responses-chat-enabled"
@@ -1197,64 +1206,66 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="text-[11px] text-blue-800" data-testid="openai-responses-chat-warning">
+        <div class="sv-meta" data-testid="openai-responses-chat-warning">
           {{ t('chat.console.provider.openAIResponses.warning') }}
         </div>
-        <div class="rounded border border-blue-100 bg-white px-2 py-1.5 text-[11px] text-blue-900" data-testid="openai-responses-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="openai-responses-chat-selected-status">
           <div>{{ tf('chat.console.provider.openAIResponses.status', { status: openAIResponsesChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.openAIResponses.selectedModel', { model: selectedModelFor('openai_responses') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.openAIResponses.credentialBridge') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-blue-100 bg-white px-2 py-2 text-[11px] text-blue-900" data-testid="openai-responses-models-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('chat.console.provider.openAIResponses.sourceTitle') }}</div>
-              <div data-testid="openai-responses-models-summary">{{ openAIResponsesAvailabilitySummary }}</div>
+        <div class="flex flex-col gap-2" data-testid="openai-responses-models-diagnostics">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="sv-label">{{ t('chat.console.provider.openAIResponses.sourceTitle') }}</div>
+              <div class="sv-meta wrap-anywhere" data-testid="openai-responses-models-summary">{{ openAIResponsesAvailabilitySummary }}</div>
             </div>
             <button
               type="button"
-              class="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+              class="sv-btn sv-btn-sm w-32 shrink-0"
               :disabled="disabled || openAIResponsesModelAvailability.loading"
               data-testid="openai-responses-models-refresh"
               @click="emit('refreshOpenAIResponsesModels')"
             >
+              <UiIcon :name="openAIResponsesModelAvailability.loading ? 'spinner' : 'refresh'" :size="14" />
               {{ openAIResponsesModelAvailability.loading ? t('chat.console.common.refreshing') : t('chat.console.common.refreshModels') }}
             </button>
           </div>
-          <div v-if="openAIResponsesAvailabilityFailure" class="text-red-700" data-testid="openai-responses-models-error">
+          <div v-if="openAIResponsesAvailabilityFailure" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="openai-responses-models-error">
             {{ networkFailureMessage(openAIResponsesAvailabilityFailure) }}
           </div>
-          <div v-if="openAIResponsesAvailabilitySourceDocuments.length > 0" class="text-blue-700" data-testid="openai-responses-models-source">
+          <div v-if="openAIResponsesAvailabilitySourceDocuments.length > 0" class="sv-meta wrap-anywhere" data-testid="openai-responses-models-source">
             {{ t('chat.console.common.sourceDocs') }}
             <span v-for="sourceDoc in openAIResponsesAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
               {{ tf('chat.console.common.sourceObserved', { source: sourceDoc.source, observedAt: formatObservedAt(sourceDoc.observedAtMs) }) }}
             </span>
           </div>
-          <div v-for="warning in openAIResponsesAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="openai-responses-model-warning">
+          <div v-for="warning in openAIResponsesAvailabilityWarnings" :key="warning" class="text-xs text-[var(--sv-warning)]" data-testid="openai-responses-model-warning">
             {{ warning }}
           </div>
-          <details v-if="openAIResponsesAvailabilityModels.length > 0" class="rounded border border-blue-100 bg-blue-50/40 px-2 py-1" data-testid="openai-responses-models-list">
-            <summary class="cursor-pointer font-medium text-blue-900" data-testid="openai-responses-models-toggle">
+          <details v-if="openAIResponsesAvailabilityModels.length > 0" class="group" data-testid="openai-responses-models-list">
+            <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="openai-responses-models-toggle">
+              <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
               {{ tf('chat.console.common.modelListToggle', { count: openAIResponsesAvailabilityModels.length }) }}
             </summary>
-            <div class="mt-2 space-y-1">
+            <div class="mt-1 flex flex-col">
               <div
                 v-for="modelAvailability in openAIResponsesAvailabilityModels"
                 :key="modelAvailability.nativeModelId"
-                class="rounded border border-blue-50 bg-blue-50/60 px-2 py-1"
+                class="flex flex-col gap-1 py-2 sv-divider-t"
                 data-testid="openai-responses-model-row"
               >
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                    <div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
-                    <div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
-                    <div>{{ formatOpenAICapabilities(modelAvailability) }}</div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <div class="text-[13px] font-medium text-gray-900 wrap-anywhere">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.ownedBy" class="sv-meta wrap-anywhere">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
+                    <div v-if="modelAvailability.createdAtSec" class="sv-meta">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ formatOpenAICapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm shrink-0"
                     :disabled="disabled"
                     data-testid="openai-responses-model-use"
                     @click="selectProviderModel('openai_responses', modelAvailability.nativeModelId)"
@@ -1265,7 +1276,7 @@ function chipClass(active: boolean): string {
                 <div
                   v-for="warning in modelAvailability.warnings"
                   :key="`${modelAvailability.nativeModelId}:${warning}`"
-                  class="mt-1 text-amber-700"
+                  class="text-xs text-[var(--sv-warning)]"
                   data-testid="openai-responses-model-warning"
                 >
                   {{ warning }}
@@ -1277,7 +1288,7 @@ function chipClass(active: boolean): string {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !openAIResponsesChat.enabled"
             data-testid="openai-responses-chat-disable"
             @click="emit('updateOpenAIResponsesChatEnabled', false)"
@@ -1286,7 +1297,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="openai-responses-chat-clear"
             @click="emit('clearOpenAIResponsesChat')"
@@ -1296,15 +1307,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-rose-200 bg-rose-50/70 p-3" data-testid="anthropic-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-rose-800">{{ t('chat.console.provider.anthropic.title') }}</div>
-            <div class="mt-1 text-[11px] text-rose-700">{{ anthropicChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="anthropic-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.anthropic.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ anthropicChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-rose-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="anthropicChat.enabled"
               :disabled="disabled"
               data-testid="anthropic-chat-enabled"
@@ -1313,89 +1325,91 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="text-[11px] text-rose-800" data-testid="anthropic-chat-warning">
+        <div class="sv-meta" data-testid="anthropic-chat-warning">
           {{ t('chat.console.provider.anthropic.warning') }}
         </div>
-        <div class="rounded border border-rose-100 bg-white px-2 py-1.5 text-[11px] text-rose-900" data-testid="anthropic-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="anthropic-chat-selected-status">
           <div>{{ tf('chat.console.provider.anthropic.status', { status: anthropicChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.anthropic.selectedModel', { model: selectedModelFor('anthropic_messages') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.anthropic.credentialBridge') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-thinking-display-controls">
-          <div>
-            <div class="font-semibold">{{ t('chat.console.provider.anthropic.thinkingDisplay.title') }}</div>
-            <div class="text-rose-700">
+        <div class="flex flex-col gap-2" data-testid="anthropic-thinking-display-controls">
+          <div class="flex flex-col gap-0.5">
+            <div class="sv-label">{{ t('chat.console.provider.anthropic.thinkingDisplay.title') }}</div>
+            <div class="sv-meta">
               {{ props.sessionConfig.reasoning.enabled
                 ? t('chat.console.provider.anthropic.thinkingDisplay.description')
                 : t('chat.console.provider.anthropic.thinkingDisplay.disabledDescription') }}
             </div>
           </div>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div class="flex flex-col gap-1">
             <button
               v-for="option in (['provider_default', 'summarized', 'omitted'] as const)"
               :key="option"
               type="button"
-              class="rounded-md border px-2 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
-              :class="chipClass(anthropicChat.thinkingDisplay === option)"
+              class="sv-btn sv-btn-ghost h-auto w-full flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left font-normal"
+              :aria-pressed="anthropicChat.thinkingDisplay === option"
               :disabled="disabled || !anthropicChat.enabled || !props.sessionConfig.reasoning.enabled"
               :data-testid="`anthropic-thinking-display-${option}`"
               @click="emit('updateAnthropicThinkingDisplay', option)"
             >
-              <span class="block font-semibold">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.label`) }}</span>
-              <span class="mt-0.5 block opacity-80">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.description`) }}</span>
+              <span class="text-[13px] font-medium">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.label`) }}</span>
+              <span class="text-xs leading-4 opacity-80">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.description`) }}</span>
             </button>
           </div>
         </div>
-        <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-models-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('chat.console.provider.anthropic.sourceTitle') }}</div>
-              <div data-testid="anthropic-models-summary">{{ anthropicAvailabilitySummary }}</div>
+        <div class="flex flex-col gap-2" data-testid="anthropic-models-diagnostics">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="sv-label">{{ t('chat.console.provider.anthropic.sourceTitle') }}</div>
+              <div class="sv-meta wrap-anywhere" data-testid="anthropic-models-summary">{{ anthropicAvailabilitySummary }}</div>
             </div>
             <button
               type="button"
-              class="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+              class="sv-btn sv-btn-sm w-32 shrink-0"
               :disabled="disabled || anthropicModelAvailability.loading"
               data-testid="anthropic-models-refresh"
               @click="emit('refreshAnthropicModels')"
             >
+              <UiIcon :name="anthropicModelAvailability.loading ? 'spinner' : 'refresh'" :size="14" />
               {{ anthropicModelAvailability.loading ? t('chat.console.common.refreshing') : t('chat.console.common.refreshModels') }}
             </button>
           </div>
-          <div v-if="anthropicAvailabilityFailure" class="text-red-700" data-testid="anthropic-models-error">
+          <div v-if="anthropicAvailabilityFailure" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="anthropic-models-error">
             {{ networkFailureMessage(anthropicAvailabilityFailure) }}
           </div>
-          <div v-if="anthropicAvailabilitySourceDocuments.length > 0" class="text-rose-700" data-testid="anthropic-models-source">
+          <div v-if="anthropicAvailabilitySourceDocuments.length > 0" class="sv-meta wrap-anywhere" data-testid="anthropic-models-source">
             {{ t('chat.console.common.sourceDocs') }}
             <span v-for="sourceDoc in anthropicAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
               {{ tf('chat.console.common.sourceObserved', { source: sourceDoc.source, observedAt: formatObservedAt(sourceDoc.observedAtMs) }) }}
             </span>
           </div>
-          <div v-for="warning in anthropicAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="anthropic-model-warning">
+          <div v-for="warning in anthropicAvailabilityWarnings" :key="warning" class="text-xs text-[var(--sv-warning)]" data-testid="anthropic-model-warning">
             {{ warning }}
           </div>
-          <details v-if="anthropicAvailabilityModels.length > 0" class="rounded border border-rose-100 bg-rose-50/40 px-2 py-1" data-testid="anthropic-models-list">
-            <summary class="cursor-pointer font-medium text-rose-900" data-testid="anthropic-models-toggle">
+          <details v-if="anthropicAvailabilityModels.length > 0" class="group" data-testid="anthropic-models-list">
+            <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="anthropic-models-toggle">
+              <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
               {{ tf('chat.console.common.modelListToggle', { count: anthropicAvailabilityModels.length }) }}
             </summary>
-            <div class="mt-2 space-y-1">
+            <div class="mt-1 flex flex-col">
               <div
                 v-for="modelAvailability in anthropicAvailabilityModels"
                 :key="modelAvailability.nativeModelId"
-                class="rounded border border-rose-50 bg-rose-50/60 px-2 py-1"
+                class="flex flex-col gap-1 py-2 sv-divider-t"
                 data-testid="anthropic-model-row"
               >
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                    <div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
-                    <div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
-                    <div>{{ formatAnthropicCapabilities(modelAvailability) }}</div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <div class="text-[13px] font-medium text-gray-900 wrap-anywhere">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.modelType" class="sv-meta">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
+                    <div v-if="modelAvailability.createdAt" class="sv-meta">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ formatAnthropicCapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm shrink-0"
                     :disabled="disabled"
                     data-testid="anthropic-model-use"
                     @click="selectProviderModel('anthropic_messages', modelAvailability.nativeModelId)"
@@ -1406,7 +1420,7 @@ function chipClass(active: boolean): string {
                 <div
                   v-for="warning in modelAvailability.warnings"
                   :key="`${modelAvailability.nativeModelId}:${warning}`"
-                  class="mt-1 text-amber-700"
+                  class="text-xs text-[var(--sv-warning)]"
                   data-testid="anthropic-model-warning"
                 >
                   {{ warning }}
@@ -1418,7 +1432,7 @@ function chipClass(active: boolean): string {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !anthropicChat.enabled"
             data-testid="anthropic-chat-disable"
             @click="emit('updateAnthropicChatEnabled', false)"
@@ -1427,7 +1441,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="anthropic-chat-clear"
             @click="emit('clearAnthropicChat')"
@@ -1437,16 +1451,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3" data-testid="deepseek-chat-controls">
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="deepseek-chat-controls">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-cyan-800">{{ t('chat.console.provider.deepSeek.title') }}</div>
-            <div class="mt-1 text-[11px] text-cyan-700">{{ deepSeekChat.experimentalLabel }}</div>
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.deepSeek.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ deepSeekChat.experimentalLabel }}</div>
           </div>
-          <label class="flex shrink-0 items-center gap-2 text-xs font-medium text-cyan-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
-              class="size-4"
+              class="size-4 shrink-0"
               :checked="deepSeekChat.enabled"
               :disabled="disabled"
               data-testid="deepseek-chat-enabled"
@@ -1455,63 +1469,65 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.use') }}
           </label>
         </div>
-        <div class="text-[11px] text-cyan-800" data-testid="deepseek-chat-warning">
+        <div class="sv-meta" data-testid="deepseek-chat-warning">
           {{ t('chat.console.provider.deepSeek.warning') }}
         </div>
-        <div class="rounded border border-cyan-100 bg-white px-2 py-1.5 text-[11px] text-cyan-900" data-testid="deepseek-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="deepseek-chat-selected-status">
           <div>{{ tf('chat.console.provider.deepSeek.status', { status: deepSeekChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.deepSeek.selectedModel', { model: selectedModelFor('deepseek') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.deepSeek.credentialBridge') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-cyan-100 bg-white px-2 py-2 text-[11px] text-cyan-900" data-testid="deepseek-models-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('chat.console.provider.deepSeek.sourceTitle') }}</div>
-              <div data-testid="deepseek-models-summary">{{ deepSeekAvailabilitySummary }}</div>
+        <div class="flex flex-col gap-2" data-testid="deepseek-models-diagnostics">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="sv-label">{{ t('chat.console.provider.deepSeek.sourceTitle') }}</div>
+              <div class="sv-meta wrap-anywhere" data-testid="deepseek-models-summary">{{ deepSeekAvailabilitySummary }}</div>
             </div>
             <button
               type="button"
-              class="rounded-md border border-cyan-300 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+              class="sv-btn sv-btn-sm w-32 shrink-0"
               :disabled="disabled || deepSeekModelAvailability.loading"
               data-testid="deepseek-models-refresh"
               @click="emit('refreshDeepSeekModels')"
             >
+              <UiIcon :name="deepSeekModelAvailability.loading ? 'spinner' : 'refresh'" :size="14" />
               {{ deepSeekModelAvailability.loading ? t('chat.console.common.refreshing') : t('chat.console.common.refreshModels') }}
             </button>
           </div>
-          <div v-if="deepSeekAvailabilityFailure" class="text-red-700" data-testid="deepseek-models-error">
+          <div v-if="deepSeekAvailabilityFailure" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="deepseek-models-error">
             {{ networkFailureMessage(deepSeekAvailabilityFailure) }}
           </div>
-          <div v-if="deepSeekAvailabilitySourceDocuments.length > 0" class="text-cyan-700" data-testid="deepseek-models-source">
+          <div v-if="deepSeekAvailabilitySourceDocuments.length > 0" class="sv-meta wrap-anywhere" data-testid="deepseek-models-source">
             {{ t('chat.console.common.sourceDocs') }}
             <span v-for="sourceDoc in deepSeekAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
               {{ tf('chat.console.common.sourceObserved', { source: sourceDoc.source, observedAt: formatObservedAt(sourceDoc.observedAtMs) }) }}
             </span>
           </div>
-          <div v-for="warning in deepSeekAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="deepseek-model-warning">
+          <div v-for="warning in deepSeekAvailabilityWarnings" :key="warning" class="text-xs text-[var(--sv-warning)]" data-testid="deepseek-model-warning">
             {{ warning }}
           </div>
-          <details v-if="deepSeekAvailabilityModels.length > 0" class="rounded border border-cyan-100 bg-cyan-50/40 px-2 py-1" data-testid="deepseek-models-list">
-            <summary class="cursor-pointer font-medium text-cyan-900" data-testid="deepseek-models-toggle">
+          <details v-if="deepSeekAvailabilityModels.length > 0" class="group" data-testid="deepseek-models-list">
+            <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="deepseek-models-toggle">
+              <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
               {{ tf('chat.console.common.modelListToggle', { count: deepSeekAvailabilityModels.length }) }}
             </summary>
-            <div class="mt-2 space-y-1">
+            <div class="mt-1 flex flex-col">
               <div
                 v-for="modelAvailability in deepSeekAvailabilityModels"
                 :key="modelAvailability.nativeModelId"
-                class="rounded border border-cyan-50 bg-cyan-50/60 px-2 py-1"
+                class="flex flex-col gap-1 py-2 sv-divider-t"
                 data-testid="deepseek-model-row"
               >
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                    <div>{{ formatDeepSeekCapabilities(modelAvailability) }}</div>
-                    <div>{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <div class="text-[13px] font-medium text-gray-900 wrap-anywhere">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ formatDeepSeekCapabilities(modelAvailability) }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm shrink-0"
                     :disabled="disabled"
                     data-testid="deepseek-model-use"
                     @click="selectProviderModel('deepseek', modelAvailability.nativeModelId)"
@@ -1522,7 +1538,7 @@ function chipClass(active: boolean): string {
                 <div
                   v-for="warning in modelAvailability.warnings"
                   :key="`${modelAvailability.nativeModelId}:${warning}`"
-                  class="mt-1 text-amber-700"
+                  class="text-xs text-[var(--sv-warning)]"
                   data-testid="deepseek-model-warning"
                 >
                   {{ warning }}
@@ -1534,7 +1550,7 @@ function chipClass(active: boolean): string {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-cyan-300 bg-white px-2 py-1.5 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !deepSeekChat.enabled"
             data-testid="deepseek-chat-disable"
             @click="emit('updateDeepSeekChatEnabled', false)"
@@ -1543,7 +1559,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-cyan-200 bg-white px-2 py-1.5 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="deepseek-chat-clear"
             @click="emit('clearDeepSeekChat')"
@@ -1553,15 +1569,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3" data-testid="google-ai-studio-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">{{ t('chat.console.provider.googleAIStudio.title') }}</div>
-            <div class="mt-1 text-[11px] text-emerald-700">{{ googleAIStudioChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="google-ai-studio-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.googleAIStudio.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ googleAIStudioChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-emerald-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="googleAIStudioChat.enabled"
               :disabled="disabled"
               data-testid="google-ai-studio-chat-enabled"
@@ -1570,63 +1587,65 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="text-[11px] text-emerald-800" data-testid="google-ai-studio-chat-warning">
+        <div class="sv-meta" data-testid="google-ai-studio-chat-warning">
           {{ t('chat.console.provider.googleAIStudio.warning') }}
         </div>
-        <div class="rounded border border-emerald-100 bg-white px-2 py-1.5 text-[11px] text-emerald-900" data-testid="google-ai-studio-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="google-ai-studio-chat-selected-status">
           <div>{{ tf('chat.console.provider.googleAIStudio.status', { status: googleAIStudioChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.googleAIStudio.selectedModel', { model: selectedModelFor('google_ai_studio') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.googleAIStudio.credentialBridge') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-emerald-100 bg-white px-2 py-2 text-[11px] text-emerald-900" data-testid="google-ai-studio-models-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('chat.console.provider.googleAIStudio.sourceTitle') }}</div>
-              <div data-testid="google-ai-studio-models-summary">{{ googleAIStudioAvailabilitySummary }}</div>
+        <div class="flex flex-col gap-2" data-testid="google-ai-studio-models-diagnostics">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="sv-label">{{ t('chat.console.provider.googleAIStudio.sourceTitle') }}</div>
+              <div class="sv-meta wrap-anywhere" data-testid="google-ai-studio-models-summary">{{ googleAIStudioAvailabilitySummary }}</div>
             </div>
             <button
               type="button"
-              class="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+              class="sv-btn sv-btn-sm w-32 shrink-0"
               :disabled="disabled || googleAIStudioModelAvailability.loading"
               data-testid="google-ai-studio-models-refresh"
               @click="emit('refreshGoogleAIStudioModels')"
             >
+              <UiIcon :name="googleAIStudioModelAvailability.loading ? 'spinner' : 'refresh'" :size="14" />
               {{ googleAIStudioModelAvailability.loading ? t('chat.console.common.refreshing') : t('chat.console.common.refreshModels') }}
             </button>
           </div>
-          <div v-if="googleAIStudioAvailabilityFailure" class="text-red-700" data-testid="google-ai-studio-models-error">
+          <div v-if="googleAIStudioAvailabilityFailure" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="google-ai-studio-models-error">
             {{ networkFailureMessage(googleAIStudioAvailabilityFailure) }}
           </div>
-          <div v-if="googleAIStudioAvailabilitySourceDocuments.length > 0" class="text-emerald-700" data-testid="google-ai-studio-models-source">
+          <div v-if="googleAIStudioAvailabilitySourceDocuments.length > 0" class="sv-meta wrap-anywhere" data-testid="google-ai-studio-models-source">
             {{ t('chat.console.common.sourceDocs') }}
             <span v-for="sourceDoc in googleAIStudioAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
               {{ tf('chat.console.common.sourceObserved', { source: sourceDoc.source, observedAt: formatObservedAt(sourceDoc.observedAtMs) }) }}
             </span>
           </div>
-          <div v-for="warning in googleAIStudioAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="google-ai-studio-model-warning">
+          <div v-for="warning in googleAIStudioAvailabilityWarnings" :key="warning" class="text-xs text-[var(--sv-warning)]" data-testid="google-ai-studio-model-warning">
             {{ warning }}
           </div>
-          <details v-if="googleAIStudioAvailabilityModels.length > 0" class="rounded border border-emerald-100 bg-emerald-50/40 px-2 py-1" data-testid="google-ai-studio-models-list">
-            <summary class="cursor-pointer font-medium text-emerald-900" data-testid="google-ai-studio-models-toggle">
+          <details v-if="googleAIStudioAvailabilityModels.length > 0" class="group" data-testid="google-ai-studio-models-list">
+            <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="google-ai-studio-models-toggle">
+              <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
               {{ tf('chat.console.common.modelListToggle', { count: googleAIStudioAvailabilityModels.length }) }}
             </summary>
-            <div class="mt-2 space-y-1">
+            <div class="mt-1 flex flex-col">
               <div
                 v-for="modelAvailability in googleAIStudioAvailabilityModels"
                 :key="modelAvailability.nativeModelId"
-                class="rounded border border-emerald-50 bg-emerald-50/60 px-2 py-1"
+                class="flex flex-col gap-1 py-2 sv-divider-t"
                 data-testid="google-ai-studio-model-row"
               >
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                    <div v-if="modelAvailability.providerModelName">{{ modelAvailability.providerModelName }}</div>
-                    <div>{{ formatGeminiCapabilities(modelAvailability) }}</div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <div class="text-[13px] font-medium text-gray-900 wrap-anywhere">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.providerModelName" class="sv-meta wrap-anywhere">{{ modelAvailability.providerModelName }}</div>
+                    <div class="sv-meta wrap-anywhere">{{ formatGeminiCapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm shrink-0"
                     :disabled="disabled"
                     data-testid="google-ai-studio-model-use"
                     @click="selectProviderModel('google_ai_studio', modelAvailability.nativeModelId)"
@@ -1637,7 +1656,7 @@ function chipClass(active: boolean): string {
                 <div
                   v-for="warning in modelAvailability.warnings"
                   :key="`${modelAvailability.nativeModelId}:${warning}`"
-                  class="mt-1 text-amber-700"
+                  class="text-xs text-[var(--sv-warning)]"
                   data-testid="google-ai-studio-model-warning"
                 >
                   {{ warning }}
@@ -1649,7 +1668,7 @@ function chipClass(active: boolean): string {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !googleAIStudioChat.enabled"
             data-testid="google-ai-studio-chat-disable"
             @click="emit('updateGoogleAIStudioChatEnabled', false)"
@@ -1658,7 +1677,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="google-ai-studio-chat-clear"
             @click="emit('clearGoogleAIStudioChat')"
@@ -1668,15 +1687,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3" data-testid="lm-studio-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-indigo-800">{{ t('settings.lmStudio.title') }}</div>
-            <div class="mt-1 text-[11px] text-indigo-700">{{ lmStudioChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="lm-studio-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('settings.lmStudio.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ lmStudioChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-indigo-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.enabled"
               :disabled="disabled"
               data-testid="lm-studio-chat-enabled"
@@ -1685,26 +1705,24 @@ function chipClass(active: boolean): string {
             {{ t('settings.lmStudio.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-1 gap-2">
-          <label class="space-y-1">
-            <span class="block text-[11px] font-semibold text-indigo-900">{{ t('settings.lmStudio.endpointUrl') }}</span>
-            <input
-              class="w-full rounded border border-indigo-200 bg-white px-2 py-1.5 text-sm disabled:bg-indigo-50"
-              :value="lmStudioChat.endpointUrl"
-              :disabled="disabled || !lmStudioChat.enabled"
-              placeholder="http://127.0.0.1:1234"
-              data-testid="lm-studio-endpoint-url"
-              @input="emit('updateLMStudioEndpointUrl', ($event.target as HTMLInputElement).value)"
-            />
-          </label>
-        </div>
-        <div class="space-y-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900">
-          <div class="font-semibold">{{ t('settings.lmStudio.chatMode') }}</div>
-          <div class="grid grid-cols-2 gap-2">
+        <label class="flex flex-col gap-1.5">
+          <span class="sv-label">{{ t('settings.lmStudio.endpointUrl') }}</span>
+          <input
+            class="sv-input"
+            :value="lmStudioChat.endpointUrl"
+            :disabled="disabled || !lmStudioChat.enabled"
+            placeholder="http://127.0.0.1:1234"
+            data-testid="lm-studio-endpoint-url"
+            @input="emit('updateLMStudioEndpointUrl', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <div class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('settings.lmStudio.chatMode') }}</div>
+          <div class="sv-segmented w-full">
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(lmStudioChat.chatMode === 'openai_compatible')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="lmStudioChat.chatMode === 'openai_compatible'"
               :disabled="disabled || !lmStudioChat.enabled"
               data-testid="lm-studio-chat-mode-openai"
               @click="emit('updateLMStudioChatMode', 'openai_compatible')"
@@ -1713,8 +1731,8 @@ function chipClass(active: boolean): string {
             </button>
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(lmStudioChat.chatMode === 'native_rest')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="lmStudioChat.chatMode === 'native_rest'"
               disabled
               :title="t('settings.lmStudio.modeUnavailable')"
               aria-disabled="true"
@@ -1724,11 +1742,11 @@ function chipClass(active: boolean): string {
               {{ t('settings.lmStudio.nativeRest') }}
             </button>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="sv-segmented w-full">
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(lmStudioChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="lmStudioChat.openAICompatiblePreferredEndpoint === 'chat_completions'"
               disabled
               :title="t('settings.lmStudio.modeUnavailable')"
               aria-disabled="true"
@@ -1739,8 +1757,8 @@ function chipClass(active: boolean): string {
             </button>
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(lmStudioChat.openAICompatiblePreferredEndpoint === 'responses')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="lmStudioChat.openAICompatiblePreferredEndpoint === 'responses'"
               :disabled="disabled || !lmStudioChat.enabled || lmStudioChat.chatMode !== 'openai_compatible'"
               data-testid="lm-studio-openai-endpoint-responses"
               @click="emit('updateLMStudioOpenAICompatiblePreferredEndpoint', 'responses')"
@@ -1749,10 +1767,11 @@ function chipClass(active: boolean): string {
             </button>
           </div>
         </div>
-        <div class="grid grid-cols-1 gap-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900 md:grid-cols-2">
-          <label class="flex items-center gap-2">
+        <div class="flex flex-col">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.nativeRestControls.diagnosticsEnabled"
               :disabled="disabled"
               data-testid="lm-studio-diagnostics-enabled"
@@ -1760,9 +1779,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.lmStudio.nativeRestDiagnostics') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.nativeRestControls.manualLoadUnloadEnabled"
               :disabled="disabled"
               data-testid="lm-studio-manual-load-unload-enabled"
@@ -1770,9 +1790,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.lmStudio.manualLoadUnload') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.nativeRestControls.autoLoadBeforeSendEnabled"
               :disabled="disabled"
               data-testid="lm-studio-auto-load-enabled"
@@ -1780,9 +1801,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.lmStudio.autoLoadBeforeSend') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.nativeRestControls.autoUnloadAfterSendEnabled"
               :disabled="disabled"
               data-testid="lm-studio-auto-unload-after-send-enabled"
@@ -1790,9 +1812,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.lmStudio.autoUnloadAfterSend') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="lmStudioChat.nativeRestControls.autoUnloadAfterIdleEnabled === true"
               :disabled="disabled"
               data-testid="lm-studio-auto-unload-after-idle-enabled"
@@ -1803,91 +1826,90 @@ function chipClass(active: boolean): string {
         </div>
         <div
           v-if="lmStudioChat.enabled && (lmStudioChat.chatMode !== 'openai_compatible' || lmStudioChat.openAICompatiblePreferredEndpoint !== 'responses')"
-          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800"
+          class="sv-notice sv-notice-danger"
           role="alert"
           data-testid="lm-studio-saved-mode-unavailable"
         >
           {{ t('settings.lmStudio.savedModeUnavailable') }}
         </div>
-        <div class="rounded border border-indigo-100 bg-white px-2 py-1.5 text-[11px] text-indigo-900" data-testid="lm-studio-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="lm-studio-selected-status">
           <div>{{ tf('settings.lmStudio.chatStatus', { status: lmStudioChatStatusLabel }) }}</div>
           <div>{{ t('settings.lmStudio.endpoint') }}: {{ lmStudioChat.endpointUrl || t('settings.lmStudio.none') }}</div>
           <div>{{ t('settings.lmStudio.selectedModel') }}: {{ selectedModelFor('lm_studio') || t('settings.lmStudio.none') }}</div>
           <div>{{ t('settings.lmStudio.mode') }}: {{ lmStudioChat.chatMode }} · {{ t('settings.lmStudio.openAIEndpoint') }}: {{ lmStudioChat.openAICompatiblePreferredEndpoint }}</div>
           <div>{{ t('settings.lmStudio.boundarySummary') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900" data-testid="lm-studio-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('settings.lmStudio.controlPlane') }}</div>
-              <div v-if="lmStudioProbeResult?.ok" data-testid="lm-studio-probe-summary">
-                {{ t('settings.lmStudio.nativeProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.nativeRestAvailable) }};
-                {{ t('settings.lmStudio.openAIProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.openAICompatibleAvailable) }}
-              </div>
-              <div v-else data-testid="lm-studio-probe-summary">{{ t('settings.lmStudio.notProbed') }}</div>
+        <div class="flex flex-col gap-2" data-testid="lm-studio-diagnostics">
+          <div class="flex flex-col gap-0.5">
+            <div class="sv-label">{{ t('settings.lmStudio.controlPlane') }}</div>
+            <div v-if="lmStudioProbeResult?.ok" class="sv-meta wrap-anywhere" data-testid="lm-studio-probe-summary">
+              {{ t('settings.lmStudio.nativeProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.nativeRestAvailable) }};
+              {{ t('settings.lmStudio.openAIProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.openAICompatibleAvailable) }}
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
-                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.diagnosticsEnabled || lmStudioProbeLoading || !lmStudioBridgeAvailable"
-                data-testid="lm-studio-probe"
-                @click="probeLMStudio()"
-              >
-                {{ lmStudioProbeLoading ? t('settings.lmStudio.probing') : t('settings.lmStudio.probe') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
-                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !selectedModelFor('lm_studio')"
-                data-testid="lm-studio-load-model"
-                @click="loadLMStudioSelectedModel"
-              >
-                {{ t('settings.lmStudio.load') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
-                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !lmStudioSelectedInstanceId"
-                data-testid="lm-studio-unload-model"
-                @click="unloadLMStudioSelectedModel"
-              >
-                {{ t('settings.lmStudio.unload') }}
-              </button>
-            </div>
+            <div v-else class="sv-meta" data-testid="lm-studio-probe-summary">{{ t('settings.lmStudio.notProbed') }}</div>
           </div>
-          <div v-if="lmStudioProbeResult?.ok" class="space-y-1" data-testid="lm-studio-probe-result">
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm min-w-[5.5rem]"
+              :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.diagnosticsEnabled || lmStudioProbeLoading || !lmStudioBridgeAvailable"
+              data-testid="lm-studio-probe"
+              @click="probeLMStudio()"
+            >
+              {{ lmStudioProbeLoading ? t('settings.lmStudio.probing') : t('settings.lmStudio.probe') }}
+            </button>
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm"
+              :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !selectedModelFor('lm_studio')"
+              data-testid="lm-studio-load-model"
+              @click="loadLMStudioSelectedModel"
+            >
+              {{ t('settings.lmStudio.load') }}
+            </button>
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm"
+              :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !lmStudioSelectedInstanceId"
+              data-testid="lm-studio-unload-model"
+              @click="unloadLMStudioSelectedModel"
+            >
+              {{ t('settings.lmStudio.unload') }}
+            </button>
+          </div>
+          <div v-if="lmStudioProbeResult?.ok" class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="lm-studio-probe-result">
             <div data-testid="lm-studio-native-status">{{ t('settings.lmStudio.nativeRest') }}: {{ lmStudioProbeResult.diagnostics.nativeRestAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.nativeRest.message }}</div>
             <div data-testid="lm-studio-openai-status">{{ t('settings.lmStudio.openAICompatible') }}: {{ lmStudioProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.openAICompatible.message }}</div>
             <div data-testid="lm-studio-models">{{ t('settings.lmStudio.models') }}: {{ formatLMStudioModels(lmStudioNativeModels) }}</div>
-            <details v-if="lmStudioNativeModels.length > 0" class="rounded border border-indigo-100 bg-indigo-50/40 px-2 py-1" data-testid="lm-studio-model-use-list">
-              <summary class="cursor-pointer font-medium text-indigo-900" data-testid="lm-studio-model-use-toggle">
+            <details v-if="lmStudioNativeModels.length > 0" class="group" data-testid="lm-studio-model-use-list">
+              <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="lm-studio-model-use-toggle">
+                <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
                 {{ tf('chat.console.common.modelListToggle', { count: lmStudioNativeModels.length }) }}
               </summary>
-              <div class="mt-2 flex flex-wrap gap-1">
+              <div class="mt-1 flex flex-wrap gap-1.5">
                 <button
                   v-for="modelInfo in lmStudioNativeModels"
                   :key="modelInfo.key"
                   type="button"
-                  class="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm max-w-full"
                   :disabled="disabled"
                   data-testid="lm-studio-model-use"
                   @click="selectProviderModel('lm_studio', modelInfo.key)"
                 >
-                  {{ modelInfo.displayName || modelInfo.key }}
+                  <span class="truncate">{{ modelInfo.displayName || modelInfo.key }}</span>
                 </button>
               </div>
             </details>
           </div>
-          <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="text-red-700" data-testid="lm-studio-probe-error">
+          <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="lm-studio-probe-error">
             {{ networkFailureMessage(lmStudioProbeResult) }}
           </div>
-          <div v-if="lmStudioActionResult" data-testid="lm-studio-action-result">{{ lmStudioActionResult }}</div>
+          <div v-if="lmStudioActionResult" class="sv-meta wrap-anywhere" data-testid="lm-studio-action-result">{{ lmStudioActionResult }}</div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !lmStudioChat.enabled"
             data-testid="lm-studio-chat-disable"
             @click="emit('updateLMStudioChatEnabled', false)"
@@ -1896,7 +1918,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="lm-studio-chat-clear"
             @click="emit('clearLMStudioChat')"
@@ -1906,15 +1928,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-green-200 bg-green-50/70 p-3" data-testid="ollama-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-green-800">{{ t('settings.ollama.title') }}</div>
-            <div class="mt-1 text-[11px] text-green-700">{{ ollamaChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="ollama-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('settings.ollama.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ ollamaChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-green-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.enabled"
               :disabled="disabled"
               data-testid="ollama-chat-enabled"
@@ -1923,26 +1946,24 @@ function chipClass(active: boolean): string {
             {{ t('settings.ollama.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-1 gap-2">
-          <label class="space-y-1">
-            <span class="block text-[11px] font-semibold text-green-900">{{ t('settings.ollama.endpointUrl') }}</span>
-            <input
-              class="w-full rounded border border-green-200 bg-white px-2 py-1.5 text-sm disabled:bg-green-50"
-              :value="ollamaChat.endpointUrl"
-              :disabled="disabled || !ollamaChat.enabled"
-              placeholder="http://127.0.0.1:11434"
-              data-testid="ollama-endpoint-url"
-              @input="emit('updateOllamaEndpointUrl', ($event.target as HTMLInputElement).value)"
-            />
-          </label>
-        </div>
-        <div class="space-y-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900">
-          <div class="font-semibold">{{ t('settings.ollama.chatMode') }}</div>
-          <div class="grid grid-cols-2 gap-2">
+        <label class="flex flex-col gap-1.5">
+          <span class="sv-label">{{ t('settings.ollama.endpointUrl') }}</span>
+          <input
+            class="sv-input"
+            :value="ollamaChat.endpointUrl"
+            :disabled="disabled || !ollamaChat.enabled"
+            placeholder="http://127.0.0.1:11434"
+            data-testid="ollama-endpoint-url"
+            @input="emit('updateOllamaEndpointUrl', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <div class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('settings.ollama.chatMode') }}</div>
+          <div class="sv-segmented w-full">
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.chatMode === 'native_rest')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.chatMode === 'native_rest'"
               :disabled="disabled || !ollamaChat.enabled"
               data-testid="ollama-chat-mode-native"
               @click="emit('updateOllamaChatMode', 'native_rest')"
@@ -1951,8 +1972,8 @@ function chipClass(active: boolean): string {
             </button>
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.chatMode === 'openai_compatible')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.chatMode === 'openai_compatible'"
               disabled
               :title="t('settings.ollama.modeUnavailable')"
               aria-disabled="true"
@@ -1962,11 +1983,11 @@ function chipClass(active: boolean): string {
               {{ t('settings.ollama.openAICompatible') }}
             </button>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="sv-segmented w-full">
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.nativeRestPreferredEndpoint === 'chat')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.nativeRestPreferredEndpoint === 'chat'"
               :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest'"
               data-testid="ollama-native-endpoint-chat"
               @click="emit('updateOllamaNativeRestPreferredEndpoint', 'chat')"
@@ -1975,8 +1996,8 @@ function chipClass(active: boolean): string {
             </button>
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.nativeRestPreferredEndpoint === 'generate')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.nativeRestPreferredEndpoint === 'generate'"
               disabled
               :title="t('settings.ollama.modeUnavailable')"
               aria-disabled="true"
@@ -1986,11 +2007,11 @@ function chipClass(active: boolean): string {
               /api/generate
             </button>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="sv-segmented w-full">
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.openAICompatiblePreferredEndpoint === 'chat_completions'"
               disabled
               :title="t('settings.ollama.modeUnavailable')"
               aria-disabled="true"
@@ -2001,8 +2022,8 @@ function chipClass(active: boolean): string {
             </button>
             <button
               type="button"
-              class="rounded-md border px-2 py-1.5 text-[11px]"
-              :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'responses')"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.openAICompatiblePreferredEndpoint === 'responses'"
               disabled
               :title="t('settings.ollama.modeUnavailable')"
               aria-disabled="true"
@@ -2012,41 +2033,54 @@ function chipClass(active: boolean): string {
               /v1/responses
             </button>
           </div>
-          <div class="border-t border-green-100 pt-2">
-            <div class="mb-1 font-semibold">V2 model contract · thinking wire</div>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
-                :class="chipClass(ollamaChat.thinkingControl === 'boolean')"
-                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
-                data-testid="ollama-profile-thinking-boolean"
-                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'boolean')">think: boolean</button>
-              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
-                :class="chipClass(ollamaChat.thinkingControl === 'effort')"
-                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
-                data-testid="ollama-profile-thinking-effort"
-                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'effort')">think: low / medium / high</button>
-            </div>
-          </div>
-          <div>
-            <div class="mb-1 font-semibold">V2 model contract · native tools</div>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
-                :class="chipClass(ollamaChat.toolsSupported === true)"
-                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
-                data-testid="ollama-profile-tools-supported"
-                @click="emit('updateOllamaProfileCapability', 'toolsSupported', true)">tools supported</button>
-              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
-                :class="chipClass(ollamaChat.toolsSupported === false)"
-                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
-                data-testid="ollama-profile-tools-unsupported"
-                @click="emit('updateOllamaProfileCapability', 'toolsSupported', false)">tools unsupported</button>
-            </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <div class="sv-label">V2 model contract · thinking wire</div>
+          <div class="sv-segmented w-full">
+            <button
+              type="button"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.thinkingControl === 'boolean'"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+              data-testid="ollama-profile-thinking-boolean"
+              @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'boolean')"
+            >think: boolean</button>
+            <button
+              type="button"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.thinkingControl === 'effort'"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+              data-testid="ollama-profile-thinking-effort"
+              @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'effort')"
+            >think: low / medium / high</button>
           </div>
         </div>
-        <div class="grid grid-cols-1 gap-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900 md:grid-cols-2">
-          <label class="flex items-center gap-2">
+        <div class="flex flex-col gap-1.5">
+          <div class="sv-label">V2 model contract · native tools</div>
+          <div class="sv-segmented w-full">
+            <button
+              type="button"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.toolsSupported === true"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+              data-testid="ollama-profile-tools-supported"
+              @click="emit('updateOllamaProfileCapability', 'toolsSupported', true)"
+            >tools supported</button>
+            <button
+              type="button"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="ollamaChat.toolsSupported === false"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+              data-testid="ollama-profile-tools-unsupported"
+              @click="emit('updateOllamaProfileCapability', 'toolsSupported', false)"
+            >tools unsupported</button>
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.nativeControls.diagnosticsEnabled"
               :disabled="disabled"
               data-testid="ollama-diagnostics-enabled"
@@ -2054,9 +2088,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.ollama.nativeRestDiagnostics') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.nativeControls.manualLoadUnloadEnabled"
               :disabled="disabled"
               data-testid="ollama-manual-load-unload-enabled"
@@ -2064,9 +2099,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.ollama.manualLoadUnload') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.nativeControls.autoLoadBeforeSendEnabled"
               :disabled="disabled"
               data-testid="ollama-auto-load-enabled"
@@ -2074,9 +2110,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.ollama.autoLoadBeforeSend') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.nativeControls.autoUnloadAfterSendEnabled"
               :disabled="disabled"
               data-testid="ollama-auto-unload-after-send-enabled"
@@ -2084,9 +2121,10 @@ function chipClass(active: boolean): string {
             />
             {{ t('settings.ollama.autoUnloadAfterSend') }}
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="ollamaChat.nativeControls.autoUnloadAfterIdleEnabled === true"
               :disabled="disabled"
               data-testid="ollama-auto-unload-after-idle-enabled"
@@ -2097,93 +2135,92 @@ function chipClass(active: boolean): string {
         </div>
         <div
           v-if="ollamaChat.enabled && (ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat')"
-          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800"
+          class="sv-notice sv-notice-danger"
           role="alert"
           data-testid="ollama-saved-mode-unavailable"
         >
           {{ t('settings.ollama.savedModeUnavailable') }}
         </div>
-        <div class="rounded border border-green-100 bg-white px-2 py-1.5 text-[11px] text-green-900" data-testid="ollama-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="ollama-selected-status">
           <div>{{ tf('settings.ollama.chatStatus', { status: ollamaChatStatusLabel }) }}</div>
           <div>{{ t('settings.ollama.endpoint') }}: {{ ollamaChat.endpointUrl || t('settings.ollama.none') }}</div>
           <div>{{ t('settings.ollama.selectedModel') }}: {{ selectedModelFor('ollama_local') || t('settings.ollama.none') }}</div>
           <div>{{ t('settings.ollama.mode') }}: {{ ollamaChat.chatMode }} · {{ t('settings.ollama.nativeEndpoint') }}: {{ ollamaChat.nativeRestPreferredEndpoint }} · {{ t('settings.ollama.openAIEndpoint') }}: {{ ollamaChat.openAICompatiblePreferredEndpoint }}</div>
           <div>{{ t('settings.ollama.boundarySummary') }}</div>
         </div>
-        <div class="space-y-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900" data-testid="ollama-diagnostics">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div class="font-semibold">{{ t('settings.ollama.controlPlane') }}</div>
-              <div v-if="ollamaProbeResult?.ok" data-testid="ollama-probe-summary">
-                {{ t('settings.ollama.nativeProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.nativeRestAvailable) }};
-                {{ t('settings.ollama.openAIProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.openAICompatibleAvailable) }}
-              </div>
-              <div v-else data-testid="ollama-probe-summary">{{ t('settings.ollama.notProbed') }}</div>
+        <div class="flex flex-col gap-2" data-testid="ollama-diagnostics">
+          <div class="flex flex-col gap-0.5">
+            <div class="sv-label">{{ t('settings.ollama.controlPlane') }}</div>
+            <div v-if="ollamaProbeResult?.ok" class="sv-meta wrap-anywhere" data-testid="ollama-probe-summary">
+              {{ t('settings.ollama.nativeProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.nativeRestAvailable) }};
+              {{ t('settings.ollama.openAIProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.openAICompatibleAvailable) }}
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="rounded-md border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
-                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.diagnosticsEnabled || ollamaProbeLoading || !ollamaBridgeAvailable"
-                data-testid="ollama-probe"
-                @click="probeOllama()"
-              >
-                {{ ollamaProbeLoading ? t('settings.ollama.probing') : t('settings.ollama.probe') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
-                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
-                data-testid="ollama-load-model"
-                @click="loadOllamaSelectedModel"
-              >
-                {{ t('settings.ollama.load') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
-                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
-                data-testid="ollama-unload-model"
-                @click="unloadOllamaSelectedModel"
-              >
-                {{ t('settings.ollama.unload') }}
-              </button>
-            </div>
+            <div v-else class="sv-meta" data-testid="ollama-probe-summary">{{ t('settings.ollama.notProbed') }}</div>
           </div>
-          <div v-if="ollamaProbeResult?.ok" class="space-y-1" data-testid="ollama-probe-result">
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm min-w-[5.5rem]"
+              :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.diagnosticsEnabled || ollamaProbeLoading || !ollamaBridgeAvailable"
+              data-testid="ollama-probe"
+              @click="probeOllama()"
+            >
+              {{ ollamaProbeLoading ? t('settings.ollama.probing') : t('settings.ollama.probe') }}
+            </button>
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm"
+              :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
+              data-testid="ollama-load-model"
+              @click="loadOllamaSelectedModel"
+            >
+              {{ t('settings.ollama.load') }}
+            </button>
+            <button
+              type="button"
+              class="sv-btn sv-btn-sm"
+              :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
+              data-testid="ollama-unload-model"
+              @click="unloadOllamaSelectedModel"
+            >
+              {{ t('settings.ollama.unload') }}
+            </button>
+          </div>
+          <div v-if="ollamaProbeResult?.ok" class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="ollama-probe-result">
             <div data-testid="ollama-native-status">{{ t('settings.ollama.nativeRest') }}: {{ ollamaProbeResult.diagnostics.nativeRestAvailable ? t('settings.ollama.available') : ollamaProbeResult.diagnostics.localModels.message }}</div>
             <div data-testid="ollama-openai-status">{{ t('settings.ollama.openAICompatible') }}: {{ ollamaProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.ollama.available') : ollamaProbeResult.diagnostics.openAICompatible.message }}</div>
             <div data-testid="ollama-version">{{ t('settings.ollama.version') }}: {{ ollamaProbeResult.diagnostics.version.ok ? ollamaProbeResult.diagnostics.version.version : ollamaProbeResult.diagnostics.version.message }}</div>
             <div data-testid="ollama-local-models">{{ t('settings.ollama.localModels') }}: {{ formatOllamaModels(ollamaLocalModels) }}</div>
             <div data-testid="ollama-running-models">{{ t('settings.ollama.runningModels') }}: {{ formatOllamaModels(ollamaRunningModels) }}</div>
-            <details v-if="ollamaLocalModels.length > 0" class="rounded border border-green-100 bg-green-50/40 px-2 py-1" data-testid="ollama-model-use-list">
-              <summary class="cursor-pointer font-medium text-green-900" data-testid="ollama-model-use-toggle">
+            <details v-if="ollamaLocalModels.length > 0" class="group" data-testid="ollama-model-use-list">
+              <summary class="flex h-7 list-none items-center gap-1 text-[13px] text-gray-700 [&::-webkit-details-marker]:hidden" data-testid="ollama-model-use-toggle">
+                <UiIcon name="chevronRight" :size="14" class="shrink-0 transition-transform group-open:rotate-90" />
                 {{ tf('chat.console.common.modelListToggle', { count: ollamaLocalModels.length }) }}
               </summary>
-              <div class="mt-2 flex flex-wrap gap-1">
+              <div class="mt-1 flex flex-wrap gap-1.5">
                 <button
                   v-for="modelInfo in ollamaLocalModels"
                   :key="modelInfo.key"
                   type="button"
-                  class="rounded-md border border-green-200 bg-white px-2 py-1 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm max-w-full"
                   :disabled="disabled"
                   data-testid="ollama-model-use"
                   @click="selectProviderModel('ollama_local', modelInfo.key)"
                 >
-                  {{ modelInfo.displayName || modelInfo.key }}
+                  <span class="truncate">{{ modelInfo.displayName || modelInfo.key }}</span>
                 </button>
               </div>
             </details>
           </div>
-          <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="text-red-700" data-testid="ollama-probe-error">
+          <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="sv-notice sv-notice-danger wrap-anywhere" data-testid="ollama-probe-error">
             {{ networkFailureMessage(ollamaProbeResult) }}
           </div>
-          <div v-if="ollamaActionResult" data-testid="ollama-action-result">{{ ollamaActionResult }}</div>
+          <div v-if="ollamaActionResult" class="sv-meta wrap-anywhere" data-testid="ollama-action-result">{{ ollamaActionResult }}</div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !ollamaChat.enabled"
             data-testid="ollama-chat-disable"
             @click="emit('updateOllamaChatEnabled', false)"
@@ -2192,7 +2229,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="ollama-chat-clear"
             @click="emit('clearOllamaChat')"
@@ -2202,15 +2239,16 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3" data-testid="local-endpoint-chat-controls">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-amber-800">{{ t('chat.console.provider.localEndpoint.title') }}</div>
-            <div class="mt-1 text-[11px] text-amber-700">{{ localEndpointChat.experimentalLabel }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="local-endpoint-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.provider.localEndpoint.title') }}</div>
+            <div class="sv-meta mt-0.5 wrap-anywhere">{{ localEndpointChat.experimentalLabel }}</div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-amber-900">
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="localEndpointChat.enabled"
               :disabled="disabled"
               data-testid="local-endpoint-chat-enabled"
@@ -2219,10 +2257,10 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="space-y-2">
-          <label class="block text-[11px] font-semibold text-amber-900">{{ t('chat.console.provider.localEndpoint.endpointUrl') }}</label>
+        <div class="flex flex-col gap-1.5">
+          <label class="sv-label">{{ t('chat.console.provider.localEndpoint.endpointUrl') }}</label>
           <input
-            class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
+            class="sv-input"
             :value="localEndpointChat.endpointUrl"
             :disabled="disabled || !localEndpointChat.enabled"
             placeholder="http://localhost:1234/v1"
@@ -2230,10 +2268,10 @@ function chipClass(active: boolean): string {
             @input="emit('updateLocalEndpointChatUrl', ($event.target as HTMLInputElement).value)"
           />
         </div>
-        <div class="text-[11px] text-amber-800" data-testid="local-endpoint-chat-warning">
+        <div class="sv-meta" data-testid="local-endpoint-chat-warning">
           {{ t('chat.console.provider.localEndpoint.warning') }}
         </div>
-        <div class="rounded border border-amber-100 bg-white px-2 py-1.5 text-[11px] text-amber-900" data-testid="local-endpoint-chat-selected-status">
+        <div class="sv-meta flex flex-col gap-0.5 wrap-anywhere" data-testid="local-endpoint-chat-selected-status">
           <div>{{ tf('chat.console.provider.localEndpoint.status', { status: localEndpointChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.localEndpoint.selectedEndpoint', { endpoint: localEndpointChat.endpointUrl || t('chat.console.status.none') }) }}</div>
           <div>{{ tf('chat.console.provider.localEndpoint.selectedModel', { model: selectedModelFor('local_endpoint') || t('chat.console.status.none') }) }}</div>
@@ -2242,7 +2280,7 @@ function chipClass(active: boolean): string {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled || !localEndpointChat.enabled"
             data-testid="local-endpoint-chat-disable"
             @click="emit('updateLocalEndpointChatEnabled', false)"
@@ -2251,7 +2289,7 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="disabled"
             data-testid="local-endpoint-chat-clear"
             @click="emit('clearLocalEndpointChat')"
@@ -2263,11 +2301,11 @@ function chipClass(active: boolean): string {
 
       <section
         v-if="reasoningSectionUnavailable"
-        class="space-y-1 rounded-lg border border-gray-200 bg-gray-50/70 p-3"
+        class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0"
         data-testid="session-reasoning-unavailable"
       >
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.reasoning') }}</div>
-        <div class="text-xs text-gray-500">{{ t('chat.console.reasoning.geminiUnsupported') }}</div>
+        <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.reasoning') }}</div>
+        <div class="sv-meta">{{ t('chat.console.reasoning.geminiUnsupported') }}</div>
         <ModelFactControlReason
           v-if="googleThinkingReason"
           :reason="googleThinkingReason"
@@ -2278,48 +2316,49 @@ function chipClass(active: boolean): string {
       </section>
       <section
         v-else
-        class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3"
+        class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0"
       >
-        <div class="flex items-center justify-between gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.reasoning') }}</div>
-          <label class="flex items-center gap-2 text-sm text-gray-700">
+        <div class="flex items-center justify-between gap-3">
+          <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.reasoning') }}</div>
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
-              :checked="isOpenAIResponsesSelected ? openAIResponsesReasoningSupported : isGoogleAIStudioSelected ? googleThinkingEnabled : props.sessionConfig.reasoning.enabled"
-              :disabled="disabled || isOpenAIResponsesSelected || isGoogleImageGenerationModel || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
+              class="size-4 shrink-0"
+              :checked="isOpenAIResponsesSelected ? openAIResponsesReasoningEnabled : isGoogleAIStudioSelected ? googleThinkingEnabled : isAnthropicSelected ? anthropicThinkingCapability.required || props.sessionConfig.reasoning.enabled : props.sessionConfig.reasoning.enabled"
+              :disabled="disabled || (isOpenAIResponsesSelected && !openAIResponsesThinkingCapability.canDisable) || isGoogleImageGenerationModel || (isGoogleAIStudioSelected && (googleThinkingCapability.kind === 'unsupported' || !googleThinkingCapability.allowOff || googleThinkingCapability.required)) || (isAnthropicSelected && anthropicThinkingCapability.required)"
               data-testid="session-reasoning-enabled"
-              @change="isOpenAIResponsesSelected ? null : isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
+              @change="isOpenAIResponsesSelected || isAnthropicSelected ? emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked) : isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
             />
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div v-if="isOpenAIResponsesSelected" class="space-y-2" data-testid="session-openai-responses-reasoning-controls">
-          <div class="space-y-1">
-            <div class="text-xs font-medium text-gray-600">{{ t('chat.generationParams.reasoning.effort') }}</div>
-            <div class="grid grid-cols-3 gap-2">
+        <div v-if="isOpenAIResponsesSelected" class="flex flex-col gap-3" data-testid="session-openai-responses-reasoning-controls">
+          <div class="flex flex-col gap-1.5">
+            <div class="sv-label">{{ t('chat.generationParams.reasoning.effort') }}</div>
+            <div class="sv-segmented w-full empty:hidden">
               <button
                 v-for="option in openAIResponsesReasoningOptions"
                 :key="option"
                 type="button"
-                class="rounded-md border px-2 py-1.5 text-sm"
-                :class="chipClass(openAIResponsesReasoningValue === option)"
-                :disabled="disabled || !openAIResponsesReasoningSupported"
+                class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+                :aria-pressed="openAIResponsesReasoningValue === option"
+                :disabled="disabled || !openAIResponsesReasoningSupported || !openAIResponsesReasoningControlsEnabled"
                 @click="onOpenAIResponsesReasoningSelect(option)"
               >
                 {{ formatOpenAIResponsesReasoningOption(option) }}
               </button>
             </div>
           </div>
-          <div class="space-y-1" data-testid="session-openai-responses-reasoning-summary-controls">
-            <div class="text-xs font-medium text-gray-600">{{ t('chat.generationParams.reasoning.summary') }}</div>
-            <div class="grid grid-cols-4 gap-2">
+          <div class="flex flex-col gap-1.5" data-testid="session-openai-responses-reasoning-summary-controls">
+            <div class="sv-label">{{ t('chat.generationParams.reasoning.summary') }}</div>
+            <div class="sv-segmented w-full empty:hidden">
               <button
                 v-for="option in openAIResponsesReasoningSummaryOptions"
                 :key="option"
                 type="button"
-                class="rounded-md border px-2 py-1.5 text-sm"
-                :class="chipClass(openAIResponsesReasoningSummaryValue === option)"
-                :disabled="disabled || !openAIResponsesReasoningSupported"
+                class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+                :aria-pressed="openAIResponsesReasoningSummaryValue === option"
+                :disabled="disabled || !openAIResponsesReasoningSupported || !openAIResponsesReasoningControlsEnabled"
                 @click="onOpenAIResponsesReasoningSummarySelect(option)"
               >
                 {{ formatOpenAIResponsesReasoningSummaryOption(option) }}
@@ -2328,7 +2367,7 @@ function chipClass(active: boolean): string {
           </div>
           <div
             v-if="!openAIResponsesReasoningSupported"
-            class="text-xs text-gray-500"
+            class="sv-meta"
             data-testid="session-openai-responses-reasoning-unsupported"
           >
             {{ t('chat.console.reasoning.openAIResponsesUnsupported') }}
@@ -2342,14 +2381,14 @@ function chipClass(active: boolean): string {
             />
           </div>
         </div>
-        <div v-else-if="!isGoogleAIStudioSelected" class="space-y-2">
-          <div class="grid grid-cols-3 gap-2">
+        <div v-else-if="!isGoogleAIStudioSelected" class="flex flex-col gap-2">
+          <div class="sv-segmented w-full empty:hidden">
             <button
               v-for="effort in genericReasoningEffortOptions"
               :key="effort"
               type="button"
-              class="rounded-md border px-2 py-1.5 text-sm"
-              :class="chipClass(props.sessionConfig.reasoning.effort === effort)"
+              class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+              :aria-pressed="props.sessionConfig.reasoning.effort === effort"
               :disabled="disabled || !props.sessionConfig.reasoning.enabled"
               @click="emit('updateReasoningEffort', effort)"
             >
@@ -2364,11 +2403,11 @@ function chipClass(active: boolean): string {
             @inspect="emit('inspectModelFactsPath', $event)"
           />
         </div>
-        <div v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
-          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+        <div v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'" class="flex flex-col gap-2" data-testid="session-google-thinking-budget-controls">
+          <label class="flex min-h-8 items-center justify-between gap-3 text-[13px] text-gray-800">
             <span>{{ t('chat.console.reasoning.thinkingBudget') }}</span>
             <select
-              class="w-40 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              class="sv-select w-40 shrink-0"
               :value="googleThinkingBudgetMode"
               :disabled="disabled"
               data-testid="session-google-thinking-budget-mode"
@@ -2380,11 +2419,11 @@ function chipClass(active: boolean): string {
               <option value="fixed">{{ t('chat.console.reasoning.fixedBudget') }}</option>
             </select>
           </label>
-          <label v-if="googleThinkingBudgetMode === 'fixed'" class="flex items-center justify-between gap-2 text-sm text-gray-700">
+          <label v-if="googleThinkingBudgetMode === 'fixed'" class="flex min-h-8 items-center justify-between gap-3 text-[13px] text-gray-800">
             <span>{{ t('chat.console.reasoning.fixedBudget') }}</span>
             <input
               type="number"
-              class="w-32 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              class="sv-input w-32 shrink-0"
               :min="googleThinkingCapability.minBudget"
               :max="googleThinkingCapability.maxBudget"
               :value="googleThinkingBudgetInput"
@@ -2393,12 +2432,13 @@ function chipClass(active: boolean): string {
               @input="onGoogleThinkingBudgetChange"
             />
           </label>
-          <div v-if="googleThinkingBudgetMode === 'fixed'" class="text-xs text-gray-500">
+          <div v-if="googleThinkingBudgetMode === 'fixed'" class="sv-meta">
             {{ tf('chat.console.reasoning.allowedRange', { min: googleThinkingCapability.minBudget, max: googleThinkingCapability.maxBudget }) }}
           </div>
-          <label class="flex items-center gap-2 text-sm text-gray-700">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="googleThinkingConfig.includeThoughts === true"
               :disabled="disabled"
               data-testid="session-google-thinking-include-thoughts"
@@ -2407,11 +2447,11 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.reasoning.includeThoughts') }}
           </label>
         </div>
-        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0" class="space-y-2" data-testid="session-google-thinking-level-controls">
-          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0" class="flex flex-col gap-2" data-testid="session-google-thinking-level-controls">
+          <label class="flex min-h-8 items-center justify-between gap-3 text-[13px] text-gray-800">
             <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
             <select
-              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              class="sv-select w-40 shrink-0"
               :value="googleImageThinkingLevelSelection"
               :disabled="disabled"
               data-testid="session-google-thinking-level"
@@ -2421,9 +2461,10 @@ function chipClass(active: boolean): string {
               <option v-for="level in googleImageGenerationPolicy.thinkingLevels" :key="level" :value="level">{{ level }}</option>
             </select>
           </label>
-          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
+          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="googleThinkingConfig.includeThoughts === true"
               :disabled="disabled"
               data-testid="session-google-thinking-include-thoughts"
@@ -2431,14 +2472,15 @@ function chipClass(active: boolean): string {
             />
             {{ t('chat.console.reasoning.includeThoughts') }}
           </label>
-          <div class="text-xs text-gray-500" data-testid="session-google-thinking-provider-managed">
+          <div class="sv-meta" data-testid="session-google-thinking-provider-managed">
             {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
           </div>
         </div>
-        <div v-else-if="isGoogleImageGenerationModel && (googleImageGenerationPolicy.supportsThoughtSummaries || googleImageGenerationPolicy.thinkingLevels.length > 0)" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
-          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
+        <div v-else-if="isGoogleImageGenerationModel && (googleImageGenerationPolicy.supportsThoughtSummaries || googleImageGenerationPolicy.thinkingLevels.length > 0)" class="flex flex-col gap-2" data-testid="session-google-thinking-provider-managed-controls">
+          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="googleThinkingConfig.includeThoughts === true"
               :disabled="disabled"
               data-testid="session-google-thinking-include-thoughts"
@@ -2446,11 +2488,11 @@ function chipClass(active: boolean): string {
             />
             {{ t('chat.console.reasoning.includeThoughts') }}
           </label>
-          <div class="text-xs text-gray-500" data-testid="session-google-thinking-provider-managed">
+          <div class="sv-meta" data-testid="session-google-thinking-provider-managed">
             {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
           </div>
         </div>
-        <div v-else-if="isGoogleImageGenerationModel" class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
+        <div v-else-if="isGoogleImageGenerationModel" class="sv-meta" data-testid="session-google-thinking-unsupported">
           {{ t('chat.console.reasoning.geminiUnsupported') }}
           <ModelFactControlReason
             v-if="googleThinkingReason"
@@ -2461,23 +2503,24 @@ function chipClass(active: boolean): string {
             @inspect="emit('inspectModelFactsPath', $event)"
           />
         </div>
-        <div v-else-if="googleThinkingCapability.kind === 'level'" class="space-y-2" data-testid="session-google-thinking-level-controls">
-          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+        <div v-else-if="googleThinkingCapability.kind === 'level'" class="flex flex-col gap-2" data-testid="session-google-thinking-level-controls">
+          <label class="flex min-h-8 items-center justify-between gap-3 text-[13px] text-gray-800">
             <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
             <select
-              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              class="sv-select w-40 shrink-0"
               :value="googleThinkingLevelSelection"
               :disabled="disabled"
               data-testid="session-google-thinking-level"
               @change="onGoogleThinkingLevelChange"
             >
-              <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel }) }}</option>
+              <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel || t('chat.console.reasoning.providerManaged') }) }}</option>
               <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ googleThinkingLevelLabel(level) }}</option>
             </select>
           </label>
-          <label class="flex items-center gap-2 text-sm text-gray-700">
+          <label class="flex min-h-8 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="googleThinkingConfig.includeThoughts === true"
               :disabled="disabled"
               data-testid="session-google-thinking-include-thoughts"
@@ -2486,7 +2529,7 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.reasoning.includeThoughts') }}
           </label>
         </div>
-        <div v-else class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
+        <div v-else class="sv-meta" data-testid="session-google-thinking-unsupported">
           {{ t('chat.console.reasoning.geminiUnsupported') }}
           <ModelFactControlReason
             v-if="googleThinkingReason"
@@ -2499,12 +2542,13 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="flex items-center justify-between gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.webSearch') }}</div>
-          <label class="flex items-center gap-2 text-sm text-gray-700">
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0">
+        <div class="flex items-center justify-between gap-3">
+          <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.webSearch') }}</div>
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="props.sessionConfig.webSearch.enabled"
               :disabled="disabled || (!props.sessionConfig.webSearch.enabled && !webSearchControls.enabled)"
               @change="emit('updateWebSearchEnabled', ($event.target as HTMLInputElement).checked)"
@@ -2512,11 +2556,11 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="sv-segmented w-full">
           <button
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.sessionConfig.webSearch.level === 'low')"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="props.sessionConfig.webSearch.level === 'low'"
             :disabled="disabled || !props.sessionConfig.webSearch.enabled || (!webSearchControls.maxResultsBounds && !webSearchControls.contexts.includes('low'))"
             @click="emit('updateWebSearchLevel', 'low')"
           >
@@ -2524,8 +2568,8 @@ function chipClass(active: boolean): string {
           </button>
           <button
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.sessionConfig.webSearch.level === 'high')"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="props.sessionConfig.webSearch.level === 'high'"
             :disabled="disabled || !props.sessionConfig.webSearch.enabled || (!webSearchControls.maxResultsBounds && !webSearchControls.contexts.includes('high'))"
             @click="emit('updateWebSearchLevel', 'high')"
           >
@@ -2541,8 +2585,8 @@ function chipClass(active: boolean): string {
         />
       </section>
 
-      <section class="min-w-0 space-y-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.generationParams') }}</div>
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0">
+        <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.generationParams') }}</div>
         <GenerationParamsSettingsEditor
           :model-value="props.sessionConfig.generationParams.detail"
           :disabled="disabled"
@@ -2558,12 +2602,13 @@ function chipClass(active: boolean): string {
         />
       </section>
 
-      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="flex items-center justify-between gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.imageGeneration') }}</div>
-          <label class="flex items-center gap-2 text-sm text-gray-700">
+      <section id="session-image-settings" class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0" data-testid="session-image-settings">
+        <div class="flex items-center justify-between gap-3">
+          <div class="sv-label text-[13px] text-gray-900">{{ t('chat.console.section.imageGeneration') }}</div>
+          <label class="flex h-7 shrink-0 items-center gap-2 text-[13px] text-gray-800">
             <input
               type="checkbox"
+              class="size-4 shrink-0"
               :checked="effectiveImageGenerationEnabled"
               :disabled="disabled || isGoogleImageGenerationModel"
               data-testid="session-image-generation-enabled"
@@ -2572,26 +2617,40 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div v-if="showImageGenerationSizeControl" class="grid grid-cols-3 gap-2">
+        <OpenAIImageGenerationSettingsEditor
+          v-if="isOpenAIResponsesSelected"
+          :model-value="imageValue"
+          :disabled="disabled || !effectiveImageGenerationEnabled"
+          :mask-options="props.imageMaskOptions"
+          @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
+        />
+        <div v-if="!isOpenAIResponsesSelected && showImageGenerationSizeControl" class="sv-segmented w-full">
+          <button
+            type="button"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="effectiveImageGenerationResolution === ''"
+            :disabled="disabled || !effectiveImageGenerationEnabled"
+            @click="emit('updateImageGenerationResolution', '')"
+          >Default</button>
           <button
             v-for="resolution in imageGenerationSizeOptions"
             :key="resolution"
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(effectiveImageGenerationResolution === resolution)"
+            class="h-auto min-h-6 min-w-0 whitespace-normal px-2 py-1 leading-4"
+            :aria-pressed="effectiveImageGenerationResolution === resolution"
             :disabled="disabled || !effectiveImageGenerationEnabled || lockImageGenerationSizeControl"
             @click="emit('updateImageGenerationResolution', resolution)"
           >
             {{ resolution }}
           </button>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="!isOpenAIResponsesSelected" class="flex flex-wrap gap-1.5 empty:hidden">
           <button
             v-for="ratio in imageGenerationAspectRatioOptions"
             :key="ratio"
             type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(effectiveImageGenerationAspectRatio === ratio)"
+            class="sv-btn sv-btn-sm min-w-12 aria-pressed:border-gray-900"
+            :aria-pressed="effectiveImageGenerationAspectRatio === ratio"
             :disabled="disabled || !effectiveImageGenerationEnabled"
             @click="emit('updateImageGenerationAspectRatio', ratio)"
           >
@@ -2599,74 +2658,78 @@ function chipClass(active: boolean): string {
           </button>
         </div>
         <ModelFactControlReason
-          v-if="imageGenerationAspectRatioOptions.length === 0 && imageGenerationOptionsReason"
+          v-if="!isOpenAIResponsesSelected && imageGenerationAspectRatioOptions.length === 0 && imageGenerationOptionsReason"
           :reason="imageGenerationOptionsReason"
           :can-inspect="canInspectModelFacts"
           data-test-id="session-image-generation-reason"
           @inspect="emit('inspectModelFactsPath', $event)"
         />
         <ImageGenerationSettingsEditor
+          v-if="!isOpenAIResponsesSelected"
           :model-value="imageValue"
           :disabled="disabled || !effectiveImageGenerationEnabled"
           :image-size-options="imageGenerationSizeOptions"
           :aspect-ratio-options="imageGenerationAspectRatioOptions"
           :output-mode-options="imageGenerationOutputModeOptions"
-          :show-image-size-control="showImageGenerationSizeControl"
+          :show-image-size-control="false"
+          :show-aspect-ratio-control="false"
           :lock-image-size-control="lockImageGenerationSizeControl"
           @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
         />
         <div
           v-if="showOpenRouterImageEndpointControls"
-          class="space-y-3 rounded-md border border-gray-200 bg-white p-3"
+          class="flex flex-col gap-3 sv-divider-t pt-3"
           data-testid="openrouter-image-endpoint-controls"
         >
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <div class="text-sm font-medium text-gray-800">{{ t('chat.console.imageEndpoint.title') }}</div>
-              <div class="text-xs text-gray-500">{{ t('chat.console.imageEndpoint.description') }}</div>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="sv-label">{{ t('chat.console.imageEndpoint.title') }}</div>
+              <div class="sv-meta">{{ t('chat.console.imageEndpoint.description') }}</div>
             </div>
             <button
               type="button"
-              class="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              class="sv-btn sv-btn-sm w-28 shrink-0"
               :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
               data-testid="openrouter-image-endpoint-refresh"
               @click="emit('refreshOpenRouterImageEndpoints')"
             >
+              <UiIcon :name="props.openRouterImageEndpointSelectionLoading ? 'spinner' : 'refresh'" :size="14" />
               {{ props.openRouterImageEndpointSelectionLoading ? t('chat.console.imageEndpoint.loading') : t('chat.console.imageEndpoint.refresh') }}
             </button>
           </div>
-          <div v-if="props.openRouterImageEndpointSelectionError" class="rounded bg-red-50 px-2 py-1.5 text-xs text-red-700">
+          <div v-if="props.openRouterImageEndpointSelectionError" class="sv-notice sv-notice-danger wrap-anywhere">
             {{ props.openRouterImageEndpointSelectionError }}
           </div>
-          <div v-if="!openRouterImageEndpointState" class="text-xs text-gray-500">
+          <div v-if="!openRouterImageEndpointState" class="sv-meta">
             {{ t('chat.console.imageEndpoint.loadHint') }}
           </div>
           <template v-else>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-1">
               <button
                 v-for="candidate in openRouterImageEndpointState.candidates"
                 :key="candidate.providerTag"
                 type="button"
-                class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm"
-                :class="candidate.bound ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+                class="sv-row flex w-full items-center justify-between gap-3 border border-transparent px-3 py-2 text-left text-[13px] text-gray-800 disabled:text-[var(--sv-text-disabled)]"
+                :class="candidate.bound ? 'is-selected' : ''"
+                :aria-pressed="candidate.bound"
                 :disabled="disabled || props.openRouterImageEndpointSelectionLoading || !candidate.eligible"
                 :data-testid="`openrouter-image-endpoint-${candidate.providerTag}`"
                 @click="emit('selectOpenRouterImageEndpoint', candidate.providerTag)"
               >
                 <span class="min-w-0">
                   <span class="block truncate font-medium">{{ candidate.providerName }}</span>
-                  <code class="block truncate text-[11px] opacity-75">{{ candidate.providerTag }}</code>
+                  <code class="block truncate text-xs opacity-75">{{ candidate.providerTag }}</code>
                 </span>
                 <span class="shrink-0 text-xs">
                   {{ candidate.bound ? t('chat.console.imageEndpoint.bound') : candidate.eligible ? t('chat.console.imageEndpoint.select') : t('chat.console.imageEndpoint.unsupported') }}
                 </span>
               </button>
             </div>
-            <div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
-              <label class="space-y-1 text-xs text-gray-600">
-                <span>{{ t('chat.console.imageEndpoint.refreshAfter') }}</span>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex min-w-0 flex-col gap-1.5">
+                <span class="sv-label">{{ t('chat.console.imageEndpoint.refreshAfter') }}</span>
                 <select
-                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  class="sv-select"
                   :value="openRouterImageEndpointState.settings.refreshAfterMs"
                   :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
                   @change="updateOpenRouterImageFreshness('refreshAfterMs', $event)"
@@ -2679,10 +2742,10 @@ function chipClass(active: boolean): string {
                   >{{ formatFreshnessDuration(value) }}</option>
                 </select>
               </label>
-              <label class="space-y-1 text-xs text-gray-600">
-                <span>{{ t('chat.console.imageEndpoint.hardExpireAfter') }}</span>
+              <label class="flex min-w-0 flex-col gap-1.5">
+                <span class="sv-label">{{ t('chat.console.imageEndpoint.hardExpireAfter') }}</span>
                 <select
-                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  class="sv-select"
                   :value="openRouterImageEndpointState.settings.hardExpireAfterMs"
                   :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
                   @change="updateOpenRouterImageFreshness('hardExpireAfterMs', $event)"
@@ -2700,10 +2763,10 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="rounded-lg border border-gray-200 bg-gray-50/70 p-3">
+      <section class="flex min-w-0 flex-col gap-3 py-4 sv-divider-t first:border-t-0">
         <button
           type="button"
-          class="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          class="sv-btn w-full"
           :disabled="props.disabled"
           @click="emit('openSettings')"
         >

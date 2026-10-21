@@ -1,6 +1,7 @@
 import {
   authorizeResolvedCapabilityV2,
   composeRuntimeSnapshotFromResolvedCapabilityV2,
+  resolvedCapabilityFromRuntimeSnapshotV2,
   type ResolvedCapabilityV2,
 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import {
@@ -18,6 +19,14 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { resolveGoal3ModelFactsForBindingV1 } from './goal3ModelFactsCapabilityV1'
+import { bindRequestProtocolEnvelopeV2 } from '../../src/core/generation-v2/compiler/compatibleGenerationIntentV2'
+
+/** Adapt against exactly the model facts used by the subsequent immutable snapshot. */
+export function resolveCurrentRequestCapabilityV2(context: GenerationV2AuthorityTransactionContextV2,
+  baseline: ResolvedCapabilityV2, credentialRevision: number): ResolvedCapabilityV2 {
+  return bindRequestProtocolEnvelopeV2(resolvedCapabilityFromRuntimeSnapshotV2(createGoal3RuntimeSnapshotV1({ context, capability: baseline,
+    binding: baseline.executionContext.binding, credentialRevision, resolvedAt: new Date().toISOString(), tools: [] })), baseline)
+}
 
 /**
  * Re-resolves only for a new current-send snapshot. Retry/replay callers keep

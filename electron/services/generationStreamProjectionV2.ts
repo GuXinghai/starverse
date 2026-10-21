@@ -57,7 +57,12 @@ export function publishGenerationStreamProjectionV2(
   sink: GenerationStreamProjectionSinkV2 | undefined,
   projection: GenerationStreamProjectionV2,
 ): void {
-  sink?.publish(Object.freeze({ ...projection }) as GenerationStreamProjectionV2)
+  try {
+    sink?.publish(Object.freeze({ ...projection }) as GenerationStreamProjectionV2)
+  } catch {
+    // Provider completion and its database transaction are authoritative. A renderer projection
+    // sink is an expendable local view and may be refreshed from persisted state after failure.
+  }
 }
 
 /** Persists only the renderer projection; provider-native artifacts remain the replay/continuation authority. */

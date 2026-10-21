@@ -188,13 +188,13 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2,
   }
   const extension = intent.providerExtension
   const validReasoning = intent.reasoning.mode === 'disabled'
-    ? extension.kind === 'gemini_generate_content' && extension.thinkingMode === 'default' &&
-      extension.includeThoughts === 'provider_default'
+    ? extension.kind === 'gemini_generate_content' && (extension.thinkingMode === 'default' ||
+      extension.thinkingMode === 'budget' && extension.thinkingBudget === 0)
     : intent.reasoning.summary === undefined && intent.reasoning.exclude === undefined &&
       extension.kind === 'gemini_generate_content' &&
       (extension.thinkingMode === 'default' && intent.reasoning.effort === undefined ||
-        extension.thinkingMode === 'level' && intent.reasoning.effort !== undefined &&
-          extension.thinkingLevel === intent.reasoning.effort ||
+        extension.thinkingMode === 'level' && (intent.reasoning.effort === undefined ||
+          extension.thinkingLevel === intent.reasoning.effort) ||
         extension.thinkingMode === 'budget' && intent.reasoning.effort === undefined &&
           Number.isSafeInteger(extension.thinkingBudget))
   const validWeb = intent.web.mode === 'disabled' || (
@@ -204,7 +204,7 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2,
     intent.web.userLocation === undefined && intent.web.allowedDomains === undefined && intent.web.excludedDomains === undefined)
   const attachmentUnsupported = intent.attachments.some((attachment) => {
     if (!attachment.include || attachment.kind !== 'managed_file') return attachment.include
-    if ((attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text') ||
+    if ((attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion)) ||
         (attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
         (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) return false
     const assetRevisionId = attachment.kind === 'managed_file' ? attachment.assetRevisionId.value : null
@@ -282,6 +282,10 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
       { evidenceId: 'gemini.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const,
         sourceRef: evidence.modelsResponseRevision, verifiedAt: new Date(evidence.observedAtMs).toISOString(),
         contentDigest: evidence.modelsResponseDigest.value },
+      ...(toolRegistry === null ? [] : [{ evidenceId: GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2,
+        kind: 'contract_invariant' as const, effect: 'supports' as const,
+        sourceRef: toolRegistry.registry.revision, verifiedAt: new Date().toISOString(),
+        contentDigest: toolRegistry.registry.definitionsDigest }]),
       { evidenceId: GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2, kind: 'contract_invariant' as const,
         effect: 'requires_confirmation' as const, sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
         verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },

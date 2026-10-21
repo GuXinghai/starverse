@@ -60,7 +60,7 @@ const emit = defineEmits<{
 <template>
   <div
     v-if="props.attachments.length > 0"
-    class="flex flex-wrap gap-2 px-4 pt-3"
+    class="flex flex-wrap gap-2 px-4 pb-1 pt-2"
     data-testid="draft-attachment-strip"
   >
     <DraftAttachmentCard

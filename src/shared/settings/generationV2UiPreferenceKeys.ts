@@ -15,4 +15,5 @@ export const GENERATION_V2_UI_PREFERENCE_KEYS = new Set([
   'chatReasoningPanelDefaultExpanded',
   'chatReasoningPanelAutoCollapseAfterReasoning',
   'warnOnQuitWithActiveWork',
+  'projectDuplicatePolicy',
 ])

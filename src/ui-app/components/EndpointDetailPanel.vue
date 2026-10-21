@@ -167,12 +167,12 @@ const filteredAndSortedItems = computed(() => {
 </script>
 
 <template>
-  <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3" data-testid="endpoint-detail-panel">
+  <aside data-testid="endpoint-detail-panel">
     <div class="flex items-center justify-between gap-2">
-      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.detailTabEndpoints') }}</div>
+      <div class="sv-label">{{ t('errors.modelCatalog.detailTabEndpoints') }}</div>
       <button
         type="button"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        class="sv-btn sv-btn-sm min-w-24"
         :disabled="props.disabled || props.loading"
         data-testid="endpoint-detail-refresh"
         @click="onRefresh"
@@ -181,73 +181,74 @@ const filteredAndSortedItems = computed(() => {
       </button>
     </div>
 
-    <div class="mt-2 text-[11px] text-gray-500">
+    <div class="mt-1 text-xs text-gray-500">
       <div class="truncate" :title="props.modelId">{{ props.modelId }}</div>
       <div data-testid="endpoint-detail-fetched-at">{{ tf('errors.modelCatalog.fetchedAt', { time: fetchedAtLabel }) }}</div>
-      <div class="text-[10px] text-blue-700">{{ t('errors.modelCatalog.endpointFiltersNotice') }}</div>
-      <div class="text-[10px]">{{ t('errors.modelCatalog.endpointPerfNotice') }}</div>
+      <div>{{ t('errors.modelCatalog.endpointFiltersNotice') }}</div>
+      <div>{{ t('errors.modelCatalog.endpointPerfNotice') }}</div>
     </div>
 
-    <div class="mt-2 rounded border border-gray-200 bg-white p-2 text-[11px]">
-      <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.endpointFilterSort') }}</div>
-      <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.provider') }}</span>
-          <select v-model="providerFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-provider">
+    <div class="mt-4 text-xs">
+      <div class="mb-2 text-xs font-medium text-gray-700">{{ t('errors.modelCatalog.endpointFilterSort') }}</div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-2">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.provider') }}</span>
+          <select v-model="providerFilter" class="sv-select sv-select-sm" data-testid="endpoint-filter-provider">
             <option value="all">{{ t('errors.modelCatalog.all') }}</option>
             <option v-for="option in providerOptions" :key="option" :value="option">{{ option }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.tag') }}</span>
-          <select v-model="tagFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-tag">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.tag') }}</span>
+          <select v-model="tagFilter" class="sv-select sv-select-sm" data-testid="endpoint-filter-tag">
             <option value="all">{{ t('errors.modelCatalog.all') }}</option>
             <option v-for="option in tagOptions" :key="option" :value="option">{{ option }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.quantization') }}</span>
-          <select v-model="quantizationFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-quantization">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.quantization') }}</span>
+          <select v-model="quantizationFilter" class="sv-select sv-select-sm" data-testid="endpoint-filter-quantization">
             <option value="all">{{ t('errors.modelCatalog.all') }}</option>
             <option v-for="option in quantizationOptions" :key="option" :value="option">{{ option }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.supportsImplicitReuse') }}</span>
-          <select v-model="supportsCachingFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-supports-caching">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.supportsImplicitReuse') }}</span>
+          <select v-model="supportsCachingFilter" class="sv-select sv-select-sm" data-testid="endpoint-filter-supports-caching">
             <option value="any">{{ t('errors.modelCatalog.any') }}</option>
             <option value="yes">{{ t('errors.modelCatalog.yesValue') }}</option>
             <option value="no">{{ t('errors.modelCatalog.noValue') }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.status') }}</span>
-          <select v-model="statusFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-status">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.status') }}</span>
+          <select v-model="statusFilter" class="sv-select sv-select-sm" data-testid="endpoint-filter-status">
             <option value="all">{{ t('errors.modelCatalog.all') }}</option>
             <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.uptimeAtLeast') }}</span>
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.uptimeAtLeast') }}</span>
           <input
             v-model="uptimeMinFilter"
             type="number"
             min="0"
             max="100"
             step="0.1"
-            class="rounded border border-gray-200 px-2 py-1"
+            class="sv-input sv-input-sm"
             data-testid="endpoint-filter-uptime-min"
           />
         </label>
       </div>
 
-      <div class="mt-2">
-        <div class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.supportedParametersContainsAll') }}</div>
-        <div v-if="supportedParameterOptions.length === 0" class="mt-1 text-[10px] text-gray-400">{{ t('errors.modelCatalog.noParameterMetadata') }}</div>
-        <div v-else class="mt-1 flex flex-wrap gap-2">
-          <label v-for="param in supportedParameterOptions" :key="param" class="inline-flex items-center gap-1 text-[10px] text-gray-700">
+      <div class="mt-3">
+        <div class="text-xs text-gray-500">{{ t('errors.modelCatalog.supportedParametersContainsAll') }}</div>
+        <div v-if="supportedParameterOptions.length === 0" class="mt-1 text-xs text-gray-500">{{ t('errors.modelCatalog.noParameterMetadata') }}</div>
+        <div v-else class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+          <label v-for="param in supportedParameterOptions" :key="param" class="inline-flex items-center gap-1.5 text-xs text-gray-700">
             <input
               type="checkbox"
+              class="edp-check"
               :checked="selectedParameters.includes(param)"
               :data-testid="`endpoint-filter-param-${param}`"
               @change="toggleParameter(param)"
@@ -257,10 +258,10 @@ const filteredAndSortedItems = computed(() => {
         </div>
       </div>
 
-      <div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.sortMetric') }}</span>
-          <select v-model="sortMetric" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-sort-metric">
+      <div class="mt-3 grid grid-cols-2 gap-x-2 gap-y-2">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.sortMetric') }}</span>
+          <select v-model="sortMetric" class="sv-select sv-select-sm" data-testid="endpoint-sort-metric">
             <option value="latency_p50">{{ t('errors.modelCatalog.latencyP50') }}</option>
             <option value="latency_p99">{{ t('errors.modelCatalog.latencyP99') }}</option>
             <option value="throughput_p50">{{ t('errors.modelCatalog.throughputP50') }}</option>
@@ -268,9 +269,9 @@ const filteredAndSortedItems = computed(() => {
             <option value="uptime">{{ t('errors.modelCatalog.uptime') }}</option>
           </select>
         </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">{{ t('errors.modelCatalog.sortOrder') }}</span>
-          <select v-model="sortOrder" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-sort-order">
+        <label class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-500">{{ t('errors.modelCatalog.sortOrder') }}</span>
+          <select v-model="sortOrder" class="sv-select sv-select-sm" data-testid="endpoint-sort-order">
             <option value="asc">{{ t('errors.modelCatalog.sortAsc') }}</option>
             <option value="desc">{{ t('errors.modelCatalog.sortDesc') }}</option>
           </select>
@@ -278,33 +279,33 @@ const filteredAndSortedItems = computed(() => {
       </div>
     </div>
 
-    <div v-if="props.error" class="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+    <div v-if="props.error" class="sv-notice sv-notice-warning mt-3">
       {{ props.error }}
     </div>
 
-    <div v-if="!props.loading && props.items.length === 0" class="mt-3 text-[11px] text-gray-500">
+    <div v-if="!props.loading && props.items.length === 0" class="mt-4 text-xs text-gray-500">
       {{ t('errors.modelCatalog.noEndpointDetails') }}
     </div>
-    <div v-else-if="!props.loading && filteredAndSortedItems.length === 0" class="mt-3 text-[11px] text-gray-500">
+    <div v-else-if="!props.loading && filteredAndSortedItems.length === 0" class="mt-4 text-xs text-gray-500">
       {{ t('errors.modelCatalog.noEndpointMatches') }}
     </div>
 
-    <div v-else class="mt-3 space-y-2">
+    <div v-else class="mt-4 flex flex-col">
       <div
         v-for="item in filteredAndSortedItems"
         :key="item.endpointKey"
-        class="rounded border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700"
+        class="edp-item text-xs text-gray-700"
         :data-testid="`endpoint-detail-item-${item.endpointKey}`"
       >
-        <div class="flex items-center justify-between gap-2">
-          <div class="truncate font-semibold text-gray-900">
+        <div class="flex items-baseline justify-between gap-2">
+          <div class="min-w-0 truncate text-[13px] font-medium text-gray-900">
             {{ item.providerName || item.tag || t('errors.modelCatalog.unknownProvider') }}
           </div>
-          <div class="shrink-0 text-[10px] uppercase tracking-wide text-gray-500">
+          <div class="shrink-0 text-xs text-gray-500">
             {{ item.quantization || t('errors.modelCatalog.notAvailable') }}
           </div>
         </div>
-        <div class="mt-1 flex flex-wrap gap-2 text-[10px] text-gray-600">
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
           <span>{{ t('errors.modelCatalog.endpointStatus') }}: {{ emptyValue(item.status) }}</span>
           <span>{{ t('errors.modelCatalog.endpointContext') }}: {{ emptyValue(item.contextLength) }}</span>
           <span>{{ t('errors.modelCatalog.endpointPrompt') }}: {{ emptyValue(item.maxPromptTokens) }}</span>
@@ -315,3 +316,25 @@ const filteredAndSortedItems = computed(() => {
     </div>
   </aside>
 </template>
+
+<style scoped>
+/* endpoint rows: flat, hairline-separated */
+.edp-item { padding: 8px 0; border-top: 1px solid var(--sv-line); }
+.edp-item:first-child { border-top-color: transparent; }
+.edp-check {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  border: 1px solid var(--sv-field-border);
+  border-radius: 4px;
+  background: var(--sv-surface);
+}
+.edp-check:checked {
+  border-color: var(--sv-primary);
+  background: var(--sv-primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+}
+</style>

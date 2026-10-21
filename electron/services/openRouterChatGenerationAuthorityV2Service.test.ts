@@ -18,11 +18,15 @@ function revision(overrides: Record<string, unknown> = {}) {
 }
 
 describe('isOpenRouterChatAttachmentAdmissibleV2', () => {
-  it('accepts only a verified plain-text derived revision for inline text', () => {
+  it('accepts source and derived inline text only with matching conversion provenance', () => {
     expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: attachment(), revision: revision() })).toBe(true)
     expect(isOpenRouterChatAttachmentAdmissibleV2({
       attachment: attachment(), revision: revision({ revisionKind: 'source', conversionKind: 'none' }),
     })).toBe(false)
+    expect(isOpenRouterChatAttachmentAdmissibleV2({
+      attachment: attachment({ conversion: 'none' }), revision: revision({ revisionKind: 'source', conversionKind: 'none' }),
+    })).toBe(true)
+    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: attachment({ conversion: 'none' }), revision: revision() })).toBe(false)
   })
 
   it('checks PDF provenance without independently deciding model support', () => {

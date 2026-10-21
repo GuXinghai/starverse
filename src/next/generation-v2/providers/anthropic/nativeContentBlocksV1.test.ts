@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1,
+  ANTHROPIC_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1,
   AnthropicNativeContentBlocksV1Error,
   createAnthropicNativeHistoryArtifactV1,
   decodeAnthropicNativeHistoryArtifactV1,
@@ -206,7 +207,7 @@ describe('Anthropic Messages native history artifact V1', () => {
     expect(() => createAnthropicNativeHistoryArtifactV1(withoutModel)).toThrow(AnthropicNativeContentBlocksV1Error)
   })
 
-  it('enforces block-count and 20 MiB canonical artifact limits', () => {
+  it('preserves artifacts above the request budget and enforces block-count and native storage bounds', () => {
     const tooMany = Array.from({ length: ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1 + 1 }, () => ({
       type: 'text', text: '', citations: null,
     }))
@@ -214,9 +215,12 @@ describe('Anthropic Messages native history artifact V1', () => {
       () => createAnthropicNativeHistoryArtifactV1(snapshot({ content: tooMany })),
       'GENERATION_V2_ANTHROPIC_NATIVE_LIMIT_EXCEEDED',
     )
+    expect(() => createAnthropicNativeHistoryArtifactV1(snapshot({
+        content: [{ type: 'text', text: 'x'.repeat(20 * 1_024 * 1_024), citations: null }],
+      }))).not.toThrow()
     expectCode(
       () => createAnthropicNativeHistoryArtifactV1(snapshot({
-        content: [{ type: 'text', text: 'x'.repeat(20 * 1_024 * 1_024), citations: null }],
+        content: [{ type: 'text', text: 'x'.repeat(ANTHROPIC_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1), citations: null }],
       })),
       'GENERATION_V2_ANTHROPIC_NATIVE_LIMIT_EXCEEDED',
     )

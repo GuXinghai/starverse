@@ -11,7 +11,7 @@ const MAX_SEARCH_EVIDENCE_BYTES = 8 * 1024 * 1024
 export type GeminiInteractionsImageTerminalArtifactV2 = Readonly<{
   artifactKind: typeof GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_KIND_V2
   artifactCodecVersion: typeof GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_CODEC_VERSION_V2
-  interactionId: string
+  interactionId: string | null
   model: string
   usage: Readonly<Record<string, unknown>>
   image: Readonly<{ mime: string; byteLength: number; sha256: string }>
@@ -54,8 +54,9 @@ function validateSearchEvidence(value: GeminiInteractionsSearchEvidenceV1): void
 export function createGeminiInteractionsImageTerminalArtifactV2(
   result: GeminiInteractionsImageResultV1,
 ): GeminiInteractionsImageTerminalArtifactV2 {
-  if (!result || typeof result.model !== 'string' || result.model.length < 1 || typeof result.interactionId !== 'string' ||
-      result.interactionId.length < 1 || result.bytes.byteLength < 1 || typeof result.mime !== 'string' || typeof result.text !== 'string' ||
+  if (!result || typeof result.model !== 'string' || result.model.length < 1 ||
+      (result.interactionId !== null && (typeof result.interactionId !== 'string' || result.interactionId.length < 1)) ||
+      result.bytes.byteLength < 1 || typeof result.mime !== 'string' || typeof result.text !== 'string' ||
       !Array.isArray(result.reasoningDetails) || !Array.isArray(result.events)) invalid()
   let usage: Readonly<Record<string, unknown>>
   try {

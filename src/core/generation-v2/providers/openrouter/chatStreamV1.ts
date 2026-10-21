@@ -1,5 +1,6 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import type { OpenRouterNativeMessageV1 } from './nativeMessagesV1'
+import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export type OpenRouterChatSseEventV1 =
   | Readonly<{ type: 'json'; value: unknown; rawData: string }>
@@ -46,7 +47,7 @@ export class OpenRouterChatProviderStreamErrorV1 extends Error {
 
 const MAX_PENDING_BYTES = 8 * 1024 * 1024
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
-const MAX_NATIVE_BYTES = 20 * 1024 * 1024
+const MAX_NATIVE_BYTES = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
 
 function fail(code: OpenRouterChatStreamV1Error['code'], detailCode: string = code): never {
   throw new OpenRouterChatStreamV1Error(code, detailCode)
@@ -139,6 +140,7 @@ export class OpenRouterChatStreamAssemblerV1 {
   #reasoning = ''
   readonly #reasoningDetails: Record<string, unknown>[] = []
   readonly #annotations: Record<string, unknown>[] = []
+  readonly #images: Record<string, unknown>[] = []
   readonly #toolCalls = new Map<number, MutableToolCall>()
   #finishReason: string | undefined
   #usage: Readonly<Record<string, unknown>> | null = null
@@ -162,14 +164,14 @@ export class OpenRouterChatStreamAssemblerV1 {
     const choices = chunk.choices
     if (!Array.isArray(choices) || choices.length > 1) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
     const deltaResult: { contentDelta?: string; reasoningDelta?: string; reasoningDetails?: readonly Record<string, unknown>[] } = {}
+    if (chunk.usage !== undefined) {
+      if (this.#usage !== null) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', 'usage_duplicate')
+      this.#usage = cloneObject(chunk.usage)
+      this.#consume(this.#usage)
+    }
     if (choices.length === 0) {
       let recognized = false
-      if (chunk.usage !== undefined) {
-        if (this.#usage !== null) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', 'usage_duplicate')
-        this.#usage = cloneObject(chunk.usage)
-        this.#consume(this.#usage)
-        recognized = true
-      }
+      if (chunk.usage !== undefined) recognized = true
       // OpenRouter documents empty-choice diagnostic/meta chunks before the
       // first completion choice. They do not participate in assistant history.
       if (chunk.debug !== undefined) {
@@ -217,6 +219,14 @@ export class OpenRouterChatStreamAssemblerV1 {
       for (const annotation of fields.annotations.map(cloneObject)) { this.#consume(annotation); this.#annotations.push({ ...annotation }) }
     }
     if (fields.tool_calls !== undefined) this.#mergeToolCalls(fields.tool_calls)
+    if (fields.images !== undefined) {
+      if (!Array.isArray(fields.images)) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
+      for (const image of fields.images.map(cloneObject)) {
+        this.#consume(image)
+        // Providers may repeat a completed image in a later streaming chunk.
+        if (!this.#images.some(existing => JSON.stringify(existing) === JSON.stringify(image))) this.#images.push(image)
+      }
+    }
     return Object.freeze(deltaResult)
   }
 
@@ -225,6 +235,16 @@ export class OpenRouterChatStreamAssemblerV1 {
       return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', this.#done ? 'done_duplicate' : 'done_before_terminal_choice')
     }
     this.#done = true
+  }
+
+  interruptedSnapshot() {
+    return { items: [{ role: 'assistant', content: this.#content, reasoning: this.#reasoning,
+      reasoning_details: JSON.parse(JSON.stringify(this.#reasoningDetails)),
+      images: JSON.parse(JSON.stringify(this.#images)),
+      annotations: JSON.parse(JSON.stringify(this.#annotations)),
+      tool_calls: JSON.parse(JSON.stringify([...this.#toolCalls.entries()])) }],
+      completeIndexes: this.#finishReason ? [0] : [], text: this.#content,
+      complete: this.#finishReason === 'stop' || this.#finishReason === 'tool_calls' }
   }
 
   finish(): OpenRouterChatStreamResultV1 {
@@ -240,6 +260,7 @@ export class OpenRouterChatStreamAssemblerV1 {
       ...(this.#reasoning.length === 0 ? {} : { reasoning: this.#reasoning }),
       ...(this.#reasoningDetails.length === 0 ? {} : { reasoning_details: Object.freeze(this.#reasoningDetails.map((item) => Object.freeze({ ...item }))) }),
       ...(this.#annotations.length === 0 ? {} : { annotations: Object.freeze(this.#annotations.map((item) => Object.freeze({ ...item }))) }),
+      ...(this.#images.length === 0 ? {} : { images: Object.freeze(this.#images.map((item) => Object.freeze({ ...item }))) }),
       ...(toolCalls.length === 0 ? {} : { tool_calls: Object.freeze(toolCalls) }),
     })
     this.#consume(assistantMessage)

@@ -23,6 +23,26 @@ function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionCo
 }
 
 describe('chatSessionConfig', () => {
+  it('saves OpenAI tool choices independently of Gemini resolution and ratio', () => {
+    const detail = { enabled: true, outputMode: 'image_and_text' as const, imageSize: '4K' as const, aspectRatio: '1:8',
+      openAI: { toolModel: 'gpt-image-1-mini', quality: 'low', format: 'jpeg' as const, outputCompression: 0 } }
+    const config = createConfig({ imageGeneration: { enabled: true, resolution: '4K', aspectRatio: '1:8', mode: 'custom', detail } })
+    const meta = serializeChatSessionConfigToConvoMeta({ config })
+    const restored = deserializeChatSessionConfigFromConvoMeta({ convoMeta: JSON.parse(JSON.stringify(meta)) })
+    expect(restored.imageGeneration.detail).toEqual(detail)
+    expect(restored.imageGeneration.resolution).toBe('4K')
+    expect(restored.imageGeneration.aspectRatio).toBe('1:8')
+  })
+  it('preserves provider-default image resolution through storage instead of injecting 1K', () => {
+    const empty = deserializeChatSessionConfigFromConvoMeta({})
+    expect(empty.imageGeneration.resolution).toBe('')
+    const config = createConfig({ imageGeneration: { ...empty.imageGeneration, enabled: true, mode: 'custom' } })
+    const meta = serializeChatSessionConfigToConvoMeta({ config })
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: meta }).imageGeneration.resolution).toBe('')
+    const explicit = createConfig({ imageGeneration: { ...config.imageGeneration, resolution: '1K' } })
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: serializeChatSessionConfigToConvoMeta({ config: explicit }) }).imageGeneration.resolution).toBe('1K')
+  })
+
   it('preserves native mode-only absence and max20 without widening legacy serialization', () => {
     const config = createConfig({ webSearch: { enabled: true, level: 'high', detail: { searchMode: 'enable' } } })
     expect(serializeChatSessionConfigToConvoMeta({ config, preserveOptionalWebSearchFields: true })?.webSearchOverride).toEqual({ searchMode: 'enable' })

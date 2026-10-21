@@ -285,6 +285,14 @@ describe('ChatMessageBubble', () => {
     })
   })
 
+  it('does not label a persisted generated image preview as still saving', () => {
+    render(ChatMessageBubble, { props: { message: msg({ messageId: 'persisted-image', role: 'assistant', contentBlocks: [
+      { type: 'image', url: 'data:image/png;base64,AAA=', assetId: 'asset:generated', assetRevisionId: 'revision:generated' },
+    ] }) } })
+    expect(screen.getByTestId('message-image-preview-open-0')).toBeInTheDocument()
+    expect(screen.queryByTestId('message-image-persisting-0')).toBeNull()
+  })
+
   it('renders no image action without a main-process handler, even when an electronAPI shim offers one', async () => {
     const shim = { copyImageToClipboard: vi.fn(), resolveImagePath: vi.fn(), exportImage: vi.fn() }
     ;(globalThis as any).electronAPI = shim

@@ -2,10 +2,11 @@ import {
   sha256PreparedBytesV2,
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export const GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1 =
   'gemini_generate_content_native_history_v1'
-export const GEMINI_GENERATE_CONTENT_HISTORY_MAX_BYTES_V1 = 20 * 1_024 * 1_024
+export const GEMINI_GENERATE_CONTENT_HISTORY_MAX_BYTES_V1 = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 export type GeminiGenerateContentPartV1 = Readonly<
   | { text: string; thought?: true; thoughtSignature?: string }

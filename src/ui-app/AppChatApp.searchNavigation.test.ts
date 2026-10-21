@@ -105,7 +105,8 @@ describe('actual App indexed message search navigation', () => {
     logic().openSearchModal()
     const input = await screen.findByPlaceholderText('Search...')
     const form = input.closest('form')!
-    if (within(form).queryByText('Show filters')) await fireEvent.click(within(form).getByText('Show filters'))
+    if (screen.getByTestId('search-filters-toggle').getAttribute('aria-expanded') !== 'true') await fireEvent.click(screen.getByTestId('search-filters-toggle'))
+    if (screen.getByTestId('search-scope-toggle').getAttribute('aria-expanded') !== 'true') await fireEvent.click(screen.getByTestId('search-scope-toggle'))
     const selects = within(form).getAllByRole('combobox')
     await fireEvent.update(selects[1], '')
     await fireEvent.update(selects[2], '')
@@ -119,7 +120,8 @@ describe('actual App indexed message search navigation', () => {
   async function focused(id: string) {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId(`msg-wrap-${id}`)))
     expect(logic().activeCursorMessageId.value).toBe(id)
-    await waitFor(() => expect(screen.queryByPlaceholderText('Search...')).toBeNull())
+    expect(screen.getByRole('search')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
   }
 
   beforeEach(async () => {
@@ -343,8 +345,10 @@ describe('actual App indexed message search navigation', () => {
     await fireEvent.click(screen.getByTestId('search-scope-assistant'))
     await fireEvent.keyDown(input, { key: 'Enter' })
     await clickHit(sourceConvo)
-    await waitFor(() => expect(screen.queryByPlaceholderText('Search...')).toBeNull())
+    expect(screen.getByRole('search')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
     expect(screen.queryByTestId('search-match-nav')).toBeNull()
-    expect(screen.getByTestId(`convo-title-match-${sourceConvo}`)).toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('search-close'))
+    expect(screen.getByTestId(`convo-title-match-${sourceConvo}`)).toBeVisible()
   })
 })

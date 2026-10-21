@@ -1,4 +1,6 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonFromRowV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   createOllamaNativeChatArtifactV1,
   decodeOllamaNativeChatArtifactV1,
@@ -62,7 +64,9 @@ export class OllamaChatNativeHistoryV2Repo {
     answerRootId: string,
   ): readonly OllamaNativeChatMessageV1[] {
     const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson,
-      artifact.artifact_hash AS artifactHash, operation.operation_id AS operationId,
+      artifact.artifact_hash AS artifactHash, artifact.operation_id AS operationId,
+      artifact.answer_root_id AS answerRootId, artifact.request_sequence AS requestSequence,
+      artifact.artifact_kind AS artifactKind, artifact.codec_version AS codecVersion,
       operation.question_id AS questionId, questionBody.body_text AS questionBody
       FROM generation_native_artifact_v2 AS artifact
       JOIN generation_request_v2 AS request ON request.operation_id=artifact.operation_id
@@ -79,7 +83,7 @@ export class OllamaChatNativeHistoryV2Repo {
         typeof row.operationId !== 'string' || typeof row.questionId !== 'string' ||
         typeof row.questionBody !== 'string') bundleIncomplete()
     let artifact: OllamaNativeChatArtifactV1
-    try { artifact = decodeOllamaNativeChatArtifactV1(JSON.parse(row.artifactJson)) } catch { bundleIncomplete() }
+    try { artifact = decodeOllamaNativeChatArtifactV1(JSON.parse(loadNativeArtifactJsonFromRowV2(this.db, row))) } catch { bundleIncomplete() }
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, row.operationId)
     const current = projection.turns.at(-1)
     const user = artifact.messages.at(-2)
@@ -97,10 +101,9 @@ export class OllamaChatNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     const row = this.db.prepare(`SELECT operation.branch_id AS branchId,
       operation.conversation_id AS conversationId, operation.question_id AS questionId,
-      body.body_text AS userBody, request.provider_id AS providerId, request.contract_id AS contractId
+      body.body_text AS userBody, json_extract(snapshot.canonical_json,'$.providerBinding.providerId') AS providerId, json_extract(snapshot.canonical_json,'$.providerBinding.protocolContractId') AS contractId
       FROM generation_operation_v2 AS operation
-      JOIN generation_request_v2 AS request ON request.operation_id=operation.operation_id
-        AND request.request_sequence=1
+      JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
       JOIN message_v2 AS question ON question.message_id=operation.question_id AND question.role='user'
       JOIN message_body_v2 AS body ON body.message_id=question.message_id
       WHERE operation.operation_id=?`).get(operationId) as Readonly<Record<string, unknown>> | undefined
@@ -109,14 +112,16 @@ export class OllamaChatNativeHistoryV2Repo {
         row.providerId !== 'ollama' || row.contractId !== 'ollama-chat-v1') stateInvalid()
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationId)
     if (projection.branchId !== row.branchId) stateInvalid()
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationId, 'ollama') as readonly OllamaNativeChatMessageV1[] | null
     const replayMessages: OllamaNativeChatMessageV1[] = []
     const systemBody = this.#systemForQuestion(row.conversationId, row.questionId)
     if (systemBody !== null) replayMessages.push(Object.freeze({ role: 'system', content: systemBody }))
+    replayMessages.push(...(portable ?? []))
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') stateInvalid()
-        replayMessages.push(Object.freeze({ role: 'user', content: row.userBody }))
-      } else if (turn.mode === 'included') {
+        replayMessages.push(Object.freeze({ role: 'user', content: currentGenerationQuestionWithFallbackV2(this.db, context, operationId, row.userBody) }))
+      } else if (turn.mode === 'included' && portable === null) {
         replayMessages.push(...this.#completeTurnMessages(context, turn.answerRootId))
       }
     }
@@ -154,21 +159,28 @@ export class OllamaChatNativeHistoryV2Repo {
         input.execution.snapshot.providerBinding.protocolContractId.value !== 'ollama-chat-v1') stateInvalid()
     const artifact = createOllamaNativeChatArtifactV1([...input.requestMessages, input.assistantMessage])
     const json = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: input.request.operationId, answerRootId: input.request.answerRootId,
+      requestSequence: input.request.requestSequence, artifactKind: ARTIFACT_KIND }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson,artifact_hash AS artifactHash
       FROM generation_native_artifact_v2 WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
       input.request.answerRootId, input.request.requestSequence, ARTIFACT_KIND,
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
-      if (existing.artifactJson !== json || existing.artifactHash !== artifact.artifactHash) {
+      if (!nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+        artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+      }, json) ||
+          existing.artifactHash !== artifact.artifactHash) {
         throw new Error('GENERATION_V2_OLLAMA_HISTORY_CONFLICT')
       }
       return artifact
     }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, json, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2(answer_root_id,request_sequence,operation_id,
       artifact_kind,codec_version,artifact_json,artifact_hash,created_at_ms,completion_scope)
       VALUES(?,?,?,?,1,?,?,?,'operation_terminal')`).run(
       input.request.answerRootId, input.request.requestSequence, input.request.operationId, ARTIFACT_KIND,
-      json, artifact.artifactHash, input.createdAtMs,
+      storedJson, artifact.artifactHash, input.createdAtMs,
     )
     return artifact
   }

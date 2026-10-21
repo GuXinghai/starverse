@@ -1,3 +1,4 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -9,11 +10,20 @@ import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointPro
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compiler/preparedProviderRequestV2'
 import { LmStudioOpenResponsesStreamV1Error, LmStudioOpenResponsesTypedSseDecoderV1,
+  restoreLmStudioOpenResponsesStreamResultV1,
   type LmStudioOpenResponsesStreamResultV1 } from '../../src/core/generation-v2/providers/lmstudio-openresponses/responsesStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 export class LmStudioOpenResponsesStreamRunnerV2Error extends Error {
   constructor(readonly code:
@@ -27,6 +37,8 @@ export class LmStudioOpenResponsesStreamRunnerV2Error extends Error {
     super(code); this.name = 'LmStudioOpenResponsesStreamRunnerV2Error'
   }
 }
+
+const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
 
 export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database; rawGenerationRequestStore?: RawGenerationRequestStore
@@ -64,7 +76,10 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
           : state === 'cancelled' ? { kind: 'user_cancelled', phase }
             : { kind: 'provider_failed', phase, failure: { code: errorCode!, message: errorMessage! } } }, nowMs())
       const terminalRequest = requestRepo.terminalize(context, request, state, nowMs())
-      if (state === 'completed' && result) {
+      if (state === 'completed') {
+        if (!result || result.state !== 'completed') {
+          throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_AUTHORITY_INVALID')
+        }
         const history = command.preparedRequest.requestSequence === 1
           ? historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
           : historyRepo.loadPersistedRequestHistory(context, command.preparedRequest.operationId,
@@ -84,8 +99,20 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
             history, returnedItems: result.returnedItems, createdAtMs: nowMs(), completionScope: 'operation_terminal' })
         }
       } else {
+        const terminalText = result?.returnedItems.flatMap((item) => item.type === 'message'
+          ? item.content.map((part) => part.text) : []).join('') ?? ''
+        if (terminalText.length > 0) {
+          const currentBody = input.db.prepare('SELECT body_text AS body FROM message_body_v2 WHERE message_id=?')
+            .get(command.preparedRequest.answerRootId) as { body: unknown } | undefined
+          if (typeof currentBody?.body !== 'string') {
+            throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_AUTHORITY_INVALID')
+          }
+          if (currentBody.body !== terminalText) graphRepo.compareAndSetStreamingAssistantBody(context,
+            command.preparedRequest.answerRootId, currentBody.body, terminalText, nowMs())
+        }
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, nowMs())
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, nowMs())
+        new GenerationInterruptedReplayV2Repo(input.db).insertLocalCheckpoint(context, { answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId, requestSequence: command.preparedRequest.requestSequence, protocol: 'lmstudio', requestBody: JSON.parse(command.preparedRequest.body.copyUtf8Text()), wireEvents: receivedLocalWireFacts.get(command) ?? [], ...(result ? { terminalResult: result } : {}) })
       }
     })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'terminal',
@@ -94,6 +121,23 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
     return Object.freeze({ operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId, state: resultState, errorCode, errorMessage })
   }
+
+  function materializeProviderTerminal(command: GenerationTextCommandResultV2,
+    result: LmStudioOpenResponsesStreamResultV1) {
+    if (result.state === 'completed') return terminal(command, 'completed', result, null, null, 'mid_stream')
+    const code = 'GENERATION_V2_LMSTUDIO_RUNNER_PROVIDER_FAILED'
+    return terminal(command, 'failed', result, code, code, 'mid_stream')
+  }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'lmstudio-openresponses', (_receipt, command, value) => {
+    return materializeProviderTerminal(command, restoreLmStudioOpenResponsesStreamResultV1(value))
+  }, (command, value) => {
+    const result = restoreLmStudioOpenResponsesStreamResultV1(value)
+    if (result.state === 'completed' && result.returnedItems.some((item) => item.type === 'function_call') &&
+        command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new Error('GENERATION_V2_LMSTUDIO_RUNNER_RESPONSE_INVALID')
+    }
+  })
 
   return Object.freeze({ run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal) => {
     if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
@@ -109,7 +153,7 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
         profile.profileRevision !== expectedProfileRevision) {
       throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROFILE_STALE')
     }
-    begin(command); const scope = createGenerationAbortScope(signal, timeoutMs); let started = false; let visible = ''
+    receivedLocalWireFacts.set(command, []); begin(command); const scope = createGenerationAbortScope(signal, timeoutMs); let started = false; let visible = ''
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible,
       streamProjectionSink: input.streamProjectionSink, nowMs,
@@ -127,7 +171,7 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
         headers: { 'content-type': 'application/json', accept: 'text/event-stream' }, body: Buffer.from(bytes) }) } finally { bytes.fill(0) }
       if (!response.ok || !response.body) { try { await response.body?.cancel() } catch { /* best effort */ }
         throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_HTTP_FAILED') }
-      const decoder = new LmStudioOpenResponsesTypedSseDecoderV1(); const reader = response.body.getReader()
+      const decoder = new LmStudioOpenResponsesTypedSseDecoderV1(event => receivedLocalWireFacts.get(command)!.push(event)); const reader = response.body.getReader()
       try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength > 0) started = true
         for (const event of decoder.push(item.value)) if ('delta' in event) {
           if (event.type === 'output_text') { visible += event.delta; checkpoint.update(visible) }
@@ -137,12 +181,17 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
         } } } finally { try { await reader.cancel() } catch { /* release */ }; reader.releaseLock() }
       const result = decoder.finish()
       // result.model is reported provenance; a mismatch with the requested model ID is not a failure
-      if (result.state !== 'completed') {
-        throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROVIDER_FAILED')
-      }
+      persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
       checkpoint.flush()
-      return terminal(command, 'completed', result, null, null, 'mid_stream')
+      return materializeNewGenerationNativeCompletionV2({
+        db: input.db, command, nativeResult: result, nowMs,
+        materialize: () => materializeProviderTerminal(command, result),
+      })
     } catch (error) {
+      if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+      if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+        throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+      }
       let failure: unknown = error
       try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
       const cancelled = signal?.aborted === true && !scope.timedOut()
@@ -152,6 +201,6 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
             : failure instanceof Error ? failure.message : 'GENERATION_V2_LMSTUDIO_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code,
         cancelled ? 'Generation cancelled by user.' : code, started ? 'mid_stream' : 'pre_stream')
-    } finally { checkpoint.dispose(); scope.dispose() }
+    } finally { receivedLocalWireFacts.delete(command); checkpoint.dispose(); scope.dispose() }
   } })
 }

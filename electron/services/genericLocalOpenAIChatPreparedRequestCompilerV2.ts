@@ -19,7 +19,7 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
     throw new Error('GENERATION_V2_GENERIC_LOCAL_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const binding = snapshot.providerBinding
   if (binding.providerId.value !== 'generic_local' || binding.protocolContractId.value !== 'generic-local-openai-chat-completions' ||
       binding.endpointProfileId.value !== input.profile.endpointProfileId || binding.credentialScopeId.value !== input.profile.credentialScopeId ||
@@ -30,7 +30,8 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
   const intent = snapshot.semanticIntent; const generation = intent.generation
   const messages = createGenericLocalOpenAIChatArtifactV1(input.history.replayMessages).messages
   const compiled = compileGenericLocalOpenAIChatRequestV1({ model: binding.modelId.value, messages,
-    generation: { maxTokens: generation.maxOutputTokens, temperature: generation.temperature, topP: generation.topP, stop: generation.stop } })
+    generation: { maxTokens: generation.maxOutputTokens, temperature: generation.temperature, topP: generation.topP, stop: generation.stop } },
+  binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const entries = [
     { kind: 'consumed' as const, path: 'reasoning.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
     { kind: 'consumed' as const, path: 'web.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
@@ -47,6 +48,7 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
     credentialScopeId: input.profile.credentialScopeId, contractId: 'generic-local-openai-chat-completions',
     modelId: binding.modelId.value, effectiveEndpointId: input.profile.endpointProfileId,
     endpoint: readGenericLocalOpenAIChatEndpointV2(input.profile), headersPlan: createNoCredentialHeaderPlanV2(),
-    body: compiled.preparedBody, ledger: createSemanticConsumptionLedgerV2(entries),
+    body: compiled.preparedBody, ledger: createSemanticConsumptionLedgerV2(entries), requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
     capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

@@ -1,4 +1,5 @@
 import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
+import type { ProjectNameMutationResult } from '../../../shared/settings/projectDuplicatePolicy'
 import type { ConversationRouteSelection } from '../../provider/conversationRouteSelection'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 import type { GenerationExecutionProviderId } from '../../../core/generation-v2/domain/generationExecutionProviderId'
@@ -99,8 +100,8 @@ export async function listGenerationV2Branches(conversationId:string,
   cursor:GenerationV2BranchCursor|null=null,limit=50) {
   return unwrap<GenerationV2BranchPage>(await bridge().listBranches(conversationId,cursor,limit))
 }
-export async function createGenerationV2Project(name:string) { return unwrap<Readonly<{projectId:string}>>(await bridge().createProject(name)) }
-export async function renameGenerationV2Project(projectId:string,name:string) { return unwrap(await bridge().renameProject(projectId,name)) }
+export async function createGenerationV2Project(name:string,confirmDuplicate=false) { return unwrap<ProjectNameMutationResult>(await bridge().createProject(name,confirmDuplicate)) }
+export async function renameGenerationV2Project(projectId:string,name:string,confirmDuplicate=false) { return unwrap<ProjectNameMutationResult>(await bridge().renameProject(projectId,name,confirmDuplicate)) }
 export async function deleteGenerationV2Project(projectId:string) { return unwrap(await bridge().deleteProject(projectId)) }
 export async function createGenerationV2Conversation(projectId:string,title='') { return unwrap<Readonly<{conversationId:string;branchId:string}>>(await bridge().createConversation(projectId,title)) }
 export async function renameGenerationV2Conversation(conversationId:string,title:string) { return unwrap(await bridge().renameConversation(conversationId,title)) }

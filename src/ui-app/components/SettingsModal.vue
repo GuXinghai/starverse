@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -87,7 +88,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="onClose">
+  <div v-if="props.open" class="sv-backdrop" @click.self="onClose">
     <div
       ref="dialogRef"
       role="dialog"
@@ -95,20 +96,21 @@ onUnmounted(() => {
       tabindex="-1"
       @keydown="onDialogKeydown"
       :aria-label="props.title || t('settings.title')"
-      class="w-full overflow-hidden rounded-xl bg-white shadow-xl"
+      class="sv-dialog w-full overflow-hidden"
       :class="props.variant === 'categorized' ? 'max-w-5xl' : 'max-w-xl'"
       :data-testid="props.variant === 'categorized' ? 'settings-modal-categorized' : 'settings-modal-default'"
     >
-      <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-        <div class="text-sm font-semibold text-gray-900">{{ props.title || t('settings.title') }}</div>
+      <div class="sv-divider-b flex h-12 items-center justify-between gap-2 pl-5 pr-3">
+        <div class="min-w-0 truncate text-sm font-semibold">{{ props.title || t('settings.title') }}</div>
         <button
           type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          class="sv-icon-btn shrink-0"
           :disabled="!canClose"
           :aria-label="t('common.close')"
+          :title="t('common.close')"
           @click="onClose"
         >
-          {{ t('common.close') }}
+          <UiIcon name="close" :size="16" />
         </button>
       </div>
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileLmStudioOpenResponsesRequestV1 } from '../../../../core/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
+import { readApiRequestBodyContractV2, readLegacyLmStudioOpenResponsesBodyRequestContractV2 } from '../../../../core/generation-v2/contracts/apiRequestBodyContractV2'
+import { getLmStudioLegacyToolEncodingRevisionV2, resolveEncodingCoverageRegistryV2 } from '../../../../core/generation-v2/capability/encodingCoverageRegistryV2'
 
 const user = Object.freeze({ role: 'user' as const,
   content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: 'add 2 and 3' })]) })
@@ -24,5 +26,21 @@ describe('LM Studio OpenResponses request codec', () => {
       toolChoice: 'auto' as never })).toThrow('GENERATION_V2_LMSTUDIO_REQUEST_UNSUPPORTED_EXPLICIT_FIELD')
     expect(() => compileLmStudioOpenResponsesRequestV1({ model: 'm', replayItems: [user],
       tools: [{ ...tool, strict: false }] })).toThrow('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
+  })
+
+  it('keeps the legacy strict codec and allows an explicit boolean only under the new frozen body revision', () => {
+    const current = readApiRequestBodyContractV2('lmstudio', 'text')
+    const legacy = readLegacyLmStudioOpenResponsesBodyRequestContractV2('text')
+    expect(current.bodySchemaRevision).not.toBe(legacy.bodySchemaRevision)
+    const legacyEncoderRevision = getLmStudioLegacyToolEncodingRevisionV2('text')
+    const legacyEncoder = resolveEncodingCoverageRegistryV2({ providerId: 'lmstudio', protocolContractId: 'lmstudio-openresponses',
+      operation: 'text', encoderRevision: legacyEncoderRevision })
+    expect(legacyEncoder.bodySchemaRevision).toBe(legacy.bodySchemaRevision)
+    expect(() => compileLmStudioOpenResponsesRequestV1({ model: 'm', replayItems: [user], tools: [{ ...tool, strict: false }] },
+      'text', legacy.bodySchemaRevision)).toThrow('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
+    const compiled = compileLmStudioOpenResponsesRequestV1({ model: 'm', replayItems: [user], tools: [{ ...tool, strict: false }] },
+      'text', current.bodySchemaRevision)
+    expect(compiled.nativeRequest.tools?.[0].strict).toBe(false)
+    expect(JSON.parse(new TextDecoder().decode(compiled.preparedBody.copyBytes())).tools[0].strict).toBe(false)
   })
 })

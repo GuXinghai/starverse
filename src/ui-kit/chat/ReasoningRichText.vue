@@ -33,3 +33,10 @@ const normalizedText = computed(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.reasoning-rich-text {
+  --rt-font-size: 0.8125rem;
+  --rt-color: var(--sv-text-2);
+}
+</style>

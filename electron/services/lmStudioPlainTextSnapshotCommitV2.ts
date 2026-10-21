@@ -82,6 +82,7 @@ export function commitLmStudioCurrentSnapshotV2(input: Readonly<{
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2, answerRootId: input.pending.answerRootId.value, operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({ ownerKind: entry.ownerKind,
       ownerId: entry.ownerId, revision: entry.revision.value })), providerBinding: projectDecodedProviderBindingRecordV2(binding),
     capabilityBinding: { capabilityRevision: goal3Snapshot.revision.value, evidenceDigest: goal3Snapshot.evidenceDigest.value,

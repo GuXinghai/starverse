@@ -3,7 +3,7 @@ import {
   canonicalizeModelFactsV2,
   projectCanonicalModelFactsDraftV2,
 } from '../../../core/generation-v2/capability/canonicalModelFactsV2'
-import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
+import { MODEL_CAPABILITY_RAW_ONLY_SEMANTIC_PATHS_V2, MODEL_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
 
 const digest = 'c'.repeat(64)
 
@@ -38,6 +38,11 @@ function facts(overrides: Readonly<Record<string, unknown>> = {}) {
 }
 
 describe('CanonicalModelFactsV2 evidence schema', () => {
+  it('keeps raw request text outside the model capability fact vocabulary', () => {
+    expect(MODEL_CAPABILITY_RAW_ONLY_SEMANTIC_PATHS_V2).toEqual(['web.searchPrompt'])
+    expect(MODEL_CAPABILITY_SEMANTIC_PATHS_V2).not.toContain('web.searchPrompt')
+  })
+
   it('preserves an unverified capability rule and keeps digest boundaries deterministic', () => {
     const first = canonicalizeModelFactsV2(facts())
     const second = canonicalizeModelFactsV2(facts())

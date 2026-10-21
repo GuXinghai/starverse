@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolvedCapabilityFromRuntimeSnapshotV2 } from '../../src/core/generation-v2/capability/resolvedCapabilityV2'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -68,6 +70,8 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
         : graph.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value,
           sourceQuestionId: command.sourceQuestionId.value, sourceAnswerRootId: command.sourceAnswerRootId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
+    const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
+    const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding, resolvedAt: new Date(at).toISOString() })
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
       projectGenerationCommandAttachmentsV2(command.kind === 'generic_local_openai_chat_regenerate' ? readRegenerateSourceAttachmentsV2({ db: input.db, context: context, sourceAnswerId: command.sourceAnswerId.value, questionId: command.questionId.value, sourceBranchId: command.sourceBranchId.value }) : command.commandAttachments), undefined, (facts) => {
         const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
@@ -82,7 +86,7 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
           ? graph.getInitialSendReplayProjectionInTransaction(context, command.operationId.value)
           : graph.getGenerationReplayProjectionInTransaction(context, command.operationId.value)
         return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle, projection, preparedRequest,
-          request: requests.createPrepared(context, persisted.bundle, preparedRequest) }) })
+          request: requests.createPrepared(context, persisted.bundle, preparedRequest) }) }, { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolvedCapabilityFromRuntimeSnapshotV2(capability), profile.revisionGeneration) })
   }
   async function current(command: Current, action: 'initial_send' | 'regenerate_question' | 'edit_resend') {
     const existing = replay(command, action); if (existing) return existing

@@ -5,6 +5,7 @@ import {
   ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
   normalizeAnthropicProviderNativeSnapshot,
   type AnthropicProviderNativeSnapshot,
+  type AnthropicProviderNativeSnapshotCapacityV1,
   type AnthropicProviderNativeStatus,
 } from '@/core/provider/anthropic/anthropicProviderNativeContent'
 import { clonePlainJsonObject, clonePlainJsonValue } from '@/core/provider/providerNativeContent'
@@ -27,6 +28,8 @@ type Diagnostic = Record<string, unknown>
 
 export function createAnthropicMessagesNativeContentAccumulator(input: Readonly<{
   messageId: string
+  capacity?: AnthropicProviderNativeSnapshotCapacityV1
+  emitIntermediateSnapshots?: boolean
 }>): AnthropicMessagesNativeContentAccumulator {
   const messageId = String(input.messageId ?? '').trim()
   const blocks = new Map<number, BlockState>()
@@ -88,10 +91,11 @@ export function createAnthropicMessagesNativeContentAccumulator(input: Readonly<
       ...(stopSequence !== undefined ? { stopSequence } : {}),
       ...(usage !== undefined ? { usage } : {}),
       ...(diagnostics.length > 0 ? { diagnostics: diagnostics.map((item) => clonePlainJsonObject(item, '$.diagnostics[]')) } : {}),
-    })
+    }, input.capacity)
   }
 
   function upsert(status: AnthropicProviderNativeStatus): StarverseStreamEvent[] {
+    if (input.emitIntermediateSnapshots === false) return []
     const snap = snapshot(status)
     if (!snap) return []
     return [{

@@ -1,5 +1,6 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export type GenericLocalOpenAIChatMessageV1 =
   | Readonly<{ role: 'system' | 'user'; content: string }>
@@ -12,7 +13,7 @@ export type GenericLocalOpenAIChatArtifactV1 = Readonly<{
   artifactHash: string
 }>
 
-const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024
+const MAX_ARTIFACT_BYTES = GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1
 
 function message(value: unknown): GenericLocalOpenAIChatMessageV1 {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {

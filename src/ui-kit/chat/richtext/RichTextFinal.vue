@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { renderFinal } from './finalRenderer'
 import { subscribeHighlighterReady } from './shikiLoader'
+import UiIcon from '../../icons/UiIcon.vue'
 
 const props = defineProps<{
   text: string
@@ -63,7 +64,8 @@ const showFallback = computed(() => sanitizerRemoved.value || renderError.value)
 <template>
   <div v-if="showFallback" class="rt-content">
     <div v-if="sanitizerRemoved" class="rt-security-warning">
-      ⚠ Content was sanitized for security
+      <UiIcon name="alert" :size="14" />
+      <span>Content was sanitized for security</span>
     </div>
     <pre class="rt-fallback-plaintext">{{ props.text }}</pre>
   </div>

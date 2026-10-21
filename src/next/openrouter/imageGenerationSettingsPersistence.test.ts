@@ -11,6 +11,17 @@ import {
 } from './imageGenerationSettingsPersistence'
 
 describe('imageGenerationSettingsPersistence', () => {
+  it('round trips a complete OpenAI tool configuration without overwriting Gemini fields', () => {
+    const custom = { ...DEFAULT_IMAGE_GENERATION_USER_CONFIG, enabled: true, imageSize: '2K' as const, aspectRatio: '16:9',
+      openAI: { toolModel: 'gpt-image-2', size: '1536x864', quality: 'high', format: 'webp' as const,
+        background: 'transparent' as const, action: 'edit' as const, toolChoice: 'required' as const,
+        outputCompression: 0, partialImages: 0, inputFidelity: 'high' as const, moderation: 'low' as const,
+        maskAsset: { assetId: 'mask', assetRevisionId: 'rev', assetSha256: 'hash' } } }
+    const stored = mergeConvoImageGenerationMeta({ other: true }, { mode: 'custom', custom })
+    expect(extractConvoImageGenerationCustom(JSON.parse(JSON.stringify(stored)))).toEqual(custom)
+    expect(normalizeImageGenerationUserConfig({ ...custom, openAI: { format: 'bogus', partialImages: 5, outputCompression: -1 } }).openAI).toBeUndefined()
+    expect(normalizeImageGenerationUserConfig({ ...custom, openAI: { size: 'auto', toolChoice: 'auto' } }).openAI).toEqual({ size: 'auto', toolChoice: 'auto' })
+  })
   it('normalizes config fields with safe defaults', () => {
     expect(normalizeImageGenerationUserConfig(null)).toEqual(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
     expect(

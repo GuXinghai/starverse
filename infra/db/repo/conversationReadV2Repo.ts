@@ -436,7 +436,7 @@ export class ConversationReadV2Repo {
           const errorFact = decodeProviderFailureFact(operationError?.error_fact_json ?? null)
           if (typeof answer.snapshotCanonicalJson !== 'string') throw new ConversationReadV2RepoError('GENERATION_V2_CONVERSATION_READ_STATE_INVALID')
           const snapshot = decodeAssistantAnswerGenerationSnapshotJsonV2(answer.snapshotCanonicalJson)
-          const attachments = Object.freeze(snapshot.semanticIntent.attachments.map((attachment) => Object.freeze(
+          const attachments = Object.freeze(readOriginalGenerationAttachmentsV2(this.db,snapshot).map((attachment) => Object.freeze(
             attachment.kind === 'managed_file'
               ? (() => {
                 const managed = this.db.prepare(`SELECT asset.filename,asset.asset_kind AS assetKind,blob.mime,asset.source_kind AS sourceKind
@@ -485,3 +485,4 @@ export class ConversationReadV2Repo {
       turns: Object.freeze(turns) })
   }
 }
+import { readOriginalGenerationAttachmentsV2 } from './portableGenerationHistoryV2'

@@ -1034,8 +1034,8 @@ interface Window {
       getConfig: (ownerKind: 'global' | 'project' | 'conversation', ownerId: string) => Promise<unknown>
       updateConfig: (payload: Readonly<{ ownerKind: 'global' | 'project' | 'conversation'; ownerId: string;
         expectedConfigRevision: string; semanticLayer: unknown }>) => Promise<unknown>
-      createProject: (name: string) => Promise<unknown>
-      renameProject: (projectId: string, name: string) => Promise<unknown>
+      createProject: (name: string, confirmDuplicate?: boolean) => Promise<unknown>
+      renameProject: (projectId: string, name: string, confirmDuplicate?: boolean) => Promise<unknown>
       deleteProject: (projectId: string) => Promise<unknown>
       createConversation: (projectId: string, title: string) => Promise<unknown>
       renameConversation: (conversationId: string, title: string) => Promise<unknown>
@@ -1146,6 +1146,18 @@ interface Window {
         exportCommittedPack: (payload: unknown) => Promise<unknown>
         saveDraft: (payload: unknown) => Promise<unknown>
         cancelDraft: (payload: unknown) => Promise<unknown>
+        v2: Readonly<{
+          readCommitted: () => Promise<unknown>
+          readDraft: () => Promise<unknown>
+          openDraft: () => Promise<unknown>
+          replaceDraft: (payload: unknown) => Promise<unknown>
+          addRule: (payload: unknown) => Promise<unknown>
+          rewritePack: (payload: unknown) => Promise<unknown>
+          importPack: (payload: unknown) => Promise<unknown>
+          exportCommittedPack: (payload: unknown) => Promise<unknown>
+          saveDraft: (payload: unknown) => Promise<unknown>
+          cancelDraft: (payload: unknown) => Promise<unknown>
+        }>
       }>
     }>
     modelFactsInspector: Readonly<{

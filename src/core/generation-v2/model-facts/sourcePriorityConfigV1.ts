@@ -107,8 +107,8 @@ export function decodeSourcePriorityConfigV1(value: unknown): SourcePriorityConf
 
 export const DEFAULT_SOURCE_PRIORITY_MAP_V1 = Object.freeze({
   provider_native: 3,
-  models_dev: 2,
-  capability_rule: 1,
+  models_dev: 1,
+  capability_rule: 2,
 }) satisfies SourcePriorityMapV1
 
 export const DEFAULT_SOURCE_PRIORITY_CONFIG_V1 = buildSourcePriorityConfigV1(DEFAULT_SOURCE_PRIORITY_MAP_V1)
@@ -119,4 +119,10 @@ export const SOURCE_PRIORITY_CONFIG_SCHEMA_DIGEST_V1 = sha256PreparedBytesV2(new
     sourceKeys: CANONICAL_SOURCE_PRIORITY_KEYS_V1,
     defaultPriorities: DEFAULT_SOURCE_PRIORITY_MAP_V1,
   }),
+))
+
+export const PRE_RULE_V2_SOURCE_PRIORITY_CONFIG_SCHEMA_DIGEST_V1 = sha256PreparedBytesV2(new TextEncoder().encode(
+  stableSerializeProviderRequestV2({ schemaVersion: SOURCE_PRIORITY_CONFIG_SCHEMA_VERSION_V1,
+    sourceKeys: CANONICAL_SOURCE_PRIORITY_KEYS_V1,
+    defaultPriorities: { provider_native: 3, models_dev: 2, capability_rule: 1 } }),
 ))

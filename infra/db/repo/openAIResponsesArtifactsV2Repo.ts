@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import {
   isOpenAIResponsesContinuationArtifactV2,
@@ -86,6 +87,9 @@ export class OpenAIResponsesArtifactsV2Repo {
     const artifactJson = 'canonicalJson' in artifact
       ? artifact.canonicalJson
       : stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: artifact.artifactKind }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.#db.prepare(`SELECT operation_id AS operationId,
       codec_version AS codecVersion, artifact_json AS artifactJson, artifact_hash AS artifactHash,
       completion_scope AS completionScope
@@ -96,18 +100,22 @@ export class OpenAIResponsesArtifactsV2Repo {
     if (existing) {
       if (existing.operationId !== request.operationId ||
           existing.codecVersion !== artifact.artifactCodecVersion ||
-          existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash ||
+          !nativeArtifactJsonMatchesV2(this.#db, key, existing.artifactJson as string, {
+            artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+          }, artifactJson) ||
+          existing.artifactHash !== artifact.artifactHash ||
           existing.completionScope !== completionScope) {
         throw new OpenAIResponsesArtifactsV2RepoError('GENERATION_V2_OPENAI_ARTIFACT_CONFLICT')
       }
       return
     }
+    const storedJson = storeNativeArtifactJsonV2(this.#db, key, artifactJson, envelope)
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
       artifact_json, artifact_hash, created_at_ms, completion_scope
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       request.answerRootId, request.requestSequence, request.operationId, artifact.artifactKind,
-      artifact.artifactCodecVersion, artifactJson, artifact.artifactHash, createdAtMs, completionScope,
+      artifact.artifactCodecVersion, storedJson, artifact.artifactHash, createdAtMs, completionScope,
     )
   }
 }

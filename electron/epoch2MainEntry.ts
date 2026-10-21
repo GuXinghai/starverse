@@ -17,6 +17,7 @@ import { formatEpoch2ConfigRecoverySuccess, formatEpoch2SchemaRecoverySuccess } 
 import {
   confirmSchemaMismatchRecovery,
   SCHEMA_MISMATCH_RECOVERY_AUTHORITY,
+  shouldAttemptSchemaMismatchRecovery,
 } from './data-epoch/schemaMismatchRecoveryPrompt'
 import { acquireEpochRootLease } from './data-epoch/win32EpochRootLease'
 import { requestMainWindowActivation } from './windows/mainWindowActivation'
@@ -141,13 +142,14 @@ if (isPrimaryInstance) void app.whenReady().then(async () => {
     await startup()
   } catch (error) {
     const code = startupFailureCode(error)
-    if (getAgentAutomationOptions()) {
-      process.stderr.write(`[agent-startup] ${code}\n`)
-      app.exit(1)
+    const agentAutomation = Boolean(getAgentAutomationOptions())
+    if (shouldAttemptSchemaMismatchRecovery(code, agentAutomation)) {
+      await startWithSchemaMismatchRecovery()
       return
     }
-    if (code === 'EPOCH2_DATABASE_SCHEMA_MISMATCH') {
-      await startWithSchemaMismatchRecovery()
+    if (agentAutomation) {
+      process.stderr.write(`[agent-startup] ${code}\n`)
+      app.exit(1)
       return
     }
     if (code === 'EPOCH2_CONFIG_CORRUPT') {

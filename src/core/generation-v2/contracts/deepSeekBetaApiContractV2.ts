@@ -1,3 +1,4 @@
+/** Frozen definition-only surface metadata; it is not new execution body-shape or transport authority. */
 export type DeepSeekBetaApiSurfaceIdV2 = 'deepseek-beta-chat-prefix-v1' | 'deepseek-beta-fim-v1'
 
 export type DeepSeekBetaApiContractV2 = Readonly<{

@@ -45,7 +45,11 @@ function responseContentLength(response: Response): number | null {
 }
 
 function descriptorUrl(modelId: string): string {
-  return `${OPENROUTER_IMAGES_ORIGIN_V2}/api/v1/images/models/${encodeURIComponent(modelId)}/endpoints`
+  const segments = modelId.split('/')
+  if (segments.length !== 2 || segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    throw new OpenRouterImageDescriptorAuthorityV2Error('GENERATION_V2_OPENROUTER_DESCRIPTOR_AUTHORITY_INVALID')
+  }
+  return `${OPENROUTER_IMAGES_ORIGIN_V2}/api/v1/images/models/${segments.map(encodeURIComponent).join('/')}/endpoints`
 }
 
 function freshness(

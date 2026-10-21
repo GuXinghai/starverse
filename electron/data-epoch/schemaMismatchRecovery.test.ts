@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -101,6 +102,10 @@ describe('epoch-2 schema mismatch recovery', () => {
       })
       expect(created.created).toBe(true)
       const originalSize = fs.statSync(value.layout.databasePath).size
+      const originalHash = createHash('sha256').update(fs.readFileSync(value.layout.databasePath)).digest('hex')
+      const configPath = path.join(value.layout.productRoot, 'config.json')
+      const configBytes = Buffer.from('{"providerCredentials":{"encrypted":"test-vault-sentinel"}}')
+      fs.writeFileSync(configPath, configBytes)
       const previousOperationId = readEpoch2ResetJournal({ layout: value.layout, lease: value.lease })!
         .operationId
 
@@ -118,6 +123,8 @@ describe('epoch-2 schema mismatch recovery', () => {
       expect(recovered.databaseFileId).toMatch(/^[0-9a-f]{32}$/u)
       expect(fs.existsSync(value.layout.databasePath)).toBe(false)
       expect(fs.statSync(path.join(recovered.backupDirectory, 'starverse.db')).size).toBe(originalSize)
+      expect(createHash('sha256').update(fs.readFileSync(path.join(recovered.backupDirectory, 'starverse.db'))).digest('hex')).toBe(originalHash)
+      expect(fs.readFileSync(configPath)).toEqual(configBytes)
 
       const journal = readEpoch2ResetJournal({ layout: value.layout, lease: value.lease })!
       expect(journal.phase).toBe('epoch_root_created')
@@ -130,6 +137,10 @@ describe('epoch-2 schema mismatch recovery', () => {
       expect(recreated.database.created).toBe(true)
       expect(recreated.journal.phase).toBe('database_created')
       expect(fs.existsSync(value.layout.databasePath)).toBe(true)
+      const reopened = await initializeOrVerifyFreshEpoch2Database({ layout: value.layout,
+        lease: value.lease, rootAuthority: recreated.rootAuthority })
+      expect(reopened.created).toBe(false)
+      expect(fs.readFileSync(configPath)).toEqual(configBytes)
     } finally { value.lease.release() }
   })
 

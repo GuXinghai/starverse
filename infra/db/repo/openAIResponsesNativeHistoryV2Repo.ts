@@ -1,4 +1,9 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2, readOpenAIInlineImageV2 } from './portableGenerationHistoryV2'
+import { decodeOpenAIResponsesReplayItemsV1,
+  OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1 } from '../../../src/core/generation-v2/providers/openai-responses/nativeItemsV1'
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2,
   OPENAI_RESPONSES_ARTIFACT_KIND_V2,
@@ -62,6 +67,7 @@ export type OpenAIResponsesRequestHistoryFactV2 = Readonly<{
   priorAnswerRootId: GraphIdentity<'answer_root_id'> | null
   priorArtifact: OpenAIResponsesContinuationArtifactV2 | null
   clientItems: readonly OpenAIResponsesClientItemV1[]
+  inputImageMask?: Readonly<{ imageUrl: string }>
   requestSequence: number
   lineageDepth: number
   contextProjection: GenerationContextProjectionSnapshotV2
@@ -115,7 +121,7 @@ export function isOpenAIResponsesRequestHistoryFactForContextV2(
   return Boolean(value && typeof value === 'object' && facts.has(value) && contexts.get(value) === context)
 }
 
-function decodeRow(row: ArtifactRow, requireOperationTerminal: boolean): Readonly<{
+function decodeRow(db: BetterSqlite3.Database, row: ArtifactRow, requireOperationTerminal: boolean): Readonly<{
   answerRootId: string
   requestSequence: number
   operationId: string
@@ -133,7 +139,10 @@ function decodeRow(row: ArtifactRow, requireOperationTerminal: boolean): Readonl
       (requireOperationTerminal && (row.completionScope !== 'operation_terminal' ||
         row.operationState !== 'completed' || row.answerStatus !== 'completed'))) invalid()
   let artifact: OpenAIResponsesContinuationArtifactV2
-  try { artifact = decodeOpenAIResponsesContinuationArtifactV2(JSON.parse(row.artifactJson)) } catch { return invalid(true) }
+  try { artifact = decodeOpenAIResponsesContinuationArtifactV2(JSON.parse(loadNativeArtifactJsonV2(db, {
+    operationId: row.operationId as string, answerRootId: row.answerRootId as string,
+    requestSequence: row.requestSequence as number, artifactKind: row.artifactKind as string,
+  }, row.artifactJson, { artifactCodecVersion: row.codecVersion as number, artifactHash: row.artifactHash }))) } catch { return invalid(true) }
   if (artifact.artifactHash !== row.artifactHash) return invalid(true)
   return Object.freeze({
     answerRootId: row.answerRootId, requestSequence: row.requestSequence as number,
@@ -165,6 +174,25 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     if (db.pragma('foreign_keys', { simple: true }) !== 1) invalid()
   }
 
+  #snapshotMaskAttachment(snapshot: DecodedAssistantAnswerGenerationSnapshotV2): Extract<AttachmentIntentV2, { kind: 'managed_file' }> | undefined {
+    const mask = snapshot.semanticIntent.image.mode === 'generate' ? snapshot.semanticIntent.image.maskAsset : undefined
+    if (!mask) return undefined
+    const matches = snapshot.semanticIntent.attachments.filter((attachment): attachment is Extract<AttachmentIntentV2, { kind: 'managed_file' }> =>
+      attachment.kind === 'managed_file' && attachment.include && attachment.sendAs === 'image_reference' &&
+      attachment.conversion === 'none' && attachment.assetId.value === mask.assetId.value &&
+      attachment.assetRevisionId.value === mask.assetRevisionId.value && attachment.assetSha256.value === mask.assetSha256.value)
+    if (matches.length !== 1) invalid()
+    return matches[0]
+  }
+
+  #resolveSnapshotMask(context: GenerationV2AuthorityTransactionContextV2,
+    snapshot: DecodedAssistantAnswerGenerationSnapshotV2): Readonly<{ imageUrl: string }> | undefined {
+    if (snapshot.providerBinding.providerId.value !== 'openai_responses') invalid()
+    const attachment = this.#snapshotMaskAttachment(snapshot)
+    if (!attachment) return undefined
+    return Object.freeze({ imageUrl: readOpenAIInlineImageV2(this.#db, context, attachment, { requirePng: true }).image_url })
+  }
+
   #resolveSnapshotInputFiles(
     context: GenerationV2AuthorityTransactionContextV2,
     snapshot: DecodedAssistantAnswerGenerationSnapshotV2,
@@ -176,11 +204,15 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       binding.assetRevisionId.value, binding.providerFileDescriptor,
     ]))
     const descriptors = new OpenAIResponsesFileDescriptorV2Repo(this.#db)
+    const mask = this.#snapshotMaskAttachment(snapshot)
     return Object.freeze(snapshot.semanticIntent.attachments
-      .filter((attachment) => attachment.include)
+      .filter((attachment) => attachment.include && attachment !== mask)
       .map((attachment: AttachmentIntentV2) => {
         if (attachment.kind === 'url_reference' && attachment.mediaKind === 'image') {
           return Object.freeze({ type: 'input_image' as const, image_url: attachment.originalUrl })
+        }
+        if (attachment.kind === 'managed_file' && attachment.sendAs === 'image_reference' && attachment.conversion === 'none') {
+          return readOpenAIInlineImageV2(this.#db, context, attachment)
         }
         if (!requiresProviderFileBindingV2(attachment)) return invalid()
         const binding = bindings.get(attachment.assetRevisionId.value)
@@ -215,7 +247,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       OPENAI_RESPONSES_ARTIFACT_KIND_V2, hash,
     ) as ArtifactRow[]
     if (rows.length !== 1) return invalid(true)
-    return decodeRow(rows[0], false)
+    return decodeRow(this.#db, rows[0], false)
   }
 
   #loadFinalArtifact(answerRootId: string): OpenAIResponsesContinuationArtifactV2 {
@@ -236,7 +268,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
         AND artifact.completion_scope='operation_terminal'
       ORDER BY artifact.request_sequence DESC`).all(answerRootId, OPENAI_RESPONSES_ARTIFACT_KIND_V2) as ArtifactRow[]
     if (rows.length !== 1) return invalid(true)
-    const final = decodeRow(rows[0], true)
+    const final = decodeRow(this.#db, rows[0], true)
     let child = final
     const seen = new Set<string>()
     while (true) {
@@ -265,6 +297,8 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     answerRootId: string,
     seen: Set<string>,
   ): readonly OpenAIResponsesReplayItemV1[] {
+    const interrupted = new GenerationInterruptedReplayV2Repo(this.#db).load(context, answerRootId, 'openai_responses')
+    if (interrupted !== null) return decodeOpenAIResponsesReplayItemsV1(interrupted, OPENAI_RESPONSES_REQUEST_DECODE_LIMITS_V1)
     if (seen.has(answerRootId) || seen.size >= MAX_LINEAGE_DEPTH) return incompleteContextTurn()
     seen.add(answerRootId)
     try {
@@ -349,8 +383,10 @@ export class OpenAIResponsesNativeHistoryV2Repo {
         row.parentMessageId === row.priorAnswerRootId) priorAnswerRootId = row.priorAnswerRootId
     else invalid()
     const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
-    const projectionActive = contextProjection.turns.some((turn) => turn.mode === 'excluded')
-    const projectedPrefixItems = projectionActive ? this.#projectedPrefix(context, contextProjection) : null
+    const portable = loadPortableGenerationHistoryV2(this.#db, context, operationId.value, 'openai') as readonly OpenAIResponsesReplayItemV1[] | null
+    const projectionActive = portable !== null || contextProjection.turns.some((turn) => turn.mode === 'excluded' ||
+      turn.answerRootId !== null && new GenerationInterruptedReplayV2Repo(this.#db).hasInterruptedTurn(turn.answerRootId))
+    const projectedPrefixItems = portable ?? (projectionActive ? this.#projectedPrefix(context, contextProjection) : null)
     const priorArtifact = projectionActive ? null : priorAnswerRootId === null ? null : this.#loadFinalArtifact(priorAnswerRootId)
     let snapshot: DecodedAssistantAnswerGenerationSnapshotV2
     try { snapshot = decodeAssistantAnswerGenerationSnapshotV2(JSON.parse(row.snapshotJson)) } catch { return invalid() }
@@ -358,10 +394,11 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     const clientItems = Object.freeze([Object.freeze({
       role: 'user' as const,
       content: Object.freeze([
-        Object.freeze({ type: 'input_text' as const, text: row.questionBody }),
+        Object.freeze({ type: 'input_text' as const, text: currentGenerationQuestionWithFallbackV2(this.#db, context, operationId.value, row.questionBody) }),
         ...this.#resolveSnapshotInputFiles(context, snapshot),
       ]),
     })])
+    const inputImageMask = this.#resolveSnapshotMask(context, snapshot)
     const fact = Object.freeze({
       trust: 'openai_responses_request_history_repository_fact_v2' as const,
       operationId,
@@ -371,6 +408,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       answerRootId: ConversationGraphV2Identity.create('answer_root_id', row.answerRootId),
       priorAnswerRootId: priorAnswerRootId === null ? null : ConversationGraphV2Identity.create('answer_root_id', priorAnswerRootId),
       priorArtifact, clientItems, requestSequence: 1,
+      ...(inputImageMask ? { inputImageMask } : {}),
       lineageDepth: (priorArtifact?.lineageDepth ?? 0) + 1,
       contextProjection, projectedPrefixItems,
       toolOutputRecords: Object.freeze([]),
@@ -432,7 +470,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       OPENAI_RESPONSES_ARTIFACT_KIND_V2,
     ) as ArtifactRow | undefined
     if (!row) invalid()
-    const prior = decodeRow(row, false).artifact
+    const prior = decodeRow(this.#db, row, false).artifact
     const pending = prior.orderedItems.filter(isFunctionCall).filter((item) =>
       !prior.orderedItems.some((candidate) => isFunctionCallOutput(candidate) && candidate.call_id === item.call_id))
     if (pending.length !== command.toolOutputs.length) invalid()
@@ -477,7 +515,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       contextProjection,
       projectedPrefixItems,
       toolOutputRecords: Object.freeze(records),
-    })
+    }, execution.snapshot)
   }
 
   loadPersistedRequestHistory(
@@ -512,7 +550,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       operationIdValue, requestSequence - 1, operation.answerRootId, OPENAI_RESPONSES_ARTIFACT_KIND_V2,
     ) as ArtifactRow | undefined
     if (!row) invalid()
-    const prior = decodeRow(row, false).artifact
+    const prior = decodeRow(this.#db, row, false).artifact
     const calls = prior.orderedItems.filter(isFunctionCall).filter((item) =>
       !prior.orderedItems.some((candidate) => isFunctionCallOutput(candidate) && candidate.call_id === item.call_id))
     const rows = this.#db.prepare(`SELECT output_index AS outputIndex, tool_call_id AS toolCallId, tool_id AS toolId,
@@ -599,8 +637,18 @@ export class OpenAIResponsesNativeHistoryV2Repo {
   #createFact(
     context: GenerationV2AuthorityTransactionContextV2,
     value: Omit<OpenAIResponsesRequestHistoryFactV2, 'trust'>,
+    snapshot?: DecodedAssistantAnswerGenerationSnapshotV2,
   ): OpenAIResponsesRequestHistoryFactV2 {
-    const fact = Object.freeze({ trust: 'openai_responses_request_history_repository_fact_v2' as const, ...value })
+    if (!snapshot) {
+      const row = this.#db.prepare('SELECT canonical_json AS snapshotJson FROM assistant_generation_snapshot_v2 WHERE operation_id=? AND answer_root_id=?')
+        .get(value.operationId.value, value.answerRootId.value) as Readonly<{ snapshotJson: unknown }> | undefined
+      if (typeof row?.snapshotJson !== 'string') invalid()
+      try { snapshot = decodeAssistantAnswerGenerationSnapshotV2(JSON.parse(row.snapshotJson)) } catch { return invalid() }
+    }
+    if (snapshot.operationId.value !== value.operationId.value || snapshot.answerRootId.value !== value.answerRootId.value) invalid()
+    const inputImageMask = this.#resolveSnapshotMask(context, snapshot)
+    const fact = Object.freeze({ trust: 'openai_responses_request_history_repository_fact_v2' as const, ...value,
+      ...(inputImageMask ? { inputImageMask } : {}) })
     facts.add(fact); contexts.set(fact, context)
     registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
       preCommit: () => undefined,

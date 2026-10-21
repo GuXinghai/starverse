@@ -6,6 +6,11 @@ import {
   type CapabilityRuleCorePackV1,
   type CapabilityRuleOwnershipSnapshotV1,
 } from './capabilityRuleCoreV1'
+import {
+  decodeCapabilityRuleOwnershipSnapshotV2,
+  type CapabilityRuleCorePackV2,
+  type CapabilityRuleOwnershipSnapshotV2,
+} from './capabilityRuleCoreV2'
 
 export const CLOUD_RULES_OFFICIAL_REPOSITORY_OWNER_V1 = 'GuXinghai' as const
 export const CLOUD_RULES_OFFICIAL_REPOSITORY_NAME_V1 = 'starverse' as const
@@ -14,6 +19,7 @@ export const CLOUD_RULES_OFFICIAL_REPOSITORY_V1 =
 export const CLOUD_RULES_OFFICIAL_REPOSITORY_URL_V1 =
   `https://github.com/${CLOUD_RULES_OFFICIAL_REPOSITORY_V1}` as const
 export const CLOUD_RULES_RELEASE_TAG_PREFIX_V1 = 'cloud-rules-v' as const
+export const CLOUD_RULES_RELEASE_TAG_PREFIX_V2 = 'cloud-rules-schema2-v' as const
 export const CLOUD_RULES_RELEASE_ASSET_NAME_V1 = 'starverse-cloud-rules.json' as const
 export const CLOUD_RULES_OFFICIAL_OWNER_ID_V1 = 'official' as const
 export const CLOUD_RULES_CONTENT_REVISION_PREFIX_V1 = 'sha256:' as const
@@ -55,16 +61,23 @@ export type CloudRulesGitHubReleaseV1 = Readonly<{
   assets: readonly CloudRulesReleaseAssetV1[]
 }>
 
-export type CloudRulesReleaseDocumentV1 = Readonly<{
-  schemaVersion: 1
-  releaseVersion: string
-  contentRevision: string
-  packs: readonly CapabilityRuleCorePackV1[]
-}>
+export type CloudRulesReleaseDocumentV1 =
+  | Readonly<{
+      schemaVersion: 1
+      releaseVersion: string
+      contentRevision: string
+      packs: readonly CapabilityRuleCorePackV1[]
+    }>
+  | Readonly<{
+      schemaVersion: 2
+      releaseVersion: string
+      contentRevision: string
+      packs: readonly CapabilityRuleCorePackV2[]
+    }>
 
 export type CloudRulesValidatedPublicationV1 = Readonly<{
   document: CloudRulesReleaseDocumentV1
-  ownershipSnapshot: CapabilityRuleOwnershipSnapshotV1
+  ownershipSnapshot: CapabilityRuleOwnershipSnapshotV1 | CapabilityRuleOwnershipSnapshotV2
   release: CloudRulesGitHubReleaseV1
   asset: CloudRulesReleaseAssetV1
 }>
@@ -155,10 +168,10 @@ function releaseVersionFromTag(tagName: unknown): Readonly<{
   releaseVersion: string
   version: CloudRulesStableSemVerV1
 }> {
-  if (typeof tagName !== 'string' || !tagName.startsWith(CLOUD_RULES_RELEASE_TAG_PREFIX_V1)) {
+  if (typeof tagName !== 'string' || ![CLOUD_RULES_RELEASE_TAG_PREFIX_V1, CLOUD_RULES_RELEASE_TAG_PREFIX_V2].some(prefix => tagName.startsWith(prefix))) {
     invalid('GENERATION_V2_CLOUD_RULES_RELEASE_INVALID')
   }
-  const releaseVersion = tagName.slice(CLOUD_RULES_RELEASE_TAG_PREFIX_V1.length)
+  const releaseVersion = tagName.slice(tagName.startsWith(CLOUD_RULES_RELEASE_TAG_PREFIX_V2) ? CLOUD_RULES_RELEASE_TAG_PREFIX_V2.length : CLOUD_RULES_RELEASE_TAG_PREFIX_V1.length)
   const version = tryParseCloudRulesStableSemVerV1(releaseVersion)
   if (!version) invalid('GENERATION_V2_CLOUD_RULES_RELEASE_INVALID')
   return Object.freeze({ tagName, releaseVersion, version })
@@ -243,11 +256,12 @@ export function selectHighestCloudRulesReleaseV1(value: unknown): CloudRulesGitH
   if (!Array.isArray(value)) invalid('GENERATION_V2_CLOUD_RULES_RELEASE_INVALID')
   let highestRaw: unknown = null
   let highestVersion: CloudRulesStableSemVerV1 | null = null
+  const channel = value.some(entry => plainObject(entry) && typeof entry.tag_name === 'string' && entry.tag_name.startsWith(CLOUD_RULES_RELEASE_TAG_PREFIX_V2) && tryParseCloudRulesStableSemVerV1(entry.tag_name.slice(CLOUD_RULES_RELEASE_TAG_PREFIX_V2.length)) && entry.draft !== true && entry.prerelease !== true && entry.published_at !== null) ? CLOUD_RULES_RELEASE_TAG_PREFIX_V2 : CLOUD_RULES_RELEASE_TAG_PREFIX_V1
   for (const entry of value) {
     if (!plainObject(entry) || typeof entry.tag_name !== 'string' ||
-        !entry.tag_name.startsWith(CLOUD_RULES_RELEASE_TAG_PREFIX_V1)) continue
+        !entry.tag_name.startsWith(channel)) continue
     const version = tryParseCloudRulesStableSemVerV1(
-      entry.tag_name.slice(CLOUD_RULES_RELEASE_TAG_PREFIX_V1.length))
+      entry.tag_name.slice(channel.length))
     if (!version || entry.draft === true || entry.prerelease === true || entry.published_at === null) continue
     if (!highestVersion || compareCloudRulesStableSemVerV1(version, highestVersion) > 0) {
       highestRaw = entry
@@ -271,6 +285,10 @@ function contentRevisionForNormalizedPacks(packs: readonly CapabilityRuleCorePac
   return `${CLOUD_RULES_CONTENT_REVISION_PREFIX_V1}${canonicalSourceFactDigestV1(packs)}`
 }
 
+function contentRevisionForNormalizedPacksV2(packs: readonly CapabilityRuleCorePackV2[]): string {
+  return `${CLOUD_RULES_CONTENT_REVISION_PREFIX_V1}${canonicalSourceFactDigestV1(packs)}`
+}
+
 export function computeCloudRulesContentRevisionV1(packs: unknown): string {
   if (!Array.isArray(packs)) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
   let ownershipSnapshot: CapabilityRuleOwnershipSnapshotV1
@@ -287,10 +305,39 @@ export function computeCloudRulesContentRevisionV1(packs: unknown): string {
   return contentRevisionForNormalizedPacks(ownershipSnapshot.packs)
 }
 
+export function computeCloudRulesContentRevisionV2(packs: unknown): string {
+  if (!Array.isArray(packs)) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+  let ownershipSnapshot: CapabilityRuleOwnershipSnapshotV2
+  try {
+    ownershipSnapshot = decodeCapabilityRuleOwnershipSnapshotV2({
+      schemaVersion: 2,
+      ownership: 'cloud',
+      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
+      packs,
+    })
+  } catch {
+    invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+  }
+  return contentRevisionForNormalizedPacksV2(ownershipSnapshot.packs)
+}
+
 function decodeCloudOwnershipSnapshot(packs: unknown): CapabilityRuleOwnershipSnapshotV1 {
   try {
     return decodeCapabilityRuleOwnershipSnapshotV1({
       schemaVersion: 1,
+      ownership: 'cloud',
+      ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
+      packs,
+    })
+  } catch {
+    invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+  }
+}
+
+function decodeCloudOwnershipSnapshotV2(packs: unknown): CapabilityRuleOwnershipSnapshotV2 {
+  try {
+    return decodeCapabilityRuleOwnershipSnapshotV2({
+      schemaVersion: 2,
       ownership: 'cloud',
       ownerId: CLOUD_RULES_OFFICIAL_OWNER_ID_V1,
       packs,
@@ -314,22 +361,30 @@ export function decodeCloudRulesReleaseDocumentV1(
   if (!plainObject(value)) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
   exactKeys(value, ['schemaVersion', 'releaseVersion', 'contentRevision', 'packs'],
     'GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
-  if (value.schemaVersion !== 1) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
   const releaseVersion = parseSemVerParts(value.releaseVersion).value
   if (expectedReleaseVersion !== undefined &&
       parseSemVerParts(expectedReleaseVersion).value !== releaseVersion) {
     invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
   }
   const contentRevision = decodeContentRevision(value.contentRevision)
-  const ownershipSnapshot = decodeCloudOwnershipSnapshot(value.packs)
-  const recomputed = contentRevisionForNormalizedPacks(ownershipSnapshot.packs)
-  if (contentRevision !== recomputed) invalid('GENERATION_V2_CLOUD_RULES_CONTENT_REVISION_INVALID')
-  return Object.freeze({
-    schemaVersion: 1,
-    releaseVersion,
-    contentRevision,
-    packs: ownershipSnapshot.packs,
-  })
+  if (value.schemaVersion === 1) {
+    const ownershipSnapshot = decodeCloudOwnershipSnapshot(value.packs)
+    if (ownershipSnapshot.packs.some(pack => pack.rules.some(rule => rule.assertion.path.startsWith('gemini.')))) {
+      invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+    }
+    if (contentRevision !== contentRevisionForNormalizedPacks(ownershipSnapshot.packs)) {
+      invalid('GENERATION_V2_CLOUD_RULES_CONTENT_REVISION_INVALID')
+    }
+    return Object.freeze({ schemaVersion: 1, releaseVersion, contentRevision,
+      packs: ownershipSnapshot.packs })
+  }
+  const ownershipSnapshot = decodeCloudOwnershipSnapshotV2(value.packs)
+  if (contentRevision !== contentRevisionForNormalizedPacksV2(ownershipSnapshot.packs)) {
+    invalid('GENERATION_V2_CLOUD_RULES_CONTENT_REVISION_INVALID')
+  }
+  return Object.freeze({ schemaVersion: 2, releaseVersion, contentRevision,
+    packs: ownershipSnapshot.packs })
 }
 
 export function validateCloudRulesReleasePublicationV1(input: Readonly<{
@@ -347,7 +402,10 @@ export function validateDecodedCloudRulesReleasePublicationV1(input: Readonly<{
   const release = input.release
   const asset = selectCloudRulesReleaseAssetV1(release)
   const document = decodeCloudRulesReleaseDocumentV1(input.document, release.releaseVersion)
-  const ownershipSnapshot = decodeCloudOwnershipSnapshot(document.packs)
+  if (document.schemaVersion !== (release.tagName.startsWith(CLOUD_RULES_RELEASE_TAG_PREFIX_V2) ? 2 : 1)) invalid('GENERATION_V2_CLOUD_RULES_DOCUMENT_INVALID')
+  const ownershipSnapshot = document.schemaVersion === 1
+    ? decodeCloudOwnershipSnapshot(document.packs)
+    : decodeCloudOwnershipSnapshotV2(document.packs)
   return Object.freeze({ document, ownershipSnapshot, release, asset })
 }
 
@@ -376,7 +434,7 @@ export function decodeCloudRulesReleaseMetadataV1(value: unknown): CloudRulesRel
     'assetId', 'assetApiUrl', 'assetBrowserDownloadUrl', 'assetSizeBytes', 'githubAssetDigest'],
   'GENERATION_V2_CLOUD_RULES_RELEASE_INVALID')
   const releaseVersion = parseSemVerParts(value.releaseVersion).value
-  if (value.tagName !== `${CLOUD_RULES_RELEASE_TAG_PREFIX_V1}${releaseVersion}` ||
+  if (typeof value.tagName !== 'string' || ![`${CLOUD_RULES_RELEASE_TAG_PREFIX_V1}${releaseVersion}`, `${CLOUD_RULES_RELEASE_TAG_PREFIX_V2}${releaseVersion}`].includes(value.tagName as string) ||
       typeof value.releaseId !== 'string' || !/^\d+$/u.test(value.releaseId) ||
       typeof value.assetId !== 'string' || !/^\d+$/u.test(value.assetId) ||
       typeof value.publishedAt !== 'string' || !Number.isFinite(Date.parse(value.publishedAt)) ||

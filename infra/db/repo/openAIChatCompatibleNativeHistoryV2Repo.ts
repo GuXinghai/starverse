@@ -1,4 +1,6 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2, portableCompatibleReasoningReplayV2 } from './portableGenerationHistoryV2'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonFromRowV2, nativeArtifactJsonMatchesV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import { createOpenAIChatCompatibleNativeArtifactV2, decodeOpenAIChatCompatibleNativeArtifactV2, type OpenAIChatCompatibleNativeArtifactV2 } from '../../../src/core/generation-v2/providers/openai-chat-compatible/nativeMessagesV2'
 import type { CompatibleRequestMessage } from '../../../src/shared/provider/openai-chat-compatible/request/messageTypes'
 import type { CompatibleHistoryReasoningReplay } from '../../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
@@ -37,6 +39,9 @@ export class OpenAIChatCompatibleNativeHistoryV2Repo {
 
   #completedTurn(context: GenerationV2AuthorityTransactionContextV2, answerRootId: string): Readonly<{ messages: readonly CompatibleRequestMessage[]; replay: CompatibleHistoryReasoningReplay | null }> {
     const row = this.db.prepare(`SELECT artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
+      artifact.operation_id AS operationId, artifact.answer_root_id AS answerRootId,
+      artifact.request_sequence AS requestSequence, artifact.artifact_kind AS artifactKind,
+      artifact.codec_version AS codecVersion,
       operation.operation_id AS operationId, operation.question_id AS questionId, questionBody.body_text AS questionBody
       FROM generation_native_artifact_v2 AS artifact
       JOIN generation_request_v2 AS request ON request.operation_id=artifact.operation_id AND request.request_sequence=artifact.request_sequence AND request.answer_root_id=artifact.answer_root_id
@@ -49,7 +54,7 @@ export class OpenAIChatCompatibleNativeHistoryV2Repo {
     if (!row || typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string' || typeof row.operationId !== 'string' ||
         typeof row.questionId !== 'string' || typeof row.questionBody !== 'string') throw new Error('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
     let artifact: OpenAIChatCompatibleNativeArtifactV2
-    try { artifact = decodeOpenAIChatCompatibleNativeArtifactV2(JSON.parse(row.artifactJson)) } catch { throw new Error('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') }
+    try { artifact = decodeOpenAIChatCompatibleNativeArtifactV2(JSON.parse(loadNativeArtifactJsonFromRowV2(this.db, row))) } catch { throw new Error('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') }
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, row.operationId)
     const current = projection.turns.at(-1); const user = artifact.messages.at(-2); const assistant = artifact.messages.at(-1)
     if (artifact.artifactHash !== row.artifactHash || current?.questionId !== row.questionId || current.answerRootId !== null || current.mode !== 'included' ||
@@ -69,14 +74,18 @@ export class OpenAIChatCompatibleNativeHistoryV2Repo {
         typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' || typeof row.questionId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_HISTORY_STATE_INVALID')
     const projection = new GenerationContextProjectionV2Repo(this.db).load(context, operationId)
     if (projection.branchId !== row.branchId) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_HISTORY_STATE_INVALID')
+    const portable = loadPortableGenerationHistoryV2(this.db, context, operationId, 'compatible') as readonly CompatibleRequestMessage[] | null
     const messages: CompatibleRequestMessage[] = []; const reasoningReplay: CompatibleHistoryReasoningReplay[] = []
     const systemBody = this.#systemBody(row.conversationId, row.questionId)
     if (systemBody !== null) messages.push(Object.freeze({ role: 'system', content: systemBody }))
+    if (portable) reasoningReplay.push(...portableCompatibleReasoningReplayV2(portable).map(entry => ({ ...entry,
+      assistantMessageIndex: messages.length + entry.assistantMessageIndex })))
+    messages.push(...(portable ?? []))
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== row.questionId || turn.mode !== 'included') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_HISTORY_STATE_INVALID')
-        messages.push(Object.freeze({ role: 'user', content: row.userBody }))
-      } else if (turn.mode === 'included') {
+        messages.push(Object.freeze({ role: 'user', content: currentGenerationQuestionWithFallbackV2(this.db, context, operationId, row.userBody) }))
+      } else if (turn.mode === 'included' && portable === null) {
         const completed = this.#completedTurn(context, turn.answerRootId); const offset = messages.length
         messages.push(...completed.messages)
         if (completed.replay) reasoningReplay.push(Object.freeze({ ...completed.replay, assistantMessageIndex: offset + 1 }))
@@ -109,12 +118,19 @@ export class OpenAIChatCompatibleNativeHistoryV2Repo {
         hasCompleteToolChain: input.assistantReasoning.hasCompleteToolChain })] : []),
     ] })
     const artifactJson = stableSerializeProviderRequestV2(artifact)
+    const key = { operationId: input.request.operationId, answerRootId: input.request.answerRootId,
+      requestSequence: input.request.requestSequence, artifactKind: ARTIFACT_KIND }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.db.prepare('SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2 WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?')
       .get(input.request.answerRootId, input.request.requestSequence, ARTIFACT_KIND) as Record<string, unknown> | undefined
-    if (existing) { if (existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_HISTORY_CONFLICT'); return artifact }
+    if (existing) { if (!nativeArtifactJsonMatchesV2(this.db, key, existing.artifactJson as string, {
+      artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: existing.artifactHash as string,
+    }, artifactJson) ||
+      existing.artifactHash !== artifact.artifactHash) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_HISTORY_CONFLICT'); return artifact }
+    const storedJson = storeNativeArtifactJsonV2(this.db, key, artifactJson, envelope)
     this.db.prepare(`INSERT INTO generation_native_artifact_v2 (answer_root_id, request_sequence, operation_id, artifact_kind, codec_version, artifact_json, artifact_hash, created_at_ms, completion_scope)
       VALUES (?, ?, ?, ?, 2, ?, ?, ?, 'operation_terminal')`).run(input.request.answerRootId, input.request.requestSequence, input.request.operationId,
-      ARTIFACT_KIND, artifactJson, artifact.artifactHash, input.createdAtMs)
+      ARTIFACT_KIND, storedJson, artifact.artifactHash, input.createdAtMs)
     return artifact
   }
 }

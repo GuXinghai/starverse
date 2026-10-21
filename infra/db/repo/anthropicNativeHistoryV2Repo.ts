@@ -1,4 +1,7 @@
+import { loadPortableGenerationHistoryV2, currentGenerationQuestionWithFallbackV2 } from './portableGenerationHistoryV2'
+import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonFromRowV2, loadNativeArtifactJsonV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import {
   ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1,
   ANTHROPIC_NATIVE_HISTORY_CODEC_VERSION_V1,
@@ -175,6 +178,8 @@ export class AnthropicNativeHistoryV2Repo {
     messages: readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[]
     attachments: HistoricalTurnAttachmentReplayV2 | null
   }> {
+    const interrupted = new GenerationInterruptedReplayV2Repo(this.#db).load(context, answerRootId, 'anthropic')
+    if (interrupted !== null) return { messages: interrupted as readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[], attachments: null }
     const final = this.loadCompletedAnswerArtifact(context, answerRootId)
     const operation = this.#loadOperationIdentity(final.operationId.value)
     if (operation.answerRootId !== answerRootId || operation.questionId !== final.questionId.value) {
@@ -235,15 +240,16 @@ export class AnthropicNativeHistoryV2Repo {
     }
 
     const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
-    const messages: (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[] = []
+    const portable = loadPortableGenerationHistoryV2(this.#db, context, operationId.value, 'anthropic') as readonly (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[] | null
+    const messages: (AnthropicMessagesRequestMessageV1 | AnthropicToolResultMessageV1)[] = [...(portable ?? [])]
     const historicalTurnAttachments: HistoricalTurnAttachmentReplayV2[] = []
     for (const turn of projection.turns) {
       if (turn.answerRootId === null) {
         if (turn.questionId !== operation.questionId || turn.mode !== 'included') {
           return fail('GENERATION_V2_ANTHROPIC_HISTORY_INTEGRITY_INVALID')
         }
-        messages.push(Object.freeze({ role: 'user' as const, content: operation.questionBody }))
-      } else if (turn.mode === 'included') {
+        messages.push(Object.freeze({ role: 'user' as const, content: currentGenerationQuestionWithFallbackV2(this.#db, context, operationId.value, operation.questionBody) }))
+      } else if (turn.mode === 'included' && portable === null) {
         const completed = this.#completeTurnMessages(context, turn.answerRootId, messages.length)
         if (completed.attachments) historicalTurnAttachments.push(completed.attachments)
         messages.push(...completed.messages)
@@ -477,7 +483,10 @@ export class AnthropicNativeHistoryV2Repo {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
     }
 
-    const artifactJson = serializeAnthropicNativeHistoryArtifactV1(artifact)
+    const codecJson = serializeAnthropicNativeHistoryArtifactV1(artifact)
+    const key = { operationId: request.operationId, answerRootId: request.answerRootId,
+      requestSequence: request.requestSequence, artifactKind: artifact.artifactKind }
+    const envelope = { artifactCodecVersion: artifact.artifactCodecVersion, artifactHash: artifact.artifactHash }
     const existing = this.#db.prepare(`SELECT operation_id AS operationId,
       codec_version AS codecVersion, artifact_json AS artifactJson, artifact_hash AS artifactHash,
       completion_scope AS completionScope
@@ -486,14 +495,24 @@ export class AnthropicNativeHistoryV2Repo {
       request.answerRootId, request.requestSequence, ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1,
     ) as Readonly<Record<string, unknown>> | undefined
     if (existing) {
+      let existingCodecJson: string
+      try {
+        existingCodecJson = loadNativeArtifactJsonV2(this.#db, key, existing.artifactJson as string, {
+          artifactCodecVersion: existing.codecVersion as number,
+          artifactHash: existing.artifactHash as string,
+        })
+      } catch {
+        fail('GENERATION_V2_ANTHROPIC_HISTORY_CONFLICT')
+      }
       if (existing.operationId !== request.operationId ||
-          existing.codecVersion !== artifact.artifactCodecVersion ||
-          existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash ||
+          existing.codecVersion !== artifact.artifactCodecVersion || existingCodecJson !== codecJson ||
+          existing.artifactHash !== artifact.artifactHash ||
           existing.completionScope !== 'request_terminal') {
         fail('GENERATION_V2_ANTHROPIC_HISTORY_CONFLICT')
       }
       return
     }
+    const artifactJson = storeNativeArtifactJsonV2(this.#db, key, codecJson, envelope)
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
       artifact_json, artifact_hash, created_at_ms, completion_scope
@@ -551,7 +570,7 @@ export class AnthropicNativeHistoryV2Repo {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
     }
     let artifact: AnthropicNativeHistoryArtifactV1
-    try { artifact = deserializeAnthropicNativeHistoryArtifactV1(row.artifactJson) } catch {
+    try { artifact = deserializeAnthropicNativeHistoryArtifactV1(loadNativeArtifactJsonFromRowV2(this.#db, row)) } catch {
       return fail('GENERATION_V2_ANTHROPIC_HISTORY_INTEGRITY_INVALID')
     }
     if (artifact.artifactHash !== row.artifactHash) {
@@ -649,7 +668,7 @@ export class AnthropicNativeHistoryV2Repo {
         row.messageRole !== 'assistant' || row.messageQuestionId !== row.questionId ||
         row.messageAnswerRootId !== answerRootId) fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
     let artifact: AnthropicNativeHistoryArtifactV1
-    try { artifact = deserializeAnthropicNativeHistoryArtifactV1(row.artifactJson) } catch {
+    try { artifact = deserializeAnthropicNativeHistoryArtifactV1(loadNativeArtifactJsonFromRowV2(this.#db, row)) } catch {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_INTEGRITY_INVALID')
     }
     if (artifact.artifactHash !== row.artifactHash || !statusIsAllowed(row.operationState, row.messageStatus, artifact, allowActive)) {

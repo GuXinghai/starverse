@@ -1,5 +1,6 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 
 export type OllamaNativeToolCallV1 = Readonly<{ function: Readonly<{ name: string; arguments: Readonly<Record<string, unknown>> }> }>
 export type OllamaNativeChatMessageV1 = Readonly<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string;
@@ -9,7 +10,7 @@ export type OllamaNativeChatArtifactV1 = Readonly<{ artifactCodecVersion: 1; art
 
 function jsonObject(value: unknown): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) throw new Error('GENERATION_V2_OLLAMA_HISTORY_INVALID')
-  return Object.freeze(JSON.parse(stableSerializeProviderRequestBoundedV2(value, 1024 * 1024)) as Record<string, unknown>)
+  return Object.freeze(JSON.parse(stableSerializeProviderRequestBoundedV2(value, GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1)) as Record<string, unknown>)
 }
 function message(value: unknown): OllamaNativeChatMessageV1 {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) throw new Error('GENERATION_V2_OLLAMA_HISTORY_INVALID')
@@ -29,7 +30,7 @@ function message(value: unknown): OllamaNativeChatMessageV1 {
 export function createOllamaNativeChatArtifactV1(messagesValue: readonly OllamaNativeChatMessageV1[]): OllamaNativeChatArtifactV1 {
   if (!Array.isArray(messagesValue) || messagesValue.length === 0 || messagesValue.length > 4096) throw new Error('GENERATION_V2_OLLAMA_HISTORY_INVALID')
   const messages = Object.freeze(messagesValue.map(message)); const payload = { artifactCodecVersion: 1 as const, artifactKind: 'ollama_chat_native_messages' as const, messages }
-  const canonical = stableSerializeProviderRequestBoundedV2(payload, 20 * 1024 * 1024)
+  const canonical = stableSerializeProviderRequestBoundedV2(payload, GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1)
   return Object.freeze({ ...payload, artifactHash: sha256Hex(canonical) })
 }
 export function decodeOllamaNativeChatArtifactV1(value: unknown): OllamaNativeChatArtifactV1 {

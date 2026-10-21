@@ -124,6 +124,82 @@ function resolvedFromSources(input: Readonly<{
 }
 
 describe('Goal 3 model facts runtime projection V1', () => {
+  it('projects canonical panoramic ratios to the image preset without changing source facts', () => {
+    const resolvedFacts = resolvedFromSources({ capabilityRules: {
+      path: 'image.generation.aspectRatios',
+      value: { kind: 'aspect_ratio_set', values: [{ width: 21, height: 9 }, { width: 16, height: 9 }], completeness: 'complete' },
+    } })
+    expect(resolvedFacts.fields.find(field => field.path === 'image.generation.aspectRatios')?.selectedValue)
+      .toMatchObject({ values: [{ width: 7, height: 3 }, { width: 16, height: 9 }] })
+    const before = JSON.stringify(resolvedFacts)
+    const definition = readReviewedGeminiInteractionsDefinitionV2()
+    const imageBinding = decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(binding),
+      providerId: 'google_ai_studio', protocolContractId: definition.protocolContractId.value,
+      contractRevision: definition.contractRevision.value, contractDefinitionDigest: definition.definitionDigest.value,
+      registryRevision: definition.registryRevision.value, operation: 'image_generate' })
+    const projected = projectResolvedModelFactsToRuntimeV2({ binding: imageBinding, resolvedFacts })
+    expect(projected.fields.find(field => field.path === 'image.aspectRatio')?.domain)
+      .toEqual({ kind: 'enum', values: ['16:9', '21:9'] })
+    expect(JSON.stringify(resolvedFacts)).toBe(before)
+  })
+
+  it('keeps image options scoped to image generation and Budget available to tool continuation', () => {
+    const resolvedFacts = facts(
+      resolvedField('image.generation.aspectRatios', { kind: 'aspect_ratio_set', values: [{ width: 1, height: 1 }], completeness: 'complete' }),
+      resolvedField('image.generation.resolutionPresets.nativeValues', { kind: 'native_string_set', values: ['1K'], completeness: 'complete' }),
+      resolvedField('sampling.topK.support', { kind: 'support', value: 'supported' }),
+      resolvedField('sampling.topK.providerDefault', { kind: 'integer', value: 64 }),
+      resolvedField('gemini.generateContent.text.thinkingBudget.domain', { kind: 'integer_domain', interval: { min: 128, max: 32768, minInclusive: true, maxInclusive: true }, includedValues: [-1], completeness: 'complete' }),
+    )
+    const before = JSON.stringify(resolvedFacts)
+    const native = decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(binding), providerId: 'google_ai_studio', protocolContractId: 'gemini-generate-content-v1beta', contractRevision: `gemini-generate-content-v1beta:${'a'.repeat(64)}` })
+    for (const operation of ['text', 'tool_continue'] as const) {
+      const runtime = projectResolvedModelFactsToRuntimeV2({ resolvedFacts, binding: decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(native), operation }) })
+      expect(runtime.fields.find(field => field.path === 'image.aspectRatio')?.state).toBe('unknown')
+      expect(runtime.fields.find(field => field.path === 'image.resolution')?.state).toBe('unknown')
+      expect(runtime.fields.find(field => field.path === 'generation.topK')?.state).toBe('supported')
+      expect(runtime.fields.find(field => field.path === 'providerExtension.thinkingBudget')?.domain).toMatchObject({ includedValues: [-1] })
+    }
+    const image = projectResolvedModelFactsToRuntimeV2({ resolvedFacts, binding: decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(native), protocolContractId: 'gemini-interactions-v1beta', contractRevision: `gemini-interactions-v1beta:${'a'.repeat(64)}`, operation: 'image_generate' }) })
+    expect(image.fields.find(field => field.path === 'image.aspectRatio')?.state).toBe('supported')
+    expect(image.fields.find(field => field.path === 'image.resolution')?.state).toBe('supported')
+    expect(image.fields.find(field => field.path === 'generation.topK')?.state).toBe('unknown')
+    expect(JSON.stringify(resolvedFacts)).toBe(before)
+  })
+
+  it('projects exact API-scoped Budget unions and required-on behavior without leaking into Interactions', () => {
+    const resolvedFacts = facts(
+      resolvedField('gemini.generateContent.text.thinkingBudget.domain', { kind: 'integer_domain', interval: { min: 128, max: 32768, minInclusive: true, maxInclusive: true }, includedValues: [-1], completeness: 'complete' }),
+      resolvedField('gemini.generateContent.text.thinkingBudget.providerDefault', { kind: 'integer', value: -1 }),
+      resolvedField('gemini.generateContent.text.thinking.required', { kind: 'boolean', value: true }),
+      resolvedField('gemini.interactions.imageGenerate.thinkingLevel.nativeValues', { kind: 'native_string_set', values: ['minimal', 'high'], completeness: 'complete' }),
+    )
+    const native = decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(binding), providerId: 'google_ai_studio', protocolContractId: 'gemini-generate-content-v1beta', contractRevision: `gemini-generate-content-v1beta:${'a'.repeat(64)}` })
+    const runtime = projectResolvedModelFactsToRuntimeV2({ resolvedFacts, binding: native })
+    expect(runtime.fields.find(field => field.path === 'providerExtension.thinkingBudget')).toMatchObject({ state: 'supported', domain: { min: 128, max: 32768, includedValues: [-1] }, defaultValue: -1 })
+    expect(runtime.fields.find(field => field.path === 'reasoning.mode')).toMatchObject({ domain: { values: ['enabled'] }, defaultValue: 'enabled' })
+    expect(runtime.fields.find(field => field.path === 'providerExtension.thinkingLevel')?.state).toBe('unknown')
+    const image = projectResolvedModelFactsToRuntimeV2({ resolvedFacts, binding: decodeProviderBindingRecordV2({ ...projectDecodedProviderBindingRecordV2(native), protocolContractId: 'gemini-interactions-v1beta', contractRevision: `gemini-interactions-v1beta:${'a'.repeat(64)}`, operation: 'image_generate' }) })
+    expect(image.fields.find(field => field.path === 'providerExtension.thinkingBudget')?.state).toBe('unknown')
+    expect(image.fields.find(field => field.path === 'providerExtension.thinkingLevel')).toMatchObject({ domain: { values: ['high', 'minimal'] } })
+  })
+  it.each([
+    ['google_ai_studio', 'gemini-generate-content-v1beta', 'unknown'],
+    ['openai_responses', 'openai-responses-v1', 'unknown'],
+    ['deepseek', 'deepseek-stable-chat-v1', 'unknown'],
+    ['openrouter', 'openrouter-chat-completions-v1', 'supported'],
+  ])('keeps structured-output facts separate from %s response-format encoding', (providerId, protocolContractId, state) => {
+    const resolvedFacts = facts(resolvedField('structuredOutput.support', { kind: 'support', value: 'supported' }))
+    const before = JSON.stringify(resolvedFacts)
+    const runtime = projectResolvedModelFactsToRuntimeV2({ resolvedFacts, binding: decodeProviderBindingRecordV2({
+      ...projectDecodedProviderBindingRecordV2(binding), providerId, protocolContractId,
+      contractRevision: `${protocolContractId}:${'a'.repeat(64)}`,
+    }) })
+    expect(runtime.fields.find(field => field.path === 'providerExtension.responseFormat')?.state).toBe(state)
+    expect(runtime.capabilityRevision).toBe(resolvedFacts.capabilityRevision)
+    expect(JSON.stringify(resolvedFacts)).toBe(before)
+  })
+
   it('uses web support for text search types while preserving image-operation source and presentation parity', () => {
     const definition=readReviewedGeminiInteractionsDefinitionV2()
     const imageBinding=decodeProviderBindingRecordV2({...projectDecodedProviderBindingRecordV2(binding),providerId:'google_ai_studio',

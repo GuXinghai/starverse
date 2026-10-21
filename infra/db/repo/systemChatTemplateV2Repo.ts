@@ -9,6 +9,7 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
 import { ComposerDraftV2Repo, type ComposerDraftAttachmentV2 } from './composerDraftV2Repo'
+import { defaultConversationTitleV2 } from './defaultConversationTitleV2'
 
 const EMPTY_CONFIG_JSON = '{"schemaVersion":2}'
 const EMPTY_CONFIG_HASH = 'bafebd36189ad3688b7b3915ea55d461e0bfcfbdde11e54b0a123999fb6be50f'
@@ -211,6 +212,10 @@ export class SystemChatTemplateV2Repo {
       WHERE conversation_id=? AND branch_id=? AND template_revision=?`).run(
       input.conversationId, input.branchId, row.template_revision,
     ).changes !== 1) throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_REVISION_CONFLICT')
+    if (typeof row.title !== 'string' || !row.title.trim()) {
+      this.db.prepare('UPDATE conversation_v2 SET title=? WHERE conversation_id=?')
+        .run(defaultConversationTitleV2(at), input.conversationId)
+    }
     this.insertTemplate({ projectId: row.project_id, conversationId: nextConversationId,
       branchId: nextBranchId, createdAtMs: at, revision: (row.template_revision as number) + 1, metaJson })
     if (preserve) {

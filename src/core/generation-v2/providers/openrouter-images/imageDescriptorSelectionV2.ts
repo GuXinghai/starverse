@@ -58,26 +58,35 @@ export const OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2 = Object.freeze([
 export const OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2 = Object.freeze([
   'schemaVersion',
 ] as const satisfies readonly (keyof GenerationIntentLayerV2)[])
+export const OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2 = Object.freeze([
+  'requestedParameters',
+] as const satisfies readonly (keyof GenerationIntentLayerV2)[])
 const SAMPLING_KEYS = [
   'maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount',
   'frequencyPenalty', 'presencePenalty', 'repetitionPenalty',
 ] as const satisfies readonly (keyof SamplingIntentV2)[]
 const IMAGE_KEYS = [
   'mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
+  'toolModel', 'action', 'toolChoice', 'partialImages', 'inputFidelity', 'moderation', 'maskAsset',
 ] as const satisfies readonly (keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>)[]
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openrouter_chat', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openrouter_chat', 'openai_responses', 'anthropic_messages', 'gemini_generate_content', 'gemini_interactions'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 type DeclaredTopLevelKey = typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number] |
-  typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number]
+  typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number] |
+  typeof OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2[number]
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never ? true : never = true
 const imageKeysAreExhaustive: Exclude<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, typeof IMAGE_KEYS[number]> extends never ? true : never = true
 const topLevelKeysAreExhaustive: Exclude<keyof GenerationIntentLayerV2, DeclaredTopLevelKey> extends never ? true : never = true
 const topLevelKeysAreKnown: Exclude<DeclaredTopLevelKey, keyof GenerationIntentLayerV2> extends never ? true : never = true
 const topLevelGroupsDoNotOverlap: Extract<
   typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number],
-  typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number]
+  typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number] | typeof OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2[number]
+> extends never ? true : never = true
+const rawOnlyTopLevelKeysDoNotOverlapSemantic: Extract<
+  typeof OPENROUTER_IMAGE_RAW_ONLY_INTENT_KEYS_V2[number],
+  typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number]
 > extends never ? true : never = true
 const reasoningModesAreExhaustive: Exclude<ReasoningIntentV2['mode'], typeof REASONING_MODES[number]> extends never ? true : never = true
 const webModesAreExhaustive: Exclude<WebSearchIntentV2['mode'], typeof WEB_MODES[number]> extends never ? true : never = true
@@ -88,6 +97,7 @@ void imageKeysAreExhaustive
 void topLevelKeysAreExhaustive
 void topLevelKeysAreKnown
 void topLevelGroupsDoNotOverlap
+void rawOnlyTopLevelKeysDoNotOverlapSemantic
 void reasoningModesAreExhaustive
 void webModesAreExhaustive
 void toolModesAreExhaustive
@@ -180,8 +190,13 @@ export function resolveOpenRouterImageSelectionInputV2(
     reject('image.mode', 'MISSING_REQUIRED_IMAGE_INTENT')
   } else {
     acceptNoWire('image.mode')
+    for (const key of ['toolModel', 'action', 'toolChoice', 'partialImages', 'inputFidelity', 'moderation', 'maskAsset'] as const) {
+      if (image[key] !== undefined) reject(`image.${key}`, 'DESCRIPTOR_VALUE_UNSUPPORTED')
+    }
     const aspectRatio = image.aspectRatio ? readImageAspectRatioV2(image.aspectRatio) : undefined
-    if (image.size && (image.resolution !== undefined || aspectRatio !== undefined)) {
+    if (image.size === 'auto') {
+      reject('image.size', 'SIZE_COMBINATION_UNRESOLVED', 'size')
+    } else if (image.size && (image.resolution !== undefined || aspectRatio !== undefined)) {
       reject('image.size', 'SIZE_COMBINATION_UNRESOLVED', 'size')
     } else if (image.size) {
       encode('image.size', 'size', `${image.size.width}x${image.size.height}`)

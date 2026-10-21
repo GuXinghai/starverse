@@ -44,6 +44,26 @@ export function isOpenRouterImageSingleResultV1(value: unknown): value is OpenRo
   return Boolean(value && typeof value === 'object' && results.has(value))
 }
 
+/** Re-issues a parsed image result after bounded receipt decoding. */
+export function restoreOpenRouterImageSingleResultV1(value: unknown): OpenRouterImageSingleResultV1 {
+  const input = closedObject(value)
+  exactKeys(input, ['bytes', 'mime', 'createdAtMs', 'usage'])
+  if (!(input.bytes instanceof Uint8Array) || Object.prototype.toString.call(input.bytes) !== '[object Uint8Array]' ||
+      input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_IMAGE_BYTES ||
+      !Number.isSafeInteger(input.createdAtMs) || (input.createdAtMs as number) < 0 ||
+      (input.createdAtMs as number) % 1_000 !== 0) {
+    return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_EVENT')
+  }
+  const result = Object.freeze({
+    bytes: input.bytes.slice(),
+    mime: readMime(input.mime),
+    createdAtMs: input.createdAtMs as number,
+    usage: readUsage(input.usage),
+  })
+  results.add(result)
+  return result
+}
+
 export class OpenRouterImageStreamV1Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_SSE'

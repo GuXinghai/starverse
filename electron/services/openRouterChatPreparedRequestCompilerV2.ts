@@ -63,7 +63,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
       operation.operationId.value !== input.history.operationId.value || operation.targetAnswerId.value !== input.history.answerRootId.value ||
       !Number.isSafeInteger(input.history.requestSequence) || input.history.requestSequence < 1) {
@@ -146,7 +146,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       for (let attachmentIndex = 0; attachmentIndex < intent.attachments.length; attachmentIndex += 1) {
         const attachment = intent.attachments[attachmentIndex]
         for (const field of ['assetId', 'assetRevisionId', 'assetSha256', 'include', 'sendAs', 'conversion']) {
-          ledger.push(attachment.include ? consumed(`attachments[${attachmentIndex}].${field}`, 'messages[].content', route.contract.protocolContractId.value)
+          ledger.push(attachment.include ? structural(`attachments[${attachmentIndex}].${field}`, 'messages[].content', route.contract.protocolContractId.value)
             : accepted(`attachments[${attachmentIndex}].${field}`, route.contract.protocolContractId.value))
         }
         if (!attachment.include) continue
@@ -156,7 +156,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
         const part = input.attachmentRepo.withSynchronousSnapshotReferenceAuthority(input.context, attachment, (authority) => {
           const bytes = input.attachmentBlobStore!.readRevisionBytes(authority.revision)
           try {
-            if (attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' &&
+            if (attachment.sendAs === 'inline_text' && ['none', 'plain_text'].includes(attachment.conversion) &&
                 authority.revision.assetKind === 'file' && authority.revision.blob.mime.startsWith('text/')) {
               let text: string
               try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
@@ -222,8 +222,8 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') {
       throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
     }
-    ledger.push(consumed('web.mode', 'tools[].type', route.contract.protocolContractId.value))
-    ledger.push(consumed('web.types', 'tools[].type', route.contract.protocolContractId.value))
+    ledger.push(structural('web.mode', 'tools[].type', route.contract.protocolContractId.value))
+    ledger.push(structural('web.types', 'tools[].type', route.contract.protocolContractId.value))
     const webFieldMap = Object.freeze({
       engine: 'tools[].parameters.engine',
       maxResults: 'tools[].parameters.max_results',
@@ -252,7 +252,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
         ...(tool.function.parameters === undefined ? {} : { parameters: tool.function.parameters }) }),
     })))
     ledger.push(accepted('tools.mode', route.contract.protocolContractId.value))
-    ledger.push(consumed('tools.allowedToolIds', 'tools', route.contract.protocolContractId.value))
+    ledger.push(structural('tools.allowedToolIds', 'tools', route.contract.protocolContractId.value))
     ledger.push(accepted('tools.sideEffectConfirmation', route.contract.protocolContractId.value))
     const toolChoicePolicy = toolPolicy.toolChoice
     if (toolChoicePolicy.mode === 'omitted') ledger.push(accepted('tools.toolChoice', route.contract.protocolContractId.value))
@@ -266,7 +266,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       toolChoice = toolChoicePolicy.mode === 'named'
         ? { type: 'function', function: { name: named!.function.name } }
         : toolChoicePolicy.mode
-      ledger.push(consumed('tools.toolChoice', 'tool_choice', route.contract.protocolContractId.value))
+      ledger.push(structural('tools.toolChoice', 'tool_choice', route.contract.protocolContractId.value))
     }
   }
   const openRouterExtension = intent.providerExtension.kind === 'openrouter_chat' ? intent.providerExtension : null
@@ -291,7 +291,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
   ledger.push(accepted('providerExtension.kind', route.contract.protocolContractId.value))
   if (verbosity !== undefined) ledger.push(consumed('providerExtension.verbosity', 'verbosity', route.contract.protocolContractId.value))
   if (parallelToolCalls !== undefined) ledger.push(consumed('providerExtension.parallelToolCalls', 'parallel_tool_calls', route.contract.protocolContractId.value))
-  if (responseFormat !== undefined) ledger.push(consumed('providerExtension.responseFormat', 'response_format', route.contract.protocolContractId.value))
+  if (responseFormat !== undefined) ledger.push(structural('providerExtension.responseFormat', 'response_format', route.contract.protocolContractId.value))
   const compilation = compileOpenRouterChatRequestV1({
     model: binding.modelId.value,
     messages,
@@ -311,7 +311,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       ...(intent.web.allowedDomains === undefined ? {} : { allowedDomains: intent.web.allowedDomains }),
       ...(intent.web.excludedDomains === undefined ? {} : { excludedDomains: intent.web.excludedDomains }),
     } } : {}),
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: input.history.requestSequence, providerId: binding.providerId.value,
@@ -319,7 +319,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     contractId: binding.protocolContractId.value, modelId: binding.modelId.value,
     effectiveEndpointId: descriptor.endpointId.value, endpoint: route.url,
     headersPlan: createBearerAuthorizationHeaderPlanV2(), body: compilation.preparedBody,
-    ledger: createSemanticConsumptionLedgerV2(ledger), capabilityRevision: capability.revision.value,
+    ledger: createSemanticConsumptionLedgerV2(ledger), requestPlan: snapshot.requestPlan, identitySemanticSource: snapshot.semanticIntent, capabilityRevision: capability.revision.value,
     encoderRevision: capability.encoderRevision,
     attachmentRequirements, attachmentEncodingProofs,
     snapshotHash: snapshot.snapshotHash.value,

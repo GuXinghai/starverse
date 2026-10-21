@@ -2,9 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   buildOpenRouterProjectedNativeRequestHistoryV1,
   completeOpenRouterProjectedNativeHistoryV1,
+  decodeOpenRouterNativeMessageV1,
 } from '../../../../core/generation-v2/providers/openrouter/nativeMessagesV1'
 
 describe('OpenRouter selected native history projection V1', () => {
+  it('strictly canonicalizes a single native message without requiring conversation history', () => {
+    expect(decodeOpenRouterNativeMessageV1({ role: 'assistant', content: 'answer', tool_calls: [] }))
+      .toEqual({ role: 'assistant', content: 'answer', tool_calls: [] })
+    expect(() => decodeOpenRouterNativeMessageV1({ content: 'missing role' })).toThrow()
+  })
+
   it('preserves a complete selected tool turn and creates no hidden parent artifact', () => {
     const history = buildOpenRouterProjectedNativeRequestHistoryV1({
       replayMessages: [

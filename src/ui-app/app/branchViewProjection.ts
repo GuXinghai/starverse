@@ -166,19 +166,25 @@ export function mergePersistedMessageWithRuntimeOverlay(
 
   const persistedText = String(persisted.contentText ?? '')
   const previousText = String(previous.contentText ?? '')
+  const persistedNonTextBlocks = persisted.contentBlocks.filter((block) => block.type !== 'text')
+  const previousNonTextBlocks = previous.contentBlocks.filter((block) => block.type !== 'text' &&
+    !(block.type === 'image' && (block.assetRevisionId || persistedNonTextBlocks.some(
+      (current) => current.type === 'image' && current.url === block.url))))
   if (activeStreamTarget) {
     const preferPreviousText = previousText.length >= persistedText.length
     return {
       ...persisted,
       ...previous,
       contentText: preferPreviousText ? previousText : persistedText,
-      contentBlocks: preferPreviousText ? previous.contentBlocks : persisted.contentBlocks,
+      contentBlocks: [
+        ...(preferPreviousText ? previous : persisted).contentBlocks.filter((block) => block.type === 'text'),
+        ...persistedNonTextBlocks, ...previousNonTextBlocks,
+      ],
       errorEnvelope: persisted.errorEnvelope ?? previous.errorEnvelope,
       errorSummary: persisted.errorSummary ?? previous.errorSummary,
     }
   }
 
-  const previousNonTextBlocks = previous.contentBlocks.filter((block) => block.type !== 'text')
   return {
     ...persisted,
     contentBlocks: previousNonTextBlocks.length > 0

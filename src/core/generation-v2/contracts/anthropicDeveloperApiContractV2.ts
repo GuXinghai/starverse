@@ -1,3 +1,4 @@
+/** Frozen mixed API-surface identity input retained for legacy provider bindings. New request-body shape authority is ApiRequestBodyContractV2; endpoint/auth/version authority is EndpointTransportDefinitionV2. */
 export const ANTHROPIC_STANDARD_API_VERSION_V2 = '2023-06-01' as const
 
 export type AnthropicDeveloperApiSurfaceIdV2 =

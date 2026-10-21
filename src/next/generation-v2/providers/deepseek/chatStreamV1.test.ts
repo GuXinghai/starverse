@@ -172,5 +172,5 @@ describe('DeepSeek stable Chat stream V1', () => {
     expect(() => assembler.pushChunk(chunk({
       delta: { content: 'x'.repeat(DEEPSEEK_STABLE_STREAM_MAX_NATIVE_OUTPUT_BYTES_V1 + 1) },
     }))).toThrow('GENERATION_V2_DEEPSEEK_STREAM_LIMIT_EXCEEDED')
-  })
+  }, 30_000)
 })

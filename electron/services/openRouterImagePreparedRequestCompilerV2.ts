@@ -47,7 +47,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     )
   }
   const { operation, snapshot, capability } = input.execution
-  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent, snapshot.requestPlan)
   const binding = snapshot.providerBinding
   const selector = binding.endpointBinding.kind === 'pinned' ? binding.endpointBinding.selector : null
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
@@ -97,7 +97,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
   if (intent.image.mode !== 'generate') throw new OpenRouterImagePreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED')
   accept('image.mode')
   if (intent.image.size !== undefined) {
-    if (intent.image.resolution !== undefined || intent.image.aspectRatio !== undefined) throw new OpenRouterImagePreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED')
+    if (typeof intent.image.size !== 'object' || intent.image.resolution !== undefined || intent.image.aspectRatio !== undefined) throw new OpenRouterImagePreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED')
     encode('image.size', 'size', `${intent.image.size.width}x${intent.image.size.height}`, 'structural')
   }
   if (intent.image.aspectRatio !== undefined) {
@@ -123,7 +123,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     wireFields,
     ...(intent.image.stream === undefined ? {} : { stream: intent.image.stream }),
     inputReferences,
-  })
+  }, binding.operation, snapshot.requestPlan?.resolution?.bodySchemaRevision)
   const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = attachmentRequirements.map((requirement, index) => Object.freeze({
     semanticPath: requirement.semanticPath,
     requirement,
@@ -153,6 +153,12 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compiled.preparedBody,
     ledger,
+    requestPlan: snapshot.requestPlan,
+    identitySemanticSource: snapshot.semanticIntent,
+    identityWireAssertions: wireFields.flatMap((field) => {
+      const disposition = dispositions.find((candidate) => candidate.wireKey === field.wireKey && candidate.encodingKind === 'identity')
+      return disposition ? [{ semanticPath: disposition.semanticPath, nativeField: field.wireKey, value: field.value }] : []
+    }),
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,

@@ -1,4 +1,7 @@
 import { ImmutablePreparedBodyV2 } from '../../compiler/stableSerialize'
+import { supportsGenerationAttachmentTransportV2 } from '../../compiler/generationAttachmentTransportPolicyV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
 
 const MAX_PROMPT_UTF8_BYTES = 1 * 1024 * 1024
@@ -79,6 +82,10 @@ function closedDenseArray(value: unknown, maxLength: number, error: OpenRouterIm
 type OpenRouterImageUrlReferenceV1 = Readonly<{ type: 'image_url'; image_url: Readonly<{ url: string }> }>
 
 function readInputReferences(value: unknown, expectedCount: number): readonly OpenRouterImageUrlReferenceV1[] {
+  if (!supportsGenerationAttachmentTransportV2({ protocolContractId: 'openrouter-images-v1', operation: 'image_generate',
+    attachmentKind: 'url_reference', mediaKind: 'image' })) {
+    throw new OpenRouterImageRequestV1Error('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_CAPABILITY_MISMATCH')
+  }
   const items = closedDenseArray(value, MAX_INPUT_REFERENCES, 'GENERATION_V2_OPENROUTER_IMAGE_REQUEST_REFERENCE_INVALID')
   if (items.length !== expectedCount) {
     throw new OpenRouterImageRequestV1Error('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_REFERENCE_INVALID')
@@ -162,7 +169,7 @@ export function compileOpenRouterImageRequestV1(input: Readonly<{
   stream?: boolean
   inputReferences?: unknown
   providerOptions?: unknown
-}>): OpenRouterImageRequestV1 {
+}>, operation: ProviderContractOperationV2 = 'image_generate', bodySchemaRevision?: string): OpenRouterImageRequestV1 {
   const prompt = readPrompt(input.prompt)
   const descriptor = requirePinnedDescriptor({
     modelId: input.modelId, providerTag: input.providerTag,
@@ -199,6 +206,7 @@ export function compileOpenRouterImageRequestV1(input: Readonly<{
     }
   }
   if (input.stream !== undefined) native.stream = input.stream
+  validateApiRequestBodyV2('openrouter', operation, native, bodySchemaRevision)
   const preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(native, MAX_REQUEST_UTF8_BYTES)
   return Object.freeze({
     model: input.modelId as string,

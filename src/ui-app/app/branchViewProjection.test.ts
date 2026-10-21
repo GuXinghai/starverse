@@ -82,4 +82,18 @@ describe('branch view projection', () => {
       textVersion: 4,
     })
   })
+
+  it.each([true, false])('replaces generated revisions without duplicates while retaining other blocks (active=%s)', active => {
+    const persisted = { messageId: 'a', contentText: '', toolCalls: [], contentBlocks: [
+      { type: 'image', url: 'data:new', assetId: 'image', assetRevisionId: 'revision:new' },
+    ] } as unknown as MessageState
+    const previous = { ...persisted, contentBlocks: [
+      { type: 'image', url: 'data:old', assetId: 'image', assetRevisionId: 'revision:old' },
+      { type: 'unknown', raw: { type: 'tool-result' } },
+    ] } as MessageState
+    const merged = mergePersistedMessageWithRuntimeOverlay(persisted, previous, active)
+    expect(merged.contentBlocks).toEqual([persisted.contentBlocks[0], previous.contentBlocks[1]])
+    expect(mergePersistedMessageWithRuntimeOverlay(persisted, merged, active).contentBlocks.filter(b => b.type === 'image'))
+      .toEqual(persisted.contentBlocks)
+  })
 })

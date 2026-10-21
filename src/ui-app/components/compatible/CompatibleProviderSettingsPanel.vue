@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { createCompatibleProviderRegistryClient } from "@/next/provider/openai-chat-compatible/ui";
 import { createCompatibleCatalogClient } from "@/next/modelCatalog/compatibleCatalogClient";
+import UiIcon from "@/ui-kit/icons/UiIcon.vue";
 import { t } from "@/shared/i18n";
 
 const props = defineProps<{ disabled: boolean }>();
@@ -510,80 +511,81 @@ onMounted(load);
 
 <template>
   <section
-    class="rounded-lg border border-gray-200 bg-white p-3"
+    class="flex min-w-0 flex-col gap-4"
     data-testid="compatible-provider-settings"
   >
-    <div class="flex items-center justify-between gap-2">
-      <div>
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
         <div
-          class="text-xs font-semibold uppercase tracking-wide text-gray-600"
+          class="sv-label"
         >
           {{ t("settings.openAICompatible.title") }}
         </div>
-        <div class="mt-1 text-[11px] text-gray-500">
+        <div class="sv-meta mt-1">
           {{ t("settings.openAICompatible.description") }}
         </div>
       </div>
-      <button
-        type="button"
-        class="rounded border px-2 py-1 text-xs"
-        :disabled="props.disabled || busy"
-        @click="beginCreate"
-      >
-        {{ t("settings.openAICompatible.addInstance") }}
-      </button>
+      <div class="flex min-w-0 shrink-0 items-center gap-2">
+        <span
+          v-if="notice"
+          class="flex min-w-0 items-center gap-1 text-xs text-gray-700"
+        >
+          <UiIcon name="check" :size="14" class="shrink-0" />
+          <span class="min-w-0 break-words">{{ notice }}</span>
+        </span>
+        <button
+          type="button"
+          class="sv-btn sv-btn-sm shrink-0"
+          :disabled="props.disabled || busy"
+          @click="beginCreate"
+        >
+          <UiIcon name="plus" :size="14" />
+          {{ t("settings.openAICompatible.addInstance") }}
+        </button>
+      </div>
     </div>
-    <div v-if="error" class="mt-2 rounded bg-red-50 p-2 text-xs text-red-800">
-      {{ error }}
+    <div v-if="error" class="sv-notice sv-notice-danger" role="alert">
+      <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+      <span class="min-w-0 break-words">{{ error }}</span>
     </div>
-    <div
-      v-if="notice"
-      class="mt-2 rounded bg-green-50 p-2 text-xs text-green-800"
-    >
-      {{ notice }}
-    </div>
-    <div class="mt-3 grid gap-3 lg:grid-cols-[220px_1fr]">
-      <div class="space-y-1" data-testid="compatible-instance-list">
+    <div class="grid min-w-0 gap-x-6 gap-y-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div class="flex min-w-0 flex-col gap-0.5" data-testid="compatible-instance-list">
         <button
           v-for="item in providers"
           :key="item.provider.providerInstanceId"
           type="button"
-          class="block w-full rounded border px-2 py-2 text-left text-xs"
-          :class="
-            selectedId === item.provider.providerInstanceId
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-200'
-          "
+          class="sv-row block w-full min-w-0 px-3 py-2 text-left text-xs"
+          :class="selectedId === item.provider.providerInstanceId ? 'is-selected' : ''"
           @click="choose(item)"
         >
-          <span class="font-medium">{{ item.provider.displayName }}</span
+          <span class="font-medium text-gray-900">{{ item.provider.displayName }}</span
           ><span class="ml-1 text-gray-500">{{ item.provider.status }}</span>
         </button>
-        <div v-if="providers.length === 0" class="text-xs text-gray-500">
+        <div v-if="providers.length === 0" class="sv-meta px-3 py-2">
           {{ t("settings.openAICompatible.empty") }}
         </div>
       </div>
-      <div class="space-y-3">
-        <div class="grid gap-2 sm:grid-cols-2">
-          <label class="text-xs"
+      <div class="flex min-w-0 flex-col gap-4">
+        <div class="grid gap-x-3 gap-y-3 sm:grid-cols-2">
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.name")
             }}<input
               v-model="displayName"
               data-testid="compatible-display-name"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
-          <label class="text-xs"
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.baseUrl")
             }}<input
               v-model="baseUrl"
               data-testid="compatible-base-url"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
-          <label class="text-xs"
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.securityPolicy")
             }}<select
               v-model="securityPolicy"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-select w-full"
             >
               <option value="compatibility_first">compatibility_first</option>
               <option
@@ -597,18 +599,19 @@ onMounted(load);
           >
           <div
             v-if="securityPolicy === 'strict_ssrf'"
-            class="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+            class="sv-notice sv-notice-danger sm:col-span-2"
             role="alert"
             data-testid="compatible-strict-ssrf-unavailable"
           >
-            {{ t("settings.openAICompatible.strictSsrfSavedUnavailable") }}
+            <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+            <span class="min-w-0">{{ t("settings.openAICompatible.strictSsrfSavedUnavailable") }}</span>
           </div>
-          <label class="text-xs"
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.auth")
             }}<select
               v-model="authMode"
               data-testid="compatible-auth-mode"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-select w-full"
             >
               <option value="none">none</option>
               <option value="bearer">bearer</option>
@@ -616,75 +619,76 @@ onMounted(load);
               <option value="custom_headers">custom_headers</option>
             </select></label
           >
-          <label v-if="authMode === 'basic'" class="text-xs"
+          <label v-if="authMode === 'basic'" class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.username")
             }}<input
               v-model="username"
               autocomplete="off"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
           <label
             v-if="authMode === 'bearer' || authMode === 'basic'"
-            class="text-xs"
+            class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.secret")
             }}<input
               v-model="secret"
               type="password"
               autocomplete="new-password"
               data-testid="compatible-secret-input"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
-          <label class="text-xs"
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.organization")
             }}<input
               v-model="organization"
               data-testid="compatible-organization"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
-          <label class="text-xs"
+          <label class="flex min-w-0 flex-col gap-1 text-xs text-gray-600"
             >{{ t("settings.openAICompatible.project")
             }}<input
               v-model="project"
               data-testid="compatible-project"
-              class="mt-1 w-full rounded border px-2 py-1"
+              class="sv-input w-full"
           /></label>
         </div>
         <div
           v-if="baseUrl.startsWith('http://')"
-          class="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
+          class="sv-notice sv-notice-warning"
           data-testid="compatible-http-warning"
         >
-          {{ t("settings.openAICompatible.httpWarning") }}
+          <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+          <span class="min-w-0">{{ t("settings.openAICompatible.httpWarning") }}</span>
         </div>
-        <label class="block text-xs"
+        <label class="flex flex-col gap-1 text-xs text-gray-600"
           >{{ t("settings.openAICompatible.headers")
           }}<textarea
             v-model="ordinaryHeaders"
             rows="2"
-            class="mt-1 w-full rounded border px-2 py-1 font-mono"
+            class="sv-textarea w-full font-mono text-xs"
           />
         </label>
-        <label class="block text-xs"
+        <label class="flex flex-col gap-1 text-xs text-gray-600"
           >{{ t("settings.openAICompatible.query")
           }}<textarea
             v-model="query"
             rows="2"
-            class="mt-1 w-full rounded border px-2 py-1 font-mono"
+            class="sv-textarea w-full font-mono text-xs"
           />
         </label>
-        <label v-if="authMode === 'custom_headers'" class="block text-xs"
+        <label v-if="authMode === 'custom_headers'" class="flex flex-col gap-1 text-xs text-gray-600"
           >{{ t("settings.openAICompatible.secretHeaders")
           }}<textarea
             v-model="customSecretHeaders"
             rows="2"
-            class="mt-1 w-full rounded border px-2 py-1 font-mono"
+            class="sv-textarea w-full font-mono text-xs"
           />
         </label>
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
             data-testid="compatible-save"
-            class="rounded bg-blue-600 px-3 py-1 text-xs text-white"
+            class="sv-btn sv-btn-primary min-w-20"
             :disabled="props.disabled || busy"
             @click="() => save()"
           >
@@ -692,7 +696,7 @@ onMounted(load);
           ><button
             v-if="selected"
             type="button"
-            class="rounded border px-3 py-1 text-xs"
+            class="sv-btn"
             :disabled="busy"
             @click="testConnection"
           >
@@ -700,7 +704,7 @@ onMounted(load);
           ><button
             v-if="selected"
             type="button"
-            class="rounded border border-red-300 px-3 py-1 text-xs text-red-700"
+            class="sv-btn sv-btn-danger"
             :disabled="busy"
             @click="removeProvider"
           >
@@ -709,106 +713,113 @@ onMounted(load);
         </div>
         <div
           v-if="credentialStorageFallback"
-          class="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950"
+          class="sv-notice sv-notice-warning flex-col"
           data-testid="compatible-credential-storage-choice"
         >
-          <p>{{ t("settings.credentials.secureStorageUnavailableBody") }}</p>
-          <p v-if="plaintextPersistenceSupported" class="mt-1 font-medium">{{ t("settings.credentials.plaintextWarning") }}</p>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <button type="button" class="rounded border px-2 py-1" :disabled="busy" @click="save('session')">{{ t("settings.credentials.sessionOnly") }}</button>
-            <button v-if="plaintextPersistenceSupported" data-testid="compatible-save-plaintext" type="button" class="rounded border border-amber-700 px-2 py-1" :disabled="busy" @click="save('plaintext')">{{ t("settings.credentials.savePlaintext") }}</button>
-            <button type="button" class="rounded border px-2 py-1" :disabled="busy" @click="credentialStorageFallback = false">{{ t("common.cancel") }}</button>
+          <div class="flex items-start gap-2">
+            <UiIcon name="alert" :size="14" class="mt-0.5 shrink-0" />
+            <div class="min-w-0">
+              <p>{{ t("settings.credentials.secureStorageUnavailableBody") }}</p>
+              <p v-if="plaintextPersistenceSupported" class="mt-1 font-medium">{{ t("settings.credentials.plaintextWarning") }}</p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2 pl-5">
+            <button type="button" class="sv-btn sv-btn-sm" :disabled="busy" @click="save('session')">{{ t("settings.credentials.sessionOnly") }}</button>
+            <button v-if="plaintextPersistenceSupported" data-testid="compatible-save-plaintext" type="button" class="sv-btn sv-btn-sm sv-btn-danger" :disabled="busy" @click="save('plaintext')">{{ t("settings.credentials.savePlaintext") }}</button>
+            <button type="button" class="sv-btn sv-btn-sm" :disabled="busy" @click="credentialStorageFallback = false">{{ t("common.cancel") }}</button>
           </div>
         </div>
         <pre
           v-if="diagnostics"
-          class="max-h-32 overflow-auto rounded bg-gray-50 p-2 text-[10px]"
+          class="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--sv-sunken)] p-2 text-xs text-gray-700"
           >{{ JSON.stringify(diagnostics, null, 2) }}</pre>
-        <div v-if="selected?.credentials.length" class="rounded border p-2 text-xs" data-testid="compatible-credential-list">
-          <div class="font-semibold">Credential versions</div>
-          <div v-for="credentialItem in selected.credentials" :key="credentialItem.credentialVersionRef" class="mt-1 flex items-center gap-2">
-            <code>{{ credentialItem.credentialVersionRef }}</code>
-            <span>{{ credentialItem.maskState }}</span>
-            <span data-testid="compatible-credential-availability">{{ credentialItem.availability }}</span>
-            <span v-if="credentialItem.storageBackend" data-testid="compatible-credential-backend">{{ credentialItem.storageBackend }}</span>
-            <span v-if="credentialItem.sessionOverridesPersistent" data-testid="compatible-credential-session-override">session_override</span>
-            <code v-if="credentialItem.diagnosticCode" data-testid="compatible-credential-diagnostic">{{ credentialItem.diagnosticCode }}</code>
-            <button type="button" class="rounded border px-2 py-1" :disabled="selected.endpointRevisions[0]?.credentialVersionRef === credentialItem.credentialVersionRef || credentialItem.deletedAtMs !== null" @click="removeCredential(credentialItem.credentialVersionRef)">{{ t("common.delete") }}</button>
+        <div v-if="selected?.credentials.length" class="sv-divider-t pt-4 text-xs" data-testid="compatible-credential-list">
+          <div class="sv-label">Credential versions</div>
+          <div class="mt-2">
+          <div v-for="credentialItem in selected.credentials" :key="credentialItem.credentialVersionRef" class="sv-divider-t flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:border-t-0 first:pt-0">
+            <code class="min-w-0 break-all">{{ credentialItem.credentialVersionRef }}</code>
+            <span class="text-gray-600">{{ credentialItem.maskState }}</span>
+            <span class="text-gray-600" data-testid="compatible-credential-availability">{{ credentialItem.availability }}</span>
+            <span v-if="credentialItem.storageBackend" class="text-gray-600" data-testid="compatible-credential-backend">{{ credentialItem.storageBackend }}</span>
+            <span v-if="credentialItem.sessionOverridesPersistent" class="text-gray-600" data-testid="compatible-credential-session-override">session_override</span>
+            <code v-if="credentialItem.diagnosticCode" class="break-all text-[var(--sv-warning)]" data-testid="compatible-credential-diagnostic">{{ credentialItem.diagnosticCode }}</code>
+            <button type="button" class="sv-btn sv-btn-sm sv-btn-danger ml-auto" :disabled="selected.endpointRevisions[0]?.credentialVersionRef === credentialItem.credentialVersionRef || credentialItem.deletedAtMs !== null" @click="removeCredential(credentialItem.credentialVersionRef)">{{ t("common.delete") }}</button>
+          </div>
           </div>
         </div>
-        <div v-if="selected" class="rounded border p-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold">{{
+        <div v-if="selected" class="sv-divider-t flex flex-col gap-3 pt-4">
+          <div class="flex items-center justify-between gap-2">
+            <span class="sv-label">{{
               t("settings.openAICompatible.models")
             }}</span
             ><button
               type="button"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-btn sv-btn-sm"
               :disabled="busy"
               @click="syncModels"
             >
               {{ t("settings.openAICompatible.sync") }}
             </button>
           </div>
-          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <div class="grid gap-2 sm:grid-cols-2">
             <input
               v-model="manualModelId"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               :placeholder="t('settings.openAICompatible.manualModel')"
             /><input
               v-model="manualDisplayName"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="display name (optional)"
             /><input
               v-model="manualContextLength"
               inputmode="numeric"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="context length (unknown if empty)"
             /><input
               v-model="manualMaxOutputTokens"
               inputmode="numeric"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="max output tokens"
-            /><label class="text-[10px]"
+            /><label class="flex items-center gap-2 text-xs text-gray-600"
               >text<select
                 v-model="manualTextCapability"
-                class="ml-1 rounded border"
+                class="sv-select sv-select-sm min-w-0 flex-1"
               >
                 <option value="unknown">unknown</option>
                 <option value="yes">yes</option>
                 <option value="no">no</option>
               </select></label
-            ><label class="text-[10px]"
+            ><label class="flex items-center gap-2 text-xs text-gray-600"
               >vision<select
                 v-model="manualVisionCapability"
-                class="ml-1 rounded border"
+                class="sv-select sv-select-sm min-w-0 flex-1"
               >
                 <option value="unknown">unknown</option>
                 <option value="yes">yes</option>
                 <option value="no">no</option>
               </select></label
-            ><label class="text-[10px]"
+            ><label class="flex items-center gap-2 text-xs text-gray-600"
               >tools<select
                 v-model="manualToolsCapability"
-                class="ml-1 rounded border"
+                class="sv-select sv-select-sm min-w-0 flex-1"
               >
                 <option value="unknown">unknown</option>
                 <option value="yes">yes</option>
                 <option value="no">no</option>
               </select></label
-            ><label class="text-[10px]"
+            ><label class="flex items-center gap-2 text-xs text-gray-600"
               >structured<select
                 v-model="manualStructuredCapability"
-                class="ml-1 rounded border"
+                class="sv-select sv-select-sm min-w-0 flex-1"
               >
                 <option value="unknown">unknown</option>
                 <option value="yes">yes</option>
                 <option value="no">no</option>
               </select></label
-            ><label class="text-[10px]"
+            ><label class="flex items-center gap-2 text-xs text-gray-600"
               >reasoning<select
                 v-model="manualReasoningCapability"
-                class="ml-1 rounded border"
+                class="sv-select sv-select-sm min-w-0 flex-1"
               >
                 <option value="unknown">unknown</option>
                 <option value="yes">yes</option>
@@ -816,36 +827,36 @@ onMounted(load);
               </select></label
             ><input
               v-model="manualPromptPrice"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="prompt price"
             /><input
               v-model="manualCompletionPrice"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="completion price"
             /><input
               v-model="manualRequestPrice"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="request price"
             /><input
               v-model="manualImagePrice"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-input sv-input-sm min-w-0"
               placeholder="image price"
-            /><button
+            /><div class="flex sm:col-span-2"><button
               type="button"
               data-testid="compatible-add-manual-model"
-              class="rounded border px-2 py-1 text-xs"
+              class="sv-btn sv-btn-sm"
               @click="addManualModel"
             >
               {{ t("common.add") }}
-            </button>
+            </button></div>
           </div>
-          <ul class="mt-2 max-h-56 overflow-auto text-xs">
+          <ul class="max-h-56 overflow-auto text-xs">
             <li
               v-for="model in models"
               :key="model.modelId"
-              class="border-t py-1"
+              class="sv-divider-t py-2 first:border-t-0"
             >
-              <span class="font-mono">{{ model.modelId }}</span>
+              <span class="break-all font-mono text-gray-900">{{ model.modelId }}</span>
               <span class="text-gray-500"
                 >{{
                   model.sourcePresence.manual && model.sourcePresence.remote !== "absent"
@@ -861,85 +872,85 @@ onMounted(load);
                   model.metadata.pricing.prompt ?? "unknown"
                 }}</span
               >
-              <div v-if="model.conflictFields.length" class="text-amber-700">
+              <div v-if="model.conflictFields.length" class="text-[var(--sv-warning)]">
                 conflicts: {{ model.conflictFields.join(", ") }}
               </div>
-              <div class="text-[10px] text-gray-500">
+              <div class="sv-meta break-all">
               provenance: {{ JSON.stringify(model.metadata.fieldProvenance) }}
               </div>
-              <button v-if="model.sourcePresence.manual" type="button" class="mt-1 rounded border px-2 py-1" @click="removeManualModel(model.modelId)">{{ t("common.delete") }}</button>
+              <button v-if="model.sourcePresence.manual" type="button" class="sv-btn sv-btn-sm sv-btn-danger mt-1" @click="removeManualModel(model.modelId)">{{ t("common.delete") }}</button>
             </li>
           </ul>
         </div>
         <details
           v-if="selected?.activeConfiguration"
-          class="rounded border p-2"
+          class="sv-divider-t pt-4"
         >
-          <summary class="cursor-pointer text-xs font-semibold">
+          <summary class="cursor-pointer text-xs font-medium text-gray-900">
             {{ t("settings.openAICompatible.profiles") }}
           </summary>
-          <div class="mt-2 grid gap-2">
-            <label class="text-xs"
+          <div class="mt-3 grid gap-3">
+            <label class="flex flex-col gap-1 text-xs text-gray-600"
               >request profile<textarea
                 v-model="requestProfileJson"
                 data-testid="compatible-request-profile"
                 rows="8"
-                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+                class="sv-textarea w-full font-mono text-xs"
               /></label
-            ><label class="text-xs">extraBody<textarea
+            ><label class="flex flex-col gap-1 text-xs text-gray-600">extraBody<textarea
                 v-model="extraBodyJson"
                 data-testid="compatible-extra-body"
                 rows="6"
-                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+                class="sv-textarea w-full font-mono text-xs"
               /></label
-            ><div class="rounded border bg-gray-50 p-2 text-xs" data-testid="compatible-request-reasoning-preset">
-              <label>request reasoning preset
-                <select v-model="requestReasoningPreset" class="ml-2 rounded border px-2 py-1" @change="applyRequestReasoningPreset">
+            ><div class="text-xs text-gray-600" data-testid="compatible-request-reasoning-preset">
+              <label class="flex flex-wrap items-center gap-2">request reasoning preset
+                <select v-model="requestReasoningPreset" class="sv-select sv-select-sm" @change="applyRequestReasoningPreset">
                   <option value="disabled">disabled</option>
                   <option value="openai_reasoning_effort">openai_reasoning_effort</option>
                   <option value="chat_template_enable_thinking">chat_template_enable_thinking</option>
                   <option value="custom">custom</option>
                 </select>
               </label>
-              <div class="mt-1 text-[10px] text-gray-600">Presets are explicit and never selected from the endpoint URL, model name, response, or failure.</div>
-            </div><div class="rounded border bg-gray-50 p-2 text-xs" data-testid="compatible-reasoning-mode-controls">
-              <label>reasoning mode
-                <select v-model="reasoningMode" data-testid="compatible-reasoning-mode" class="ml-2 rounded border px-2 py-1">
+              <div class="sv-meta mt-1">Presets are explicit and never selected from the endpoint URL, model name, response, or failure.</div>
+            </div><div class="text-xs text-gray-600" data-testid="compatible-reasoning-mode-controls">
+              <label class="flex flex-wrap items-center gap-2">reasoning mode
+                <select v-model="reasoningMode" data-testid="compatible-reasoning-mode" class="sv-select sv-select-sm">
                   <option value="custom_preferred_with_builtin_fallback">custom preferred, then built-in</option>
                   <option value="custom_only">custom only</option>
                 </select>
               </label>
-              <div class="mt-1 text-[10px] text-gray-600">The first valid source is locked per choice and never switches during that response.</div>
-              <ol class="mt-2 space-y-1">
-                <li v-for="(rule, index) in orderedReasoningRules()" :key="`${rule.stream?.path}:${index}`" class="flex items-center gap-1 rounded bg-white p-1">
+              <div class="sv-meta mt-1">The first valid source is locked per choice and never switches during that response.</div>
+              <ol class="mt-2 flex flex-col">
+                <li v-for="(rule, index) in orderedReasoningRules()" :key="`${rule.stream?.path}:${index}`" class="sv-divider-t flex items-center gap-1 py-1 first:border-t-0">
                   <code class="min-w-0 flex-1 truncate">{{ index + 1 }}. {{ rule.stream?.path }}</code>
-                  <button type="button" :disabled="index === 0" @click="moveReasoningRule(index, -1)">↑</button>
-                  <button type="button" :disabled="index === orderedReasoningRules().length - 1" @click="moveReasoningRule(index, 1)">↓</button>
-                  <button type="button" @click="removeReasoningRule(index)">×</button>
+                  <button type="button" class="sv-icon-btn" aria-label="Move up" title="Move up" :disabled="index === 0" @click="moveReasoningRule(index, -1)"><UiIcon name="up" :size="14" /></button>
+                  <button type="button" class="sv-icon-btn" aria-label="Move down" title="Move down" :disabled="index === orderedReasoningRules().length - 1" @click="moveReasoningRule(index, 1)"><UiIcon name="down" :size="14" /></button>
+                  <button type="button" class="sv-icon-btn" aria-label="Remove" title="Remove" @click="removeReasoningRule(index)"><UiIcon name="close" :size="14" /></button>
                 </li>
               </ol>
-            </div><label class="text-xs"
+            </div><label class="flex flex-col gap-1 text-xs text-gray-600"
               >request mappings<textarea
                 v-model="requestMappingsJson"
                 rows="8"
-                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+                class="sv-textarea w-full font-mono text-xs"
               /></label
-            ><label class="text-xs"
+            ><label class="flex flex-col gap-1 text-xs text-gray-600"
               >reasoning mapping<textarea
                 v-model="reasoningMappingJson"
                 rows="8"
-                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+                class="sv-textarea w-full font-mono text-xs"
               /></label
-            ><label class="text-xs"
+            ><label class="flex flex-col gap-1 text-xs text-gray-600"
               >inline policy<textarea
                 v-model="inlinePolicyJson"
                 rows="8"
-                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+                class="sv-textarea w-full font-mono text-xs"
               /></label
             ><button
               type="button"
               data-testid="compatible-save-profiles"
-              class="justify-self-start rounded border px-3 py-1 text-xs"
+              class="sv-btn justify-self-start"
               :disabled="busy || props.disabled"
               @click="saveProfiles()"
             >
@@ -949,18 +960,19 @@ onMounted(load);
         </details>
         <div
           v-if="selected && discovery.length"
-          class="rounded border p-2"
+          class="sv-divider-t pt-4"
           data-testid="compatible-discovery"
         >
-          <div class="text-xs font-semibold">
+          <div class="sv-label">
             {{ t("settings.openAICompatible.discovery") }}
           </div>
+          <div class="mt-2">
           <div
             v-for="field in discovery"
             :key="field.streamPath"
-            class="mt-2 rounded bg-gray-50 p-2 text-xs"
+            class="sv-divider-t py-2 text-xs first:border-t-0 first:pt-0"
           >
-            <code>{{ field.streamPath }}</code
+            <code class="break-all">{{ field.streamPath }}</code
             ><span class="ml-2 text-gray-500"
               >{{ field.aggregate.observedShapes.join(", ") }} ·
               {{ field.occurrenceCount }}</span
@@ -968,7 +980,7 @@ onMounted(load);
             <div v-if="field.state === 'candidate'" class="mt-1 flex gap-2">
               <button
                 type="button"
-                class="rounded border px-2 py-1"
+                class="sv-btn sv-btn-sm"
                 :disabled="
                   !field.aggregate.observedShapes.some(
                     (shape) => shape === 'string' || shape === 'array',
@@ -979,13 +991,14 @@ onMounted(load);
                 {{ t("settings.openAICompatible.acceptReasoning") }}</button
               ><button
                 type="button"
-                class="rounded border px-2 py-1"
+                class="sv-btn sv-btn-sm sv-btn-ghost"
                 @click="ignoreDiscovery(field.streamPath)"
               >
                 {{ t("settings.openAICompatible.ignore") }}
               </button>
             </div>
             <span v-else class="ml-2">{{ field.state }}</span>
+          </div>
           </div>
         </div>
       </div>

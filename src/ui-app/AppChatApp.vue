@@ -5,6 +5,7 @@ import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
 import ReasoningArtifactDiagnostics from './components/ReasoningArtifactDiagnostics.vue'
 import ChatWorkspaceShell from './components/ChatWorkspaceShell.vue'
+import WorkspaceIcon from './components/WorkspaceIcon.vue'
 import ChatTopSummaryBar from './components/ChatTopSummaryBar.vue'
 import WorkspaceStartupRecovery from './components/WorkspaceStartupRecovery.vue'
 import ChatRightRail from './components/ChatRightRail.vue'
@@ -26,6 +27,20 @@ import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
 import { t, tf } from '@/shared/i18n'
 import { createCompatibleProviderRegistryClient } from '@/next/provider/openai-chat-compatible/ui'
 import type { CanonicalModelSubjectV1 } from '@/core/generation-v2/model-facts/canonicalSourceFactsV1'
+
+const workspaceMenuOpen = ref(false)
+const workspaceMenuTrigger = ref<HTMLButtonElement | null>(null)
+function closeWorkspaceMenu() {
+  workspaceMenuOpen.value = false
+  workspaceMenuTrigger.value?.focus()
+}
+function openWorkspaceSettings() {
+  closeWorkspaceMenu()
+  openSettings()
+}
+function dismissWorkspaceMenu(event: PointerEvent) {
+  if (!(event.target as Element | null)?.closest('.sv-workspace-footer')) workspaceMenuOpen.value = false
+}
 
 const {
   isReady,
@@ -88,6 +103,8 @@ const {
   rightRailOpen,
   closeRightRailPanel,
   toggleConsolePanel,
+  openImageSettings,
+  imageMaskOptions,
   effectiveRightRailView,
   normalizedErrorSummary,
   normalizedErrorActionHint,
@@ -459,25 +476,35 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 w-full overflow-hidden">
-    <SearchModal
-      :open="searchModalOpen"
-      :projects="searchProjectOptions"
-      :convos="searchConvoOptions"
-      :activeProjectId="activeProjectId"
-      :activeConvoId="activeConvoId"
-      :disabled="!isReady || isDraftInteractionLocked"
-      :selectHit="onSelectSearchHit"
-      @close="closeSearchModal"
-      @open-settings="openSearchSettings"
-    />
-
+  <div class="flex h-full min-h-0 w-full overflow-hidden bg-white" @pointerdown="dismissWorkspaceMenu">
     <ChatWorkspaceShell
       :rightRailOpen="rightRailOpen"
+      :composer-centered="isReady && workspaceMode !== 'none' && transcriptMessageIds.length === 0"
       @closeRightRail="closeRightRailPanel"
     >
       <template #sidebar>
+        <div class="flex h-full min-h-0 flex-col">
+          <header class="flex flex-none items-center gap-2 px-4 pb-2 pt-4">
+            <WorkspaceIcon name="orbit" :size="20" class="flex-none" />
+            <span class="text-[15px] font-semibold tracking-tight">Starverse</span>
+            <button type="button" class="sv-icon-btn ml-auto" :aria-label="t('common.new')" :title="t('common.new')" :disabled="!isReady || isDraftInteractionLocked"
+              data-testid="workspace-new-conversation" @click="onCreateConvo"><WorkspaceIcon name="edit" :size="16" /></button>
+          </header>
+          <div class="min-h-0 flex-1">
+            <SearchModal
+              :open="searchModalOpen"
+              variant="sidebar"
+              :projects="searchProjectOptions"
+              :convos="searchConvoOptions"
+              :activeProjectId="activeProjectId"
+              :activeConvoId="activeConvoId"
+              :disabled="!isReady || isDraftInteractionLocked"
+              :selectHit="onSelectSearchHit"
+              @close="closeSearchModal"
+              @open-settings="openSearchSettings"
+            />
         <ConversationList
+          v-show="!searchModalOpen"
           :items="convoListItems"
           :activeId="activeConvoId"
           :activeProjectId="activeProjectId"
@@ -504,24 +531,40 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @bulkDelete="onBulkDeleteConvos"
           @bulkMoveToProject="onBulkMoveConvosToProject"
         />
+          </div>
+          <footer class="sv-workspace-footer relative flex-none p-2" @keydown.esc.stop="closeWorkspaceMenu">
+            <div v-if="workspaceMenuOpen" class="sv-popover absolute inset-x-2 bottom-[calc(100%-2px)] z-30" data-testid="workspace-menu">
+              <button type="button" class="sv-menu-item" :disabled="!settingsAllowed" data-testid="workspace-open-settings"
+                @click="openWorkspaceSettings"><WorkspaceIcon name="sliders" :size="16" class="flex-none" />{{ t('common.settings') }}</button>
+            </div>
+            <button ref="workspaceMenuTrigger" type="button" class="flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-black/5 aria-expanded:bg-black/[0.08]" :aria-expanded="workspaceMenuOpen" data-testid="workspace-menu-trigger"
+              @click="workspaceMenuOpen = !workspaceMenuOpen">
+              <span class="grid size-6 flex-none place-items-center rounded-full bg-black/[0.08] text-xs font-medium">S</span>
+              <span class="min-w-0 flex-1 truncate"><span>{{ t('navigation.workspace.local') }}</span><span class="sv-meta ml-1.5">Starverse</span></span>
+              <WorkspaceIcon name="sliders" :size="15" class="flex-none text-gray-500" />
+            </button>
+          </footer>
+        </div>
       </template>
 
       <template #topbar>
-        <div v-if="activeDraftConflict" class="border-b border-amber-300 bg-amber-50 px-3 py-2 text-sm" role="alert" data-testid="draft-conflict">
+        <div v-if="activeDraftConflict" class="sv-notice sv-notice-warning mx-6 mt-3 flex-col gap-2" role="alert" data-testid="draft-conflict">
           <p>{{ t('errors.draftConflict.message') }}</p>
-          <textarea readonly :value="activeDraftConflict.captured.text" class="mt-2 w-full rounded border bg-white p-2" :aria-label="t('errors.draftConflict.retainedText')" data-testid="draft-conflict-retained-text" />
-          <button type="button" class="mt-2 rounded border bg-white px-3 py-1" @click="onRefreshWorkspace">{{ t('errors.draftConflict.reload') }}</button>
-          <div v-if="draftConflictReloadConfirmation" role="alertdialog" :aria-label="t('errors.draftConflict.reload')" class="mt-2 rounded border border-amber-300 bg-white p-3" data-testid="draft-conflict-confirmation">
+          <textarea readonly :value="activeDraftConflict.captured.text" class="sv-textarea w-full" :aria-label="t('errors.draftConflict.retainedText')" data-testid="draft-conflict-retained-text" />
+          <div><button type="button" class="sv-btn sv-btn-sm" @click="onRefreshWorkspace">{{ t('errors.draftConflict.reload') }}</button></div>
+          <div v-if="draftConflictReloadConfirmation" role="alertdialog" :aria-label="t('errors.draftConflict.reload')" class="sv-divider-t flex flex-col gap-2 pt-2" data-testid="draft-conflict-confirmation">
             <p>{{ t('errors.draftConflict.discardConfirm') }}</p>
-            <button type="button" class="mt-2 rounded border px-3 py-1" @click="cancelDraftConflictReload">{{ t('common.cancel') }}</button>
-            <button type="button" class="ml-2 mt-2 rounded border px-3 py-1" @click="confirmDraftConflictReload">{{ t('errors.draftConflict.discardAndReload') }}</button>
+            <div class="flex gap-2">
+              <button type="button" class="sv-btn sv-btn-sm" @click="cancelDraftConflictReload">{{ t('common.cancel') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm sv-btn-danger" @click="confirmDraftConflictReload">{{ t('errors.draftConflict.discardAndReload') }}</button>
+            </div>
           </div>
         </div>
         <WorkspaceStartupRecovery :state="startupState" :empty="isReady && workspaceMode === 'none'"
           @retry="retryStartup" @openSettings="openSettings" />
         <ChatTopSummaryBar
           v-if="isReady && workspaceMode !== 'none'"
-          :title="activeTitle || 'No active conversation'"
+          :title="activeTitle"
           :branchSummary="branchSummary"
           :runSummary="runSummary"
           :modelSummary="modelSummary"
@@ -533,18 +576,19 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @openSettings="openSettings"
           @toggleConsolePanel="toggleConsolePanel"
         />
+        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-6 pb-2 text-xs text-gray-600 empty:hidden">
         <div
           v-if="workspaceMode === 'conversation'"
-          class="border-b border-gray-100 px-3 pb-2"
+          class="min-w-[16rem] flex-1"
           data-testid="branch-bar"
         >
-          <div class="flex items-center gap-2">
-          <label v-if="branches.length > 1 || hasMoreBranches" class="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
-            <span>{{ t('chat.topBar.branch') }}</span>
+          <div class="flex flex-wrap items-center gap-x-1 gap-y-1">
+          <label v-if="branches.length > 1 || hasMoreBranches" class="flex min-w-0 flex-1 basis-44 items-center gap-2 text-xs text-gray-600">
+            <span class="flex-none">{{ t('chat.topBar.branch') }}</span>
             <select
               :value="activeBranchId ?? ''"
               :disabled="!isReady"
-              class="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800"
+              class="sv-select sv-select-sm min-w-0 max-w-[16rem] flex-1 border-[var(--sv-line-strong)]"
               data-testid="branch-selector"
               @change="onSelectBranch(($event.target as HTMLSelectElement).value)"
             >
@@ -557,66 +601,74 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           <button
             v-if="hasMoreBranches"
             type="button"
-            class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            class="sv-btn sv-btn-sm sv-btn-ghost"
             :disabled="!isReady"
             data-testid="branch-load-more"
             @click="loadMoreBranches"
           >
             {{ t('chat.pagination.loadMore') }}
           </button>
-          <span v-if="!(branches.length > 1 || hasMoreBranches)" class="min-w-0 flex-1 truncate text-xs text-gray-600">{{ branchSummary }}</span>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canForkBranch" data-testid="branch-fork" @click="runBranchAction(onForkFromHead)">{{ t('chat.branchActions.fork') }}</button>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!isReady || !activeBranch || branchActionBusy" data-testid="branch-rename" @click="openBranchRename">{{ t('chat.branchActions.rename') }}</button>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          <span v-if="!(branches.length > 1 || hasMoreBranches)" class="min-w-0 flex-1 basis-44 truncate text-xs text-gray-600">{{ branchSummary }}</span>
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost"
+            :disabled="!canForkBranch" data-testid="branch-fork" @click="runBranchAction(onForkFromHead)"><WorkspaceIcon name="branch" :size="14" />{{ t('chat.branchActions.fork') }}</button>
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost"
+            :disabled="!isReady || !activeBranch || branchActionBusy" data-testid="branch-rename" @click="openBranchRename"><WorkspaceIcon name="edit" :size="14" />{{ t('chat.branchActions.rename') }}</button>
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost"
             :disabled="!canDeleteBranch" :title="canDeleteBranch ? undefined : t('chat.branchActions.lastBranch')" data-testid="branch-delete"
-            @click="branchRenameOpen = false; branchDeleteConfirmOpen = true">{{ t('chat.branchActions.delete') }}</button>
+            @click="branchRenameOpen = false; branchDeleteConfirmOpen = true"><WorkspaceIcon name="trash" :size="14" />{{ t('chat.branchActions.delete') }}</button>
           </div>
           <form v-if="branchRenameOpen" class="mt-2 flex items-center gap-2 text-xs" data-testid="branch-rename-form" @submit.prevent="submitBranchRename">
-            <input v-model="branchRenameText" type="text" maxlength="4096" class="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1"
+            <input v-model="branchRenameText" type="text" maxlength="4096" class="sv-input sv-input-sm min-w-0 flex-1"
               :aria-label="t('chat.branchActions.renameLabel')" :placeholder="t('chat.branchActions.renamePlaceholder')" data-testid="branch-rename-input" />
-            <button type="submit" class="rounded border bg-white px-2 py-1" :disabled="branchActionBusy" data-testid="branch-rename-save">{{ t('chat.branchActions.save') }}</button>
-            <button type="button" class="rounded border bg-white px-2 py-1" data-testid="branch-rename-cancel" @click="branchRenameOpen = false">{{ t('chat.branchActions.cancel') }}</button>
+            <button type="submit" class="sv-btn sv-btn-sm sv-btn-primary" :disabled="branchActionBusy" data-testid="branch-rename-save">{{ t('chat.branchActions.save') }}</button>
+            <button type="button" class="sv-btn sv-btn-sm" data-testid="branch-rename-cancel" @click="branchRenameOpen = false">{{ t('chat.branchActions.cancel') }}</button>
           </form>
-          <div v-if="branchDeleteConfirmOpen" role="alertdialog" :aria-label="t('chat.branchActions.delete')" class="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs" data-testid="branch-delete-confirmation">
-            <p>{{ t('chat.branchActions.deleteConfirm') }}</p>
-            <button type="button" class="mt-2 rounded border bg-white px-2 py-1" data-testid="branch-delete-cancel" @click="branchDeleteConfirmOpen = false">{{ t('chat.branchActions.cancel') }}</button>
-            <button type="button" class="ml-2 mt-2 rounded border bg-white px-2 py-1 text-red-700" data-testid="branch-delete-confirm" @click="confirmBranchDelete">{{ t('chat.branchActions.confirmDelete') }}</button>
+          <div v-if="branchDeleteConfirmOpen" role="alertdialog" :aria-label="t('chat.branchActions.delete')" class="sv-notice sv-notice-danger mt-2 flex-wrap items-center" data-testid="branch-delete-confirmation">
+            <p class="min-w-0 flex-1 basis-48">{{ t('chat.branchActions.deleteConfirm') }}</p>
+            <div class="flex gap-2">
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="branch-delete-cancel" @click="branchDeleteConfirmOpen = false">{{ t('chat.branchActions.cancel') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm sv-btn-danger" data-testid="branch-delete-confirm" @click="confirmBranchDelete">{{ t('chat.branchActions.confirmDelete') }}</button>
+            </div>
           </div>
         </div>
         <div
           v-if="isReady && workspaceMode !== 'none' && searchMessageNavLabel"
-          class="flex items-center gap-1 border-b border-gray-100 px-3 pb-2 text-xs text-gray-700"
+          class="flex flex-none items-center gap-1 text-xs"
           data-testid="search-match-nav"
         >
-          <span class="font-mono" data-testid="search-match-nav-index">{{ searchMessageNavLabel }}</span>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" :aria-label="t('search.matchNav.previous')" data-testid="search-match-nav-prev" @click="onNavigateSearchMessage(-1)">&lt;</button>
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-0.5 hover:bg-gray-50" :aria-label="t('search.matchNav.next')" data-testid="search-match-nav-next" @click="onNavigateSearchMessage(1)">&gt;</button>
+          <span class="w-[7ch] text-center tabular-nums" data-testid="search-match-nav-index">{{ searchMessageNavLabel }}</span>
+          <button type="button" class="sv-icon-btn" :aria-label="t('search.matchNav.previous')" :title="t('search.matchNav.previous')" data-testid="search-match-nav-prev" @click="onNavigateSearchMessage(-1)"><WorkspaceIcon name="up" :size="15" /></button>
+          <button type="button" class="sv-icon-btn" :aria-label="t('search.matchNav.next')" :title="t('search.matchNav.next')" data-testid="search-match-nav-next" @click="onNavigateSearchMessage(1)"><WorkspaceIcon name="down" :size="15" /></button>
         </div>
-        <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
-          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
-            {{ t('chat.newTemplate.reset') }}
+        </div>
+        <div v-if="workspaceMode === 'template'" class="relative px-6 pb-2 pt-1">
+          <button type="button" class="sv-btn sv-btn-sm sv-btn-ghost" :aria-expanded="templateResetOpen" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
+            <WorkspaceIcon name="refresh" :size="14" />{{ t('chat.newTemplate.reset') }}
           </button>
-          <div v-if="templateResetOpen" class="absolute left-3 top-8 z-30 w-64 space-y-2 rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg" data-testid="new-template-reset-panel">
+          <div v-if="templateResetOpen" class="sv-popover absolute left-6 top-9 z-30 flex w-64 flex-col gap-2 p-3 text-xs" data-testid="new-template-reset-panel">
             <label class="flex items-center gap-2"><input v-model="resetTemplateModelConfig" type="checkbox" />{{ t('chat.newTemplate.modelConfig') }}</label>
             <label class="flex items-center gap-2"><input v-model="resetTemplateDraftAttachments" type="checkbox" />{{ t('chat.newTemplate.draftAttachments') }}</label>
             <div class="flex justify-end gap-2">
-              <button type="button" class="rounded border px-2 py-1" @click="templateResetOpen = false">{{ t('chat.newTemplate.cancel') }}</button>
-              <button type="button" class="rounded bg-gray-900 px-2 py-1 text-white" :disabled="!resetTemplateModelConfig && !resetTemplateDraftAttachments" data-testid="new-template-reset-confirm" @click="void onResetSystemTemplate({ resetModelConfig: resetTemplateModelConfig, resetDraftAttachments: resetTemplateDraftAttachments }).then(() => { templateResetOpen = false })">{{ t('chat.newTemplate.confirmReset') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm" @click="templateResetOpen = false">{{ t('chat.newTemplate.cancel') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm sv-btn-primary" :disabled="!resetTemplateModelConfig && !resetTemplateDraftAttachments" data-testid="new-template-reset-confirm" @click="void onResetSystemTemplate({ resetModelConfig: resetTemplateModelConfig, resetDraftAttachments: resetTemplateDraftAttachments }).then(() => { templateResetOpen = false })">{{ t('chat.newTemplate.confirmReset') }}</button>
             </div>
           </div>
         </div>
       </template>
 
       <template #transcript>
+        <div v-if="isReady && workspaceMode !== 'none' && transcriptMessageIds.length === 0" class="px-5 pt-6 text-center" data-testid="new-chat-welcome">
+          <WorkspaceIcon name="orbit" :size="30" class="mx-auto mb-4" />
+          <h1 class="text-[26px] font-medium tracking-tight">{{ t('chat.newTemplate.welcome') }}</h1>
+          <p class="mt-2 text-[13px] text-gray-500">{{ t('chat.newTemplate.welcomeHint') }}</p>
+        </div>
         <div
           v-if="isReady && workspaceMode !== 'none' && hasEarlierTranscript"
           class="flex justify-center border-b border-gray-100 bg-white px-3 py-2"
         >
           <button
             type="button"
-            class="rounded border border-gray-200 bg-white px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            class="sv-btn sv-btn-sm"
             :disabled="!isReady"
             data-testid="transcript-load-earlier"
             @click="loadEarlierTranscript"
@@ -630,6 +682,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           :messagesById="transcriptMessagesById"
           :activeMessageId="activeCursorMessageId"
           :error="runVM?.error"
+          v-show="!(transcriptMessageIds.length === 0 && !runVM?.error)"
           emptyText="No messages in this conversation yet."
         >
           <template #message="{ message }">
@@ -678,10 +731,10 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 />
               </div>
 
-              <div v-if="message.role === 'user'" class="mt-2 flex items-center gap-2 pl-11 text-[11px] text-gray-500">
+              <div v-if="message.role === 'user'" class="mt-1 flex flex-wrap items-center justify-end gap-x-1 gap-y-0.5 text-xs text-gray-500">
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="getUserMessageRawText(message as any).length === 0"
                   :data-testid="`copy-raw-q-${message.messageId}`"
                   @click="copyUserMessageRaw(message as any)"
@@ -691,7 +744,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :data-testid="`toggle-q-${message.messageId}`"
                   @click="onToggleQuestionExclude(message.messageId)"
                 >
@@ -700,7 +753,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="activeAssistantMessageId != null || isAnswerGroupStreamingForQuestion(message.messageId)"
                   :data-testid="`regen-q-${message.messageId}`"
                   @click="onRegenerateFromQuestion(message.messageId)"
@@ -710,7 +763,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="activeAssistantMessageId != null || isAnswerGroupStreamingForQuestion(message.messageId)"
                   :data-testid="`edit-q-${message.messageId}`"
                   @click="openQuestionEdit(message.messageId)"
@@ -721,7 +774,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 <template v-if="pendingDeleteQuestionId === message.messageId">
                   <button
                     type="button"
-                    class="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost text-[color:var(--sv-danger)]"
                     :disabled="activeAssistantMessageId != null || isAnswerGroupStreamingForQuestion(message.messageId)"
                     :data-testid="`confirm-delete-q-${message.messageId}`"
                     @click="confirmDeleteQuestion(message.messageId)"
@@ -730,7 +783,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     @click="cancelDeleteQuestion"
                   >
                     {{ t('common.cancel') }}
@@ -739,7 +792,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 <button
                   v-else
                   type="button"
-                  class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost text-[color:var(--sv-danger)]"
                   :disabled="activeAssistantMessageId != null || isAnswerGroupStreamingForQuestion(message.messageId)"
                   :data-testid="`delete-q-${message.messageId}`"
                   @click="requestDeleteQuestion(message.messageId)"
@@ -751,7 +804,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   <div v-if="(getQuestionPagerForQuestion(message.messageId)?.total ?? 0) > 1" class="flex items-center gap-1">
                     <button
                       type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      class="sv-btn sv-btn-sm sv-btn-ghost"
                       :disabled="
                         isMessageCandidateLoading(message.messageId) ||
                         !getQuestionPagerForQuestion(message.messageId)?.canPrev
@@ -768,7 +821,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                     </div>
                     <button
                       type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      class="sv-btn sv-btn-sm sv-btn-ghost"
                       :disabled="
                         isMessageCandidateLoading(message.messageId) ||
                         !getQuestionPagerForQuestion(message.messageId)?.canNext
@@ -784,11 +837,11 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
 
               <div
                 v-else-if="message.role === 'assistant' && isAnswerRootMessage(message.messageId)"
-                class="mt-2 flex items-center gap-2 pl-11 text-[11px] text-gray-500"
+                class="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-gray-500"
               >
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="getAssistantVisibleText(message as any).length === 0"
                   :data-testid="`copy-assistant-text-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'plain')"
@@ -797,7 +850,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :data-testid="`raw-data-a-${message.messageId}`"
                   @click="openRawData(message.messageId)"
                 >
@@ -806,7 +859,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 <button
                   v-if="hasAssistantCitations(message as any)"
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  class="sv-btn sv-btn-sm sv-btn-ghost"
                   :disabled="getAssistantVisibleText(message as any).length === 0"
                   :data-testid="`copy-assistant-with-refs-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'with_refs')"
@@ -817,7 +870,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   <button
                     v-if="getAssistantImageBlockCount(message as any) > 0"
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     :disabled="
                       activeAssistantMessageId != null ||
                       isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
@@ -829,7 +882,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     :disabled="
                       turnFiltersByQuestionId.get(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.lockedByQuestionExclude === true
                     "
@@ -844,7 +897,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     :disabled="
                       activeAssistantMessageId != null ||
                       isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
@@ -857,7 +910,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   </button>
                   <button
                     type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="sv-btn sv-btn-sm sv-btn-ghost"
                     :disabled="
                       activeAssistantMessageId != null ||
                       isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
@@ -871,7 +924,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   <div v-if="(getCandidatePager(message.messageId)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
                     <button
                       type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      class="sv-btn sv-btn-sm sv-btn-ghost"
                       :disabled="
                         isMessageCandidateLoading(message.messageId) ||
                         !getCandidatePager(message.messageId)?.canPrev
@@ -888,7 +941,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                     </div>
                     <button
                       type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      class="sv-btn sv-btn-sm sv-btn-ghost"
                       :disabled="
                         isMessageCandidateLoading(message.messageId) ||
                         !getCandidatePager(message.messageId)?.canNext
@@ -910,44 +963,44 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         <div class="space-y-2">
           <div
             v-if="attachmentConfirmationHistoryLocatorVisible"
-            class="mx-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+            class="mx-4 sv-notice sv-notice-warning"
             data-testid="attachment-confirm-locator-bar"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">{{ t('chat.attachmentConfirm.closeLocator') }}</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">{{ t('chat.attachmentConfirm.previous') }}</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">{{ t('chat.attachmentConfirm.next') }}</button>
-              <span class="font-mono text-[11px]" data-testid="attachment-confirm-locator-index">{{ attachmentConfirmationHistoryLocatorLabel }}</span>
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">{{ t('chat.attachmentConfirm.closeLocator') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">{{ t('chat.attachmentConfirm.previous') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">{{ t('chat.attachmentConfirm.next') }}</button>
+              <span class="font-mono text-xs" data-testid="attachment-confirm-locator-index">{{ attachmentConfirmationHistoryLocatorLabel }}</span>
             </div>
           </div>
           <div
             v-else-if="attachmentConfirmationCollapsedBannerVisible"
-            class="mx-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+            class="mx-4 sv-notice sv-notice-warning"
             data-testid="attachment-confirm-collapsed-banner"
           >
             <div class="flex flex-wrap items-center gap-2">
               <span>{{ t('chat.attachmentConfirm.pendingLocked') }}</span>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
-              <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="sv-btn sv-btn-sm sv-btn-danger" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
             </div>
           </div>
-          <div v-if="attachmentConfirmationVisible && attachmentConfirmationSession" class="mx-4 rounded-xl border border-amber-300 bg-white p-3 shadow-sm" data-testid="attachment-confirm-panel">
+          <div v-if="attachmentConfirmationVisible && attachmentConfirmationSession" class="mx-4 rounded-xl border border-[color:var(--sv-warning-line)] bg-white p-3" data-testid="attachment-confirm-panel">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-semibold text-gray-900">{{ attachmentConfirmationSession.title }}</div>
               <div class="flex items-center gap-2">
-                <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.collapsePanel') }}</button>
-                <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
+                <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.collapsePanel') }}</button>
+                <button type="button" class="sv-btn sv-btn-sm sv-btn-danger" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
               </div>
             </div>
-            <div v-if="attachmentConfirmationSession.validationMessage" class="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" data-testid="attachment-confirm-validation">
+            <div v-if="attachmentConfirmationSession.validationMessage" class="mt-2 sv-notice sv-notice-danger" data-testid="attachment-confirm-validation">
               {{ attachmentConfirmationSession.validationMessage }}
             </div>
-            <div v-if="attachmentConfirmationSession.historyItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-history-section">
+            <div v-if="attachmentConfirmationSession.historyItems.length > 0" class="mt-3 rounded-md border border-gray-200 p-2" data-testid="attachment-confirm-history-section">
               <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-history-toggle" @click="toggleAttachmentConfirmationHistorySection">{{ t('chat.attachmentConfirm.historyUnsupportedTitle') }}</button>
               <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.historyUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.historySectionExpanded" class="mt-2 space-y-2">
-                <div class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1" :class="attachmentConfirmationSession.showHistoryValidation ? 'ring-2 ring-red-300' : ''" data-testid="attachment-confirm-history-exclude-all">
+                <div class="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1" :class="attachmentConfirmationSession.showHistoryValidation ? 'ring-2 ring-red-300' : ''" data-testid="attachment-confirm-history-exclude-all">
                   <div class="flex items-center gap-3 text-xs text-gray-700">
                     <span class="font-medium text-gray-900">{{ t('chat.attachmentConfirm.allAttachments') }}</span>
                     <label class="flex items-center gap-1">
@@ -960,44 +1013,44 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                       {{ t('chat.attachmentConfirm.excludeCheckbox') }}
                     </label>
                   </div>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">{{ t('chat.attachmentConfirm.locate') }}</button>
+                  <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">{{ t('chat.attachmentConfirm.locate') }}</button>
                 </div>
-                <div v-for="item in attachmentConfirmationSession.historyItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :data-testid="`attachment-confirm-history-row-${item.attachmentId}`">
+                <div v-for="item in attachmentConfirmationSession.historyItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-2 py-1" :data-testid="`attachment-confirm-history-row-${item.attachmentId}`">
                   <div class="min-w-0">
                     <div class="truncate text-xs font-medium text-gray-900">{{ item.filename }}</div>
-                    <div class="text-[11px] text-gray-500">{{ item.detailText }}</div>
-                    <div class="text-[11px] text-red-700">{{ item.reasonText }}</div>
+                    <div class="text-xs text-gray-500">{{ item.detailText }}</div>
+                    <div class="text-xs text-red-700">{{ item.reasonText }}</div>
                   </div>
                   <div class="flex items-center gap-2">
-                    <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
-                    <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">{{ t('chat.attachmentConfirm.locate') }}</button>
+                    <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded-md border border-gray-200 object-cover" alt="" />
+                    <button type="button" class="sv-btn sv-btn-sm" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">{{ t('chat.attachmentConfirm.locate') }}</button>
                   </div>
                 </div>
               </div>
             </div>
-            <div v-if="attachmentConfirmationSession.currentItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-current-section">
+            <div v-if="attachmentConfirmationSession.currentItems.length > 0" class="mt-3 rounded-md border border-gray-200 p-2" data-testid="attachment-confirm-current-section">
               <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-current-toggle" @click="toggleAttachmentConfirmationCurrentSection">{{ t('chat.attachmentConfirm.currentUnsupportedTitle') }}</button>
               <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.currentUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.currentSectionExpanded" class="mt-2 space-y-2">
-                <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">{{ t('chat.attachmentConfirm.excludeAll') }}</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.excludeNone') }}</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">{{ t('chat.attachmentConfirm.removeAll') }}</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.removeNone') }}</button>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                  <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">{{ t('chat.attachmentConfirm.excludeAll') }}</button>
+                  <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.excludeNone') }}</button>
+                  <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">{{ t('chat.attachmentConfirm.removeAll') }}</button>
+                  <button type="button" class="sv-btn sv-btn-sm" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.removeNone') }}</button>
                 </div>
-                <div v-for="item in attachmentConfirmationSession.currentItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :class="attachmentConfirmationSession.currentValidationAttachmentId === item.attachmentId ? 'ring-2 ring-red-300' : ''" :data-testid="`attachment-confirm-current-row-${item.attachmentId}`">
+                <div v-for="item in attachmentConfirmationSession.currentItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-2 py-1" :class="attachmentConfirmationSession.currentValidationAttachmentId === item.attachmentId ? 'ring-2 ring-red-300' : ''" :data-testid="`attachment-confirm-current-row-${item.attachmentId}`">
                   <div class="min-w-0">
                     <div class="truncate text-xs font-medium text-gray-900">{{ item.filename }}</div>
-                    <div class="text-[11px] text-gray-500">{{ item.detailText }}</div>
-                    <div class="text-[11px] text-red-700">{{ item.reasonText }}</div>
+                    <div class="text-xs text-gray-500">{{ item.detailText }}</div>
+                    <div class="text-xs text-red-700">{{ item.reasonText }}</div>
                   </div>
                   <div class="flex items-center gap-2">
-                    <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
-                    <label class="flex items-center gap-1 text-[11px] text-gray-700">
+                    <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded-md border border-gray-200 object-cover" alt="" />
+                    <label class="flex items-center gap-1 text-xs text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'exclude'" :data-testid="`attachment-confirm-current-exclude-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'exclude' : null)" />
                       {{ t('chat.attachmentConfirm.exclude') }}
                     </label>
-                    <label class="flex items-center gap-1 text-[11px] text-gray-700">
+                    <label class="flex items-center gap-1 text-xs text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'remove'" :data-testid="`attachment-confirm-current-remove-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'remove' : null)" />
                       {{ t('chat.attachmentConfirm.remove') }}
                     </label>
@@ -1006,27 +1059,28 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
               </div>
             </div>
             <div class="mt-3 flex justify-end">
-              <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">{{ t('chat.attachmentConfirm.confirmAndContinue') }}</button>
+              <button type="button" class="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">{{ t('chat.attachmentConfirm.confirmAndContinue') }}</button>
             </div>
           </div>
           <DraftAttachmentStrip
             :attachments="draftAttachmentViewModels"
+            @openImageSettings="openImageSettings"
             @remove="handleRemoveDraftAttachment"
             @open-details="openDraftAttachmentDetails"
           />
           <div
             v-if="isQuestionEditMode && questionEditSession"
-            class="mx-4 mt-2 rounded-xl border border-blue-200 bg-blue-50 p-3"
+            class="mx-4 mt-2 rounded-xl border border-[color:var(--sv-line-strong)] bg-white p-3"
             data-testid="question-edit-controls"
           >
-            <div class="text-sm font-semibold text-blue-900">{{ t('chat.message.editingQuestion') }}</div>
+            <div class="text-sm font-semibold">{{ t('chat.message.editingQuestion') }}</div>
             <div class="mt-2 flex items-center justify-end gap-2">
-              <button type="button" class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="isDraftInteractionLocked" @click="closeQuestionEdit">
+              <button type="button" class="sv-btn" :disabled="isDraftInteractionLocked" @click="closeQuestionEdit">
                 {{ t('common.cancel') }}
               </button>
               <button
                 type="button"
-                class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                class="sv-btn"
                 :disabled="isDraftInteractionLocked || isRunning || draft.trim().length === 0"
                 data-testid="question-edit-new"
                 @click="submitQuestionEdit()"
@@ -1107,6 +1161,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :ollamaChat="ollamaChatConfig"
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
+            :imageMaskOptions="imageMaskOptions"
             :googleAIStudioChat="googleAIStudioChatConfig"
             :anthropicChat="anthropicChatConfig"
             :deepSeekChat="deepSeekChatConfig"
@@ -1203,7 +1258,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         <div class="text-sm font-semibold text-gray-900">{{ t('chat.attachmentUrl.addTitle') }}</div>
         <div class="mt-2 space-y-3">
           <input
-            class="w-full rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             type="url"
             placeholder="https://example.com/file.pdf"
             :value="attachmentUrlDraft"
@@ -1242,14 +1297,14 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         <div class="mt-3 flex items-center justify-end gap-2">
           <button
             type="button"
-            class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             @click="closeAttachmentUrlDialog"
           >
             {{ t('common.cancel') }}
           </button>
           <button
             type="button"
-            class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+            class="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
             :disabled="attachmentUrlDraft.trim().length === 0"
             data-testid="attachment-url-confirm"
             @click="submitAttachmentUrl"
@@ -1301,8 +1356,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         />
         <div
           v-if="projectWebSearchSettingsStatus"
-          class="rounded-md border px-3 py-2 text-xs"
-          :class="projectWebSearchSettingsStatus === 'Saved.' ? 'border-green-200 bg-green-50 text-green-900' : 'border-red-200 bg-red-50 text-red-900'"
+          class="sv-notice"
+          :class="projectWebSearchSettingsStatus === 'Saved.' ? '' : 'sv-notice-danger'"
           data-testid="project-web-search-status"
         >
           {{ projectWebSearchSettingsStatus }}
@@ -1310,7 +1365,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
         <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            class="sv-btn"
             :disabled="projectWebSearchSettingsSaving"
             @click="closeProjectWebSearchSettings"
           >
@@ -1318,7 +1373,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            class="sv-btn sv-btn-primary"
             :disabled="!isReady || isRunning || projectWebSearchSettingsSaving || !projectWebSearchSettingsTarget"
             data-testid="project-web-search-save"
             @click="saveProjectWebSearchSettings"
@@ -1336,21 +1391,21 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             <div class="font-semibold">Raw Data</div>
             <div class="text-xs text-gray-500">Answer {{ rawDataAnswerRootId }}</div>
           </div>
-          <button type="button" class="rounded border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
+          <button type="button" class="rounded-md border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
         </div>
         <div class="min-h-0 flex-1 overflow-auto p-4">
           <div v-if="rawDataLoading" class="text-sm text-gray-500">Loading...</div>
           <div v-else-if="rawDataError" class="text-sm text-red-700">{{ rawDataError }}</div>
           <div v-else-if="rawDataRecords.length === 0 && rawProviderErrorRecords.length === 0" class="text-sm text-gray-500">No persisted raw data for this answer.</div>
           <div v-else class="space-y-4">
-            <section v-for="record in rawDataRecords" :key="record.id" class="rounded border">
+            <section v-for="record in rawDataRecords" :key="record.id" class="rounded-md border">
               <div class="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
                 Request #{{ record.requestSequence }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.bodyBytes }} bytes · SHA-256 {{ record.bodySha256 }}
               </div>
               <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-request-${record.requestSequence}`">{{ formatRawRequestBody(record.serializedBody) }}</pre>
             </section>
-            <section v-for="record in rawProviderErrorRecords" :key="record.id" class="rounded border border-red-200">
-              <div class="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            <section v-for="record in rawProviderErrorRecords" :key="record.id" class="rounded-md border border-[color:var(--sv-danger-line)]">
+              <div class="border-b border-[color:var(--sv-danger-line)] px-3 py-2 text-xs text-[color:var(--sv-danger)]">
                 Provider Error #{{ record.requestSequence }} · {{ record.phase }} · HTTP {{ record.httpStatus }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.payloadBytes }} bytes · SHA-256 {{ record.payloadSha256 }}
                 <span v-if="record.providerRequestId"> · Request {{ record.providerRequestId }}</span>
               </div>

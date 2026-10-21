@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReasoningProjectionV2Repo'
+import { ConversationReadV2Repo } from '../../infra/db/repo/conversationReadV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
+import { GeminiInteractionsImageTerminalArtifactV2Repo } from '../../infra/db/repo/geminiInteractionsImageTerminalArtifactV2Repo'
+import { GenerationNativeCompletionReceiptV2Repo } from '../../infra/db/repo/generationNativeCompletionReceiptV2Repo'
+import { loadNativeArtifactJsonV2 } from '../../infra/db/repo/nativeArtifactStorageV2'
 import { sha256HexBytes as sha256PreparedBytesV2 } from '../../src/shared/crypto/sha256Hex'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { seedMaterializedCapabilityRulesForTestV1 } from '../../infra/db/test-support/materializedCapabilityRuleTestSupport'
@@ -17,6 +21,11 @@ vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 import { createGeminiInteractionsImageInitialSendCoordinatorV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
 import { createGeminiInteractionsImageActionCoordinatorV2 } from './geminiInteractionsImageActionCoordinatorV2'
 import { createGeminiInteractionsImageStreamRunnerV2 } from './geminiInteractionsImageStreamRunnerV2'
+import { createGenerationNativeCompletionRecoveryWorkSourceV2, recoverPendingGenerationNativeCompletionsV2 } from './generationNativeCompletionV2'
+import { UserCapabilityRulesV2Service } from './userCapabilityRulesV2Service'
+import { buildAuthoritativeModelSubjectSetV1 } from '../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
+import { createReviewedRequestRulePacksV2 } from '../../scripts/rules/reviewedRequestRulePacksV2'
+import { PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 } from '../../src/shared/provider/providerFailureV2'
 
 const scope = `credential-scope-v2:${'a'.repeat(64)}` as never
 type CapabilityRuleClaim = Readonly<{
@@ -122,11 +131,16 @@ function credentialService() {
       consume({ assertCurrent: () => undefined } as never),
   } as never
 }
-function streamResponse(): Response {
+function streamResponse(omitInteractionIds = false): Response {
   const interaction = { id: 'interaction:1', model: 'gemini-3.1-flash-image', status: 'completed',
     usage: { total_input_tokens: 1, total_output_tokens: 2 } }
+  const createdInteraction = { ...(omitInteractionIds ? {} : { id: interaction.id }),
+    model: interaction.model, status: 'in_progress' }
+  const completedInteraction = omitInteractionIds
+    ? { model: interaction.model, status: interaction.status, usage: interaction.usage }
+    : interaction
   const events = [
-    { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
+    { event_type: 'interaction.created', interaction: createdInteraction },
     { event_type: 'step.start', index: 1, step: { type: 'thought' } },
     { event_type: 'step.delta', index: 1,
       delta: { type: 'thought_summary', text: 'I will draw one apple.' } },
@@ -134,10 +148,31 @@ function streamResponse(): Response {
     { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
     { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/jpeg' } },
     { event_type: 'step.stop', index: 0 },
-    { event_type: 'interaction.completed', interaction },
+    { event_type: 'interaction.completed', interaction: completedInteraction },
   ]
   const body = `${events.map((event) => `event: ${event.event_type}\ndata: ${JSON.stringify(event)}`).join('\n\n')}\n\nevent: done\ndata: [DONE]\n\n`
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function streamResponseWithCapturedPartialCreated(): Response {
+  const capturedCreatedFrame = { event_type: 'interaction.created',
+    interaction: { object: 'interaction', model: 'gemini-3.1-flash-lite-image' } }
+  // The created frame is captured evidence; all following frames are synthetic fixture data.
+  const syntheticSuffix = [
+    { event_type: 'step.start', index: 1, step: { type: 'thought' } },
+    { event_type: 'step.delta', index: 1, delta: { type: 'thought_summary', text: 'Synthetic thought.' } },
+    { event_type: 'step.stop', index: 1 },
+    { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
+    { event_type: 'step.delta', index: 0, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/jpeg' } },
+    { event_type: 'step.stop', index: 0 },
+    { event_type: 'interaction.completed', interaction: { status: 'completed' } },
+    '[DONE]',
+  ]
+  const frames = [capturedCreatedFrame, ...syntheticSuffix].map((event) => {
+    const eventType = typeof event === 'string' ? 'done' : event.event_type
+    return `event: ${eventType}\ndata: ${typeof event === 'string' ? event : JSON.stringify(event)}\n\n`
+  }).join('')
+  return new Response(frames, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
 function streamResponseWithSearch(): Response {
@@ -181,6 +216,103 @@ function streamResponseWithProviderError(): Response {
 }
 
 describe('Gemini Interactions image generation V2', () => {
+  it('uses applied V2 rules for required thinking and the actual image compiler ledger', async () => {
+    const modelId = 'gemini-3.1-flash-image'
+    const db = database(modelId)
+    try {
+      const subjects = buildAuthoritativeModelSubjectSetV1([{ subject: { providerAuthorityId: 'google-ai-studio',
+        endpointProfileId: 'gemini-developer-api-v1beta', nativeModelId: modelId }, proof: { kind: 'provider_native_catalog',
+        providerKey: 'google_ai_studio', scopeId: 'scope:test:gemini', credentialScopeId: scope, credentialRevision: 1,
+        endpointProfileId: 'gemini-developer-api-v1beta', operationContractId: 'gemini-models-v1beta',
+        catalogCategory: '', activeSnapshotDigest: 'a'.repeat(64) } }])
+      const service = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects })
+      let draft = service.openDraft({ sessionId: 'interactions:v2-rules' })
+      for (const transfer of createReviewedRequestRulePacksV2()) draft = service.importPack({ sessionId: draft.sessionId,
+        expectedDraftRevision: draft.draftRevision, transfer })
+      await service.saveDraft({ sessionId: draft.sessionId, expectedDraftRevision: draft.draftRevision })
+      const configs = new GenerationConfigV2Repo(db)
+      configs.compareAndSetScope('conversation', 'conversation:1', configs.getScope('conversation', 'conversation:1').configRevision.value,
+        { schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
+          image: { mode: 'generate', aspectRatio: '1:1', resolution: '1K', format: 'jpeg', stream: true },
+          tools: { mode: 'disabled' }, providerExtension: { kind: 'gemini_interactions', thinkingLevel: 'high' } })
+      let ids = 0
+      const result = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db, credentialService: credentialService(),
+        createGraphId: kind => `${kind}:v2-${++ids}` }).submit({ command: { operationId: 'operation:v2-interactions',
+          branchId: 'branch:1', expectedHeadMessageId: null, prompt: 'Draw a blue square.', modelId, commandAttachments: [] },
+          expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      expect(result.preparedRequest).toBeDefined()
+      const prepared = result.preparedRequest!
+      expect(JSON.parse(prepared.body.copyUtf8Text())).toMatchObject({
+        response_format: { type: 'image', image_size: '1K', aspect_ratio: '1:1', mime_type: 'image/jpeg' },
+        generation_config: { thinking_level: 'high' },
+      })
+      expect(prepared.ledger.entries).toContainEqual(expect.objectContaining({ path: 'providerExtension.thinkingLevel',
+        nativeField: 'generation_config.thinking_level', disposition: 'encoded' }))
+      expect(prepared.ledger.entries).toContainEqual(expect.objectContaining({ path: 'image.resolution',
+        nativeField: 'response_format.image_size', disposition: 'encoded' }))
+      const stored = JSON.parse((db.prepare('SELECT canonical_json FROM assistant_generation_snapshot_v2').get() as { canonical_json: string }).canonical_json)
+      expect(stored.requestPlan.schemaVersion).toBe(2)
+      expect(stored.requestPlan.requestedIntent.reasoning.mode).toBe('disabled')
+      expect(stored.semanticIntent.reasoning.mode).toBe('enabled')
+      expect(prepared.wireEncodingProof).toBeDefined()
+    } finally { db.close() }
+  })
+  it('round-trips native image bytes through a durable receipt and recovers blob/native writes without another fetch', async () => {
+    let db = database()
+    let ids = 0
+    let clock = 100
+    let fetchCount = 0
+    const persistedBytes: Uint8Array[] = []
+    const attachmentBlobStore = { persist: (bytes: Uint8Array) => { persistedBytes.push(Uint8Array.from(bytes)) } } as never
+    try {
+      const initial = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => clock++, createGraphId: (kind) => `${kind}:${++ids}` })
+        .submit({ command: { operationId: 'operation:image-receipt', branchId: 'branch:1',
+          expectedHeadMessageId: null, prompt: 'draw an apple', modelId: 'gemini-3.1-flash-image', commandAttachments: [] },
+          expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const makeRunner = (target: BetterSqlite3.Database) => createGeminiInteractionsImageStreamRunnerV2({ db: target,
+        credentialService: credentialService(), attachmentBlobStore, nowMs: () => clock++,
+        fetchImpl: async () => { fetchCount += 1; return streamResponse(true) } })
+      const saveSpy = vi.spyOn(GeminiInteractionsImageTerminalArtifactV2Repo.prototype, 'insertRequestTerminal')
+        .mockImplementationOnce(() => { throw new Error('injected Gemini image native artifact failure') })
+      await expect(makeRunner(db).run(initial)).rejects.toMatchObject({
+        code: 'GENERATION_V2_NATIVE_COMPLETION_MATERIALIZATION_PENDING', receiptPersisted: true,
+      })
+      saveSpy.mockRestore()
+      expect(fetchCount).toBe(1)
+      expect(new GenerationNativeCompletionReceiptV2Repo(db).listPending()).toHaveLength(1)
+      expect(persistedBytes).toEqual([new Uint8Array(Buffer.from('image'))])
+
+      await createGenerationNativeCompletionRecoveryWorkSourceV2(db).quiesce()
+      const image = db.serialize()
+      db.close()
+      db = new BetterSqlite3(image)
+      makeRunner(db)
+      expect(recoverPendingGenerationNativeCompletionsV2(db, () => clock++)).toEqual({
+        recovered: 1, pending: 0, unavailable: 0,
+      })
+      expect(fetchCount).toBe(1)
+      expect(new GenerationNativeCompletionReceiptV2Repo(db).listPending()).toHaveLength(0)
+      expect(persistedBytes).toEqual([new Uint8Array(Buffer.from('image')), new Uint8Array(Buffer.from('image'))])
+      expect(db.prepare("SELECT state FROM generation_request_v2 WHERE operation_id='operation:image-receipt'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT count(*) AS count FROM generation_image_output_v2 WHERE operation_id='operation:image-receipt'").get())
+        .toEqual({ count: 1 })
+      const artifactRow = db.prepare(`SELECT operation_id AS operationId, answer_root_id AS answerRootId,
+        request_sequence AS requestSequence, artifact_kind AS artifactKind, codec_version AS codecVersion,
+        artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
+        WHERE operation_id='operation:image-receipt'`).get() as {
+          operationId: string; answerRootId: string; requestSequence: number; artifactKind: string
+          codecVersion: number; artifactJson: string; artifactHash: string
+        }
+      const artifactJson = db.transaction(() => loadNativeArtifactJsonV2(db, {
+        operationId: artifactRow.operationId, answerRootId: artifactRow.answerRootId,
+        requestSequence: artifactRow.requestSequence, artifactKind: artifactRow.artifactKind,
+      }, artifactRow.artifactJson, { artifactCodecVersion: artifactRow.codecVersion, artifactHash: artifactRow.artifactHash }))()
+      expect(JSON.parse(artifactJson).interactionId).toBeNull()
+    } finally { if (db.open) db.close() }
+  })
+
   it('keeps an unknown exact image model unresolved instead of inheriting a family capability', async () => {
     const db = database('gemini-3.1-flash-image-future', [])
     try {
@@ -209,7 +341,7 @@ describe('Gemini Interactions image generation V2', () => {
     } finally { db.close() }
   })
 
-  it('rejects an image resolution outside the exact model capability before preparing a request', async () => {
+  it('omits a resolution outside the target model domain while retaining the requested setting', async () => {
     const db = database('gemini-3.1-flash-lite-image')
     try {
       const configs = new GenerationConfigV2Repo(db)
@@ -221,10 +353,12 @@ describe('Gemini Interactions image generation V2', () => {
       })
       const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
         credentialService: credentialService(), nowMs: () => 100, createGraphId: (kind) => `${kind}:resolution` })
-      await expect(coordinator.submit({ command: { operationId: 'operation:bad-resolution', branchId: 'branch:1',
+      const result = await coordinator.submit({ command: { operationId: 'operation:bad-resolution', branchId: 'branch:1',
         expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3.1-flash-lite-image', commandAttachments: [] },
-        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
-        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      expect(result.execution.snapshot.semanticIntent.image).not.toHaveProperty('resolution')
+      expect(configs.getScope('conversation', 'conversation:1').semanticLayer.image).toMatchObject({ resolution: '4K' })
+      expect(result.preparedRequest?.ledger.entries.some(entry => entry.path === 'compatibility.settings.image.resolution')).toBe(true)
     } finally { db.close() }
   })
 
@@ -274,31 +408,48 @@ describe('Gemini Interactions image generation V2', () => {
   })
 
   it('commits chosen/head before streaming and keeps a failed retry-as-new current', async () => {
-    const db = database(); let ids = 0; let clock = 100
+    const modelId = 'gemini-3.1-flash-lite-image'
+    const db = database(modelId); let ids = 0; let clock = 100
     try {
       const initial = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db, credentialService: credentialService(), nowMs: () => clock++,
         createGraphId: (kind) => `${kind}:${++ids}` }).submit({
         command: { operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
-          prompt: 'draw', modelId: 'gemini-3.1-flash-image', commandAttachments: [] },
+          prompt: 'draw', modelId, commandAttachments: [] },
         expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
       expect(initial.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:2' }, headMessageId: { value: 'answer:2' },
       })
       expect(JSON.parse(initial.preparedRequest!.body.copyUtf8Text())).toEqual({
-        input: 'draw', model: 'gemini-3.1-flash-image',
+        input: 'draw', model: modelId,
         response_format: { aspect_ratio: '1:1', image_size: '1K', mime_type: 'image/jpeg', type: 'image' },
         store: false, stream: true,
       })
-      const fetchImpl = vi.fn(async () => streamResponse())
+      const fetchImpl = vi.fn(async () => streamResponseWithCapturedPartialCreated())
       await createGeminiInteractionsImageStreamRunnerV2({ db, credentialService: credentialService(),
         attachmentBlobStore: { persist: vi.fn() } as never, fetchImpl, nowMs: () => clock++ }).run(initial)
       expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get()).toEqual({ status: 'completed' })
       expect(db.prepare('SELECT count(*) AS count FROM generation_image_output_v2').get()).toEqual({ count: 1 })
+      const readBack = new ConversationReadV2Repo(db).readBranch('branch:1')
+      expect(readBack.turns[0]?.answers.find((answer) => answer.answerRootId === 'answer:2')?.images).toMatchObject([
+        { mime: 'image/jpeg' },
+      ])
       expect(db.prepare("SELECT artifact_kind AS kind FROM generation_native_artifact_v2 WHERE answer_root_id='answer:2'").get())
         .toEqual({ kind: 'gemini_interactions_image_terminal_v2' })
+      const artifactRow = db.prepare(`SELECT operation_id AS operationId, answer_root_id AS answerRootId,
+        request_sequence AS requestSequence, artifact_kind AS artifactKind, codec_version AS codecVersion,
+        artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
+        WHERE answer_root_id='answer:2'`).get() as {
+          operationId: string; answerRootId: string; requestSequence: number; artifactKind: string
+          codecVersion: number; artifactJson: string; artifactHash: string
+        }
+      const rawArtifactJson = db.transaction(() => loadNativeArtifactJsonV2(db, {
+        operationId: artifactRow.operationId, answerRootId: artifactRow.answerRootId,
+        requestSequence: artifactRow.requestSequence, artifactKind: artifactRow.artifactKind,
+      }, artifactRow.artifactJson, { artifactCodecVersion: artifactRow.codecVersion, artifactHash: artifactRow.artifactHash }))()
+      expect(JSON.parse(rawArtifactJson).interactionId).toBeNull()
       expect(new AnswerReasoningProjectionV2Repo(db).list('answer:2')).toEqual([
-        { type: 'thought_summary', summary: 'I will draw one apple.' },
+        { type: 'thought_summary', summary: 'Synthetic thought.' },
       ])
 
       const actions = createGeminiInteractionsImageActionCoordinatorV2({ db, credentialService: credentialService(),
@@ -396,8 +547,18 @@ describe('Gemini Interactions image generation V2', () => {
       await createGeminiInteractionsImageStreamRunnerV2({ db, credentialService: credentialService(),
         attachmentBlobStore: { persist: vi.fn() } as never, fetchImpl: async () => streamResponseWithSearch(), nowMs: () => clock++ }).run(initial)
       expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get()).toEqual({ status: 'completed' })
-      const artifact = db.prepare("SELECT artifact_json AS artifactJson FROM generation_native_artifact_v2 WHERE answer_root_id='answer:2'").get() as { artifactJson: string }
-      expect(JSON.parse(artifact.artifactJson)).toMatchObject({
+      const artifact = db.prepare(`SELECT operation_id AS operationId, answer_root_id AS answerRootId,
+        request_sequence AS requestSequence, artifact_kind AS artifactKind, codec_version AS codecVersion,
+        artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
+        WHERE answer_root_id='answer:2'`).get() as {
+          operationId: string; answerRootId: string; requestSequence: number; artifactKind: string
+          codecVersion: number; artifactJson: string; artifactHash: string
+        }
+      const rawArtifactJson = db.transaction(() => loadNativeArtifactJsonV2(db, {
+        operationId: artifact.operationId, answerRootId: artifact.answerRootId,
+        requestSequence: artifact.requestSequence, artifactKind: artifact.artifactKind,
+      }, artifact.artifactJson, { artifactCodecVersion: artifact.codecVersion, artifactHash: artifact.artifactHash }))()
+      expect(JSON.parse(rawArtifactJson)).toMatchObject({
         artifactKind: 'gemini_interactions_image_terminal_v2',
         searchEvidence: { calls: [{ id: 'search-1' }], results: [{ callId: 'search-1', searchSuggestions: '<div>Apple result</div>' }] },
       })
@@ -406,6 +567,52 @@ describe('Gemini Interactions image generation V2', () => {
         expect.objectContaining({ type: 'google_search_result', call_id: 'search-1', search_suggestions: '<div>Apple result</div>' }),
         expect.objectContaining({ type: 'url_citation' }),
       ]))
+    } finally { db.close() }
+  })
+
+  it('persists the failing shape-validation frame through the runner and sanitizes credentials', async () => {
+    const db = database(); let ids = 0; let clock = 100
+    const fetchImpl = vi.fn(async () => new Response(
+      'event: interaction.created\ndata: ' + JSON.stringify({ event_type: 'interaction.created',
+        interaction: { id: 'interaction:invalid-shape', model: 'gemini-3.1-flash-image', status: 'in_progress' } }) + '\n\n' +
+      'event: step.delta\ndata: ' + JSON.stringify({ event_type: 'step.delta', index: 'invalid',
+        delta: { type: 'image', mime_type: 'image/png', data: 'A'.repeat(PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 + 8192) },
+        metadata: { api_key: 'secret-large-frame-credential' } }) + '\n\n',
+      { headers: { 'content-type': 'text/event-stream', 'x-request-id': 'DUMMY_GEMINI_REQUEST_ID' } },
+    ))
+    try {
+      const initial = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db, credentialService: credentialService(),
+        nowMs: () => clock++, createGraphId: (kind) => `${kind}:${++ids}` }).submit({
+        command: { operationId: 'operation:invalid-shape', branchId: 'branch:1', expectedHeadMessageId: null,
+          prompt: 'draw', modelId: 'gemini-3.1-flash-image', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createGeminiInteractionsImageStreamRunnerV2({ db, credentialService: credentialService(), fetchImpl,
+        attachmentBlobStore: { persist: vi.fn() } as never, nowMs: () => clock++ }).run(initial)
+      const row = db.prepare(`SELECT state, error_message AS errorMessage, error_fact_json AS fact
+        FROM generation_operation_v2 WHERE operation_id=?`).get('operation:invalid-shape') as {
+          state: string; errorMessage: string; fact: string
+        }
+      const failure = JSON.parse(row.fact)
+      expect(row.state).toBe('failed')
+      expect(row.errorMessage).toBe('PROVIDER_RESPONSE_DECODE_FAILED')
+      expect(row.errorMessage.length).toBeLessThanOrEqual(8192)
+      expect(failure).toMatchObject({ origin: 'response_decoder', phase: 'stream_decode',
+        httpStatus: 200, starverseDiagnosticCode: 'PROVIDER_RESPONSE_DECODE_FAILED',
+        providerError: { requestId: 'DUMMY_GEMINI_REQUEST_ID', rawJson: null,
+          rawText: expect.stringContaining('"stage":"frame_decode"') },
+      })
+      expect(failure.providerError.rawText).toContain('"fieldPath":"index"')
+      expect(failure.providerError.rawText).toMatch(/^\{"streamDiagnostic":\{"stage":"frame_decode","fieldPath":"index"/u)
+      expect(failure.providerError.rawText.length).toBeLessThanOrEqual(PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2)
+      expect(failure.redactions).toContainEqual({ path: 'providerError.rawJson.metadata.api_key', reason: 'credential' })
+      expect(failure).not.toHaveProperty('headers')
+      expect(failure.rawFrameExcerpt).toContain('step.delta')
+      expect(failure.rawFrameExcerpt).toContain('invalid')
+      expect(row.fact).not.toContain('secret-large-frame-credential')
+      expect(failure.providerError.requestId).toBe('DUMMY_GEMINI_REQUEST_ID')
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      expect(db.prepare('SELECT count(*) AS n FROM generation_image_output_v2').get()).toEqual({ n: 0 })
     } finally { db.close() }
   })
 

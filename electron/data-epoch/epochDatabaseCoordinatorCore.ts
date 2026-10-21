@@ -1,6 +1,6 @@
 import {
   initializeOrVerifyFreshEpoch2Database,
-  verifyExistingFreshEpoch2Database,
+  upgradeAndVerifyExistingFreshEpoch2Database,
   type FreshEpochDatabaseInitializationResult,
 } from './freshEpochDatabaseInitializer'
 import { ensureEpoch2RootCreated } from './epochRootCoordinatorCore'
@@ -35,7 +35,7 @@ export async function ensureEpoch2DatabaseCreated(input: Readonly<{
   if (root.journal.phase !== 'database_created' && root.journal.phase !== 'committed') {
     throw new Error('EPOCH2_DATABASE_COORDINATOR_PHASE_INVALID')
   }
-  const database = await verifyExistingFreshEpoch2Database(initializer)
+  const database = await upgradeAndVerifyExistingFreshEpoch2Database(initializer)
   return Object.freeze({
     journal: root.journal,
     rootAuthority: root.rootAuthority,

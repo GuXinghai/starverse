@@ -13,9 +13,11 @@ import {
 const props = withDefaults(
   defineProps<{
     rightRailOpen?: boolean
+    composerCentered?: boolean
   }>(),
   {
     rightRailOpen: true,
+    composerCentered: false,
   },
 )
 
@@ -104,35 +106,46 @@ onUnmounted(() => {
 <template>
   <div
     ref="shellEl"
-    class="relative flex h-full min-h-0 w-full overflow-hidden bg-gray-50"
+    class="relative flex h-full min-h-0 w-full overflow-hidden bg-white text-[var(--sv-text)]"
     :style="shellStyle"
     :data-right-rail-mode="rightRailMode"
   >
     <aside
       ref="sidebarEl"
-      class="h-full shrink-0 border-r border-gray-200 bg-white"
+      class="sv-divider-r h-full shrink-0 bg-[var(--sv-sidebar)]"
       :style="sidebarStyle"
     >
       <slot name="sidebar" />
     </aside>
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div v-if="$slots.topbar" class="border-b border-gray-200 bg-white">
+    <div
+      class="flex min-h-0 min-w-0 flex-1 flex-col bg-white"
+      :class="props.composerCentered ? 'overflow-y-auto overflow-x-hidden' : 'overflow-hidden'"
+      :data-composer-position="props.composerCentered ? 'center' : 'bottom'"
+    >
+      <div v-if="$slots.topbar" class="flex-none">
         <slot name="topbar" />
       </div>
 
-      <div class="min-h-0 flex-1 overflow-hidden">
+      <div
+        class="relative min-h-0 overflow-hidden"
+        :class="props.composerCentered ? 'mt-auto flex-none' : 'flex-1'"
+      >
         <slot name="transcript" />
       </div>
 
-      <div v-if="$slots.composer" class="border-t border-gray-200 bg-white">
+      <div
+        v-if="$slots.composer"
+        class="w-full max-w-[880px] flex-none self-center px-6 pb-4 max-[850px]:px-3.5"
+        :class="{ 'mb-auto pt-5': props.composerCentered }"
+      >
         <slot name="composer" />
       </div>
     </div>
 
     <div
       v-if="isRightRailDocked"
-      class="relative border-l border-gray-200 bg-white"
+      class="sv-divider-l relative bg-white"
       :style="floatingRailStyle"
     >
       <slot name="right-rail" :rightRailMode="rightRailMode" />
@@ -143,12 +156,12 @@ onUnmounted(() => {
       class="fixed inset-0 z-40 flex items-center justify-center p-6"
     >
       <div
-        class="absolute inset-0 bg-black/20"
+        class="absolute inset-0 bg-black/30"
         data-testid="right-rail-floating-backdrop"
         @click="emit('closeRightRail')"
       />
       <div
-        class="relative h-[min(80vh,56rem)] max-h-[min(80vh,56rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        class="sv-dialog relative h-[min(80vh,56rem)] max-h-[min(80vh,56rem)] overflow-hidden"
         data-testid="right-rail-floating-panel"
         :style="floatingRailStyle"
       >

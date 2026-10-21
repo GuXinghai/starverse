@@ -1,3 +1,5 @@
+import { resolveCurrentRequestCapabilityV2 } from './goal3SnapshotCutoverV1'
+import { resolveGeminiInteractionsImageCapabilityV2 } from './geminiInteractionsImageGenerationAuthorityV2Service'
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
@@ -104,7 +106,7 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
                   projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
                   preparedRequest, request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
               },
-            }))
+            }), { operationId: command.operationId.value, capability: resolveCurrentRequestCapabilityV2(context, resolveGeminiInteractionsImageCapabilityV2(modelEvidence, command.modelId.value), request.expectedCredentialRevision) })
           }),
         })
       } catch (error) {

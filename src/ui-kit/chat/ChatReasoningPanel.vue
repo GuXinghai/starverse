@@ -59,20 +59,14 @@ const formattedDuration = computed(() => {
 
 <template>
   <div class="h-full overflow-auto bg-white p-4">
-    <div class="mb-2 flex items-start justify-between gap-3">
+    <div class="mb-3 flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="text-sm font-semibold text-gray-800">{{ props.title || t('common.summary') }}</div>
-          <span
-            v-if="showEncryptedBadge"
-            class="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900"
-          >
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <div class="text-sm font-medium text-[var(--sv-text)]">{{ props.title || t('common.summary') }}</div>
+          <span v-if="showEncryptedBadge" class="sv-meta">
             {{ t('common.encrypted') }}
           </span>
-          <span
-            v-if="formattedDuration"
-            class="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-900"
-          >
+          <span v-if="formattedDuration" class="sv-meta font-mono">
             {{ formattedDuration }}
           </span>
         </div>
@@ -83,22 +77,22 @@ const formattedDuration = computed(() => {
       </div>
     </div>
 
-      <slot v-if="!props.reasoningView" name="empty">
-        <div class="text-sm text-gray-500">{{ props.emptyText || t('common.loading') }}</div>
-      </slot>
+    <slot v-if="!props.reasoningView" name="empty">
+      <div class="text-sm text-[var(--sv-text-3)]">{{ props.emptyText || t('common.loading') }}</div>
+    </slot>
 
-    <div v-else class="space-y-2">
-      <div class="space-y-2 text-sm">
+    <div v-else class="flex flex-col gap-3">
+      <div class="flex flex-col gap-3 text-sm">
         <template v-if="props.reasoningView.visibility === 'shown'">
-          <div v-if="props.reasoningView.hasEncrypted === true" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-            <div class="text-xs font-semibold uppercase tracking-wide">{{ t('chat.reasoning.encryptedTitle') }}</div>
-            <div class="mt-1 text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
+          <div v-if="props.reasoningView.hasEncrypted === true" class="sv-notice flex-col items-stretch gap-1 p-3">
+            <div class="text-xs font-medium text-[var(--sv-text)]">{{ t('chat.reasoning.encryptedTitle') }}</div>
+            <div class="text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
           </div>
 
-          <div v-if="hasDisplayBlocks" class="space-y-2 rounded border border-gray-200 bg-white p-2">
+          <div v-if="hasDisplayBlocks" class="flex flex-col gap-3 border-l border-[var(--sv-line-strong)] pl-3">
             <template v-for="block in displayBlocks ?? []" :key="block.blockId">
-              <div v-if="block.type === 'text'" class="space-y-1">
-                <div v-if="semanticLabel(block.semanticRole)" class="text-[11px] font-semibold text-gray-500">
+              <div v-if="block.type === 'text'" class="flex flex-col gap-1">
+                <div v-if="semanticLabel(block.semanticRole)" class="sv-label">
                   {{ semanticLabel(block.semanticRole) }}
                 </div>
                 <ReasoningRichText
@@ -106,40 +100,39 @@ const formattedDuration = computed(() => {
                   :streaming="props.isStreaming === true"
                 />
               </div>
-              <div v-if="block.type === 'image'" class="space-y-1">
-                <div v-if="semanticLabel(block.semanticRole)" class="text-[11px] font-semibold text-gray-500">
+              <div v-if="block.type === 'image'" class="flex flex-col gap-1">
+                <div v-if="semanticLabel(block.semanticRole)" class="sv-label">
                   {{ semanticLabel(block.semanticRole) }}
                 </div>
                 <img
                   :src="block.url"
-                  class="max-h-96 max-w-full rounded border border-gray-200 object-contain"
+                  class="max-h-96 max-w-full rounded-md border border-[var(--sv-line)] object-contain"
                   alt=""
                 />
               </div>
               <div
                 v-if="block.type === 'opaque'"
-                class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600"
+                class="sv-meta"
               >
                 {{ opaqueLabel(block) }}
               </div>
             </template>
           </div>
 
-          <div v-if="!hasDisplayBlocks" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>
+          <div v-if="!hasDisplayBlocks" class="text-sm text-[var(--sv-text-3)]">{{ t('chat.reasoning.noPayloadShort') }}</div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'excluded'">
-          <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div class="sv-notice p-3 text-sm">
             {{ t('chat.reasoning.excluded') }}
           </div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'not_returned'">
-          <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+          <div class="text-sm text-[var(--sv-text-3)]">
             {{ t('chat.reasoning.notReturned') }}
           </div>
         </template>
-
       </div>
     </div>
   </div>

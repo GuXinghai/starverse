@@ -21,7 +21,7 @@ describe('OpenRouter Images endpoint selection V2 service', () => {
   it('requires a user choice for multiple candidates and persists the exact selected tag', async () => {
     const db = new BetterSqlite3(':memory:')
     applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(descriptor), {
+    const fetchImpl = vi.fn(async (_url: string) => new Response(JSON.stringify(descriptor), {
       status: 200, headers: { 'content-type': 'application/json' },
     }))
     const credentialService = {
@@ -41,6 +41,9 @@ describe('OpenRouter Images endpoint selection V2 service', () => {
       expect(selected.binding).toMatchObject({ providerTag: 'google-vertex/global', selectedBy: 'user' })
       expect(selected.candidates[0]).toMatchObject({ providerTag: 'google-vertex/global', bound: true })
       expect(fetchImpl).toHaveBeenCalledTimes(1)
+      expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+        'https://openrouter.ai/api/v1/images/models/google/gemini-3.1-flash-image/endpoints',
+      )
     } finally { db.close() }
   })
 })

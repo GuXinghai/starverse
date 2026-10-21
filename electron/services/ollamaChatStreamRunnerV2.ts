@@ -1,3 +1,4 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
 import { session } from "electron";
 import type BetterSqlite3 from "better-sqlite3";
 import { ConversationGraphV2Repo } from "../../infra/db/repo/conversationGraphV2Repo";
@@ -13,7 +14,7 @@ import {
   OllamaNativeChatStreamAssemblerV1,
   type OllamaNativeChatStreamResultV1,
 } from "../../src/core/generation-v2/providers/ollama-chat/chatStreamV1";
-import { buildOllamaNativeChatRequestHistoryV1 } from "../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1";
+import { buildOllamaNativeChatRequestHistoryV1, createOllamaNativeChatArtifactV1 } from "../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1";
 import {
   isGenerationTextCommandResultV2,
   type GenerationTextCommandResultV2,
@@ -24,6 +25,16 @@ import {
 } from "./generationStreamProjectionV2";
 import { createGenerationTextBodyCheckpointV2 } from "./generationBodyCheckpointV2";
 import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
+const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
+
 export function createOllamaChatStreamRunnerV2(
   input: Readonly<{
     db: BetterSqlite3.Database;
@@ -118,6 +129,7 @@ export function createOllamaChatStreamRunnerV2(
         { state, errorCode: code, errorMessage: message },
         now(),
       );
+      if (state !== 'completed') { new GenerationInterruptedReplayV2Repo(input.db).insertLocalCheckpoint(c, { answerRootId: cmd.preparedRequest.answerRootId, operationId: cmd.preparedRequest.operationId, requestSequence: cmd.preparedRequest.requestSequence, protocol: 'ollama', requestBody: JSON.parse(cmd.preparedRequest.body.copyUtf8Text()), wireEvents: receivedLocalWireFacts.get(cmd) ?? [] }) }
       if (state === "completed" && result) {
         const fact = history.loadRequestHistory(
           c,
@@ -149,6 +161,32 @@ export function createOllamaChatStreamRunnerV2(
       errorMessage: message,
     };
   }
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'ollama-chat-v1', (_receipt, command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_OLLAMA_RUNNER_RESPONSE_INVALID')
+    const raw = value as Record<string, unknown>
+    const normalized = createOllamaNativeChatArtifactV1([raw.assistantMessage as import('../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1').OllamaNativeChatMessageV1])
+    if (normalized.messages[0]?.role !== 'assistant' || typeof raw.model !== 'string' || typeof raw.doneReason !== 'string' ||
+        !raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage) ||
+        Object.values(raw.usage as Record<string, unknown>).some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
+      throw new Error('GENERATION_V2_OLLAMA_RUNNER_RESPONSE_INVALID')
+    }
+    const result = Object.freeze({ assistantMessage: normalized.messages[0], model: raw.model,
+      doneReason: raw.doneReason, usage: raw.usage }) as OllamaNativeChatStreamResultV1
+    return terminal(command, 'completed', result, null, null, 'mid_stream')
+  }, (command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_OLLAMA_RUNNER_RESPONSE_INVALID')
+    const raw = value as Record<string, unknown>
+    const normalized = createOllamaNativeChatArtifactV1([raw.assistantMessage as import('../../src/core/generation-v2/providers/ollama-chat/nativeMessagesV1').OllamaNativeChatMessageV1])
+    if (normalized.messages[0]?.role !== 'assistant' || typeof raw.model !== 'string' || typeof raw.doneReason !== 'string' ||
+        !raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage) ||
+        Object.values(raw.usage as Record<string, unknown>).some((entry) => typeof entry !== 'number' || !Number.isFinite(entry))) {
+      throw new Error('GENERATION_V2_OLLAMA_RUNNER_RESPONSE_INVALID')
+    }
+    const calls = (normalized.messages[0] as Record<string, unknown> | undefined)?.tool_calls
+    if (Array.isArray(calls) && calls.length > 0 && command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new Error('GENERATION_V2_OLLAMA_RUNNER_RESPONSE_INVALID')
+    }
+  })
   return Object.freeze({
     run: async (cmd: GenerationTextCommandResultV2, signal?: AbortSignal) => {
       if (
@@ -170,6 +208,7 @@ export function createOllamaChatStreamRunnerV2(
         p.profileRevision !== rev
       )
         throw new Error("GENERATION_V2_OLLAMA_RUNNER_PROFILE_STALE");
+      receivedLocalWireFacts.set(cmd, []);
       begin(cmd);
       const s = createGenerationAbortScope(signal, input.timeoutMs);
       let started = false,
@@ -231,6 +270,7 @@ export function createOllamaChatStreamRunnerV2(
             if (item.done) break;
             if (item.value.byteLength) started = true;
             for (const row of decoder.push(item.value)) {
+              receivedLocalWireFacts.get(cmd)!.push(row);
               const delta = assembler.push(row);
               if (delta.contentDelta) {
                 visible += delta.contentDelta;
@@ -251,7 +291,7 @@ export function createOllamaChatStreamRunnerV2(
                 );
             }
           }
-          for (const row of decoder.finish()) assembler.push(row);
+          for (const row of decoder.finish()) { receivedLocalWireFacts.get(cmd)!.push(row); assembler.push(row); }
         } finally {
           try {
             await reader.cancel();
@@ -260,9 +300,17 @@ export function createOllamaChatStreamRunnerV2(
         }
         // result.model is reported provenance; a mismatch with the requested model ID is not a failure
         const result = assembler.finish();
+        persistGenerationNativeCompletionReceiptV2(input.db, cmd, result, now())
         checkpoint.flush();
-        return terminal(cmd, "completed", result, null, null, "mid_stream");
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command: cmd, nativeResult: result, nowMs: now,
+          materialize: () => terminal(cmd, "completed", result, null, null, "mid_stream"),
+        });
       } catch (e) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(e)) throw e
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, cmd.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, cmd, e)
+        }
         let failure: unknown = e;
         try {
           checkpoint.flush();
@@ -286,6 +334,7 @@ export function createOllamaChatStreamRunnerV2(
           started ? "mid_stream" : "pre_stream",
         );
       } finally {
+        receivedLocalWireFacts.delete(cmd);
         checkpoint.dispose();
         s.dispose();
       }

@@ -1,5 +1,6 @@
 {
   "errors": {
+    "imagePreviewUnavailable": "图片预览暂时无法加载。请重新打开此会话后重试。",
     "startup": {
       "loading": "正在打开工作区…",
       "failed": "未能打开工作区。",
@@ -314,7 +315,8 @@
       "priceWebSearch": "网络搜索",
       "priceInternalReasoning": "内部推理",
       "priceInputReuseRead": "输入复用读取",
-      "priceInputReuseWrite": "输入复用写入"
-      }
+      "priceInputReuseWrite": "输入复用写入",
+      "useModel": "使用此模型"
+    }
   }
 }

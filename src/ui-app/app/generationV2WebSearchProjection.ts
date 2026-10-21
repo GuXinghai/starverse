@@ -5,7 +5,7 @@ import type { ModelCapabilityDomainV2, ModelCapabilitySemanticPathV2 } from '@/c
 import { resolveSearchSettings, type SearchSettingsLayers, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import type { ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
 
-export type WebSearchBindingV2 = Readonly<{ providerId: string; modelId: string; operation: 'text' | 'image_generate' }>
+export type WebSearchBindingV2 = Readonly<{ providerId: string; modelId: string; operation: 'text' | 'image_generate'; endpointProfileId?: string; protocolContractId?: string }>
 export type GenerationV2WebSearchControls = Readonly<{
   ready: boolean
   enabled: boolean
@@ -22,9 +22,10 @@ export function registeredWebSearchProviderIdV2(providerId: string): string {
 
 export function webSearchBindingForRouteV2(route: ConversationRouteSelection | null, imageEnabled = false): WebSearchBindingV2 | null {
   if (!route) return null
-  if (route.kind === 'openai_chat_compatible') return { providerId: 'openai_compatible', modelId: route.modelId, operation: 'text' }
+  if (route.kind === 'openai_chat_compatible') return { providerId: 'openai_compatible', modelId: route.modelId, operation: 'text', endpointProfileId: route.providerInstanceId, protocolContractId: 'openai_chat_compatible' }
   const providerId = registeredWebSearchProviderIdV2(route.providerId)
   return { providerId, modelId: route.modelId,
+    ...(providerId === 'google_ai_studio' ? { endpointProfileId: 'gemini-developer-api-v1beta', protocolContractId: imageEnabled ? 'gemini-interactions-v1beta' : 'gemini-generate-content-v1beta' } : {}),
     operation: imageEnabled && (providerId === 'openrouter' || providerId === 'google_ai_studio') ? 'image_generate' : 'text' }
 }
 
@@ -32,7 +33,9 @@ function bindingMatches(projection: GenerationControlsProjectionV2, expected?: W
   const binding = projection.binding
   if (typeof binding.modelId !== 'string' || typeof binding.providerId !== 'string' ||
       typeof binding.protocolContractId !== 'string' || (binding.operation !== 'text' && binding.operation !== 'image_generate')) return false
-  return !expected || expected.providerId === binding.providerId && expected.modelId === binding.modelId && expected.operation === binding.operation
+  return !expected || expected.providerId === binding.providerId && expected.modelId === binding.modelId && expected.operation === binding.operation &&
+    (expected.endpointProfileId === undefined || expected.endpointProfileId === binding.endpointProfileId) &&
+    (expected.protocolContractId === undefined || expected.protocolContractId === binding.protocolContractId)
 }
 
 function encodedPaths(projection: GenerationControlsProjectionV2 | null | undefined, expected?: WebSearchBindingV2 | null): readonly ModelCapabilitySemanticPathV2[] | null {
@@ -121,5 +124,31 @@ export function buildGenerationV2WebSearch(input: Readonly<{
       !accepted('web.maxResults', search.effectiveMaxResults) && !accepted('web.searchContextSize', explicit.searchDepth)) unsupported()
   if (accepted('web.searchContextSize', search.effectiveSearchContextSize)) web.searchContextSize = search.effectiveSearchContextSize
   if (search.effectiveEngine && accepted('web.engine', search.effectiveEngine)) web.engine = search.effectiveEngine
+  return Object.freeze(web)
+}
+
+/** Persist user intent independently of the currently selected protocol.
+ * Optional-field support and defaults belong to the applied request Rules. */
+export function buildGenerationV2RequestedWebSearch(input: Readonly<{
+  layers: SearchSettingsLayers
+  accountDefaultEnabled?: boolean
+  googleSearch?: boolean
+  imageSearch?: boolean
+}>): Readonly<Record<string, unknown>> {
+  const search = resolveSearchSettings(input.layers, { accountDefaultEnabled: input.accountDefaultEnabled })
+  const searchPrompt = search.effectiveSearchPrompt ?? undefined
+  if (!search.effectiveMode && !input.googleSearch && !input.imageSearch) return Object.freeze({ mode: 'disabled', ...(searchPrompt ? { searchPrompt } : {}) })
+  const layers = [input.layers.convo, input.layers.project, input.layers.global]
+  const explicitMaximum = layers.find(layer => layer?.maxResults !== undefined && layer.maxResults !== null)?.maxResults
+  const explicitEngine = layers.find(layer => layer?.searchEngine && layer.searchEngine !== 'default')?.searchEngine
+  const presetDepth = search.resolvedDepth !== 'default' && search.resolvedDepth !== 'custom'
+  const web: Record<string, unknown> = { mode: 'provider_search', types: Object.freeze([
+    ...(search.effectiveMode || input.googleSearch ? ['web'] : []), ...(input.imageSearch ? ['image'] : []),
+  ]) }
+  if (searchPrompt) web.searchPrompt = searchPrompt
+  if (explicitMaximum !== undefined && explicitMaximum !== null) web.maxResults = explicitMaximum
+  else if (presetDepth) web.maxResults = search.effectiveMaxResults
+  if (presetDepth) web.searchContextSize = search.resolvedDepth
+  if (explicitEngine) web.engine = explicitEngine
   return Object.freeze(web)
 }

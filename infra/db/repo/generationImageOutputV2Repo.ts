@@ -154,8 +154,13 @@ export class GenerationImageOutputV2Repo {
     if (!isAttachmentAssetRevisionRepositoryFactV2(revision)) {
       throw new GenerationImageOutputV2RepoError('GENERATION_V2_IMAGE_OUTPUT_AUTHORITY_INVALID')
     }
-    if (execution.snapshot.providerBinding.operation !== 'image_generate' ||
+    const binding = execution.snapshot.providerBinding
+    const openAIImageTool = binding.operation === 'text' && binding.providerId.value === 'openai_responses' &&
+      binding.protocolContractId.value === 'openai-responses-v1' && request.providerId === 'openai_responses' &&
+      request.contractId === 'openai-responses-v1' && execution.snapshot.semanticIntent.image.mode === 'generate'
+    if ((binding.operation !== 'image_generate' && !openAIImageTool) ||
         request.operationId !== execution.operation.operationId.value ||
+        request.snapshotHash !== execution.snapshot.snapshotHash.value ||
         request.answerRootId !== execution.operation.targetAnswerId.value ||
         request.requestSequence < 1 ||
         revision.assetKind !== 'image' || revision.sourceKind !== 'generated' ||

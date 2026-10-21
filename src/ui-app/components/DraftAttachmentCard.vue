@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { t } from '@/shared/i18n'
+import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 
 type DraftAttachmentDisplayStatus =
   | 'parsing'
@@ -84,25 +85,18 @@ const statusLabel = computed(() => {
 })
 
 const toneClass = computed(() => {
-  if (props.attachment.borderTone === 'green') return 'border-green-300 bg-green-50'
-  if (props.attachment.borderTone === 'yellow') return 'border-amber-300 bg-amber-50'
-  if (props.attachment.borderTone === 'red') return 'border-red-300 bg-red-50'
-  return 'border-gray-200 bg-white'
+  if (props.attachment.borderTone === 'yellow') return 'border-[var(--sv-warning-line)]'
+  if (props.attachment.borderTone === 'red') return 'border-[var(--sv-danger-line)]'
+  return 'border-gray-200'
 })
 
 const textToneClass = computed(() => {
-  if (props.attachment.borderTone === 'green') return 'text-green-700'
-  if (props.attachment.borderTone === 'yellow') return 'text-amber-700'
-  if (props.attachment.borderTone === 'red') return 'text-red-700'
-  return 'text-gray-600'
+  if (props.attachment.borderTone === 'yellow') return 'text-[var(--sv-warning)]'
+  if (props.attachment.borderTone === 'red') return 'text-[var(--sv-danger)]'
+  return 'text-gray-500'
 })
 
-const dotToneClass = computed(() => {
-  if (props.attachment.borderTone === 'green') return 'bg-green-500'
-  if (props.attachment.borderTone === 'yellow') return 'bg-amber-500'
-  if (props.attachment.borderTone === 'red') return 'bg-red-500'
-  return 'bg-gray-400'
-})
+const placeholderIcon = computed(() => (props.attachment.sourceKind.trim() === 'url_import' ? 'link' : 'file'))
 
 const mediaLabel = computed(() => {
   if (props.attachment.sourceKind.trim() === 'url_import') return t('filePipeline.attachment.media.url')
@@ -195,7 +189,7 @@ function openDetails() {
 
 <template>
   <div
-    class="group relative flex min-w-0 max-w-[14rem] cursor-pointer items-center gap-2 overflow-visible rounded-full border px-2.5 py-1.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    class="group relative flex h-11 min-w-0 max-w-[15rem] cursor-pointer items-center gap-2 rounded-xl border bg-white pl-1.5 pr-1.5 transition-colors hover:bg-black/[0.03]"
     :class="[toneClass, props.attachment.isParsing ? 'opacity-70 grayscale' : '']"
     :data-testid="`draft-attachment-card-${props.attachment.assetId}`"
     role="button"
@@ -206,45 +200,43 @@ function openDetails() {
     @keydown.enter.prevent="openDetails"
     @keydown.space.prevent="openDetails"
   >
-    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotToneClass" aria-hidden="true"></span>
-    <div class="flex min-w-0 items-center gap-2">
-      <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
-        <img
-          v-if="props.attachment.previewDataUrl"
-          :src="props.attachment.previewDataUrl"
-          class="h-full w-full object-cover"
-          alt=""
-          draggable="false"
-          data-testid="draft-attachment-preview"
-        />
-        <div
-          v-else
-          class="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-gray-500"
-          data-testid="draft-attachment-placeholder"
-        >
-          {{ mediaLabel }}
-        </div>
+    <div class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 text-gray-500">
+      <img
+        v-if="props.attachment.previewDataUrl"
+        :src="props.attachment.previewDataUrl"
+        class="h-full w-full object-cover"
+        alt=""
+        draggable="false"
+        data-testid="draft-attachment-preview"
+      />
+      <div
+        v-else
+        class="flex h-full w-full items-center justify-center"
+        data-testid="draft-attachment-placeholder"
+      >
+        <UiIcon :name="placeholderIcon" :size="16" />
       </div>
+    </div>
 
-      <div class="min-w-0">
-        <div class="truncate text-xs font-semibold uppercase tracking-wide text-gray-900">
-          {{ mediaLabel }}<span v-if="props.attachment.extension"> / {{ props.attachment.extension }}</span>
-        </div>
-        <div class="truncate text-[10px]" :class="textToneClass">{{ statusLabel }}</div>
+    <div class="min-w-0 flex-1">
+      <div class="truncate text-xs font-medium leading-4 text-gray-900">
+        {{ mediaLabel }}<span v-if="props.attachment.extension"> / {{ props.attachment.extension }}</span>
       </div>
+      <div class="truncate text-xs leading-4" :class="textToneClass">{{ statusLabel }}</div>
     </div>
     <button
       v-if="props.attachment.canRemove"
       type="button"
-      class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-xs leading-none text-gray-700 hover:bg-gray-50"
+      class="sv-icon-btn h-6 w-6 shrink-0"
       :data-testid="`draft-attachment-remove-${props.attachment.assetId}`"
       :title="t('composer.actions.removeAttachment')"
+      :aria-label="t('composer.actions.removeAttachment')"
       @click.stop="removeAttachment"
     >
-      x
+      <UiIcon name="close" :size="12" />
     </button>
     <div
-      class="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 whitespace-pre-line rounded border border-gray-200 bg-white p-2 text-xs leading-5 text-gray-700 shadow-lg group-hover:block group-focus:block"
+      class="sv-popover pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 whitespace-pre-line px-3 py-2 text-xs leading-5 text-gray-700 group-hover:block group-focus:block"
       data-testid="draft-attachment-tooltip"
     >
       {{ tooltipText }}

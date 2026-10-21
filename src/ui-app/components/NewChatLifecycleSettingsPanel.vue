@@ -18,28 +18,31 @@ async function save() {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="new-chat-lifecycle-settings">
-    <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('chat.newTemplate.settingsTitle') }}</div>
-    <div v-if="value" class="mt-3 space-y-3 text-xs text-gray-700">
-      <label class="block space-y-1">
-        <span>{{ t('chat.newTemplate.startupNavigation') }}</span>
-        <select v-model="value.startupNavigation" class="w-full rounded border px-2 py-1" data-testid="new-chat-startup-navigation">
+  <div data-testid="new-chat-lifecycle-settings">
+    <div class="text-sm font-semibold">{{ t('chat.newTemplate.settingsTitle') }}</div>
+    <div v-if="value" class="mt-3 flex flex-col gap-3">
+      <label class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <span class="text-[13px] font-medium">{{ t('chat.newTemplate.startupNavigation') }}</span>
+        <select v-model="value.startupNavigation" class="sv-select w-56" data-testid="new-chat-startup-navigation">
           <option value="open_new">{{ t('chat.newTemplate.openNew') }}</option>
           <option value="restore_last_formal">{{ t('chat.newTemplate.restoreFormal') }}</option>
           <option value="projects_only">{{ t('chat.newTemplate.projectsOnly') }}</option>
         </select>
       </label>
-      <label class="flex items-center gap-2"><input v-model="value.startupTemplateReset.modelConfig" type="checkbox" />{{ t('chat.newTemplate.startupResetModel') }}</label>
-      <label class="flex items-center gap-2"><input v-model="value.startupTemplateReset.draftAttachments" type="checkbox" />{{ t('chat.newTemplate.startupResetDraft') }}</label>
-      <label class="block space-y-1">
-        <span>{{ t('chat.newTemplate.postSendReset') }}</span>
-        <select v-model="value.postSendTemplateReset" class="w-full rounded border px-2 py-1" data-testid="new-chat-post-send-reset">
+      <label class="flex items-center gap-2 text-[13px]"><input v-model="value.startupTemplateReset.modelConfig" type="checkbox" class="size-4" />{{ t('chat.newTemplate.startupResetModel') }}</label>
+      <label class="flex items-center gap-2 text-[13px]"><input v-model="value.startupTemplateReset.draftAttachments" type="checkbox" class="size-4" />{{ t('chat.newTemplate.startupResetDraft') }}</label>
+      <label class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <span class="text-[13px] font-medium">{{ t('chat.newTemplate.postSendReset') }}</span>
+        <select v-model="value.postSendTemplateReset" class="sv-select w-56" data-testid="new-chat-post-send-reset">
           <option value="reset_all">{{ t('chat.newTemplate.resetAll') }}</option>
           <option value="preserve_model_config">{{ t('chat.newTemplate.preserveModel') }}</option>
         </select>
       </label>
-      <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-white disabled:opacity-50" :disabled="saving" data-testid="new-chat-lifecycle-save" @click="save">{{ t('common.save') }}</button>
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-h-[18px] min-w-0 flex-1 break-words text-xs text-[color:var(--sv-danger)]">{{ error }}</div>
+        <button type="button" class="sv-btn w-20 shrink-0" :disabled="saving" data-testid="new-chat-lifecycle-save" @click="save">{{ t('common.save') }}</button>
+      </div>
     </div>
-    <div v-if="error" class="mt-2 text-xs text-red-600">{{ error }}</div>
+    <div v-else class="mt-2 min-h-[18px] break-words text-xs text-[color:var(--sv-danger)]">{{ error }}</div>
   </div>
 </template>

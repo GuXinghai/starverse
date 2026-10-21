@@ -322,20 +322,20 @@ function removeAttachment() {
 <template>
   <div
     v-if="props.open && props.attachment"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+    class="sv-backdrop"
     data-testid="draft-attachment-details-dialog"
     @click.self="close"
     @keydown.esc="close"
   >
-    <div class="max-h-[80vh] w-full max-w-3xl overflow-auto rounded-lg bg-white p-4 shadow-xl">
+    <div class="sv-dialog max-h-[85vh] w-full max-w-3xl overflow-auto p-5">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="text-sm font-semibold text-gray-900">{{ t('filePipeline.attachment.details.title') }}</div>
-          <div class="mt-1 text-xs text-gray-500">{{ props.attachment.filename }}</div>
+          <div class="sv-title">{{ t('filePipeline.attachment.details.title') }}</div>
+          <div class="sv-meta mt-1 break-words">{{ props.attachment.filename }}</div>
         </div>
         <button
           type="button"
-          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+          class="sv-btn sv-btn-sm"
           data-testid="draft-attachment-details-close"
           @click="close"
         >
@@ -343,9 +343,9 @@ function removeAttachment() {
         </button>
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-2">
-        <section class="space-y-2 rounded border border-gray-200 p-3">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.basic') }}</div>
+      <div class="mt-5 grid gap-x-8 gap-y-6 md:grid-cols-2">
+        <section class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('filePipeline.attachment.details.basic') }}</div>
           <dl class="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
             <dt class="text-gray-500">{{ t('filePipeline.attachment.details.fileName') }}</dt><dd class="min-w-0 break-words text-gray-900">{{ props.attachment.filename }}</dd>
             <dt class="text-gray-500">{{ t('filePipeline.attachment.details.extension') }}</dt><dd class="text-gray-900">{{ props.attachment.extension ?? '-' }}</dd>
@@ -360,13 +360,13 @@ function removeAttachment() {
           </dl>
         </section>
 
-        <section class="space-y-2 rounded border border-gray-200 p-3">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.reasons') }}</div>
-          <div class="space-y-2 text-sm">
-            <div v-if="props.attachment.warningReason" class="rounded border border-amber-200 bg-amber-50 p-2 text-amber-800">
+        <section class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('filePipeline.attachment.details.reasons') }}</div>
+          <div class="flex flex-col gap-2 text-sm">
+            <div v-if="props.attachment.warningReason" class="sv-notice sv-notice-warning">
               {{ props.attachment.warningReason }}
             </div>
-            <div v-if="props.attachment.blockingReason" class="rounded border border-red-200 bg-red-50 p-2 text-red-800">
+            <div v-if="props.attachment.blockingReason" class="sv-notice sv-notice-danger">
               {{ props.attachment.blockingReason }}
             </div>
             <div v-if="!props.attachment.warningReason && !props.attachment.blockingReason" class="text-gray-500">
@@ -374,11 +374,11 @@ function removeAttachment() {
             </div>
           </div>
 
-          <div class="pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.operations') }}</div>
+          <div class="sv-label pt-2">{{ t('filePipeline.attachment.details.operations') }}</div>
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
-              class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              class="sv-btn sv-btn-sm"
               :disabled="!props.attachment.retryPreviewAvailable"
               :title="props.attachment.retryPreviewReason ?? ''"
               data-testid="draft-attachment-details-retry"
@@ -389,7 +389,7 @@ function removeAttachment() {
             <button
               v-if="props.attachment.canRemove"
               type="button"
-              class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+              class="sv-btn sv-btn-sm"
               data-testid="draft-attachment-details-remove"
               @click="removeAttachment"
             >
@@ -399,12 +399,12 @@ function removeAttachment() {
         </section>
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-2">
-        <section class="space-y-3 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-options">
+      <div class="sv-divider-t mt-5 grid gap-x-8 gap-y-6 pt-5 md:grid-cols-2">
+        <section class="flex flex-col gap-3" data-testid="draft-attachment-dfc-options">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.targetFormat') }}</div>
-              <div class="mt-1 text-[11px] text-gray-500">
+              <div class="sv-label">{{ t('filePipeline.attachment.details.targetFormat') }}</div>
+              <div class="mt-1 text-xs text-gray-500">
                 {{ t('filePipeline.attachment.details.targetFormatHint') }}
               </div>
             </div>
@@ -412,20 +412,20 @@ function removeAttachment() {
           <div v-if="props.attachment.dfcOptions.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-loading">
             {{ t('filePipeline.attachment.details.loading') }}
           </div>
-          <div v-else-if="props.attachment.dfcOptions.error" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800" data-testid="draft-attachment-dfc-options-error">
+          <div v-else-if="props.attachment.dfcOptions.error" class="sv-notice sv-notice-danger text-sm" data-testid="draft-attachment-dfc-options-error">
             {{ props.attachment.dfcOptions.error }}
           </div>
-          <div v-else-if="props.attachment.dfcOptions.options.length > 0" class="space-y-2">
-            <div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-600" data-testid="draft-attachment-dfc-defaults">
+          <div v-else-if="props.attachment.dfcOptions.options.length > 0" class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 text-xs text-gray-600" data-testid="draft-attachment-dfc-defaults">
               <div class="flex flex-wrap gap-x-4 gap-y-1">
                 <span>{{ t('filePipeline.attachment.details.recommended') }}：{{ formatDfcTargetKind(recommendedDfcTargetKind()) }}</span>
                 <span>{{ t('filePipeline.attachment.details.fileTypeDefault') }}<span v-if="props.attachment.dfcOptions.fileTypeKey">（{{ props.attachment.dfcOptions.fileTypeKey }}）</span>：{{ formatDfcTargetKind(props.attachment.dfcOptions.fileTypeDefaultTargetKind) }}</span>
                 <span>{{ t('filePipeline.attachment.details.globalDefault') }}：{{ formatDfcTargetKind(props.attachment.dfcOptions.globalDefaultTargetKind) }}</span>
               </div>
-              <div class="mt-2 flex flex-wrap gap-2">
+              <div class="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="!props.attachment.dfcOptions.fileTypeDefaultOptionId"
                   data-testid="draft-attachment-dfc-apply-file-type-default"
                   @click="applyDfcDefault(props.attachment.dfcOptions.fileTypeDefaultOptionId)"
@@ -434,7 +434,7 @@ function removeAttachment() {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="!props.attachment.dfcOptions.globalDefaultOptionId"
                   data-testid="draft-attachment-dfc-apply-global-default"
                   @click="applyDfcDefault(props.attachment.dfcOptions.globalDefaultOptionId)"
@@ -443,7 +443,7 @@ function removeAttachment() {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="!props.attachment.dfcOptions.fileTypeDefaultTargetKind"
                   data-testid="draft-attachment-dfc-clear-file-type-default"
                   @click="emit('clear-dfc-default', 'file_type')"
@@ -452,7 +452,7 @@ function removeAttachment() {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="!props.attachment.dfcOptions.globalDefaultTargetKind"
                   data-testid="draft-attachment-dfc-clear-global-default"
                   @click="emit('clear-dfc-default', 'global')"
@@ -464,8 +464,8 @@ function removeAttachment() {
             <div
               v-for="option in props.attachment.dfcOptions.options"
               :key="option.optionId"
-              class="rounded border p-3 text-sm"
-              :class="option.disabled ? 'border-gray-200 bg-gray-50 text-gray-400' : option.selected ? 'border-blue-300 bg-blue-50 text-blue-900' : option.recommended ? 'border-green-300 bg-green-50 text-gray-900' : 'border-gray-200 bg-white text-gray-800'"
+              class="rounded-lg border p-3 text-sm"
+              :class="option.disabled ? 'border-gray-200 text-gray-400' : option.selected ? 'border-gray-900 bg-black/[0.04] text-gray-900' : 'border-gray-200 text-gray-800 hover:bg-black/[0.03]'"
               :data-testid="`draft-attachment-dfc-option-${option.targetKind}`"
               role="button"
               :tabindex="option.disabled ? -1 : 0"
@@ -476,27 +476,27 @@ function removeAttachment() {
               <div class="flex items-center justify-between gap-2">
                 <div class="min-w-0">
                   <div class="font-medium">{{ formatDfcTargetKind(option.targetKind) }}</div>
-                  <div class="mt-1 text-[11px] text-gray-500">{{ explainDfcTargetKind(option.targetKind) }}</div>
+                  <div class="mt-1 text-xs text-gray-500">{{ explainDfcTargetKind(option.targetKind) }}</div>
                 </div>
-                <div class="flex shrink-0 flex-wrap justify-end gap-1 text-[10px]">
-                  <span v-if="option.selected" class="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700">{{ t('filePipeline.attachment.details.selected') }}</span>
-                  <span v-if="option.recommended" class="rounded-full bg-green-100 px-2 py-0.5 text-green-700">{{ t('filePipeline.attachment.details.recommended') }}</span>
-                  <span v-if="option.matchesFileTypeDefault" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">{{ t('filePipeline.attachment.details.fileTypeDefault') }}</span>
-                  <span v-if="option.matchesGlobalDefault" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">{{ t('filePipeline.attachment.details.globalDefault') }}</span>
+                <div class="flex shrink-0 flex-wrap justify-end gap-1 text-xs">
+                  <span v-if="option.selected" class="sv-chip">{{ t('filePipeline.attachment.details.selected') }}</span>
+                  <span v-if="option.recommended" class="sv-chip">{{ t('filePipeline.attachment.details.recommended') }}</span>
+                  <span v-if="option.matchesFileTypeDefault" class="sv-chip">{{ t('filePipeline.attachment.details.fileTypeDefault') }}</span>
+                  <span v-if="option.matchesGlobalDefault" class="sv-chip">{{ t('filePipeline.attachment.details.globalDefault') }}</span>
                 </div>
               </div>
-              <div class="mt-2 text-[11px] text-gray-500">
+              <div class="mt-2 text-xs text-gray-500">
                 {{ formatDfcSendStrategy(option.sendStrategy) }} · {{ formatDfcOptionStatus(option.status) }}
                 <span v-if="option.compatibilityStatus"> · {{ formatCompatibilityStatus(option.compatibilityStatus) }}</span>
               </div>
-              <div v-if="option.recommendationReason" class="mt-1 text-[11px] text-green-700">
+              <div v-if="option.recommendationReason" class="mt-1 text-xs text-gray-600">
                 {{ formatDfcRecommendationReason(props.attachment.dfcOptions.recommendedReasonCode) }}
               </div>
-              <div v-if="option.disabledReason" class="mt-1 text-[11px] text-gray-500">{{ formatDfcDisabledReason(option.disabledReason) }}</div>
+              <div v-if="option.disabledReason" class="mt-1 text-xs text-gray-500">{{ formatDfcDisabledReason(option.disabledReason) }}</div>
               <div
                 v-for="diagnostic in option.diagnostics"
                 :key="diagnostic"
-                class="mt-1 text-[11px] text-amber-700"
+                class="mt-1 text-xs text-[var(--sv-warning)]"
                 :data-testid="`draft-attachment-dfc-option-${option.targetKind}-diagnostic`"
               >
                 {{ formatDfcDiagnostic(diagnostic) }}
@@ -504,7 +504,7 @@ function removeAttachment() {
               <div class="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="option.disabled"
                   :data-testid="`draft-attachment-dfc-use-option-${option.targetKind}`"
                   @click.stop="updateDfcOption(option)"
@@ -513,7 +513,7 @@ function removeAttachment() {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="option.disabled || !props.attachment.dfcOptions.fileTypeKey"
                   :data-testid="`draft-attachment-dfc-save-file-type-default-${option.targetKind}`"
                   @click.stop="saveDfcDefault('file_type', option)"
@@ -522,7 +522,7 @@ function removeAttachment() {
                 </button>
                 <button
                   type="button"
-                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  class="sv-btn sv-btn-sm"
                   :disabled="option.disabled"
                   :data-testid="`draft-attachment-dfc-save-global-default-${option.targetKind}`"
                   @click.stop="saveDfcDefault('global', option)"
@@ -535,24 +535,24 @@ function removeAttachment() {
           <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-empty">
             {{ t('filePipeline.attachment.details.noFormatOptions') }}
           </div>
-          <div v-if="props.attachment.dfcOptions.decisionStatus" class="text-[11px] text-gray-500">
+          <div v-if="props.attachment.dfcOptions.decisionStatus" class="text-xs text-gray-500">
             {{ t('filePipeline.attachment.details.selectionStatus') }}：{{ formatDfcDecisionStatus(props.attachment.dfcOptions.decisionStatus) }}
             <span v-if="formatDfcDecisionReason(props.attachment.dfcOptions.decisionReasonCode)"> · {{ formatDfcDecisionReason(props.attachment.dfcOptions.decisionReasonCode) }}</span>
           </div>
         </section>
 
-        <section class="space-y-2 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-preview">
+        <section class="flex flex-col gap-2" data-testid="draft-attachment-dfc-preview">
           <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.sendPreview') }}</div>
-            <div class="mt-1 text-[11px] text-gray-500">{{ t('filePipeline.attachment.details.sendPreviewHint') }}</div>
+            <div class="sv-label">{{ t('filePipeline.attachment.details.sendPreview') }}</div>
+            <div class="mt-1 text-xs text-gray-500">{{ t('filePipeline.attachment.details.sendPreviewHint') }}</div>
           </div>
           <div v-if="props.attachment.dfcPreview.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-loading">
             {{ t('filePipeline.attachment.details.loading') }}
           </div>
-          <div v-else-if="props.attachment.dfcPreview.error" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800" data-testid="draft-attachment-dfc-preview-error">
+          <div v-else-if="props.attachment.dfcPreview.error" class="sv-notice sv-notice-danger text-sm" data-testid="draft-attachment-dfc-preview-error">
             {{ props.attachment.dfcPreview.error }}
           </div>
-          <div v-else class="space-y-2">
+          <div v-else class="flex flex-col gap-2">
             <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
               <span class="text-gray-500">{{ t('filePipeline.attachment.details.status') }}</span>
               <span class="min-w-0 break-words text-gray-900" data-testid="draft-attachment-dfc-preview-status">{{ formatDfcPreviewStatus(props.attachment.dfcPreview.status) }}</span>
@@ -563,12 +563,12 @@ function removeAttachment() {
             </div>
             <pre
               v-if="props.attachment.dfcPreview.kind === 'text' && props.attachment.dfcPreview.text !== null"
-              class="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-900"
+              class="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-100 p-2.5 text-xs text-gray-900"
               data-testid="draft-attachment-dfc-preview-text"
             >{{ props.attachment.dfcPreview.text }}</pre>
             <div
               v-else-if="props.attachment.dfcPreview.kind === 'raw_file'"
-              class="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700"
+              class="rounded-lg bg-gray-100 p-2.5 text-sm text-gray-700"
               data-testid="draft-attachment-dfc-preview-raw"
             >
               <span v-if="props.attachment.dfcPreview.targetKind === 'pdf_attachment'">
@@ -581,16 +581,16 @@ function removeAttachment() {
             <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-empty">
               {{ t('filePipeline.attachment.details.noSelectedPreview') }}
             </div>
-            <div v-if="props.attachment.dfcPreview.kind === 'text'" class="text-[11px] text-gray-500">
+            <div v-if="props.attachment.dfcPreview.kind === 'text'" class="text-xs text-gray-500">
               {{ tf('filePipeline.attachment.details.chars', { count: props.attachment.dfcPreview.characterCount ?? 0 }) }}
               <span v-if="props.attachment.dfcPreview.byteLength !== null"> · {{ tf('filePipeline.attachment.details.bytes', { count: props.attachment.dfcPreview.byteLength }) }}</span>
               <span v-if="props.attachment.dfcPreview.truncated"> · {{ t('filePipeline.attachment.details.truncated') }}</span>
             </div>
-            <div v-if="props.attachment.dfcPreview.diagnostics.length > 0" class="space-y-1">
+            <div v-if="props.attachment.dfcPreview.diagnostics.length > 0" class="flex flex-col gap-1">
               <div
                 v-for="diagnostic in props.attachment.dfcPreview.diagnostics"
                 :key="diagnostic"
-                class="text-[11px] text-amber-700"
+                class="text-xs text-[var(--sv-warning)]"
               >
                 {{ formatDfcDiagnostic(diagnostic) }}
               </div>
@@ -598,55 +598,55 @@ function removeAttachment() {
           </div>
         </section>
 
-        <section class="space-y-2 rounded border border-gray-200 p-3">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.sendMode') }}</div>
-          <div class="text-[11px] text-gray-500">{{ t('filePipeline.attachment.details.sendModeHint') }}</div>
-          <div class="space-y-2">
+        <section class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('filePipeline.attachment.details.sendMode') }}</div>
+          <div class="text-xs text-gray-500">{{ t('filePipeline.attachment.details.sendModeHint') }}</div>
+          <div class="flex flex-col gap-2">
             <button
               v-for="option in props.attachment.sendModeOptions"
               :key="option.value"
               type="button"
-              class="w-full rounded border px-3 py-2 text-left text-sm"
-              :class="option.disabled ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400' : option.value === props.attachment.preferredSendMode ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'"
+              class="w-full rounded-lg border px-3 py-2 text-left text-sm"
+              :class="option.disabled ? 'cursor-not-allowed border-gray-200 text-gray-400' : option.value === props.attachment.preferredSendMode ? 'border-gray-900 bg-black/[0.04] text-gray-900' : 'border-gray-200 text-gray-800 hover:bg-black/[0.03]'"
               :disabled="option.disabled"
               :data-testid="`draft-attachment-send-mode-${option.value}`"
               @click="updateSendMode(option.value)"
             >
               <div class="flex items-center justify-between gap-2">
                 <span>{{ option.label }}</span>
-                <span v-if="option.value === props.attachment.preferredSendMode" class="text-[11px] text-blue-700">{{ t('filePipeline.attachment.details.selected') }}</span>
+                <span v-if="option.value === props.attachment.preferredSendMode" class="text-xs text-gray-600">{{ t('filePipeline.attachment.details.selected') }}</span>
               </div>
-              <div v-if="option.reason" class="mt-1 text-[11px] text-gray-500">{{ option.reason }}</div>
+              <div v-if="option.reason" class="mt-1 text-xs text-gray-500">{{ option.reason }}</div>
             </button>
           </div>
         </section>
 
-        <section class="space-y-2 rounded border border-gray-200 p-3">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.urlRetention') }}</div>
-          <div v-if="props.attachment.sourceKind === 'url_import' || props.attachment.originalUrl || props.attachment.resolvedUrl" class="space-y-2">
+        <section class="flex flex-col gap-2">
+          <div class="sv-label">{{ t('filePipeline.attachment.details.urlRetention') }}</div>
+          <div v-if="props.attachment.sourceKind === 'url_import' || props.attachment.originalUrl || props.attachment.resolvedUrl" class="flex flex-col gap-2">
             <button
               v-for="option in props.attachment.urlRetentionOptions"
               :key="option.value"
               type="button"
-              class="w-full rounded border px-3 py-2 text-left text-sm"
-              :class="option.disabled ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400' : option.value === props.attachment.urlRetentionMode ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'"
+              class="w-full rounded-lg border px-3 py-2 text-left text-sm"
+              :class="option.disabled ? 'cursor-not-allowed border-gray-200 text-gray-400' : option.value === props.attachment.urlRetentionMode ? 'border-gray-900 bg-black/[0.04] text-gray-900' : 'border-gray-200 text-gray-800 hover:bg-black/[0.03]'"
               :disabled="option.disabled"
               :data-testid="`draft-attachment-url-retention-${option.value}`"
               @click="updateUrlRetention(option.value)"
             >
               <div class="flex items-center justify-between gap-2">
                 <span>{{ option.label }}</span>
-                <span v-if="option.value === props.attachment.urlRetentionMode" class="text-[11px] text-blue-700">{{ t('filePipeline.attachment.details.selected') }}</span>
+                <span v-if="option.value === props.attachment.urlRetentionMode" class="text-xs text-gray-600">{{ t('filePipeline.attachment.details.selected') }}</span>
               </div>
-              <div v-if="option.reason" class="mt-1 text-[11px] text-gray-500">{{ option.reason }}</div>
+              <div v-if="option.reason" class="mt-1 text-xs text-gray-500">{{ option.reason }}</div>
             </button>
           </div>
           <div v-else class="text-sm text-gray-500">{{ t('filePipeline.attachment.details.notUrlBased') }}</div>
         </section>
       </div>
 
-      <section v-if="props.attachment.sourceKind === 'url_import' || props.attachment.originalUrl || props.attachment.resolvedUrl" class="mt-4 space-y-2 rounded border border-gray-200 p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('filePipeline.attachment.details.urlInfo') }}</div>
+      <section v-if="props.attachment.sourceKind === 'url_import' || props.attachment.originalUrl || props.attachment.resolvedUrl" class="sv-divider-t mt-5 flex flex-col gap-2 pt-5">
+        <div class="sv-label">{{ t('filePipeline.attachment.details.urlInfo') }}</div>
         <dl class="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
           <dt class="text-gray-500">{{ t('filePipeline.attachment.details.originalUrl') }}</dt><dd class="break-words text-gray-900">{{ props.attachment.originalUrl ?? '-' }}</dd>
           <dt class="text-gray-500">{{ t('filePipeline.attachment.details.resolvedUrl') }}</dt><dd class="break-words text-gray-900">{{ props.attachment.resolvedUrl ?? '-' }}</dd>
@@ -657,16 +657,16 @@ function removeAttachment() {
           <dt class="text-gray-500">{{ t('filePipeline.attachment.details.probeLength') }}</dt><dd class="text-gray-900">{{ props.attachment.contentLengthFromProbe ?? '-' }}</dd>
           <dt class="text-gray-500">{{ t('filePipeline.attachment.details.localCopy') }}</dt><dd class="text-gray-900">{{ props.attachment.localCopyExists ? t('filePipeline.attachment.details.localCopyExists') : t('filePipeline.attachment.details.localCopyUnavailable') }}</dd>
         </dl>
-        <div v-if="props.attachment.probeStatus === 'probe_failed' || props.attachment.materializationStatus === 'materialization_failed'" class="text-xs text-amber-700">
+        <div v-if="props.attachment.probeStatus === 'probe_failed' || props.attachment.materializationStatus === 'materialization_failed'" class="text-xs text-[var(--sv-warning)]">
           {{ t('filePipeline.attachment.details.urlProbeFailed') }}
         </div>
       </section>
 
-      <details class="mt-4 rounded border border-gray-200 bg-gray-50 p-3" data-testid="draft-attachment-debug-info">
-        <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-600">
+      <details class="sv-divider-t mt-5 pt-4" data-testid="draft-attachment-debug-info">
+        <summary class="sv-label cursor-pointer">
           {{ t('filePipeline.attachment.details.advancedInfo') }}
         </summary>
-        <div class="mt-2 text-[11px] text-gray-500">{{ t('filePipeline.attachment.details.advancedInfoHint') }}</div>
+        <div class="mt-2 text-xs text-gray-500">{{ t('filePipeline.attachment.details.advancedInfoHint') }}</div>
         <dl class="mt-3 grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
           <dt class="text-gray-500">assetKind</dt><dd class="break-words text-gray-800">{{ props.attachment.assetKind }}</dd>
           <dt class="text-gray-500">aiPayloadKind</dt><dd class="break-words text-gray-800">{{ props.attachment.aiPayloadKind }}</dd>
@@ -683,12 +683,12 @@ function removeAttachment() {
           <dt class="text-gray-500">previewStatus</dt><dd class="break-words text-gray-800">{{ props.attachment.dfcPreview.status ?? '-' }}</dd>
           <dt class="text-gray-500">previewDiagnostics</dt><dd class="break-words text-gray-800">{{ props.attachment.dfcPreview.diagnostics.join(', ') || '-' }}</dd>
         </dl>
-        <div v-if="props.attachment.dfcOptions.options.length > 0" class="mt-3 space-y-2">
+        <div v-if="props.attachment.dfcOptions.options.length > 0" class="mt-3 flex flex-col gap-2">
           <div class="text-xs font-semibold text-gray-600">{{ t('filePipeline.attachment.details.targetFormat') }}</div>
           <div
             v-for="option in props.attachment.dfcOptions.options"
             :key="`debug-${option.optionId}`"
-            class="rounded border border-gray-200 bg-white p-2 text-xs text-gray-700"
+            class="sv-divider-t pt-2 text-xs text-gray-700"
           >
             <div class="font-medium">{{ formatDfcTargetKind(option.targetKind) }}</div>
             <dl class="mt-1 grid grid-cols-[8rem_minmax(0,1fr)] gap-x-2 gap-y-1">

@@ -7,6 +7,11 @@ import {
   installGenerationV2SchemaInActiveTransaction,
   verifyInstalledGenerationV2SchemaInActiveTransaction,
   upgradeComposerEditSessionSchemaInActiveTransaction,
+  upgradeInterruptedReplaySchemaInActiveTransaction,
+  upgradeGeminiThinkingSemanticsInActiveTransaction,
+  upgradeRequestContractSchemaInActiveTransaction,
+  upgradeRequestRulesSchemaInActiveTransaction,
+  upgradeOpenAIImageOutputSchemaInActiveTransaction,
   GenerationV2SchemaComposerError,
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
@@ -295,9 +300,10 @@ async function verifyAndDescribeFreshEpoch2Database(input: Readonly<{
 async function initializeOrVerifyFreshEpoch2DatabaseCore(
   input: FreshEpochDatabaseInitializerInput,
   crashSmoke?: Readonly<{ stage: FreshEpochDatabaseCrashSmokeStage; markerPath: string }>,
+  existingOnly = false,
 ): Promise<FreshEpochDatabaseInitializationResult> {
   assertEpoch2RootAuthority(input.rootAuthority, input)
-  const authority = acquireWin32EpochDatabaseFileAuthority({ ...input, mode: 'create_or_open' })
+  const authority = acquireWin32EpochDatabaseFileAuthority({ ...input, mode: existingOnly ? 'verify_existing' : 'create_or_open' })
   const initialIdentity = authority.identity()
   const schemaRoot = schemaAssetRoot()
   let retiredEnvelopeMarker: Buffer | undefined
@@ -306,9 +312,10 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
     authority.verifyPathIdentity()
     const db = openDatabase({ layout: input.layout, readonly: false })
     try {
+      const initiallyEmpty = !hasInstalledObjects(db)
+      if (existingOnly && initiallyEmpty) throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
       configureConnection(db)
       emitDatabaseInitializationMilestone('connection_configured')
-      const initiallyEmpty = !hasInstalledObjects(db)
       const initialCapabilityRuleMaterialization = prepareCapabilityRuleMaterializationV1({
         sourceScopeId: buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: 'epoch-2-capability-rules' }),
         subjectSet: buildAuthoritativeModelSubjectSetV1([]),
@@ -326,7 +333,17 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         if (emptyInsideTransaction !== initiallyEmpty) {
           throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
         }
+        if (!initiallyEmpty) upgradeGeminiThinkingSemanticsInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
         if (!initiallyEmpty) upgradeComposerEditSessionSchemaInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
+        if (!initiallyEmpty) upgradeInterruptedReplaySchemaInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
+        if (!initiallyEmpty) upgradeRequestContractSchemaInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
+        if (!initiallyEmpty) upgradeRequestRulesSchemaInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
+        if (!initiallyEmpty) upgradeOpenAIImageOutputSchemaInActiveTransaction(db, schemaRoot,
           bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
         const bundle = installGenerationV2SchemaInActiveTransaction(db, schemaRoot)
         emitDatabaseInitializationMilestone('schema_installed')
@@ -402,6 +419,13 @@ export async function initializeOrVerifyFreshEpoch2Database(
   input: FreshEpochDatabaseInitializerInput,
 ): Promise<FreshEpochDatabaseInitializationResult> {
   return initializeOrVerifyFreshEpoch2DatabaseCore(input)
+}
+
+/** Startup-only additive upgrades. A missing or empty committed database is never created. */
+export async function upgradeAndVerifyExistingFreshEpoch2Database(
+  input: FreshEpochDatabaseInitializerInput,
+): Promise<FreshEpochDatabaseInitializationResult> {
+  return initializeOrVerifyFreshEpoch2DatabaseCore(input, undefined, true)
 }
 
 export async function verifyExistingFreshEpoch2Database(

@@ -500,6 +500,184 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     expect('recordRecent' in bridge().modelPreferences).toBe(false)
   })
 
+  it('renders a persisted image with no body after image events and terminal refresh, without duplicating it on reload', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const turn = commitTurn({ questionBody: 'draw an apple', answerBody: '', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1', status: 'streaming' })
+    const image = { assetId: 'asset:generated', assetRevisionId: 'asset-revision:generated', sha256: 'b'.repeat(64),
+      mime: 'image/png', storageRef: 'blob:generated' }
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aE6sAAAAASUVORK5CYII='
+    let persisted = false
+    const g = bridge()
+    g.workspace.readBranch.mockImplementation(async () => {
+      const result = branchView()
+      if (persisted) (result.value.turns[0]!.answers[0]!.images as unknown[]) = [image]
+      return result
+    })
+    g.composer.readPreview.mockResolvedValue(ok({ status: 'ready', dataUrl, mime: image.mime }))
+    const view = render(AppChatApp)
+    await waitForAppReady()
+    await waitFor(() => expect(g.runtime.onEvent).toHaveBeenCalledOnce())
+    expect(screen.queryByTestId('message-image-gallery')).not.toBeInTheDocument()
+    const receive = g.runtime.onEvent.mock.calls[0][0]
+    const imagePayload = { type: 'image_output', outputIndex: 0, assetId: image.assetId,
+      assetRevisionId: image.assetRevisionId, mime: image.mime }
+    persisted = true
+    receive({ operationId: turn.operationId, sequence: 2, payload: imagePayload })
+    await vi.runAllTimersAsync()
+    await waitFor(() => expect(screen.getAllByTestId('message-image-gallery')).toHaveLength(1))
+    expect(g.composer.readPreview).toHaveBeenCalledWith({ assetId: image.assetId, assetRevisionId: image.assetRevisionId })
+    expect(screen.getByTestId('message-image-gallery').querySelector('img')?.getAttribute('src')).toBe(dataUrl)
+    expect(screen.queryByTestId('message-image-persisting-0')).not.toBeInTheDocument()
+
+    const readsBeforeRepeat = g.workspace.readBranch.mock.calls.length
+    receive({ operationId: turn.operationId, sequence: 3, payload: imagePayload })
+    await vi.runAllTimersAsync()
+    await waitFor(() => expect(g.workspace.readBranch.mock.calls.length).toBeGreaterThan(readsBeforeRepeat))
+    expect(screen.getByTestId('message-image-gallery').querySelectorAll('img')).toHaveLength(1)
+    turn.status = 'completed'
+    const readsBeforeTerminal = g.workspace.readBranch.mock.calls.length
+    receive({ operationId: turn.operationId, sequence: 4, payload: { type: 'terminal', state: 'completed', errorFact: null } })
+    await vi.runAllTimersAsync()
+    await waitFor(() => expect(g.workspace.readBranch.mock.calls.length).toBeGreaterThan(readsBeforeTerminal))
+    expect(screen.getByTestId('message-image-gallery').querySelectorAll('img')).toHaveLength(1)
+
+    view.unmount()
+    render(AppChatApp)
+    await waitForAppReady()
+    await waitFor(() => expect(screen.getAllByTestId('message-image-gallery')).toHaveLength(1))
+    expect(screen.getByTestId('message-image-gallery').querySelectorAll('img')).toHaveLength(1)
+    expect(screen.getByTestId('message-image-gallery').querySelector('img')?.getAttribute('src')).toBe(dataUrl)
+    expect(screen.queryByTestId('message-image-persisting-0')).not.toBeInTheDocument()
+  })
+
+  it.each(['missing', 'rejected'] as const)('retries a %s generated preview when image and terminal events share a refresh', async failure => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const turn = commitTurn({ questionBody: 'draw an apple', answerBody: '', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1', status: 'streaming' })
+    const image = { assetId: 'asset:generated', assetRevisionId: 'asset-revision:generated', sha256: 'b'.repeat(64),
+      mime: 'image/png', storageRef: 'blob:generated' }
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgo='
+    const g = bridge()
+    let persisted = false
+    g.workspace.readBranch.mockImplementation(async () => {
+      const result = branchView()
+      if (persisted) (result.value.turns[0]!.answers[0]!.images as unknown[]) = [image]
+      return result
+    })
+    if (failure === 'rejected') g.composer.readPreview.mockRejectedValueOnce(new Error('temporary read failure'))
+    else g.composer.readPreview.mockResolvedValueOnce(ok({ status: 'missing', dataUrl: null, mime: image.mime }))
+    g.composer.readPreview.mockResolvedValue(ok({ status: 'ready', dataUrl, mime: image.mime }))
+    render(AppChatApp)
+    await waitForAppReady()
+    await waitFor(() => expect(g.runtime.onEvent).toHaveBeenCalledOnce())
+    const receive = g.runtime.onEvent.mock.calls[0][0]
+    persisted = true
+    receive({ operationId: turn.operationId, sequence: 2, payload: { type: 'image_output', outputIndex: 0,
+      assetId: image.assetId, assetRevisionId: image.assetRevisionId, mime: image.mime } })
+    turn.status = 'completed'
+    receive({ operationId: turn.operationId, sequence: 3, payload: { type: 'terminal', state: 'completed', errorFact: null } })
+    await vi.advanceTimersByTimeAsync(40)
+    await waitFor(() => expect(g.composer.readPreview).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('message-image-gallery').querySelectorAll('img')).toHaveLength(1)
+    expect(screen.getByTestId('message-image-gallery').querySelector('img')?.getAttribute('src')).toBe(dataUrl)
+    expect(screen.queryByTestId('message-image-persisting-0')).not.toBeInTheDocument()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(g.composer.readPreview).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a generated preview failure after a bounded retry and clears it after a successful refresh', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const turn = commitTurn({ questionBody: 'draw an apple', answerBody: '', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1', status: 'streaming' })
+    const image = { assetId: 'asset:generated', assetRevisionId: 'asset-revision:generated', sha256: 'b'.repeat(64),
+      mime: 'image/png', storageRef: 'blob:generated' }
+    const g = bridge()
+    let persisted = false
+    g.workspace.readBranch.mockImplementation(async () => {
+      const result = branchView()
+      if (persisted) (result.value.turns[0]!.answers[0]!.images as unknown[]) = [image]
+      return result
+    })
+    g.composer.readPreview.mockRejectedValue(new Error('preview read failure'))
+    render(AppChatApp)
+    await waitForAppReady()
+    await waitFor(() => expect(g.runtime.onEvent).toHaveBeenCalledOnce())
+    const receive = g.runtime.onEvent.mock.calls[0][0]
+    const payload = { type: 'image_output', outputIndex: 0, assetId: image.assetId,
+      assetRevisionId: image.assetRevisionId, mime: image.mime }
+    persisted = true
+    receive({ operationId: turn.operationId, sequence: 2, payload })
+    await vi.advanceTimersByTimeAsync(40)
+    await waitFor(() => expect(g.composer.readPreview).toHaveBeenCalledTimes(2))
+    expect(screen.getByText(t('errors.imagePreviewUnavailable'))).toBeInTheDocument()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(g.composer.readPreview).toHaveBeenCalledTimes(2)
+    g.composer.readPreview.mockResolvedValue(ok({ status: 'ready', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', mime: image.mime }))
+    receive({ operationId: turn.operationId, sequence: 3, payload })
+    await vi.advanceTimersByTimeAsync(40)
+    await waitFor(() => expect(screen.getByTestId('message-image-gallery')).toBeInTheDocument())
+    expect(screen.queryByText(t('errors.imagePreviewUnavailable'))).not.toBeInTheDocument()
+    expect(screen.getByTestId('message-image-gallery').querySelectorAll('img')).toHaveLength(1)
+  })
+
+  it('does not retry an obsolete generated preview after unmount', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const turn = commitTurn({ questionBody: 'draw an apple', answerBody: '', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1', status: 'streaming' })
+    const image = { assetId: 'asset:generated', assetRevisionId: 'asset-revision:generated', sha256: 'b'.repeat(64),
+      mime: 'image/png', storageRef: 'blob:generated' }
+    const g = bridge()
+    let persisted = false
+    g.workspace.readBranch.mockImplementation(async () => {
+      const result = branchView()
+      if (persisted) (result.value.turns[0]!.answers[0]!.images as unknown[]) = [image]
+      return result
+    })
+    let finishPreview!: (value: unknown) => void
+    g.composer.readPreview.mockImplementation(() => new Promise(resolve => { finishPreview = resolve }))
+    const view = render(AppChatApp)
+    await waitForAppReady()
+    await waitFor(() => expect(g.runtime.onEvent).toHaveBeenCalledOnce())
+    persisted = true
+    g.runtime.onEvent.mock.calls[0][0]({ operationId: turn.operationId, sequence: 2,
+      payload: { type: 'image_output', outputIndex: 0, assetId: image.assetId, assetRevisionId: image.assetRevisionId, mime: image.mime } })
+    await vi.advanceTimersByTimeAsync(40)
+    await waitFor(() => expect(g.composer.readPreview).toHaveBeenCalledOnce())
+    view.unmount()
+    finishPreview(ok({ status: 'missing', dataUrl: null, mime: image.mime }))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(g.composer.readPreview).toHaveBeenCalledOnce()
+    expect(screen.queryByText(t('errors.imagePreviewUnavailable'))).not.toBeInTheDocument()
+  })
+
+  it.each(['template', 'conversations'] as const)('clears an accepted draft when the post-send %s refresh fails', async failure => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const g = bridge()
+    const initial = initialStubs['openRouter.chat']
+    const accept = initial.getMockImplementation()!
+    initial.mockImplementation(async (command: any) => {
+      const result = await accept(command)
+      if (failure === 'template') g.workspace.getSystemTemplate.mockRejectedValueOnce(new Error('INJECTED_POST_ACCEPT_REFRESH'))
+      else g.workspace.listConversations.mockRejectedValueOnce(new Error('INJECTED_POST_ACCEPT_REFRESH'))
+      return result
+    })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    await user.type(draftBox(), 'accepted draft')
+    await user.click(sendButton())
+
+    await screen.findByText('INJECTED_POST_ACCEPT_REFRESH')
+    expect(turns).toHaveLength(1)
+    expect(turns[0]?.questionBody).toBe('accepted draft')
+    const persisted = await g.composer.get('c1')
+    expect(persisted.value.draftText).toBe('')
+    expect(g.composer.clearCommitted).toHaveBeenCalledTimes(1)
+    expect(draftBox().value).toBe('')
+    expect(initial).toHaveBeenCalledTimes(1)
+  })
+
   it('refreshes capability after a stale initial send without automatically resubmitting', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL, {
       rejectCode: 'STALE_CAPABILITY_REVISION',
@@ -521,6 +699,78 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
       expectedCapabilityRevision: 'capability-v2:test',
     }))
+  })
+
+  it('preserves a newer draft when accepted-send cleanup loses its revision', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const g = bridge()
+    const initial = initialStubs['openRouter.chat']
+    const accept = initial.getMockImplementation()!
+    initial.mockImplementation(async (command: any) => {
+      const result = await accept(command)
+      const persisted = await g.composer.get('c1')
+      await g.composer.updateText({ ...persisted.value, expectedRevision: persisted.value.revision, draftText: 'newer draft' })
+      return result
+    })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    const readsBeforeSend = g.workspace.getSystemTemplate.mock.calls.length
+    await user.type(draftBox(), 'accepted draft')
+    await user.click(sendButton())
+    await waitFor(() => expect(g.composer.clearCommitted).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(g.workspace.getSystemTemplate.mock.calls.length).toBeGreaterThan(readsBeforeSend))
+    expect((await g.composer.get('c1')).value.draftText).toBe('newer draft')
+    expect(initial).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks sending when the real credential status reports no key', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const g = bridge()
+    g.credentials.openRouter.getStatus.mockResolvedValue({ ok: true, status: {
+      apiKeyConfigured: false, credentialRevision: 1, credentialScopeId: 'credential:test', profileId: 'openrouter-first-party-v1',
+    } })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    await user.type(draftBox(), 'missing credential')
+    expect(sendButton()).toBeDisabled()
+    expect(initialStubs['openRouter.chat']).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['openrouter', DEFAULT_OPENROUTER_TEST_MODEL, 'openrouter-first-party-v1'],
+    ['openai_responses', 'gpt-4.1-mini', 'openai-api-v1'],
+    ['deepseek', 'deepseek-flash', 'deepseek-stable-api-v1'],
+    ['google_ai_studio', 'gemini-2.5-flash', 'gemini-developer-api-v1beta'],
+  ])('binds %s capability to its execution endpoint profile', async (providerId, modelId, endpointProfileId) => {
+    selectRuntimeProvider(providerId!, modelId!)
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    await user.type(draftBox(), 'endpoint binding')
+    await waitFor(() => expect(sendButton()).toBeEnabled())
+    expect(bridge().capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ endpointProfileId }))
+  })
+
+  it('leaves OpenRouter Auto reasoning disabled for a model with explicit unsupported reasoning', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
+    const resolve = bridge().capabilities.resolve
+    const base = resolve.getMockImplementation()!
+    resolve.mockImplementation(async (request: any) => {
+      const result = await base(request)
+      result.value.controlsProjection.controls['reasoning.mode'] = {
+        visibility: 'hidden', state: 'unsupported', constraints: [], evidenceIds: [],
+      }
+      return result
+    })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    await user.type(draftBox(), 'ordinary text')
+    await user.click(sendButton())
+    await waitFor(() => expect(initialStubs['openRouter.chat']).toHaveBeenCalledOnce())
+    expect(updateConfigCalls.at(-1)?.semanticLayer.reasoning).toEqual({ mode: 'disabled' })
   })
 
   it('maps OpenAI Responses Auto to enabled provider reasoning without an effort value', async () => {

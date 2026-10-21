@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { loadNativeArtifactJsonV2 } from '../../infra/db/repo/nativeArtifactStorageV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import {
   GenerationExecutionV2Repo,
@@ -57,6 +58,28 @@ export class GenerationOrphanRecoveryV2Error extends Error {
 
 function invalid(): never {
   throw new GenerationOrphanRecoveryV2Error('GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID')
+}
+
+function loadRecoveryArtifactJson(
+  db: BetterSqlite3.Database,
+  row: Readonly<Record<string, unknown>>,
+  jsonField: string,
+  hashField: string,
+  artifactKind: string,
+  artifactCodecVersion: number,
+): string {
+  if (typeof row.operationId !== 'string' || typeof row.answerRootId !== 'string' ||
+      !Number.isSafeInteger(row.requestSequence) || typeof row[jsonField] !== 'string' ||
+      typeof row[hashField] !== 'string') invalid()
+  return loadNativeArtifactJsonV2(db, {
+    operationId: row.operationId,
+    answerRootId: row.answerRootId,
+    requestSequence: row.requestSequence as number,
+    artifactKind,
+  }, row[jsonField] as string, {
+    artifactCodecVersion,
+    artifactHash: row[hashField] as string,
+  })
 }
 
 export function hasPersistedOpenRouterAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {
@@ -137,6 +160,10 @@ export function recoverGenerationOrphansV2(
         return row.operationId
       })
     for (const operationId of operationIds) {
+      // Provider completion is already durable. Its local materializer, rather
+      // than the interrupted-stream path, owns recovery for this operation.
+      if (db.prepare(`SELECT 1 FROM generation_native_completion_receipt_v2
+        WHERE operation_id=? AND materialization_state='pending' LIMIT 1`).get(operationId)) continue
       try {
       runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
       let operation: GenerationExecutionOperationBundleV2 | null
@@ -161,7 +188,8 @@ export function recoverGenerationOrphansV2(
         WHERE operation.operation_id=?
         ORDER BY request.request_sequence`).all(operationId) as ActiveRow[]
       if (rows.length === 0 && operation.operation.state === 'streaming') {
-        const awaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
+        const awaiting = db.prepare(`SELECT request.operation_id AS operationId,
+          request.answer_root_id AS answerRootId, request.request_sequence AS requestSequence,
           request.state AS requestState, answer.status AS answerStatus,
           terminal.artifact_json AS terminalJson, terminal.artifact_hash AS terminalHash,
           history.artifact_json AS artifactJson, history.artifact_hash AS artifactHash
@@ -183,8 +211,16 @@ export function recoverGenerationOrphansV2(
           `).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (awaiting && hasPersistedDeepSeekAwaitingToolStateV2(awaiting)) return
-        const openRouterAwaiting = db.prepare(`SELECT request.state AS requestState,
+        if (awaiting && hasPersistedDeepSeekAwaitingToolStateV2({
+          ...awaiting,
+          terminalJson: loadRecoveryArtifactJson(db, awaiting, 'terminalJson', 'terminalHash',
+            'deepseek_stable_terminal_result_v1', 1),
+          artifactJson: loadRecoveryArtifactJson(db, awaiting, 'artifactJson', 'artifactHash',
+            'deepseek_stable_ordered_native_messages_v2', 2),
+        })) return
+        const openRouterAwaiting = db.prepare(`SELECT request.operation_id AS operationId,
+          request.answer_root_id AS answerRootId, request.request_sequence AS requestSequence,
+          request.state AS requestState,
           answer.status AS answerStatus, terminal.artifact_json AS terminalJson,
           terminal.artifact_hash AS terminalHash, history.artifact_json AS artifactJson,
           history.artifact_hash AS artifactHash
@@ -201,8 +237,16 @@ export function recoverGenerationOrphansV2(
           )`).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (openRouterAwaiting && hasPersistedOpenRouterAwaitingToolStateV2(openRouterAwaiting)) return
-        const anthropicAwaiting = db.prepare(`SELECT request.state AS requestState, answer.status AS answerStatus,
+        if (openRouterAwaiting && hasPersistedOpenRouterAwaitingToolStateV2({
+          ...openRouterAwaiting,
+          terminalJson: loadRecoveryArtifactJson(db, openRouterAwaiting, 'terminalJson', 'terminalHash',
+            'openrouter_chat_terminal_result_v1', 1),
+          artifactJson: loadRecoveryArtifactJson(db, openRouterAwaiting, 'artifactJson', 'artifactHash',
+            'openrouter_chat_ordered_native_messages_v1', 1),
+        })) return
+        const anthropicAwaiting = db.prepare(`SELECT request.operation_id AS operationId,
+          request.answer_root_id AS answerRootId, request.request_sequence AS requestSequence,
+          request.state AS requestState, answer.status AS answerStatus,
           terminal.artifact_json AS artifactJson, terminal.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
           JOIN message_v2 AS answer ON answer.message_id=request.answer_root_id
@@ -212,8 +256,13 @@ export function recoverGenerationOrphansV2(
           WHERE request.operation_id=? AND request.request_sequence=(
             SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
           )`).get(operationId, operationId) as Readonly<Record<string, unknown>> | undefined
-        if (anthropicAwaiting && hasPersistedAnthropicAwaitingToolStateV2(anthropicAwaiting)) return
-        const openAIResponsesAwaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
+        if (anthropicAwaiting && hasPersistedAnthropicAwaitingToolStateV2({
+          ...anthropicAwaiting,
+          artifactJson: loadRecoveryArtifactJson(db, anthropicAwaiting, 'artifactJson', 'artifactHash',
+            'anthropic_messages_native_history_v1', 1),
+        })) return
+        const openAIResponsesAwaiting = db.prepare(`SELECT request.operation_id AS operationId,
+          request.answer_root_id AS answerRootId, request.request_sequence AS requestSequence,
           request.state AS requestState, answer.status AS answerStatus,
           terminal.artifact_json AS terminalJson, terminal.artifact_hash AS terminalHash,
           history.artifact_json AS historyJson, history.artifact_hash AS historyHash
@@ -231,8 +280,13 @@ export function recoverGenerationOrphansV2(
           )`).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (openAIResponsesAwaiting &&
-            hasPersistedOpenAIResponsesAwaitingToolStateV2(openAIResponsesAwaiting)) return
+        if (openAIResponsesAwaiting && hasPersistedOpenAIResponsesAwaitingToolStateV2({
+          ...openAIResponsesAwaiting,
+          terminalJson: loadRecoveryArtifactJson(db, openAIResponsesAwaiting, 'terminalJson', 'terminalHash',
+            'openai_responses_terminal_v1', 1),
+          historyJson: loadRecoveryArtifactJson(db, openAIResponsesAwaiting, 'historyJson', 'historyHash',
+            'openai_responses_ordered_native_items_v2', 2),
+        })) return
         try {
           if (geminiHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) return
         } catch (error) {

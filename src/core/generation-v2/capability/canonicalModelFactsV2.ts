@@ -6,6 +6,7 @@ import {
 import { sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import {
   MODEL_CAPABILITY_SEMANTIC_PATHS_V2,
+  isCompleteModelCapabilityFieldSetV2,
   isModelCapabilityDomainCompatibleWithPathV2,
   type ModelCapabilityDomainV2,
   type ModelCapabilityEvidenceEffectV2,
@@ -14,6 +15,7 @@ import {
   type ModelCapabilityScalarV2,
   type ModelCapabilitySemanticPathV2,
   type PersistedModelCapabilityFieldV2,
+  type PersistedModelCapabilityEvidenceV2,
 } from './modelCapabilitySchemaV2'
 
 export type CanonicalModelIdentityV2 = Readonly<{
@@ -49,7 +51,7 @@ export type CanonicalModelFactsV2 = Readonly<{
 
 export type CanonicalModelFactsDraftV2 = Readonly<{
   identity: unknown
-  evidence: readonly Readonly<Record<string, unknown>>[]
+  evidence: readonly Omit<PersistedModelCapabilityEvidenceV2, 'entryDigest'>[]
   fields: readonly PersistedModelCapabilityFieldV2[]
   capabilityRevision?: string
 }>
@@ -204,9 +206,7 @@ function domain(value: unknown): ModelCapabilityDomainV2 {
       if (!Number.isSafeInteger(value.maxItems) || (value.maxItems as number) < 1) invalid()
       return Object.freeze({ kind: 'enum_list', values: scalarValues(value.values), maxItems: value.maxItems as number })
     case 'range':
-      exactKeys(value, value.excludedValues === undefined
-        ? ['kind', 'min', 'max', 'integer']
-        : ['kind', 'min', 'max', 'integer', 'excludedValues'])
+      exactKeys(value, ['kind', 'min', 'max', 'integer', ...(value.includedValues === undefined ? [] : ['includedValues']), ...(value.excludedValues === undefined ? [] : ['excludedValues'])])
       if (typeof value.min !== 'number' || !Number.isFinite(value.min) || typeof value.max !== 'number' ||
           !Number.isFinite(value.max) || value.min > value.max || typeof value.integer !== 'boolean' ||
           value.integer && (!Number.isSafeInteger(value.min) || !Number.isSafeInteger(value.max))) invalid()
@@ -215,7 +215,8 @@ function domain(value: unknown): ModelCapabilityDomainV2 {
             item < (value.min as number) || item > (value.max as number) ||
             value.integer === true && !Number.isSafeInteger(item)) ||
           new Set(value.excludedValues).size !== value.excludedValues.length)) invalid()
-      return Object.freeze({ kind: 'range', min: value.min, max: value.max, integer: value.integer,
+      if (value.includedValues !== undefined && (!Array.isArray(value.includedValues) || value.includedValues.some((item) => typeof item !== 'number' || !Number.isFinite(item) || value.integer === true && !Number.isSafeInteger(item)) || new Set(value.includedValues).size !== value.includedValues.length)) invalid()
+      return Object.freeze({ ...(value.includedValues === undefined ? {} : { includedValues: Object.freeze([...(value.includedValues as number[])].sort((a, b) => a - b)) }), kind: 'range', min: value.min, max: value.max, integer: value.integer,
         ...(value.excludedValues === undefined ? {} : {
           excludedValues: Object.freeze([...(value.excludedValues as number[])].sort((left, right) => left - right)),
         }) })
@@ -275,7 +276,7 @@ function defaultValueFitsDomain(
     return typeof value === 'string' && (candidate.kind !== 'string' || value.length <= candidate.maxLength)
   }
   if (candidate.kind === 'enum') return candidate.values.includes(value)
-  if (candidate.kind === 'range') return typeof value === 'number' && value >= candidate.min && value <= candidate.max &&
+  if (candidate.kind === 'range') return typeof value === 'number' && (value >= candidate.min && value <= candidate.max || candidate.includedValues?.includes(value) === true) &&
     (!candidate.integer || Number.isSafeInteger(value)) && !candidate.excludedValues?.includes(value)
   return false
 }
@@ -332,12 +333,16 @@ export function canonicalizeModelCapabilityFieldV2(value: unknown): PersistedMod
     )) invalid()
     const constraints = value.constraints.map((candidate) => {
       if (!plainObject(candidate)) return invalid()
-      exactKeys(candidate, ['kind', 'path', 'values'])
+      exactKeys(candidate, candidate.whenValues === undefined
+        ? ['kind', 'path', 'values'] : ['kind', 'path', 'values', 'whenValues'])
       if ((candidate.kind !== 'requires_value' && candidate.kind !== 'forbids_value') ||
           !MODEL_CAPABILITY_SEMANTIC_PATHS_V2.includes(candidate.path as ModelCapabilitySemanticPathV2) ||
           candidate.path === value.path) invalid()
+      const whenValues = candidate.whenValues === undefined ? undefined : scalarValues(candidate.whenValues)
+      if (whenValues !== undefined && (fieldDomain?.kind !== 'enum' ||
+          whenValues.some((item) => !fieldDomain.values.includes(item)))) invalid()
       return Object.freeze({ kind: candidate.kind, path: candidate.path as ModelCapabilitySemanticPathV2,
-        values: scalarValues(candidate.values) })
+        values: scalarValues(candidate.values), ...(whenValues === undefined ? {} : { whenValues }) })
     })
     constraints.sort((left, right) => hash(left).localeCompare(hash(right), 'en'))
     return Object.freeze({ path: value.path as ModelCapabilitySemanticPathV2, state,
@@ -352,8 +357,7 @@ export function canonicalizeModelCapabilityFieldV2(value: unknown): PersistedMod
 function canonicalFields(input: readonly PersistedModelCapabilityFieldV2[]): readonly PersistedModelCapabilityFieldV2[] {
   const fields = input.map(canonicalizeModelCapabilityFieldV2)
   fields.sort((left, right) => left.path.localeCompare(right.path, 'en'))
-  if (fields.length !== MODEL_CAPABILITY_SEMANTIC_PATHS_V2.length ||
-      fields.some((field, index) => field.path !== MODEL_CAPABILITY_SEMANTIC_PATHS_V2[index])) invalid()
+  if (!isCompleteModelCapabilityFieldSetV2(fields.map((field) => field.path))) invalid()
   return Object.freeze(fields)
 }
 
@@ -425,7 +429,7 @@ export function projectCanonicalModelFactsDraftV2(facts: CanonicalModelFactsV2):
 export function projectCanonicalModelFactsV2(facts: CanonicalModelFactsV2): Readonly<{
   schemaVersion: 1
   identity: CanonicalModelIdentityV2
-  evidence: readonly Readonly<Record<string, unknown>>[]
+  evidence: readonly PersistedModelCapabilityEvidenceV2[]
   fields: readonly PersistedModelCapabilityFieldV2[]
   evidenceDigest: string
   semanticFieldsDigest: string

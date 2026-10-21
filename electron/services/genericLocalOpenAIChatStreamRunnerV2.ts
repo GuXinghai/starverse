@@ -1,3 +1,4 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -14,7 +15,17 @@ import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } f
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
+
+const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
 
 export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db: BetterSqlite3.Database;
   rawGenerationRequestStore?: RawGenerationRequestStore; streamProjectionSink?: GenerationStreamProjectionSinkV2;
@@ -39,6 +50,7 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
       const terminalRequest = requestRepo.terminalize(context, request, state, nowMs())
       graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, state === 'completed' ? result!.assistantMessage.content : null, nowMs())
       const terminalExecution = executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, nowMs())
+      if (state !== 'completed') { new GenerationInterruptedReplayV2Repo(input.db).insertLocalCheckpoint(context, { answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId, requestSequence: command.preparedRequest.requestSequence, protocol: 'generic_local', requestBody: JSON.parse(command.preparedRequest.body.copyUtf8Text()), wireEvents: receivedLocalWireFacts.get(command) ?? [] }) }
       if (state === 'completed' && result) { const fact = historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
         historyRepo.persistCompletedArtifact({ context, execution: terminalExecution, request: terminalRequest,
           requestMessages: fact.replayMessages, assistantMessage: result.assistantMessage, createdAtMs: nowMs() }) }
@@ -47,6 +59,34 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
       answerRootId: command.preparedRequest.answerRootId, state, errorCode, errorMessage })
     return Object.freeze({ operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId, state, errorCode, errorMessage })
   }
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'generic-local-openai-chat-completions', (_receipt, command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_RESPONSE_INVALID')
+    const raw = value as Record<string, unknown>
+    const message = raw.assistantMessage
+    if (!message || typeof message !== 'object' || Array.isArray(message) ||
+        (message as Record<string, unknown>).role !== 'assistant' ||
+        ((message as Record<string, unknown>).content !== null && typeof (message as Record<string, unknown>).content !== 'string') ||
+        typeof raw.responseId !== 'string' || typeof raw.model !== 'string' || typeof raw.finishReason !== 'string' ||
+        (raw.usage !== null && (!raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage)))) {
+      throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_RESPONSE_INVALID')
+    }
+    return terminal(command, 'completed', value as GenericLocalOpenAIChatStreamResultV1, null, null, 'mid_stream')
+  }, (command, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_RESPONSE_INVALID')
+    const raw = value as Record<string, unknown>
+    const message = raw.assistantMessage
+    if (!message || typeof message !== 'object' || Array.isArray(message) ||
+        (message as Record<string, unknown>).role !== 'assistant' ||
+        ((message as Record<string, unknown>).content !== null && typeof (message as Record<string, unknown>).content !== 'string') ||
+        typeof raw.responseId !== 'string' || typeof raw.model !== 'string' || typeof raw.finishReason !== 'string' ||
+        (raw.usage !== null && (!raw.usage || typeof raw.usage !== 'object' || Array.isArray(raw.usage)))) {
+      throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_RESPONSE_INVALID')
+    }
+    const calls = (message as Record<string, unknown>).tool_calls
+    if (Array.isArray(calls) && calls.length > 0 && command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_RESPONSE_INVALID')
+    }
+  })
   return Object.freeze({ run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal) => {
     if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
         command.preparedRequest.providerId !== 'generic_local' || command.preparedRequest.contractId !== 'generic-local-openai-chat-completions' ||
@@ -54,7 +94,7 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
     const profile = profileRepo.get(command.preparedRequest.endpointProfileId); const endpointBinding = command.execution.snapshot.providerBinding.endpointBinding
     const revision = endpointBinding.kind === 'provider_managed_set' ? endpointBinding.endpointSetRevision.value : null
     if (profile.credentialScopeId !== command.preparedRequest.credentialScopeId || profile.profileRevision !== revision) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_PROFILE_STALE')
-    begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); let started = false; let visible = ''
+    receivedLocalWireFacts.set(command, []); begin(command); const scope = createGenerationAbortScope(signal, input.timeoutMs); let started = false; let visible = ''
     const checkpoint = createGenerationTextBodyCheckpointV2({
       db: input.db, graphRepo, command, initialBody: visible,
       streamProjectionSink: input.streamProjectionSink, nowMs,
@@ -71,16 +111,25 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
       if (!response.ok || !response.body) { try { await response.body?.cancel() } catch {}; throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_HTTP_FAILED') }
       const decoder = new GenericLocalOpenAIChatSseDecoderV1(); const assembler = new GenericLocalOpenAIChatStreamAssemblerV1(); const reader = response.body.getReader()
       try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true
-        for (const chunk of decoder.push(item.value)) { const delta = assembler.push(chunk); if (delta) { visible += delta; checkpoint.update(visible) } } }
-        for (const chunk of decoder.finish()) assembler.push(chunk)
+        for (const chunk of decoder.push(item.value)) { receivedLocalWireFacts.get(command)!.push(chunk); const delta = assembler.push(chunk); if (delta) { visible += delta; checkpoint.update(visible) } } }
+        for (const chunk of decoder.finish()) { receivedLocalWireFacts.get(command)!.push(chunk); assembler.push(chunk) }
       } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       const result = assembler.finish() // result.model is reported provenance; a mismatch with the requested model ID is not a failure
+      persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
       checkpoint.flush()
-      return terminal(command, 'completed', result, null, null, 'mid_stream')
-    } catch (error) { let failure: unknown = error; try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
+      return materializeNewGenerationNativeCompletionV2({
+        db: input.db, command, nativeResult: result, nowMs,
+        materialize: () => terminal(command, 'completed', result, null, null, 'mid_stream'),
+      })
+    } catch (error) {
+      if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+      if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+        throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+      }
+      let failure: unknown = error; try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
       const cancelled = signal?.aborted === true && !scope.timedOut(); const code = cancelled ? 'user_cancelled'
       : scope.timedOut() ? 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TIMEOUT' : failure instanceof Error ? failure.message : 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code, cancelled ? 'Generation cancelled by user.' : code, started ? 'mid_stream' : 'pre_stream')
-    } finally { checkpoint.dispose(); scope.dispose() }
+    } finally { receivedLocalWireFacts.delete(command); checkpoint.dispose(); scope.dispose() }
   } })
 }

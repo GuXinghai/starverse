@@ -1,11 +1,27 @@
 export type ImageGenerationOutputMode = 'auto' | 'image_only' | 'image_and_text'
 export type ImageGenerationImageSize = '512' | '1K' | '2K' | '4K'
 
+export type OpenAIImageGenerationUserSettings = Readonly<{
+  toolModel?: string
+  size?: string
+  quality?: string
+  format?: 'png' | 'jpeg' | 'webp'
+  background?: 'auto' | 'transparent' | 'opaque'
+  action?: 'auto' | 'generate' | 'edit'
+  toolChoice?: 'auto' | 'required'
+  outputCompression?: number
+  partialImages?: number
+  inputFidelity?: 'low' | 'high'
+  moderation?: 'auto' | 'low'
+  maskAsset?: Readonly<{ assetId: string; assetRevisionId: string; assetSha256: string }>
+}>
+
 export type ImageGenerationUserConfig = Readonly<{
   enabled: boolean
   outputMode: ImageGenerationOutputMode
   aspectRatio: string
   imageSize: ImageGenerationImageSize | ''
+  openAI?: OpenAIImageGenerationUserSettings
 }>
 
 export type ConvoImageGenerationMode = 'default' | 'custom'
@@ -28,6 +44,31 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
+export function normalizeOpenAIImageGenerationUserSettings(value: unknown): OpenAIImageGenerationUserSettings | undefined {
+  const raw = asRecord(value)
+  if (!raw) return undefined
+  const next: Record<string, unknown> = {}
+  for (const key of ['toolModel', 'size', 'quality'] as const) {
+    if (typeof raw[key] === 'string' && raw[key].trim()) next[key] = raw[key].trim()
+  }
+  const enums = {
+    format: ['png', 'jpeg', 'webp'], background: ['auto', 'transparent', 'opaque'],
+    action: ['auto', 'generate', 'edit'], toolChoice: ['auto', 'required'],
+    inputFidelity: ['low', 'high'], moderation: ['auto', 'low'],
+  }
+  for (const [key, values] of Object.entries(enums)) {
+    if (typeof raw[key] === 'string' && values.includes(raw[key] as string)) next[key] = raw[key]
+  }
+  for (const [key, max] of [['outputCompression', 100], ['partialImages', 3]] as const) {
+    if (Number.isInteger(raw[key]) && Number(raw[key]) >= 0 && Number(raw[key]) <= max) next[key] = raw[key]
+  }
+  const mask = asRecord(raw.maskAsset)
+  if (mask && ['assetId', 'assetRevisionId', 'assetSha256'].every(key => typeof mask[key] === 'string' && String(mask[key]).trim())) {
+    next.maskAsset = { assetId: String(mask.assetId).trim(), assetRevisionId: String(mask.assetRevisionId).trim(), assetSha256: String(mask.assetSha256).trim() }
+  }
+  return Object.keys(next).length ? next as OpenAIImageGenerationUserSettings : undefined
+}
+
 export function normalizeImageGenerationUserConfig(value: unknown): ImageGenerationUserConfig {
   const raw = asRecord(value)
   if (!raw) return DEFAULT_IMAGE_GENERATION_USER_CONFIG
@@ -40,11 +81,13 @@ export function normalizeImageGenerationUserConfig(value: unknown): ImageGenerat
     normalizedImageSizeRaw === '512' || normalizedImageSizeRaw === '1K' || normalizedImageSizeRaw === '2K' || normalizedImageSizeRaw === '4K'
       ? normalizedImageSizeRaw
       : ''
+  const openAI = normalizeOpenAIImageGenerationUserSettings(raw.openAI)
   return {
     enabled: raw.enabled === true,
     outputMode,
     aspectRatio: String(raw.aspectRatio ?? '').trim(),
     imageSize,
+    ...(openAI ? { openAI } : {}),
   }
 }
 

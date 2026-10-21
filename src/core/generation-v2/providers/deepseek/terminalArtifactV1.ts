@@ -1,4 +1,5 @@
 import { sha256Hex } from '@/shared/crypto/sha256Hex'
+import { GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import {
   decodeDeepSeekNativeMessageV1,
@@ -140,7 +141,7 @@ export function decodeDeepSeekStableTerminalArtifactV1(value: unknown): DeepSeek
       (input.generatedWithThinking !== 'enabled' && input.generatedWithThinking !== 'disabled') ||
       typeof input.finishReason !== 'string' || !FINISH_REASONS.has(input.finishReason as DeepSeekStableFinishReasonV1) ||
       typeof input.artifactHash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.artifactHash)) invalid()
-  const message = decodeDeepSeekNativeMessageV1(input.assistantMessage)
+  const message = decodeDeepSeekNativeMessageV1(input.assistantMessage, GENERATION_NATIVE_ARTIFACT_MAX_BYTES_V1)
   if (message.role !== 'assistant') invalid()
   const metadata = record(input.responseMetadata, ['id', 'model', 'created', 'systemFingerprint'])
   const unsignedArtifact = Object.freeze({

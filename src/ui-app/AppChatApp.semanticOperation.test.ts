@@ -18,6 +18,8 @@ import { decodeGenerationIntentLayerV2 } from '@/core/generation-v2/domain/gener
 import { resetI18nForTests } from '@/shared/i18n'
 import AppChatApp from './AppChatApp.vue'
 import ChatAppComposer from './components/ChatAppComposer.vue'
+import ChatSessionConsole from './components/ChatSessionConsole.vue'
+import ChatTopSummaryBar from './components/ChatTopSummaryBar.vue'
 
 const ok = <T>(value: T) => ({ ok: true as const, value })
 const deferred = () => {
@@ -29,14 +31,14 @@ const modelId = 'synthetic/formal-image-model'
 
 // These are validated capability boundary stubs, not live image authority.
 // Workspace, composer, config persistence and invalidation commits use real repos.
-function capabilityBoundary(request: any) {
+function capabilityBoundary(request: any, imageDefault = false, imageSizes: readonly string[] = ['1K', '2K']) {
   const contract = listReviewedProviderContractDefinitionsV2().find(definition => definition.protocolContractId.value === request.protocolId)!
   const image = request.operation === 'image_generate'
   // OR's current image encoder does not cover image.outputMode.
   const domains: Record<string, readonly string[]> = {
     'reasoning.mode': ['disabled', 'enabled'], 'web.mode': ['disabled'],
     'image.mode': image ? ['disabled', 'generate'] : ['disabled'],
-    ...(image ? { 'image.aspectRatio': ['auto', '1:1', '16:9'], 'image.resolution': ['1K', '2K'],
+    ...(image ? { 'image.aspectRatio': ['auto', '1:1', '16:9'], 'image.resolution': imageSizes,
       ...(request.providerId === 'google_ai_studio' ? { 'image.outputMode': ['image_only', 'image_and_text'] } : {}) } : {}),
   }
   const capability = canonicalizeResolvedCapabilityV2({
@@ -52,7 +54,8 @@ function capabilityBoundary(request: any) {
     evidence: [{ evidenceId: 'test.image-boundary', kind: 'official_documentation', effect: 'supports',
       sourceRef: 'https://example.test/synthetic', verifiedAt: '2026-10-03T00:00:00.000Z', contentDigest: 'a'.repeat(64) }],
     fields: MODEL_CAPABILITY_SEMANTIC_PATHS_V2.map(path => domains[path]
-      ? { path, state: 'supported', domain: { kind: 'enum', values: domains[path] }, constraints: [], evidenceIds: ['test.image-boundary'] }
+      ? { path, state: 'supported', domain: { kind: 'enum', values: domains[path] }, constraints: [], evidenceIds: ['test.image-boundary'],
+          ...(imageDefault && path === 'image.resolution' ? { defaultValue: '1K' } : {}) }
       : { path, state: 'missing', constraints: [], evidenceIds: [] }),
     continuation: { kind: 'none', evidenceIds: ['test.image-boundary'] },
   })
@@ -146,9 +149,9 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
       referenceRevision: 'url-revision:operation', originalUrl: 'https://example.test/preserved', mediaKind: 'other', declaredMediaType: null })
     bridge.composer.get = vi.fn(async (id: string) => ok(drafts.getOrCreate(id)))
     bridge.composer.updateText = vi.fn(async (packet: any) => ok(drafts.updateText(packet)))
-    bridge.credentials.openRouter.getStatus.mockResolvedValue({ ok: true, status: { configured: true,
+    bridge.credentials.openRouter.getStatus.mockResolvedValue({ ok: true, status: { apiKeyConfigured: true,
       credentialRevision: 1, credentialScopeId: credentialScope, profileId: 'openrouter-first-party-v1' } })
-    bridge.credentials.googleAIStudio.getStatus.mockResolvedValue({ ok: true, status: { configured: true,
+    bridge.credentials.googleAIStudio.getStatus.mockResolvedValue({ ok: true, status: { apiKeyConfigured: true,
       credentialRevision: 1, credentialScopeId: credentialScope, profileId: 'gemini-developer-api-v1beta' } })
     bridge.capabilities.resolve.mockImplementation(async (request: any) => capabilityBoundary(request))
     bridge.openRouter.images.getEndpointSelection = vi.fn(async (request: any) => {
@@ -170,6 +173,143 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
     db.close()
     ;(window as any).generationV2 = originalBridge
     localStorage.removeItem('starverse.openRouterTextChat.enabled')
+  })
+
+  it('does not rewrite other canonical controls when image settings change after reopening', async () => {
+    const before = { schemaVersion: 2, generation: { temperature: 0.4 }, reasoning: { mode: 'disabled' },
+      web: { mode: 'disabled' }, tools: { mode: 'disabled' }, image: { mode: 'disabled' } }
+    const current = await bridge.workspace.getConfig('conversation', conversationId)
+    await bridge.workspace.updateConfig({ ownerKind: 'conversation', ownerId: conversationId,
+      expectedConfigRevision: current.value.configRevision, semanticLayer: before })
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('text')
+    await emit('updateImageGenerationResolution', '2K')
+    await ready('image_generate')
+    wrapper.unmount()
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('image_generate')
+    await emit('updateImageGenerationAspectRatio', '16:9')
+    await waitFor(() => expect(conversationSemantics().image.aspectRatio).toBe('16:9'))
+    const saved = conversationSemantics()
+    expect(saved).not.toHaveProperty('requestedParameters')
+    for (const key of ['generation', 'reasoning', 'web', 'tools'] as const) expect(saved[key]).toEqual(before[key])
+    if (providerId === 'google_ai_studio') expect(saved.providerExtension).toEqual({ kind: 'gemini_interactions' })
+  })
+
+  it.runIf(providerId === 'google_ai_studio')('restores provider image settings through real route handlers and database reload', async () => {
+    bridge.workspace.getConversationRoutePreference = vi.fn((id: string) => invoke('generation-v2:workspace:get-conversation-route-preference', { conversationId: id }))
+    bridge.workspace.updateConversationRoutePreference = vi.fn((packet: unknown) => invoke('generation-v2:workspace:update-conversation-route-preference', packet))
+    await bridge.workspace.updateConversationRoutePreference({ conversationId, expectedRevision: 0,
+      selection: { schemaVersion: 1, kind: 'provider_model', providerId, modelId } })
+    bridge.credentials.openAIResponses.getStatus.mockResolvedValue({ ok: true, status: { apiKeyConfigured: true,
+      credentialRevision: 1, credentialScopeId: credentialScope, profileId: 'openai-responses-first-party-v1' } })
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('text')
+    await emit('updateImageGenerationResolution', '2K')
+    await ready('image_generate')
+    await emit('updateImageGenerationAspectRatio', '16:9')
+    await waitFor(() => expect(conversationSemantics().image.aspectRatio).toBe('16:9'))
+    await emit('updateImageGenerationEnabled', false)
+    await ready('text')
+    expect(composer().props('sessionConfig')?.imageGeneration).toMatchObject({ enabled: false, resolution: '2K', aspectRatio: '16:9' })
+    await emit('updateImageGenerationEnabled', true)
+    await ready('image_generate')
+    expect(composer().props('sessionConfig')?.imageGeneration).toMatchObject({ enabled: true, resolution: '2K', aspectRatio: '16:9' })
+    wrapper.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
+    await flushPromises()
+    const route = async (provider: string, model: string) => {
+      if (!wrapper!.findComponent(ChatSessionConsole).exists()) {
+        wrapper!.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
+        await flushPromises()
+      }
+      wrapper!.findComponent(ChatSessionConsole).vm.$emit('updateRouteSelection', {
+        schemaVersion: 1, kind: 'provider_model', providerId: provider, modelId: model,
+      })
+      await waitFor(() => expect(composer().props('capabilityProjection')?.binding.providerId).toBe(provider))
+      await flushPromises()
+    }
+    await route('openai_responses', 'gpt-4.1-mini')
+    wrapper.findComponent(ChatSessionConsole).vm.$emit('updateImageGeneration', {
+      enabled: true, outputMode: 'auto', aspectRatio: '', imageSize: '', openAI: {
+        toolModel: 'gpt-image-1', size: '1536x1024', format: 'webp', outputCompression: 73, toolChoice: 'required',
+      },
+    })
+    await waitFor(() => expect(conversationSemantics().image.toolModel).toBe('gpt-image-1'))
+    expect(conversationSemantics().image).not.toHaveProperty('resolution')
+    const savedOpenAI = composer().props('sessionConfig')!.imageGeneration.detail!
+    wrapper.findComponent(ChatSessionConsole).vm.$emit('updateImageGeneration', {
+      ...savedOpenAI, openAI: { ...savedOpenAI.openAI, format: 'png' },
+    })
+    await waitFor(() => expect(conversationSemantics().image.format).toBe('png'))
+    expect(conversationSemantics().image.outputCompression).toBe(73)
+    wrapper.findComponent(ChatSessionConsole).vm.$emit('updateImageGeneration', savedOpenAI)
+    await waitFor(() => expect(conversationSemantics().image.format).toBe('webp'))
+    expect(conversationSemantics().image.outputCompression).toBe(73)
+    await route('google_ai_studio', modelId)
+    await ready('image_generate')
+    expect(composer().props('sessionConfig')?.imageGeneration).toMatchObject({ enabled: true, resolution: '2K', aspectRatio: '16:9' })
+    await route('openai_responses', 'gpt-4.1-mini')
+    expect(composer().props('sessionConfig')?.imageGeneration.detail?.openAI).toMatchObject({ toolModel: 'gpt-image-1', outputCompression: 73 })
+    wrapper.unmount()
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('text')
+    expect(composer().props('sessionConfig')?.imageGeneration.detail?.openAI).toMatchObject({ toolModel: 'gpt-image-1', outputCompression: 73, size: '1536x1024' })
+    await route('google_ai_studio', modelId)
+    await ready('image_generate')
+    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('2K')
+  })
+
+  it.runIf(providerId === 'google_ai_studio')('resets an excluded resolution to provider default and persists it after a model switch', async () => {
+    bridge.capabilities.resolve.mockImplementation(async (request: any) =>
+      capabilityBoundary(request, true, request.modelId.endsWith('-only-1k') ? ['1K'] : ['1K', '2K']))
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('text')
+    await emit('updateImageGenerationResolution', '2K')
+    await ready('image_generate')
+    await waitFor(() => expect(conversationSemantics().image.resolution).toBe('2K'))
+    const resetGate = gate()
+    const updateConfig = bridge.workspace.updateConfig
+    let resetStarted = false
+    bridge.workspace.updateConfig = vi.fn(async (packet: any) => {
+      if (packet.semanticLayer.image?.mode === 'generate' && packet.semanticLayer.image.resolution === undefined) {
+        resetStarted = true
+        await resetGate.promise
+      }
+      return updateConfig(packet)
+    })
+    wrapper.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
+    await flushPromises()
+    wrapper.findComponent(ChatSessionConsole).vm.$emit('updateRouteSelection', { schemaVersion: 1, kind: 'provider_model', providerId, modelId: `${modelId}-only-1k` })
+    await waitFor(() => expect(resetStarted).toBe(true))
+    expect(screen.getByTestId('composer-draft')).toBeDisabled()
+    resetGate.resolve()
+    await waitFor(() => expect(composer().props('capabilityProjection')?.binding.modelId).toBe(`${modelId}-only-1k`))
+    await ready('image_generate')
+    expect(conversationSemantics().image).not.toHaveProperty('resolution')
+    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
+    await invalidate()
+    await ready('image_generate')
+    expect(conversationSemantics().image).not.toHaveProperty('resolution')
+    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
+  })
+
+  it('preserves provider-default image resolution without persisting 1K', async () => {
+    bridge.capabilities.resolve.mockImplementation(async (request: any) => capabilityBoundary(request, true))
+    wrapper = mount(AppChatApp, { attachTo: host })
+    await ready('text')
+    await emit('updateImageGenerationResolution', '2K')
+    await ready('image_generate')
+    await emit('updateImageGenerationResolution', '')
+    await waitFor(() => {
+      expect(conversationSemantics().image).toMatchObject({ mode: 'generate' })
+      expect(conversationSemantics().image).not.toHaveProperty('resolution')
+      expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
+    })
+    expect(composer().props('capabilityProjection')?.controls['image.resolution'].defaultValue).toBe('1K')
+    await invalidate()
+    await ready('image_generate')
+    expect(conversationSemantics().image).not.toHaveProperty('resolution')
+    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
   })
 
   it('writes both target operations privately and publishes readiness through the ordinary current watcher', async () => {
@@ -250,6 +390,36 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
     expect(composer().props('capabilityProjection')).toBe(current)
     expect(bridge.workspace.updateConfig).not.toHaveBeenCalled()
     expect(bridge.openRouter.images.initial).not.toHaveBeenCalled()
+  })
+
+  if (providerId === 'openrouter') it('loads endpoints after initial capability failure with an empty local layer and preserves requested image intent', async () => {
+    const originalStore = (globalThis as any).electronStore
+    ;(globalThis as any).electronStore = { ...originalStore, get: vi.fn(async (key: string) => key === 'generationV2UiPreferences'
+      ? { imageGenerationDefault: { enabled: true, outputMode: 'auto', imageSize: '2K', aspectRatio: '16:9' } }
+      : originalStore?.get?.(key)) }
+    try {
+      bridge.capabilities.resolve.mockResolvedValue({ ok: false, code: 'DESCRIPTOR_MODEL_NOT_FOUND' })
+      wrapper = mount(AppChatApp, { attachTo: host })
+      await waitFor(() => expect(screen.getByTestId('composer-draft')).toBeEnabled())
+      await waitFor(() => expect(bridge.capabilities.resolve).toHaveBeenCalledWith(expect.objectContaining({ operation: 'image_generate' })))
+      await flushPromises()
+      expect(composer().props('capabilityProjection')).toBeNull()
+      expect(conversationSemantics()).toEqual({ schemaVersion: 2 })
+      expect(composer().props('sessionConfig')?.imageGeneration).toMatchObject({ enabled: true, resolution: '2K', aspectRatio: '16:9' })
+      bridge.openRouter.images.getEndpointSelection.mockClear()
+      wrapper.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
+      await flushPromises()
+      await fireEvent.click(screen.getByTestId('openrouter-image-endpoint-refresh'))
+      await waitFor(() => expect(bridge.openRouter.images.getEndpointSelection).toHaveBeenCalledOnce())
+      expect(bridge.openRouter.images.getEndpointSelection).toHaveBeenCalledWith(expect.objectContaining({ modelId,
+        semanticIntent: expect.objectContaining({ image: expect.objectContaining({ mode: 'generate', resolution: '2K', aspectRatio: '16:9' }),
+          attachments: expect.arrayContaining([expect.objectContaining({ kind: 'url_reference', referenceId: 'url:operation' })]) }) }))
+      expect(wrapper.text()).not.toContain('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
+      expect(bridge.openRouter.images.initial).not.toHaveBeenCalled()
+      expect(conversationSemantics()).toEqual({ schemaVersion: 2 })
+    } finally {
+      ;(globalThis as any).electronStore = originalStore
+    }
   })
 
   it('keeps current text authority and persisted config intact while target resolution waits, then rejects invalidated target work', async () => {

@@ -5,6 +5,11 @@ import {
   type CapabilityRuleOwnershipSnapshotV1,
   type ProjectedCapabilityRuleOwnershipSnapshotV1,
 } from '../capability-rules/capabilityRuleCoreV1'
+import {
+  projectCapabilityRuleOwnershipSnapshotV2,
+  type CapabilityRuleOwnershipSnapshotV2,
+  type ProjectedCapabilityRuleOwnershipSnapshotV2,
+} from '../capability-rules/capabilityRuleCoreV2'
 import { stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import {
   buildAuthoritativeModelSubjectSetV1,
@@ -14,6 +19,8 @@ import {
   canonicalizeCanonicalModelSubjectV1,
   canonicalSourceFactDigestV1,
   type CanonicalModelSubjectV1,
+  type CanonicalFactValueV1,
+  type CanonicalSemanticPathV1,
   type CanonicalSourceRevisionRefV1,
   type CanonicalSubjectFactCandidateV1,
   type RawPayloadRefV1,
@@ -47,8 +54,14 @@ export type CapabilityRuleDefaultActivationPoliciesV1 = Readonly<{
 
 export type MaterializedCapabilityRuleOwnerSnapshotV1 = Readonly<{
   snapshotRevision: string
-  snapshot: CapabilityRuleOwnershipSnapshotV1
+  snapshot: CapabilityRuleOwnershipSnapshotV1 | CapabilityRuleOwnershipSnapshotV2
 }>
+
+export type CapabilityRuleProjectedOwnerSnapshotV1V2 =
+  | ProjectedCapabilityRuleOwnershipSnapshotV1
+  | ProjectedCapabilityRuleOwnershipSnapshotV2
+
+type ProjectedCapabilityRuleOwnershipSnapshot = CapabilityRuleProjectedOwnerSnapshotV1V2
 
 export type MaterializedCapabilityRuleSourcePayloadV1 = Readonly<{
   schemaVersion: 1
@@ -87,8 +100,24 @@ function subjectKey(subject: CanonicalModelSubjectV1): string {
   return stableSerializeProviderRequestV2(subject)
 }
 
-function ownerKey(snapshot: MaterializedCapabilityRuleOwnerSnapshotV1): string {
-  return `${snapshot.snapshot.ownership}\0${snapshot.snapshot.ownerId}`
+/** Resolves stale dual-version owner rows deterministically; V2 is the active representation when both exist. */
+export function mergeCapabilityRuleOwnershipSnapshotsV1V2(
+  values: readonly CapabilityRuleProjectedOwnerSnapshotV1V2[],
+): readonly CapabilityRuleProjectedOwnerSnapshotV1V2[] {
+  const selected = new Map<string, CapabilityRuleProjectedOwnerSnapshotV1V2>()
+  for (const value of values) {
+    const key = `${value.definition.ownership}\0${value.definition.ownerId}`
+    const existing = selected.get(key)
+    if (!existing) {
+      selected.set(key, value)
+      continue
+    }
+    if (existing.definition.schemaVersion === value.definition.schemaVersion) invalid()
+    if (value.definition.schemaVersion === 2) selected.set(key, value)
+  }
+  return Object.freeze([...selected.values()].sort((left, right) =>
+    `${left.definition.ownership}\0${left.definition.ownerId}`.localeCompare(
+      `${right.definition.ownership}\0${right.definition.ownerId}`, 'en')))
 }
 
 function boundedRevision(value: unknown, prefix: string): string {
@@ -107,12 +136,16 @@ function canonicalOwnerSnapshots(
   values: readonly MaterializedCapabilityRuleOwnerSnapshotV1[],
 ): readonly MaterializedCapabilityRuleOwnerSnapshotV1[] {
   if (!Array.isArray(values) || values.length > 10_000) invalid()
-  const snapshots = values.map((value) => {
-    const projected = projectCapabilityRuleOwnershipSnapshotV1(value.snapshot)
+  const snapshots = mergeCapabilityRuleOwnershipSnapshotsV1V2(values.map((value) => {
+    const projected = value.snapshot.schemaVersion === 1
+      ? projectCapabilityRuleOwnershipSnapshotV1(value.snapshot)
+      : value.snapshot.schemaVersion === 2
+        ? projectCapabilityRuleOwnershipSnapshotV2(value.snapshot)
+        : invalid()
     if (projected.snapshotRevision !== value.snapshotRevision) invalid()
-    return Object.freeze({ snapshotRevision: projected.snapshotRevision, snapshot: projected.definition })
-  }).sort((left, right) => ownerKey(left).localeCompare(ownerKey(right), 'en'))
-  if (new Set(snapshots.map(ownerKey)).size !== snapshots.length) invalid()
+    return projected
+  })).map(projected => Object.freeze({ snapshotRevision: projected.snapshotRevision,
+    snapshot: projected.definition }))
   return Object.freeze(snapshots)
 }
 
@@ -136,7 +169,7 @@ function canonicalPayload(value: MaterializedCapabilityRuleSourcePayloadV1): Mat
 
 function payloadForSnapshot(
   subjectSet: AuthoritativeModelSubjectSetV1,
-  snapshots: readonly ProjectedCapabilityRuleOwnershipSnapshotV1[],
+  snapshots: readonly ProjectedCapabilityRuleOwnershipSnapshot[],
   policies: CapabilityRuleDefaultActivationPoliciesV1,
 ): MaterializedCapabilityRuleSourcePayloadV1 {
   const rebuilt = buildAuthoritativeModelSubjectSetV1(subjectSet.records.flatMap((record) =>
@@ -153,7 +186,7 @@ function payloadForSnapshot(
 }
 
 export function projectCapabilityRuleDefinitionSetV1(input: Readonly<{
-  ownershipSnapshots: readonly ProjectedCapabilityRuleOwnershipSnapshotV1[]
+  ownershipSnapshots: readonly ProjectedCapabilityRuleOwnershipSnapshot[]
   defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1
 }>): CapabilityRuleDefinitionSetProjectionV1 {
   const policies = defaultPolicies(input.defaultActivationPolicies)
@@ -199,7 +232,7 @@ function ruleClaimContext(input: Readonly<{
   rulePriority: number
   selectorKind: 'exact' | 'regex'
 }>): RuleClaimContextV1 {
-  return Object.freeze({ ownerKind: input.ownership, ownerId: input.ownerId,
+  return Object.freeze({ ownerKind: input.ownership === 'cloud' && input.ownerId === 'bundled-gemini-thinking-v2' ? 'built_in' : input.ownership, ownerId: input.ownerId,
     packId: input.packId, ruleId: input.ruleId, packRevision: input.packRevision,
     ruleRevision: input.ruleRevision, selectorKind: input.selectorKind,
     // The regex/exact selector definition remains in the source-native raw payload. Canonical facts
@@ -213,6 +246,30 @@ function ruleClaimContext(input: Readonly<{
 export function createMaterializedCapabilityRuleSourceAdapterV1(
   input: Readonly<{ rawPayloadReader: RawPayloadReaderV1 }>,
 ): CanonicalModelFactSourceAdapterV1 {
+  // One immutable source publication is enumerated across every exact subject.
+  // Reuse its validated payload and owner projections within this adapter only.
+  const snapshots = new Map<string, Readonly<{
+    payload: MaterializedCapabilityRuleSourcePayloadV1
+    rawRef: RawPayloadRefV1
+    owners: readonly ProjectedCapabilityRuleOwnershipSnapshot[]
+    subjectKeys: ReadonlySet<string>
+  }>>()
+  const prepareSnapshot = (rawSnapshot: RawSourceSnapshotRefV1) => {
+    const key = stableSerializeProviderRequestV2(rawSnapshot)
+    const existing = snapshots.get(key)
+    if (existing) return existing
+    const parsed = readPayload(input.rawPayloadReader, rawSnapshot)
+    const prepared = Object.freeze({ ...parsed,
+      owners: Object.freeze(parsed.payload.ownershipSnapshots.map(owner => owner.snapshot.schemaVersion === 1
+        ? projectCapabilityRuleOwnershipSnapshotV1(owner.snapshot)
+        : owner.snapshot.schemaVersion === 2
+          ? projectCapabilityRuleOwnershipSnapshotV2(owner.snapshot)
+          : invalid())),
+      subjectKeys: new Set(parsed.payload.subjects.map(subjectKey)),
+    })
+    snapshots.set(key, prepared)
+    return prepared
+  }
   return Object.freeze({
     sourceKind: 'capability_rule' as const,
     adapterId: 'materialized-capability-rule-source-adapter-v1',
@@ -220,7 +277,7 @@ export function createMaterializedCapabilityRuleSourceAdapterV1(
     coverageManifest: MATERIALIZED_CAPABILITY_RULE_COVERAGE_MANIFEST_V1,
     subjectDiscovery: 'enumerable' as const,
     indexRawRecords(rawSnapshot: RawSourceSnapshotRefV1): SourceRecordIndexV1 {
-      const { payload } = readPayload(input.rawPayloadReader, rawSnapshot)
+      const { payload } = prepareSnapshot(rawSnapshot)
       return Object.freeze({ sourceScopeId: rawSnapshot.sourceScopeId,
         recordSetCompleteness: 'complete' as const, exactSubjects: payload.subjects,
         invalidRecordRefs: Object.freeze([]) })
@@ -231,15 +288,15 @@ export function createMaterializedCapabilityRuleSourceAdapterV1(
       subject: CanonicalModelSubjectV1
     }>): CanonicalSubjectFactCandidateV1 {
       const subject = canonicalizeCanonicalModelSubjectV1(adapterInput.subject)
-      const { payload, rawRef } = readPayload(input.rawPayloadReader, adapterInput.rawSnapshot)
-      if (!payload.subjects.some((candidate) => subjectKey(candidate) === subjectKey(subject))) {
+      const { payload, rawRef, owners, subjectKeys } = prepareSnapshot(adapterInput.rawSnapshot)
+      if (!subjectKeys.has(subjectKey(subject))) {
         return Object.freeze({ schemaVersion: 1 as const, subject, sourceRevision: adapterInput.sourceRevision,
           recordOutcome: 'absent_in_complete_snapshot' as const, outcomes: Object.freeze([]),
           unmappedSourceFields: Object.freeze([]) })
       }
       const outcomes = []
-      for (const owner of payload.ownershipSnapshots) {
-        const projected = projectCapabilityRuleOwnershipSnapshotV1(owner.snapshot)
+      for (const projected of owners) {
+        const owner = projected.definition
         for (const pack of projected.packs) {
           for (const projectedRule of pack.rules) {
             const rule = projectedRule.definition
@@ -248,17 +305,33 @@ export function createMaterializedCapabilityRuleSourceAdapterV1(
                 !selectorMatches(rule.selector, subject.nativeModelId)) continue
             const activation = evaluateCapabilityRuleActivationV1({ mode: pack.definition.mode,
               target: pack.definition.target, configured: rule.configured,
-              defaultPolicy: payload.defaultActivationPolicies[owner.snapshot.ownership] })
+              defaultPolicy: payload.defaultActivationPolicies[owner.ownership] })
             if (!activation.enabled) continue
-            const mappingId = `materialized-rules.direct.${rule.assertion.path}.v1`
+            let factPath: CanonicalSemanticPathV1
+            let factValue: CanonicalFactValueV1
+            let mappingId: string
+            let sourceFieldPath: string
+            if ('assertion' in rule) {
+              factPath = rule.assertion.path
+              factValue = rule.assertion.value
+              mappingId = `materialized-rules.direct.${factPath}.v1`
+              sourceFieldPath = `rule.${rule.ruleId}.assertion`
+            } else {
+              if (rule.when !== null || (rule.effect.kind !== 'fact_assertion' &&
+                  rule.effect.kind !== 'fact_default')) continue
+              factPath = rule.effect.path
+              factValue = rule.effect.value
+              mappingId = `materialized-rules.fact-v2.${rule.effect.kind}.${factPath}.v2`
+              sourceFieldPath = `rule.${rule.ruleId}.effect.${rule.effect.kind}`
+            }
             const observationProvenance = buildObservationProvenanceV1({ sourceRevision: adapterInput.sourceRevision,
               sourceFieldRefs: [Object.freeze({ rawPayloadRef: rawRef,
-                sourceRecordIdentity: `${owner.snapshot.ownership}:${owner.snapshot.ownerId}:${rule.ruleId}`,
-                sourceFieldPath: `rule.${rule.ruleId}.assertion`, observedPresence: 'present' as const })],
+                sourceRecordIdentity: `${owner.ownership}:${owner.ownerId}:${rule.ruleId}`,
+                sourceFieldPath, observedPresence: 'present' as const })],
               adapterId: 'materialized-capability-rule-source-adapter-v1',
               adapterRevision: MATERIALIZED_CAPABILITY_RULE_ADAPTER_REVISION_V1, mappingId })
-            const context = ruleClaimContext({ ownership: owner.snapshot.ownership,
-              ownerId: owner.snapshot.ownerId, packId: pack.definition.packId,
+            const context = ruleClaimContext({ ownership: owner.ownership,
+              ownerId: owner.ownerId, packId: pack.definition.packId,
               packRevision: pack.packRevision, packPriority: pack.definition.priority,
               ruleId: rule.ruleId, ruleRevision: projectedRule.ruleRevision,
               rulePriority: rule.priority, selectorKind: rule.selector.kind })
@@ -266,8 +339,8 @@ export function createMaterializedCapabilityRuleSourceAdapterV1(
               rule.evidence.evidenceSourceRef, rule.evidence.identityEvidenceSourceRef,
             ])]
             const common = { subject, sourceRevision: adapterInput.sourceRevision,
-              path: rule.assertion.path, value: rule.assertion.value,
-              sourceClaimIdentity: `${owner.snapshot.ownership}:${owner.snapshot.ownerId}:${projectedRule.ruleRevision}`,
+              path: factPath, value: factValue,
+              sourceClaimIdentity: `${owner.ownership}:${owner.ownerId}:${projectedRule.ruleRevision}`,
               evidenceRefs, observationProvenance, ruleClaim: context }
             const assertion = rule.evidence?.derivation
               ? buildDerivedAssertionV1({ ...common, derivation: rule.evidence.derivation })
@@ -286,7 +359,7 @@ export function createMaterializedCapabilityRuleSourceAdapterV1(
 export function prepareCapabilityRuleMaterializationV1(input: Readonly<{
   sourceScopeId: string
   subjectSet: AuthoritativeModelSubjectSetV1
-  ownershipSnapshots: readonly ProjectedCapabilityRuleOwnershipSnapshotV1[]
+  ownershipSnapshots: readonly ProjectedCapabilityRuleOwnershipSnapshot[]
   defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1
 }>): PreparedCapabilityRuleMaterializationV1 {
   const definitionSet = projectCapabilityRuleDefinitionSetV1(input)

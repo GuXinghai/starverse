@@ -2,7 +2,7 @@
 
 - **Lifecycle Status**: reference
 - **Document Role**: entry
-- **Last updated**: 2026-09-22
+- **Last updated**: 2026-10-17
 - **Authority**: Evidence bundle only; it does not replace current source code, Owner decisions, Generation V2 authority, reviewed contracts, or current provider documentation.
 
 ---
@@ -27,7 +27,8 @@ This directory preserves three independent investigations of using models.dev as
 14. [Cloud-managed Capability Rules implementation Goal](14-cloud-managed-capability-rules-implementation-goal.md) — completed production implementation sequence for the shared Pack/Rule core, exact-subject materialization, explicit Rules authority cutover, Cloud/User lifecycle, and UI-safe surfaces; it does not itself authorize Goal 3, which was subsequently completed under item 15.
 15. [Goal 3 three-source Model Facts resolution implementation plan](15-goal-3-three-source-resolution-implementation-plan.md) — current-code implementation map, seven dependency Slices, atomic consumer cutover closure, delete-after-migration inventory, validation gates, deferred ledger, and final closeout record; Goal 3 implementation and final bounded correction are complete under this plan.
 16. [Goal 4 Model Facts operationalization plan](16-goal-4-model-facts-operationalization-plan.md) — presentation-only plan and recovery ledger for making resolved Model Facts explainable in the Inspector, capability-aware controls, and Source Priority UI; shared presentation vocabulary, slice status, deferred ledger and final closeout record; Goal 4 is complete under this plan.
-17. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+17. [Request Rules V2 migration contract](../../implementation/request-rules-v2-migration.md) — Owner-confirmed request-resolution boundary, compatibility rules, state-preservation requirements, and acceptance gates; implementation in progress and validation pending.
+18. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
@@ -43,8 +44,10 @@ This directory preserves three independent investigations of using models.dev as
 - Item 13 is the controlling Owner-frozen Cloud-managed Rules distribution contract. It resolves the design blocker named by item 12 but does not itself authorize production migration or Goal 3.
 - Item 14 is the completed production implementation Goal authorized after the read-only pre-implementation audit. It translated items 06/12/13 into dependency slices and added an explicit Slice 3.5 Rules authority cutover; it does not supersede those Owner contracts or itself authorize Goal 3.
 - Item 15 is the controlling Goal 3 implementation plan at baseline `e928b5cc`. It maps the frozen contract to current production code and fixes the Slice, cutover, deletion, validation, and deferred boundaries; Goal 3 implementation and final bounded correction are complete under it.
-- Current implementation status and remaining TODOs are split between items 7–15: item 7 records the authority-boundary residuals, item 8 records the historical Goal 2A migration, item 9 records the historical Goal 2A-Fix dataset/fact-quality closeout, item 10 is the frozen Goal 2B design, item 11 is the Goal 2C ingestion closeout, item 12 freezes the UI/product contract, item 13 freezes its Cloud distribution dependency, item 14 records the completed Capability Rules production migration, and item 15 controls Goal 3 implementation sequencing. Do not revive the deleted Catalog capability resolver while implementing Goal 3.
+- Historical Model Facts implementation and closeout records span items 7–16: item 7 records the authority-boundary residuals, item 8 the historical Goal 2A migration, item 9 the Goal 2A-Fix dataset/fact-quality closeout, item 10 the frozen Goal 2B design, item 11 the Goal 2C ingestion closeout, item 12 the UI/product contract, item 13 its Cloud distribution dependency, item 14 the completed Capability Rules production migration, item 15 Goal 3 implementation, and item 16 Goal 4 operationalization. Do not revive the deleted Catalog capability resolver while implementing Goal 3.
 - The 2026-09-22 Goal 3 contract extraction is closed. Provider Native/models.dev stale current/LKG facts remain eligible at their configured source priority; stale is freshness/diagnostics only, causes neither automatic demotion nor exclusion, and freshness-only changes do not produce a new final `capabilityRevision`. Goal 3 Owner contract, implementation, and final bounded correction are closed under item 15.
+- The 2026-10-17 Owner amendment in item 6 and migration contract in item 17 narrow API Contract scope and set new-profile defaults to Provider Native `3`, Capability Rules `2`, models.dev `1`. Item 15 remains the historical Goal 3 record; existing profiles keep their persisted source-priority values unchanged.
+- Request Rules V2 is a separate current migration under item 17. Its implementation is in progress and validation is pending; it does not reopen Goal 3 closeout or claim stabilization or project completion.
 
 ## Current post-Goal 2C implementation status / TODO
 

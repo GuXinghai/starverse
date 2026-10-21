@@ -1,3 +1,5 @@
+import { GenerationInterruptedReplayV2Repo } from '../../infra/db/repo/generationInterruptedReplayV2Repo'
+import type { InterruptedNativeSnapshotV1 } from '../../src/core/generation-v2/providers/interruptedReplayV1'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
@@ -10,6 +12,7 @@ import {
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2, readBoundedResponseTextV2 } from '../net/boundedResponseBodyV2'
 import {
   isEpoch2RuntimeCredentialLease,
   type Epoch2RuntimeCredentialService,
@@ -20,6 +23,7 @@ import {
   DeepSeekStableChatStreamV1Error,
   DeepSeekStableSseDecoderV1,
   isDeepSeekStableStreamResultV1,
+  restoreDeepSeekStableStreamResultV1,
   type DeepSeekStableStreamDeltaV1,
   type DeepSeekStableStreamResultV1,
 } from '../../src/core/generation-v2/providers/deepseek/chatStreamV1'
@@ -43,6 +47,14 @@ import {
   type ProviderFailureV2,
 } from '../../src/shared/provider/providerFailureV2'
 import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import {
+  hasPendingGenerationNativeCompletionForOperationV2,
+  isGenerationNativeCompletionMaterializationPendingV2Error,
+  materializeNewGenerationNativeCompletionV2,
+  persistGenerationNativeCompletionReceiptV2,
+  preserveGenerationNativeCompletionPendingFailureV2,
+  registerGenerationNativeCompletionMaterializerV2,
+} from './generationNativeCompletionV2'
 
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
 
@@ -125,6 +137,20 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     })
   }
 
+  const interruptedSnapshots = new WeakMap<GenerationTextCommandResultV2, InterruptedNativeSnapshotV1>()
+  function persistInterrupted(context: Parameters<GenerationInterruptedReplayV2Repo['insert']>[0], command: GenerationTextCommandResultV2) {
+    const native = interruptedSnapshots.get(command)
+    if (!native) return
+    const bytes = command.preparedRequest.body.copyBytes()
+    try {
+      new GenerationInterruptedReplayV2Repo(input.db).insert(context, {
+        answerRootId: command.preparedRequest.answerRootId, operationId: command.preparedRequest.operationId,
+        requestSequence: command.preparedRequest.requestSequence, protocol: 'deepseek',
+        requestBody: JSON.parse(new TextDecoder().decode(bytes)), native,
+      })
+    } finally { bytes.fill(0) }
+  }
+
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -201,13 +227,16 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
             context, terminalExecution, terminalRequest, createDeepSeekStableTerminalArtifactV1(streamResult), at,
           )
         }
+        if (resultState === 'awaiting_tool') persistInterrupted(context, command)
       } else {
         graphRepo.terminalizeAssistantMessage(
           context, command.preparedRequest.answerRootId, state, null, at,
         )
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage, errorFact }, at)
+        persistInterrupted(context, command)
       }
     })
+    interruptedSnapshots.delete(command)
     const terminal = Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
@@ -236,7 +265,11 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         ? 'GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID'
         : 'GENERATION_V2_DEEPSEEK_RUNNER_HTTP_FAILED'
       let bodyText: string | null = null
-      try { bodyText = response.body ? await response.text() : null } catch { /* Preserve headers/status if body read fails. */ }
+      try {
+        bodyText = response.body
+          ? (await readBoundedResponseTextV2(response, PROVIDER_ERROR_RESPONSE_BODY_MAX_BYTES_V2)).text
+          : null
+      } catch { /* Preserve headers/status if body read fails. */ }
       throw new ProviderFailureErrorV2(createProviderFailureV2({
         context: {
           origin: 'http_response',
@@ -301,8 +334,11 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         accept(eventsToDeltas(decoder.push(item.value)))
       }
       accept(eventsToDeltas(decoder.finish()))
-      return Object.freeze({ result: assembler.acceptDone(), visibleContent })
+      const result = assembler.acceptDone()
+      persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
+      return Object.freeze({ result, visibleContent })
     } finally {
+      interruptedSnapshots.set(command, assembler.interruptedSnapshot())
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* best-effort */ }
@@ -310,6 +346,28 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       }
     }
   }
+
+  registerGenerationNativeCompletionMaterializerV2(input.db, 'deepseek-stable-chat-v1', (_receipt, command, value) => {
+    const streamResult = restoreDeepSeekStableStreamResultV1(value)
+    const message = streamResult.assistantMessage
+    interruptedSnapshots.set(command, Object.freeze({
+      items: Object.freeze([Object.freeze({ role: 'assistant', content: message.content,
+        ...(message.reasoning_content === undefined ? {} : { reasoning_content: message.reasoning_content }),
+        ...(message.tool_calls === undefined ? {} : { tool_calls: message.tool_calls }) })]),
+      completeIndexes: Object.freeze([0]), text: typeof message.content === 'string' ? message.content : '',
+      complete: streamResult.finishReason === 'stop' || streamResult.finishReason === 'tool_calls',
+    }))
+    return finalize(command, 'completed', streamResult, null, null, 'mid_stream')
+  }, (command, value) => {
+    const streamResult = restoreDeepSeekStableStreamResultV1(value)
+    if (!isDeepSeekStableStreamResultV1(streamResult)) {
+      throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID')
+    }
+    createDeepSeekStableTerminalArtifactV1(streamResult)
+    if (streamResult.finishReason === 'tool_calls' && command.execution.snapshot.semanticIntent.tools.mode !== 'enabled') {
+      throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID')
+    }
+  })
 
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
@@ -369,8 +427,15 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
             return receive(command, response, scope.signal, () => { responseStarted = true })
           },
         })
-        return finalize(command, 'completed', received.result, null, null, 'mid_stream')
+        return materializeNewGenerationNativeCompletionV2({
+          db: input.db, command, nativeResult: received.result, nowMs,
+          materialize: () => finalize(command, 'completed', received.result, null, null, 'mid_stream'),
+        })
       } catch (error) {
+        if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) throw error
+        if (hasPendingGenerationNativeCompletionForOperationV2(input.db, command.preparedRequest.operationId)) {
+          throw preserveGenerationNativeCompletionPendingFailureV2(input.db, command, error)
+        }
         const cancelled = signal?.aborted === true && !scope.timedOut()
         const failure = cancelled ? null : error instanceof ProviderFailureErrorV2
           ? error.failure

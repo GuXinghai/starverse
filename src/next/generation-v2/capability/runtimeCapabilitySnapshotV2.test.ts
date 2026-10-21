@@ -9,7 +9,9 @@ import {
   RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
 } from '../../../core/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  MODEL_CAPABILITY_PRE_IMAGE_TOOL_PATHS_V2,
   type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '../../../core/generation-v2/capability/modelCapabilitySchemaV2'
+import { getOpenAILegacyImageEncoderRevisionV2 } from '../../../core/generation-v2/capability/encodingCoverageRegistryV2'
 
 const contractDigest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)
@@ -97,8 +99,20 @@ function draft(): MutableDraft {
 }
 
 describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
+  it('keeps exact historical pre-image-tool field sets without synthesizing fields or changing hashes', () => {
+    const legacy = draft()
+    legacy.fields = legacy.fields.filter((field) => MODEL_CAPABILITY_PRE_IMAGE_TOOL_PATHS_V2.includes(field.path))
+    const encoderRevision = getOpenAILegacyImageEncoderRevisionV2('text')
+    const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(legacy, encoderRevision)
+    const decoded = decodeRuntimeCapabilitySnapshotV2(record)
+    expect(decoded.fields.map((field) => field.path)).toEqual(MODEL_CAPABILITY_PRE_IMAGE_TOOL_PATHS_V2)
+    expect(decoded.snapshotHash.value).toBe(record.snapshotHash)
+    expect(decoded.encoderRevision).toBe(encoderRevision)
+    const broken = { ...legacy, fields: legacy.fields.slice(1) }
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(broken)).toThrow('GENERATION_V2_CAPABILITY_INCOMPLETE_FIELDS')
+  })
   it('includes the optional Goal 3 binding grammar in the closed codec schema digest', () => {
-    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v5-goal3-conflict-facts')
+    expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2).toBe('runtime-capability-codec-v7-conditional-constraints-and-range-values')
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2.modelFactsResolution).toEqual(expect.objectContaining({ optional: true }))
     expect(RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2).toMatch(/^[0-9a-f]{64}$/u)
   })
@@ -317,6 +331,18 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
         ? { ...field, constraints: ['reasoning.enabled == true'] }
         : field),
     })).toThrow('GENERATION_V2_CAPABILITY_INVALID_SHAPE')
+  })
+
+  it('round-trips provider sentinel values and range exclusions through the closed codec', () => {
+    const value = draft()
+    Object.assign(value.fields.find((field) => field.path === 'generation.maxOutputTokens')!, {
+      state: 'supported', domain: { kind: 'range', min: 128, max: 32768, integer: true, includedValues: [-1], excludedValues: [256] },
+      defaultValue: -1, evidenceIds: ['contract.openai.responses.v1'],
+    })
+    const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value)
+    const decoded = decodeRuntimeCapabilitySnapshotJsonV2(decodeRuntimeCapabilitySnapshotV2(record).canonicalJson)
+    expect(decoded.fields.find((field) => field.path === 'generation.maxOutputTokens')?.domain)
+      .toEqual({ kind: 'range', min: 128, max: 32768, integer: true, includedValues: [-1], excludedValues: [256] })
   })
 
   it('rejects malformed capability ranges without imposing provider bounds', () => {

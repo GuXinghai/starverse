@@ -256,6 +256,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind,
       ownerId: entry.ownerId,
@@ -433,6 +434,7 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind,
       ownerId: entry.ownerId,
@@ -571,6 +573,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
     answerRootId: input.pending.answerRootId.value,
     operationId: input.pending.operationId.value,
     semanticIntent: projectGenerationIntentLayerV2(input.commandFacts.semanticIntent),
+      ...(input.commandFacts.requestPlan === undefined ? {} : { requestPlan: input.commandFacts.requestPlan }),
     resolvedConfigRevisions: input.commandFacts.resolvedConfigRevisions.map((entry) => ({
       ownerKind: entry.ownerKind,
       ownerId: entry.ownerId,

@@ -4,6 +4,7 @@ import { GENERATION_TOTAL_TIMEOUT_PREFERENCE_KEY, isValidGenerationTotalTimeoutP
 import { GENERATION_V2_UI_PREFERENCE_NAMESPACE, GENERATION_V2_UI_PREFERENCE_KEYS }
   from '../../src/shared/settings/generationV2UiPreferenceKeys'
 import { QUIT_WARNING_PREFERENCE_KEY } from '../../src/shared/settings/quitWarningPreference'
+import { PROJECT_DUPLICATE_POLICY_KEY, isProjectDuplicatePolicy } from '../../src/shared/settings/projectDuplicatePolicy'
 import {
   ALLOWED_CONFIG_KEYS,
   checkConfigIntegrity,
@@ -107,6 +108,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
       if (!GENERATION_V2_UI_PREFERENCE_KEYS.has(leaf)) return false
       if (leaf === GENERATION_TOTAL_TIMEOUT_PREFERENCE_KEY && !isValidGenerationTotalTimeoutPreferenceMs(value)) return false
       if (leaf === QUIT_WARNING_PREFERENCE_KEY && typeof value !== 'boolean') return false
+      if (leaf === PROJECT_DUPLICATE_POLICY_KEY && !isProjectDuplicatePolicy(value)) return false
       const previous = store.get(GENERATION_V2_UI_PREFERENCE_NAMESPACE)
       const current = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}
       const next = { ...current, [leaf]: value }

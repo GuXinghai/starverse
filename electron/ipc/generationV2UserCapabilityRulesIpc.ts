@@ -5,12 +5,19 @@ import {
   decodeCapabilityRuleCoreRuleV1,
   decodeCapabilityRuleOwnershipSnapshotV1,
 } from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV1'
+import {
+  decodeCapabilityRuleCoreRuleV2,
+  decodeCapabilityRuleOwnershipSnapshotV2,
+} from '../../src/core/generation-v2/capability-rules/capabilityRuleCoreV2'
 import { decodeUserRulePackTransferV1, type UserCapabilityRuleNoteV1 } from
   '../../src/core/generation-v2/capability-rules/userRulePackTransferV1'
+import { decodeUserRulePackTransferV2, type UserCapabilityRuleNoteV2 } from
+  '../../src/core/generation-v2/capability-rules/userRulePackTransferV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { type createOpenAICompatibleCredentialV2Service } from
   '../credentials/openAICompatibleCredentialV2Service'
 import { UserCapabilityRulesV1Service } from '../services/userCapabilityRulesV1Service'
+import { UserCapabilityRulesV2Service } from '../services/userCapabilityRulesV2Service'
 import type { RegisterInvoke } from './types'
 import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
@@ -26,6 +33,16 @@ export const GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS = Object.freeze([
   'generation-v2:capability-rules:user:export-committed-pack',
   'generation-v2:capability-rules:user:save-draft',
   'generation-v2:capability-rules:user:cancel-draft',
+  'generation-v2:capability-rules:user-v2:read-committed',
+  'generation-v2:capability-rules:user-v2:read-draft',
+  'generation-v2:capability-rules:user-v2:open-draft',
+  'generation-v2:capability-rules:user-v2:replace-draft',
+  'generation-v2:capability-rules:user-v2:add-rule',
+  'generation-v2:capability-rules:user-v2:rewrite-pack',
+  'generation-v2:capability-rules:user-v2:import-pack',
+  'generation-v2:capability-rules:user-v2:export-committed-pack',
+  'generation-v2:capability-rules:user-v2:save-draft',
+  'generation-v2:capability-rules:user-v2:cancel-draft',
 ] as const)
 
 function plainObject(value: unknown): value is Record<string, unknown> {
@@ -65,6 +82,18 @@ function notes(value: unknown): readonly UserCapabilityRuleNoteV1[] {
   }))
 }
 
+function notesV2(value: unknown): readonly UserCapabilityRuleNoteV2[] {
+  if (!Array.isArray(value) || value.length > 100_000) invalid()
+  return Object.freeze(value.map((entry) => {
+    if (!plainObject(entry)) invalid()
+    exactKeys(entry, ['note', 'ruleId'])
+    const ruleId = boundedId(entry.ruleId)
+    if (typeof entry.note !== 'string' || entry.note.length < 1 || entry.note.length > 16_384 ||
+        entry.note.trim() !== entry.note) invalid()
+    return Object.freeze({ ruleId, note: entry.note })
+  }))
+}
+
 function sessionPayload(value: unknown): Readonly<{ sessionId: string; expectedDraftRevision: number }> {
   if (!plainObject(value)) invalid()
   exactKeys(value, ['expectedDraftRevision', 'sessionId'])
@@ -81,6 +110,7 @@ export function registerGenerationV2UserCapabilityRulesIpc(input: Readonly<{
   const subjects = new AuthoritativeModelSubjectSetV1Service(input.db, input.credentialService,
     input.openAICompatibleCredentialService)
   const service = new UserCapabilityRulesV1Service(input.db, subjects)
+  const serviceV2 = new UserCapabilityRulesV2Service(input.db, subjects)
   const register = (channel: string, handler: (payload: unknown) => unknown | Promise<unknown>) =>
     input.registerInvoke(channel, (_event, payload) => handler(payload))
 
@@ -147,6 +177,71 @@ export function registerGenerationV2UserCapabilityRulesIpc(input: Readonly<{
   })
   register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[9], (value) => {
     service.cancelDraft(sessionPayload(value))
+    return null
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[10], (value) => {
+    if (value !== undefined && value !== null) invalid()
+    return serviceV2.readCommitted()
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[11], (value) => {
+    if (value !== undefined && value !== null) invalid()
+    return serviceV2.readDraft()
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[12], (value) => {
+    if (value !== undefined && value !== null) invalid()
+    return serviceV2.openDraft({ sessionId: randomUUID() })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[13], (value) => {
+    if (!plainObject(value)) invalid()
+    exactKeys(value, ['expectedDraftRevision', 'notes', 'sessionId', 'snapshot'])
+    const snapshot = decodeCapabilityRuleOwnershipSnapshotV2(value.snapshot)
+    if (snapshot.ownership !== 'user') invalid()
+    return serviceV2.replaceDraft({ ...sessionPayload({ sessionId: value.sessionId,
+      expectedDraftRevision: value.expectedDraftRevision }), snapshot, notes: notesV2(value.notes) })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[14], (value) => {
+    if (!plainObject(value)) invalid()
+    exactKeys(value, ['expectedDraftRevision', 'firstPack', 'note', 'rule', 'sessionId', 'targetPackId'])
+    if (!plainObject(value.firstPack)) invalid()
+    exactKeys(value.firstPack, ['displayName', 'packId'])
+    if (value.targetPackId !== null && value.targetPackId !== undefined) boundedId(value.targetPackId)
+    if (value.note !== undefined && value.note !== null &&
+        (typeof value.note !== 'string' || value.note.length < 1 || value.note.length > 16_384 ||
+         value.note.trim() !== value.note)) invalid()
+    return serviceV2.addRule({ ...sessionPayload({ sessionId: value.sessionId,
+      expectedDraftRevision: value.expectedDraftRevision }),
+    targetPackId: value.targetPackId === undefined ? null : value.targetPackId as string | null,
+    firstPack: Object.freeze({ packId: boundedId(value.firstPack.packId),
+      displayName: boundedId(value.firstPack.displayName) }),
+    rule: decodeCapabilityRuleCoreRuleV2(value.rule), note: value.note as string | null | undefined })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[15], (value) => {
+    if (!plainObject(value)) invalid()
+    exactKeys(value, ['expectedDraftRevision', 'packId', 'sessionId'])
+    return serviceV2.rewritePack({ ...sessionPayload({ sessionId: value.sessionId,
+      expectedDraftRevision: value.expectedDraftRevision }), packId: boundedId(value.packId) })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[16], (value) => {
+    if (!plainObject(value)) invalid()
+    exactKeys(value, ['expectedDraftRevision', 'sessionId', 'transfer'])
+    return serviceV2.importPack({ ...sessionPayload({ sessionId: value.sessionId,
+      expectedDraftRevision: value.expectedDraftRevision }), transfer: decodeUserRulePackTransferV2(value.transfer) })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[17], (value) => {
+    if (!plainObject(value)) invalid()
+    exactKeys(value, ['packId'])
+    return serviceV2.exportCommittedPack({ packId: boundedId(value.packId) })
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[18], async (value) => {
+    const result = await serviceV2.saveDraft(sessionPayload(value))
+    notifyModelFactsSemanticInvalidationV1(input.notifyModelFactsSemanticInvalidated, {
+      kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1,
+      canonicalSourceRevision: result.canonicalSourceRevision,
+    })
+    return result
+  })
+  register(GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS[19], (value) => {
+    serviceV2.cancelDraft(sessionPayload(value))
     return null
   })
   return GENERATION_V2_USER_CAPABILITY_RULES_IPC_CHANNELS

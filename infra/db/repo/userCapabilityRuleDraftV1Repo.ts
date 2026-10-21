@@ -237,6 +237,27 @@ export class UserCapabilityRuleDraftV1Repo {
     return this.readCommittedNotes()
   }
 
+  /** Clears migrated notes while the legacy owner still exists, with revision CAS. */
+  retireCommittedNotesExpected(input: Readonly<{
+    expectedRevision: number
+    expectedSnapshotRevision: string | null
+  }>): UserCapabilityRuleCommittedNotesV1 {
+    const currentSnapshot = this.#coreRepo.readOwnershipSnapshot({ ownership: 'user',
+      ownerId: USER_RULES_LOCAL_OWNER_ID_V1 })
+    if ((currentSnapshot?.projected.snapshotRevision ?? null) !== input.expectedSnapshotRevision) this.stale()
+    const current = this.readCommittedNotes()
+    if (current.revision !== safeInteger(input.expectedRevision)) this.stale()
+    const now = Math.max(safeInteger(this.nowMs()), current.updatedAtMs)
+    this.db.prepare('DELETE FROM user_capability_rule_note_v1 WHERE owner_id=?')
+      .run(USER_RULES_LOCAL_OWNER_ID_V1)
+    this.db.prepare(`INSERT INTO user_capability_rule_note_state_v1 (
+      owner_id, note_revision, updated_at_ms
+    ) VALUES (?, ?, ?) ON CONFLICT(owner_id) DO UPDATE SET
+      note_revision=excluded.note_revision, updated_at_ms=excluded.updated_at_ms`).run(
+      USER_RULES_LOCAL_OWNER_ID_V1, current.revision + 1, now)
+    return this.readCommittedNotes()
+  }
+
   private stale(): never {
     throw new UserCapabilityRuleDraftV1RepoError('GENERATION_V2_USER_CAPABILITY_RULE_DRAFT_STALE')
   }

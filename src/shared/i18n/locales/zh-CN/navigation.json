@@ -6,6 +6,8 @@
       "renameProject": "重命名项目",
       "deleteProject": "删除项目",
       "projectName": "项目名称",
+      "duplicateName": "重名",
+      "duplicateConfirm": "已有同名项目，是否继续？",
       "deleteConfirm": "确定要删除项目「{name}」吗？项目下的对话将移至 Inbox。",
       "systemProjectNoRename": "系统项目不可重命名",
       "systemProjectNoDelete": "系统项目（Inbox）不可删除",
@@ -32,6 +34,9 @@
       "bulkDelete": "批量删除",
       "selected": "已选：",
       "moreActions": "更多操作"
+    },
+    "workspace": {
+      "local": "本地工作区"
     }
   }
 }

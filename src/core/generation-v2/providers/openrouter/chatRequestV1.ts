@@ -4,6 +4,8 @@ import {
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
+import { validateApiRequestBodyV2 } from '../../contracts/apiRequestBodyContractV2'
+import type { ProviderContractOperationV2 } from '../../contracts/providerContractRegistryV2'
 
 /**
  * OpenRouter Chat Completions V1 wire codec.
@@ -116,22 +118,22 @@ function jsonClone(value: unknown): Record<string, unknown> {
   }
 }
 
-function positiveInteger(value: unknown, maximum = 2_000_000): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > maximum) {
+function positiveInteger(value: unknown, maximum = 2_000_000, skipPolicyRange = false): number {
+  if (!Number.isSafeInteger(value) || (!skipPolicyRange && ((value as number) < 1 || (value as number) > maximum))) {
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   return value as number
 }
 
-function nonNegativeInteger(value: unknown, maximum: number): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > maximum) {
+function nonNegativeInteger(value: unknown, maximum: number, skipPolicyRange = false): number {
+  if (!Number.isSafeInteger(value) || (!skipPolicyRange && ((value as number) < 0 || (value as number) > maximum))) {
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   return value as number
 }
 
-function boundedNumber(value: unknown, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+function boundedNumber(value: unknown, min: number, max: number, skipPolicyRange = false): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (!skipPolicyRange && (value < min || value > max))) {
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   return value
@@ -181,7 +183,7 @@ function toolChoice(value: unknown, names: ReadonlySet<string>): OpenRouterChatR
   return Object.freeze({ type: 'function', function: Object.freeze({ name: fn.name }) })
 }
 
-function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerToolV1 {
+function compileWebSearchServerTool(value: unknown, skipPolicyRanges = false): OpenRouterWebSearchServerToolV1 {
   const input = asClosedObject(value, [
     'engine', 'maxResults', 'maxTotalResults', 'searchContextSize', 'maxCharacters',
     'userLocation', 'allowedDomains', 'excludedDomains',
@@ -208,10 +210,10 @@ function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerTo
   })()
   const parameters = Object.freeze({
     ...(input.engine === undefined ? {} : { engine: input.engine as 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity' }),
-    ...(input.maxResults === undefined ? {} : { max_results: positiveInteger(input.maxResults, 25) }),
-    ...(input.maxTotalResults === undefined ? {} : { max_total_results: positiveInteger(input.maxTotalResults) }),
+    ...(input.maxResults === undefined ? {} : { max_results: positiveInteger(input.maxResults, 25, skipPolicyRanges) }),
+    ...(input.maxTotalResults === undefined ? {} : { max_total_results: positiveInteger(input.maxTotalResults, 2_000_000, skipPolicyRanges) }),
     ...(input.searchContextSize === undefined ? {} : { search_context_size: input.searchContextSize as string }),
-    ...(input.maxCharacters === undefined ? {} : { max_characters: positiveInteger(input.maxCharacters, 100_000) }),
+    ...(input.maxCharacters === undefined ? {} : { max_characters: positiveInteger(input.maxCharacters, 100_000, skipPolicyRanges) }),
     ...(userLocation === undefined ? {} : { user_location: userLocation }),
     ...(input.allowedDomains === undefined ? {} : { allowed_domains: domainList(input.allowedDomains)! }),
     ...(input.excludedDomains === undefined ? {} : { excluded_domains: domainList(input.excludedDomains)! }),
@@ -222,7 +224,7 @@ function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerTo
   })
 }
 
-export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatCompilationV1 {
+export function compileOpenRouterChatRequestV1(raw: unknown, operation: ProviderContractOperationV2 = 'text', bodySchemaRevision?: string): OpenRouterChatCompilationV1 {
   const input = asClosedObject(raw, [
     'model', 'messages', 'generation', 'reasoning', 'tools', 'toolChoice', 'webSearch',
     'verbosity', 'responseFormat', 'parallelToolCalls',
@@ -232,6 +234,7 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   const messages = Object.freeze(input.messages.map(jsonClone))
+  const skipPolicyRanges = bodySchemaRevision !== undefined
   const generation: Readonly<{ maxTokens?: unknown; temperature?: unknown; topP?: unknown; topK?: unknown; minP?: unknown;
     topA?: unknown; seed?: unknown; stop?: unknown; frequencyPenalty?: unknown; presencePenalty?: unknown; repetitionPenalty?: unknown }> = input.generation === undefined
     ? Object.freeze({})
@@ -252,7 +255,7 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     }
     toolNames.add((fn as Record<string, unknown>).name as string)
   }
-  const webSearchTool = input.webSearch === undefined ? undefined : compileWebSearchServerTool(input.webSearch)
+  const webSearchTool = input.webSearch === undefined ? undefined : compileWebSearchServerTool(input.webSearch, skipPolicyRanges)
   const verbosity = input.verbosity === undefined ? undefined : (() => {
     if (typeof input.verbosity !== 'string' || input.verbosity.length === 0 || input.verbosity.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2) {
       throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
@@ -271,17 +274,17 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     messages,
     stream: true,
     stream_options: Object.freeze({ include_usage: true }),
-    ...(generation.maxTokens === undefined ? {} : { max_tokens: positiveInteger(generation.maxTokens) }),
-    ...(generation.temperature === undefined ? {} : { temperature: boundedNumber(generation.temperature, 0, 2) }),
-    ...(generation.topP === undefined ? {} : { top_p: boundedNumber(generation.topP, 0, 1) }),
-    ...(generation.topK === undefined ? {} : { top_k: nonNegativeInteger(generation.topK, 1_000_000) }),
-    ...(generation.minP === undefined ? {} : { min_p: boundedNumber(generation.minP, 0, 1) }),
-    ...(generation.topA === undefined ? {} : { top_a: boundedNumber(generation.topA, 0, 1) }),
-    ...(generation.seed === undefined ? {} : { seed: nonNegativeInteger(generation.seed, 2_147_483_647) }),
+    ...(generation.maxTokens === undefined ? {} : { max_tokens: positiveInteger(generation.maxTokens, 2_000_000, skipPolicyRanges) }),
+    ...(generation.temperature === undefined ? {} : { temperature: boundedNumber(generation.temperature, 0, 2, skipPolicyRanges) }),
+    ...(generation.topP === undefined ? {} : { top_p: boundedNumber(generation.topP, 0, 1, skipPolicyRanges) }),
+    ...(generation.topK === undefined ? {} : { top_k: nonNegativeInteger(generation.topK, 1_000_000, skipPolicyRanges) }),
+    ...(generation.minP === undefined ? {} : { min_p: boundedNumber(generation.minP, 0, 1, skipPolicyRanges) }),
+    ...(generation.topA === undefined ? {} : { top_a: boundedNumber(generation.topA, 0, 1, skipPolicyRanges) }),
+    ...(generation.seed === undefined ? {} : { seed: nonNegativeInteger(generation.seed, 2_147_483_647, skipPolicyRanges) }),
     ...(generation.stop === undefined ? {} : { stop: stringList(generation.stop, 16) }),
-    ...(generation.frequencyPenalty === undefined ? {} : { frequency_penalty: boundedNumber(generation.frequencyPenalty, -2, 2) }),
-    ...(generation.presencePenalty === undefined ? {} : { presence_penalty: boundedNumber(generation.presencePenalty, -2, 2) }),
-    ...(generation.repetitionPenalty === undefined ? {} : { repetition_penalty: boundedNumber(generation.repetitionPenalty, 0, 2) }),
+    ...(generation.frequencyPenalty === undefined ? {} : { frequency_penalty: boundedNumber(generation.frequencyPenalty, -2, 2, skipPolicyRanges) }),
+    ...(generation.presencePenalty === undefined ? {} : { presence_penalty: boundedNumber(generation.presencePenalty, -2, 2, skipPolicyRanges) }),
+    ...(generation.repetitionPenalty === undefined ? {} : { repetition_penalty: boundedNumber(generation.repetitionPenalty, 0, 2, skipPolicyRanges) }),
     ...(verbosity === undefined ? {} : { verbosity }),
     ...(response === undefined ? {} : { response_format: response }),
     ...(input.parallelToolCalls === undefined ? {} : { parallel_tool_calls: input.parallelToolCalls }),
@@ -289,6 +292,7 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     ...(requestTools === undefined ? {} : { tools: requestTools }),
     ...(input.toolChoice === undefined ? {} : { tool_choice: toolChoice(input.toolChoice, toolNames) }),
   })
+  validateApiRequestBodyV2('openrouter', operation, request, bodySchemaRevision)
   try {
     return Object.freeze({
       classification: 'openrouter_chat_request_compilation_non_executable' as const,

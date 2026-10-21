@@ -1,3 +1,5 @@
+import { readBoundedResponseBodyV2 } from '../net/boundedResponseBodyV2'
+
 export const OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2 = 16 * 1024 * 1024
 export const OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 = 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_TOO_LARGE'
 
@@ -16,33 +18,10 @@ export async function readOpenAICompatibleJsonResponseBytesV2(response: Response
     throw new Error(OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2)
   }
   if (!response.body) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_RESPONSE_INVALID')
-
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let totalBytes = 0
-  try {
-    while (true) {
-      const item = await reader.read()
-      if (item.done) break
-      if (!item.value.byteLength) continue
-      if (item.value.byteLength > maxBytes - totalBytes) {
-        throw new Error(OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2)
-      }
-      chunks.push(item.value)
-      totalBytes += item.value.byteLength
-    }
-
-    const bytes = new Uint8Array(totalBytes)
-    let offset = 0
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset)
-      offset += chunk.byteLength
-      chunk.fill(0)
-    }
-    return bytes
-  } finally {
-    for (const chunk of chunks) chunk.fill(0)
-    try { await reader.cancel() } catch { /* best effort */ }
-    reader.releaseLock()
+  const result = await readBoundedResponseBodyV2(response, maxBytes)
+  if (result.truncated) {
+    result.bytes.fill(0)
+    throw new Error(OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2)
   }
+  return result.bytes
 }
