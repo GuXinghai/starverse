@@ -120,3 +120,9 @@ No High findings. Final IDs P3b-NN; agent IDs in brackets.
 ## 5. Next phase
 
 **Phase 4a — generation runtime:** per-provider runtimes and stream parsers, operation runtime registry, timeouts and cancellation, body checkpoints and completion receipts during streaming, terminal artifacts, interrupted-turn capture (including the Anthropic `citations` hand-off), credential leases at dispatch, and the OpenRouter chat compiler/request path not reached in 3b.
+
+---
+
+## Later correction (added in repair Phase 0, 2026-10-22)
+
+The verification summary in section 2 mislabels two findings. The check of `apiRequestBodySchemaV2.ts:137` (own-property check) belongs to **P3b-14**, not P3b-09. The check of `generationV2ComposerIpc.ts:144, 162` belongs to **P3b-05** (`:144`) and **P3b-06** (`:162`), not P3b-08. The finding rows themselves are correct. See [repair-phase-0.md](repair-phase-0.md) C-07.

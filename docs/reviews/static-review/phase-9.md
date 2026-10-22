@@ -4,6 +4,8 @@
 **Document Role**: closeout
 **Last updated**: 2026-10-22
 
+> **Post-review correction (repair Phase 0, 2026-10-22):** parts of this register are corrected in section 7 below and in [repair-phase-0.md](repair-phase-0.md). Section 5's repair order is superseded by [repair-plan.md](repair-plan.md). The original text of sections 1–6 is unchanged.
+
 This is the consolidation of the read-only static review of branch `codex/basic-operation-exploration-8q02ix` at `2ed61f1` in the local checkout `D:\Starverse`. The application source matches baseline `aec217cd` throughout.
 
 - No application code was modified. No tests, builds, gates or rebuilds were run. The app was not launched, and no network or provider requests were made.
@@ -265,3 +267,53 @@ RC-07 numeric authority (P3b-02, P3a-12, P3b-04), P3b-03 visible drop reporting,
 All planned phases (0–9) are complete. The review produced 206 unique findings (38 Medium, 64 Low-Medium, 104 Low) plus Info items, none High, all from static evidence. Nothing has been repaired, tested or run. The open coverage in section 4.5 and the carried questions in section 4.4 remain open until explicitly reviewed or verified at runtime.
 
 This phase is complete. I have stopped and am waiting for your instruction to continue.
+
+---
+
+## 7. Post-review corrections (added in repair Phase 0, 2026-10-22)
+
+This section was added after the review closed. It corrects sections 3–5 without rewriting them. The full rationale is in [repair-phase-0.md](repair-phase-0.md) (C-01 to C-07 and section 4).
+
+### 7.1 Counting rules
+- Counted: `P*` IDs only. Reported 214; unique 206 after eight merges; active 205, because P0-03 is historical (resolved by P7-11).
+- The 206 unique IDs split into evidence classes: A confirmed 132, B mechanism confirmed with trigger or magnitude unverified 27, S suspected 32, L latent 7, M maintainability 7, H historical 1. The IDs per class are listed in repair-phase-0.md C-05.
+- Severity totals stay 38 / 64 / 104. P2b-07 goes from Medium to Low-Medium (owner decision D-5) and P3a-09 from Low-Medium to Medium (D-6).
+
+### 7.2 Corrected evidence labels in the Medium register (section 3.2)
+
+| ID | Section 3.2 says | Corrected |
+|---|---|---|
+| P4a-06 | Confirmed | **Suspected**, conditional Medium; the `citations_delta` wire format is unverified |
+| P4b-03 | Confirmed | Mechanisms confirmed; lost-terminal path 1 untraced |
+| P4b-04 | Confirmed | Mechanism confirmed; **reachability suspected** (renderer disables tools); conditional Medium |
+| P2a-01 | Confirmed | Confirmed; crash timing needs runtime |
+| P4a-04 | Confirmed | Logic confirmed; trigger depends on the server's trailing usage chunk |
+| P4a-05 | Confirmed | Logic confirmed; depends on CRLF straddling a read boundary |
+| P4b-01 | Confirmed | Confirmed; window depends on main-process latency |
+| P4b-02 | Confirmed | Mechanism confirmed; triggers suspected |
+| P5b-02 | Confirmed | Control flow confirmed; `data:` URL limit suspected |
+| P6a-02 | Confirmed | Confirmed; trigger frequency unknown |
+| P2b-07 | Medium | **Low-Medium.** Long-term retention is intended (D-5); the residual is storage cost, the IPC access boundary and explicit deletion |
+| P3a-09 (Low-Medium in 3.4) | — | **Medium.** Unaccepted data becomes effective before activation (D-6) |
+
+### 7.3 Corrected owner-decision statements (section 4.3)
+- **I2a-02 is overstated.** Six reviewed predecessor upgrades run in place (`freshEpochDatabaseInitializer.ts:336-347`). Only an unrecognised digest leads to backup-and-recreate, and that path asks for consent and renames the database into a backup (`epoch2MainEntry.ts:55-74`). The exception is `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1`, which skips the prompt in any build (repair R2-03).
+- **I2a-01:** accepted for development data (D-1); must not run unattended in a formal release (D-2).
+- **I4a-01:** deferred by the owner (D-3).
+- **I4a-07:** superseded by D-4 (isolate failures; restricted mode only when integrity is unknown).
+- **P2b-07 / P7-03:** raw request capture is an intended long-term product record (D-5). The section 5 Wave 4 item 1 ("gate raw capture behind a debug setting with retention and conversation-delete purge") is withdrawn.
+- **I3a-05 / I3b-05:** the exemption is intended (D-6); production entries must install the context.
+
+### 7.4 Corrected open coverage (replaces section 4.5's list where they differ)
+Section 4.5 still listed some paths that later phases reviewed:
+- **Reviewed:** `electron/net/electronManualRedirectFetch.ts` (Phase 5b, Full); `operationSenders` cleanup (4b, P4b-06); the OpenRouter chat compiler (4a); `openRouterCategoryCache.ts` (7, I7-01); `electronOfficialPackageTransport.ts` (7, targeted); packaging and CI (8); Electron fuses (8); CSP `img-src` (7); in-app browser window handlers (7).
+- **Partly reviewed** (only the named remainder stays open):
+  - proxy controller and `productNetworkProxyV2.ts`: credential handling beyond the redaction points;
+  - `privacy-scan.mjs`: internals beyond P7-11;
+  - `addon.cc`: blob write atomicity and symlink races;
+  - `ModelPickerDialog.vue`: the template after line 2420.
+
+Every other item in section 4.5 remains open. The current list is in [repair-plan.md](repair-plan.md) section 5.
+
+### 7.5 Phase 3b summary labels
+Phase 3b's verification summary cites "P3b-09" for `apiRequestBodySchemaV2.ts:137` (that is **P3b-14**) and "P3b-08" for `generationV2ComposerIpc.ts:144, 162` (that is **P3b-05** and **P3b-06**). The finding bodies are correct.

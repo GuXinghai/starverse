@@ -2,7 +2,7 @@
 
 **Status**: active
 **Document Role**: handoff
-**Last updated**: 2026-10-22
+**Last updated**: 2026-10-22 (repair Phase 0)
 
 ## Repository and baseline
 
@@ -35,7 +35,9 @@ Read these reports and the applicable repository instructions (`AGENTS.md`) befo
 | 12 | [Phase 6b: rendering, console, composer, i18n](phase-6b.md) | P6b-01..15 |
 | 13 | [Phase 7: cross-cutting](phase-7.md) | P7-01..11, I7-01..06 |
 | 14 | [Phase 8: build, release and tests](phase-8.md) | P8-01..18, I8-01..03 |
-| 15 | [Phase 9: consolidation](phase-9.md) | No new IDs; reconciled register, root-cause groups RC-01..18 |
+| 15 | [Phase 9: consolidation](phase-9.md) | No new IDs; reconciled register, root-cause groups RC-01..18; section 7 holds the post-review corrections |
+| 16 | [Repair Phase 0: corrections and reclassification](repair-phase-0.md) | Corrections C-01..C-07; owner decisions D-1..D-6 applied |
+| 17 | [Repair plan](repair-plan.md) | Repair phases 1–8, items R1-01..R7-08, owner questions OQ-1..OQ-4 |
 
 These are static-review reports and do not show runtime behaviour.
 - Preserve their finding IDs, uncertainty labels, coverage gaps and rejected hypotheses.
@@ -44,13 +46,14 @@ These are static-review reports and do not show runtime behaviour.
 
 ## Current stopping point
 
-**All planned phases (0–9) are complete.** Phase 9 consolidated 214 reported findings into 206 unique ones (38 Medium, 64 Low-Medium, 104 Low, none High); see [phase-9.md](phase-9.md) for merges, corrections (including the P7-01/P4a-13 duplicate), owner decisions, open coverage and the recommended repair order. Phases 7 and 8 were reviewed in the local checkout `D:\Starverse` after the cloud handoff.
+**Repair Phase 0 is complete; repair Phase 1 has not started.** The owner gave six decisions (D-1 to D-6 in [repair-plan.md](repair-plan.md) section 1) and asked for the repairs to run one phase at a time, each authorised by "continue".
 
-Phase 7 headline: no High; one Medium (P7-01, the main-process runtime registry never evicts and re-hydrates every operation on subscribe); Low-Medium P7-02 and P7-03. P0-03 is resolved by P7-11. I7-01 corrects P1-08 on `object-src`.
+Phase 0 produced:
+- [repair-phase-0.md](repair-phase-0.md): corrections C-01 to C-07 (P4a-06 back to Suspected, P4b-03/P4b-04 conditions restored, other overstated labels, the reviewed predecessor-upgrade boundary, counting rules, coverage reconciled by path, Phase 3b's mislabelled IDs) and the owner-policy reclassification.
+- [repair-plan.md](repair-plan.md): the plan that supersedes phase-9.md section 5.
+- A marked addendum (section 7) in phase-9.md and a marked note at the end of phase-3b.md. No other historical text was changed.
 
-Phase 8 headline: no High; four Medium: P8-01 (no `.gitattributes`, so the shipped schema digest depends on the build checkout's line endings; extends P2b-01), P8-02 (no Electron fuses), P8-03 (path-prefix PR test scope skips DB/Windows tests for shared-core changes), P8-04 (`epochNativeBoundary.test.ts` runs in no partition).
-
-No review report is partial. No subagents or background work are running.
+The static review itself (Phases 0–9) is complete: 214 reported, 206 unique, 205 active findings, none High. No application code has been changed, and nothing has been tested, built or run.
 
 ### Headline findings, Phases 4a–6b
 
@@ -107,9 +110,12 @@ The cross-phase links are recorded in each report:
 
 ## Exact next step
 
-The phased static review is finished. Do not start repairs, tests, builds or runtime verification without an explicit instruction from the user. Candidate follow-ups, each needing the user's go-ahead: Wave 0 of the repair order in phase-9.md section 5, runtime verification of the carried questions in section 4.4, or review of the open coverage in section 4.5.
+Wait for the owner's "continue", then run **repair Phase 1 (verification foundations)** only, as defined in repair-plan.md section 3. Implementation goes on a new branch, `codex/static-review-repairs`, cut from this branch's tip. Owner questions OQ-1 to OQ-4 are recorded there and do not block Phase 1.
 
 ## Review workflow to preserve
+
+The rules below governed the static review. For the repair phases, [repair-plan.md](repair-plan.md) section 2 replaces the "static review only" and "Git" rules: code changes, scoped tests, rebuilds and isolated Electron smokes are allowed within the authorised phase, on the repair branch.
+
 
 - **Static review only:**
   - Do not repair application code, install dependencies, rebuild native modules, run tests or builds, launch the app, or make real provider requests.

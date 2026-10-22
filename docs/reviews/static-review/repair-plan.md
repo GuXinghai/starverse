@@ -1,0 +1,186 @@
+# Starverse repair plan (post-review)
+
+**Status**: active
+**Document Role**: plan
+**Last updated**: 2026-10-22 (repair Phase 0)
+
+This plan replaces the repair order in [phase-9.md](phase-9.md) section 5, which stays as a historical record. Finding IDs and evidence classes come from phase-9.md as corrected by [repair-phase-0.md](repair-phase-0.md).
+
+Each phase runs only when the owner says "continue", and stops with a report. A phase may be split into subphases (for example 2a and 2b) when its diff grows large.
+
+## 1. Owner decisions (binding for this repair round)
+
+| ID | Decision | What it allows | What it does not allow |
+|---|---|---|---|
+| D-1 | Development data may be deleted and recreated | Resetting the application's designated development data during development. No mandatory backup or migration system is needed as a prerequisite | Touching unrelated directories or arbitrary user files |
+| D-2 | Development builds may reset incompatible databases; formal releases must not silently delete or recreate user data | A development-only reset path, kept clearly separate from release behaviour. A packaged development build is not automatically a formal release | Shipping development-only destructive recovery in a formal release; breaking the reviewed predecessor upgrades. A full migration framework is not required this round |
+| D-3 | No generation timeouts this round | Repairing cancellation, cleanup, terminal states and recovery on their own | Adding generation connect, first-byte, idle or overall timeouts. Download and probe bounds are **not** waived |
+| D-4 | Keep failures local | Isolating one broken generation, receipt, conversation, plugin or integration. An explicit restricted mode when integrity cannot be established | Hiding errors, or marking incomplete work as successful |
+| D-5 | Original request bodies are a long-term product record | Fixing storage cost, indexing, duplication, access boundaries and explicit user deletion | Disabling capture by default, expiring or truncating originals, deleting by age, or redacting user-authored content and calling it the original. Transport credentials must stay out |
+| D-6 | Refresh when a rule set becomes effective | Proactively recomputing capabilities, UI projections and pending-send configuration. Keeping the send-time revision check, and re-preparing a stale pending request | Activating staged candidates early; silently resetting or clamping user values; resending a request that already reached the provider; changing in-flight frozen snapshots; blanket rejection of documented test and internal-replay paths |
+
+**Deferred by owner:**
+- Generation timeouts (I4a-01; D-3).
+- A general schema migration framework (I2a-02; D-2).
+- Any new automatic purge of request archives (D-5, OQ-1).
+
+## 2. Working rules for every phase
+
+1. **Branch:** implementation goes on `codex/static-review-repairs`, cut from the review branch tip after Phase 0. Review documents continue to be updated there. No merge, force-push or release.
+2. **Re-verify first:** re-read the cited code before each repair. If the mechanism no longer holds, or the behaviour is intended, record that outcome instead of changing code.
+3. **Regression first:** add a failing test that names the finding ID before the fix. Where a test cannot express the defect, state the manual or runtime check instead.
+4. **ABI policy:** follow AGENTS.md. Use `npm run rebuild:node` before database-heavy Vitest, and `npm run rebuild:electron` before an Electron smoke. Report the final ABI target. Never commit native artifacts or `public/build-id.json`.
+5. **Isolation:** run tests and smokes against isolated profiles and fixtures (`SV_AGENT_ISOLATED_PROFILE`, temporary roots). Never touch the owner's normal application data. Make no provider requests: streaming checks use recorded or synthetic local fixtures, labelled as such.
+6. **Synthetic is not runtime:** a unit test does not replace a real Electron or packaged check where the plan requires one. If a real check cannot run, the report says so.
+7. **Subagents:** read-only `Explore` agents with `model: sonnet` and `effort: high`, at most two at once, no nesting, scoped to the current phase. The coordinator owns diagnosis, repair choice and completion.
+8. **Close-out:** update the phase report (`repair-phase-N.md`), this plan's status column and [CLOUD_HANDOFF.md](CLOUD_HANDOFF.md) before reporting.
+
+## 3. Phases
+
+Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from repair-phase-0.md C-05) with any required reproduction, minimal scope, checks, and acceptance. "Stop if" lines are stopping boundaries: when one is hit, the item is reported rather than widened.
+
+### Phase 1: verification foundations
+
+**Dependencies:** none. Every later phase needs this.
+
+| Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
+|---|---|---|---|---|---|---|
+| R1-01 | P8-04, P8-05 | Every test file belongs to exactly one partition that actually runs it | B / M. Run `npx vitest list --config <each>` to confirm `epochNativeBoundary.test.ts` runs nowhere | Fix `tests/test-partition-overrides.json`; add a test that resolves each config's globs and compares them with partition ownership | `vitest list` before and after; the new ownership test | `epochNativeBoundary.test.ts` is listed by exactly one config; the ownership test fails on an orphan file |
+| R1-02 | P8-03 | Pushes to `main` run every partition; PR scope includes shared-core paths that feed DB and Windows tests | A. Static config | `.github/workflows/ci.yml` and `scripts/resolve-test-ci-scope.mjs` only | Unit test of the scope resolver with shared-core paths | Shared-core paths select the DB and Windows partitions; `main` push selects all |
+| R1-03 | P8-06 (for P2b-01, P3b-01, P4a-03, P4a-04, P4a-05, P4a-01, P2a-01) | Each deterministic Phase 2 and 3 defect has a test that currently fails | Per finding | Tests only, written as `it.fails` with the finding ID in the name, so CI stays green until the fix flips them to `it` | Run each new test and record that it fails for the stated reason | Every listed finding has a failing test, or a written reason why one cannot be written |
+| R1-04 | P8-11 (subset) | Gates already used locally run in CI | A | Add only gates that pass today; list the rest | `npm run verify:ssot` locally | No new red CI; skipped gates listed with reasons |
+
+**Not in Phase 1:** a full CI overhaul (P8-07 release build in CI, P8-17, P8-18). Those go to Phase 8 or stay listed.
+**Stop if:** a partition change makes a previously passing suite fail for reasons unrelated to the move. Report it and do not fix tests to match.
+
+### Phase 2: data integrity, startup and failure isolation
+
+**Dependencies:** Phase 1 (R1-03 tests).
+
+| Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
+|---|---|---|---|---|---|---|
+| R2-01 | P2b-01 (+P8-01) | One schema produces one digest whatever the checkout's line endings. Databases stamped by the current schema from LF, CRLF or mixed checkouts are all recognised. The reviewed predecessor upgrades keep working | B. The R1-03 test hashes LF, CRLF and mixed copies of the fragments | Add `.gitattributes` (`*.sql text eol=lf`); normalise CRLF before hashing; accept the current schema's raw CRLF and mixed digests as aliases and re-stamp them inside the existing transaction | R1-03 test flips; the existing `schemaComposerV2.test.ts` upgrade tests; an Electron smoke on an isolated profile created from a CRLF checkout | No false `EPOCH2_DATABASE_SCHEMA_MISMATCH` for an identical schema; predecessor fixtures still upgrade |
+| R2-02 | P2a-02 | The recovery dialog states exactly what moves to the backup (including OpenAI-compatible providers and their credentials) and where the backup is; success is shown in the UI, not only on stderr | A | `schemaMismatchRecoveryPrompt.ts`, `epoch2MainEntry.ts`; localise the strings | Unit test of the dialog options; Electron smoke of the dialog on an isolated profile | Text matches `schemaMismatchRecovery.ts` behaviour; backup path shown |
+| R2-03 | I2a-01, C-04 auto-approve env var | A formal release never runs destructive or auto-approved recovery: no unattended legacy purge, and `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH` is ignored. Development builds keep both | New requirement (D-2) | Introduce one build-time release-channel marker (a formal release is declared, not inferred from `app.isPackaged`); gate the auto-approval and the legacy purge on it; in a release, a mismatch or legacy layout leads to the consent dialog or a restricted mode, never a silent action; add a packaging gate that fails a release build if a development-only authority is reachable; write `docs/maintenance/release-data-safety.md` | Unit tests of the gate in both channels; the packaging-gate self-test | Release channel: no path deletes or recreates user data without consent. Development channel unchanged |
+| R2-04 | P2a-01 | A crash between epoch-root creation and the journal write is resumable | B. Reproduce with a test that creates the root and stops before the journal write | `epochRootCoordinatorCore.ts` / `epoch2CommittedBootstrap.ts`: treat an empty root left at `config_replaced` as resumable | The R1-03 test flips; existing epoch tests (Windows partition) | Later starts proceed. A non-empty unexpected root still fails closed |
+| R2-05 | P4a-01, P2b-02 (+P4a-02), P2b-06 | Every operation reaches a terminal state: a failed receipt insert ends the operation as failed with Stop working; a receipt that can never materialise ends after the retry budget; the branch lock is released | A / B | `generationNativeCompletionV2.ts`, `generationOperationRuntimeRegistryV2.ts:234`, `generationOrphanRecoveryV2.ts:165-166` | R1-03 test for P4a-01; a test for a non-materialisable pending receipt | No operation remains `streaming` without a live runner. The error is recorded, not reported as success (D-4) |
+| R2-06 | P2b-05, I4a-07 | One corrupt artifact quarantines its own operation and leaves the rest of startup working; if database integrity cannot be established, the app enters an explicit restricted mode | S. Reproduce first with a corrupt-artifact fixture | Orphan recovery: per-operation try/quarantine; startup restricted mode only for integrity failures | Fixture test; an Electron smoke with a corrupted isolated profile | The app starts, the affected conversation shows an error state, and the rest is usable |
+| R2-07 | P4a-18, P1-06, P1-04 (RC-17) | Unhandled main-process failures are logged and surfaced; a startup failure closes the runtime; a failing `closeResources` step does not skip the DB close | S / A / B | Minimal handlers only | Unit tests where possible | Failure is visible and does not leave the DB open |
+
+**Optional if small:** P2a-05 (recovery resume after a crash), P2a-06 (config rename window).
+**Not in Phase 2:** migration framework (deferred); legacy-path findings P2a-03, P3a-16, P2a-11 (pending OQ-2).
+**Real-runtime checks:** `npm run rebuild:electron` followed by an Electron smoke on isolated profiles for R2-01, R2-02, R2-03 (development channel) and R2-06. A packaged release-channel check of R2-03 is deferred to Phase 8 if a release-channel package cannot be built locally.
+**Stop if:** R2-01 cannot accept the existing digests without changing a pinned predecessor constant. Report it rather than editing the pinned values.
+
+### Phase 3: generation and protocol correctness
+
+**Dependencies:** Phase 1 tests; R2-05 (terminal states).
+**Owner constraint:** no generation timeouts (D-3).
+
+| Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
+|---|---|---|---|---|---|---|
+| R3-01 | P3b-01, P4a-03, P4a-07 (RC-03) | Anthropic receives block-array assistant content from portable and interrupted-replay history; `pause_turn` is not stored as a completed turn | A / A / Low-Medium A | `portableGenerationHistoryV2.ts:126-137`, `generationInterruptedReplayV2Repo.ts:126`; Anthropic stop-reason handling | R1-03 tests flip; a compile test with mixed-provider history | A switched or recovered conversation compiles for Anthropic |
+| R3-02 | P4a-05, P4a-09, P4a-16 (part) | One shared SSE line splitter that carries CR/LF across chunks and ignores comment lines | B. Synthetic chunk-boundary fixtures | A shared splitter used by every decoder; no other decoder changes | R1-03 test flips; existing decoder tests | Identical output for any chunking of the same bytes |
+| R3-03 | P4a-04 | Generic local streams accept the trailing usage chunk after `finish_reason` | B. Synthetic fixture matching `include_usage: true` | `generic-local-openai-chat/chatStreamV1.ts:48` | R1-03 test flips | The stream completes with usage recorded |
+| R3-04 | P4a-06 | Accept `citations_delta` only if the wire format is established | S. Establish the shape from Anthropic's published streaming docs; no live request | `providers/anthropic/chatStreamV1.ts:241` | Fixture built from the documented shape | **Stop if** the shape cannot be established: record it as unverified and make no change |
+| R3-05 | P4a-15, P4a-08, P4a-12 | Truncated or blocked finishes are not recorded as success; the receipt follows the final checkpoint; `finally` cleanup survives a throwing snapshot | A | Per-runner finish mapping and ordering | Unit tests per provider | Incomplete work is never marked complete (D-4) |
+| R3-06 | P4a-17 | Abort reaches every runner's `reader.read()` | A | Wrap reads in `abortable()` for the remaining runners | Abort tests with a stalled synthetic stream | Stop ends a stalled stream without a timeout |
+| R3-07 | P4b-01 | Regenerate and retry ignore a second click while the first is in flight | B | Renderer in-flight guard keyed by target | Component or logic test with a double invocation | One branch and one generation per click burst |
+| R3-08 | P4b-03, P4b-04, P4a-19, P4b-12 | The renderer reconciles "generating" with the database; Stop on a non-abortable operation gives feedback; `awaiting_tool` with tools disabled is terminalised (cancelled) and does not block deletion or quit | B (P4b-03 path 1 untraced; P4b-04 reachability suspected) | Reconcile on refresh; surface the abort result; terminalise `awaiting_tool` on abort | Logic tests for paths 2 and 3 of P4b-03; a registry test for `awaiting_tool` abort | Stop never silently fails. **Stop if** P4b-04 needs a tool-continuation UI; that is a feature, not this repair |
+
+**Not in Phase 3:** P4a-10, P4a-11, P3b-09, P3b-10, P3b-11 (provider-tolerance questions that need real providers; recorded as unverified).
+**Real-runtime checks:** an Electron smoke with a local synthetic SSE server (no provider credentials) covering stream completion, abort and Anthropic history compile.
+
+### Phase 4: effective-rule refresh and configuration consistency (D-6)
+
+**Dependencies:** Phase 3 (R3-07 and R3-08 touch the same send paths).
+
+| Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
+|---|---|---|---|---|---|---|
+| R4-01 | New (D-6) | Map current behaviour before changing it | Mapping by one read-only subagent: how activation (cloud apply, rollback, user save, bootstrap) changes `capabilityRevision`; what the renderer recomputes; how `STALE_CAPABILITY_REVISION` is handled at send | Report only | — | A written map with file:line; gaps listed |
+| R4-02 | New (D-6) | When a rule set becomes effective, main notifies renderers; capability projections, model-picker facts, composer chips and pending-send configuration are recomputed | Depends on R4-01 | One activation event from main; renderer subscribers re-derive | Logic tests: activation leads to recomputed projection | UI reflects the new rules without a reload |
+| R4-03 | New (D-6), P3b-02 clamp, P6a-11, P6b-10 | A user value the new rules allow is preserved. A value they forbid is flagged with an explanation and blocks sending until adjusted, never silently reset or clamped | A | Validation result surfaced in the composer and console | Tests for preserved, conflicting and newly unsupported values | No silent value change |
+| R4-04 | New (D-6) | A stale pending request (not yet sent) is refreshed and revalidated before dispatch; a request that already reached the provider is never resent; in-flight generations keep their frozen snapshot | B | Renderer send path: on `STALE_CAPABILITY_REVISION`, re-prepare and revalidate once, then send or surface the conflict | Tests: stale-before-send re-prepares; in-flight is untouched | No automatic resend after dispatch |
+| R4-05 | P3a-09, P3a-06 | Staged or unaccepted data never becomes effective before activation; a truncated models.dev payload is not published as complete | A / S | Publish facts after `commitSync`, only for applied snapshots; add a shrink guard | Unit tests | Candidate staging changes nothing active |
+| R4-06 | P3a-22, P3a-08 | Activation keeps a user's "off" override; cross-owner rule cycles and conflicts are detected before activation | A / S | Activation preparation | Unit tests | Activation either preserves the choice or reports the conflict |
+| R4-07 | I3a-05, I3b-05 | Every user-facing command IPC entry installs the revision context; tests and internal replay keep the documented exemption | Intended exemption | An inventory test over the IPC registration | The inventory test | Production entries without the context fail the test |
+| R4-08 | P1-01 (+P3a-03), P3a-02, P3a-14, P3a-05, P6a-07 | Catalog policy persists; unchanged content does not bump revisions (which cause needless stale sends); a stale `syncing` row recovers; picker queries do not discard each other | A / A / S / S / B | Catalog repo and picker sequencing | Unit tests | No phantom changes or stuck sync |
+| R4-09 | P6a-02, P6a-03, P6a-05, P3a-07 | Settings saves cannot overwrite unloaded values; partial saves are reported; panel races are guarded; one undecodable rule row does not block every save (D-4) | A | Settings panels and rule repos | Component and repo tests | No silent overwrite or global lockout |
+
+**Stop if:** R4-01 shows that a refresh needs a protocol change across all provider IPC cores. Report the scope before implementing.
+
+### Phase 5: files, conversation actions and content correctness
+
+**Dependencies:** Phase 1.
+
+| Item | Findings | Intended behaviour | Evidence | Minimal scope | Checks | Acceptance |
+|---|---|---|---|---|---|---|
+| R5-01 | P6a-01, P6a-09, P6a-16 | Bulk actions apply only to visible, selected conversations; selecting a missing item rolls back | A | Sidebar selection state | Logic tests | No hidden item is deleted or moved |
+| R5-02 | P5b-01 (+P5b-05), P5b-02 | Text conversion options work for non-markdown text; one failed option does not hide the others | A / B | DFC options; blob identity per (bytes, mime) | Unit tests; the `data:` limit is checked in an Electron smoke | Options list degrades per option |
+| R5-03 | P5b-04 (correctness part), P5b-13 | History never replays a provider file id from another credential scope; one corrupt draft attachment row does not block the draft (D-4) | A | Send-time scope check; per-row isolation | Unit tests | Old-scope ids are re-uploaded or reported |
+| R5-04 | P6b-01, P6b-09 (RC-13) | Code and math render byte-exact, including `$&`, `` $` ``, `$'` and `$$` | B (`$$` tokenisation uncertain) | Function replacers | R1-03-style tests with each pattern | Rendered text equals the source |
+| R5-05 | P6b-02, P6b-03, P6b-04 | Inline math does not capture currency or shell variables or cross paragraphs; unsupported link schemes and nested fences render safely | A | Renderer rules | Renderer tests | Documented examples render correctly |
+
+### Phase 6: security and integration boundaries
+
+**Dependencies:** Phase 1. Each item first states its attack preconditions; without them a finding is hardening, not an exploitable vulnerability.
+
+| Item | Findings | Intended behaviour | Minimal scope | Checks |
+|---|---|---|---|---|
+| R6-01 | P8-02 | Electron fuses set: `RunAsNode` off, ASAR integrity on, and the related fuses | Builder config | `npx @electron/fuses read` on a built executable (packaged check) |
+| R6-02 | P5a-01 | LibreOffice runs with macros, links and network disabled | Runner arguments and profile | Fixture DOCX with a macro and an external link (isolated) |
+| R6-03 | P5a-02, P5a-03 (+P1-10) | Plugin code is re-verified on load; the health check cannot run manifest-chosen commands; `register-local-package` is not reachable in a release | Plugin lifecycle | Unit tests with a tampered package |
+| R6-04 | P3a-01 | Rule assets are signature-checked against a compiled-in key (bootstrap opt-in is OQ-4) | Cloud rules refresh | Tampered-fixture test |
+| R6-05 | P5b-03, P1-12, P3b-05, P3a-10, P3a-11, P5a-10, P5b-12, P7-06 (RC-08) | Downloads and probes are bounded in size and time and check each hop's host at connection level. D-3 does not cover these | Network helpers | Local test servers |
+| R6-06 | P1-11, P5a-13, P1-09, P5b-10, P7-09, P4b-06 (RC-11) | IPC handlers check sender and frame and validate values; the vestigial relay is removed | IPC cores | Unit tests per handler |
+| R6-07 | P1-08 / I7-01, P7-04, P8-14 (RC-12) | CSP adds `base-uri` and `form-action`, production `connect-src 'self'`, an `img[src]` hook; dev and prod CSP follow Vite mode | CSP config | CSP unit tests and a packaged check |
+| R6-08 | P8-08, P8-09, P8-13, P8-10 | Release workflows use least privilege and protected refs; assets are not silently replaced | Workflows | Workflow review; no release is published |
+| R6-09 | P2a-09, P7-07, P6a-13 (RC-18) | Credentials and endpoint userinfo never reach logs, error archives or localStorage. Only app-injected transport credentials are redacted; user-authored content is never redacted | Sanitiser wiring | Tests with credential-shaped values |
+| R6-10 | P1-02, P1-03, P7-05 | Depends on OQ-3: harden the in-app browser if kept, or remove its exposed IPC | — | — |
+
+**Real-runtime checks:** a packaged build for R6-01 and R6-07. Nothing is published.
+
+### Phase 7: long-term archives and resource costs (D-5)
+
+**Dependencies:** Phases 2 and 3 (registry and checkpoint code paths).
+
+| Item | Findings | Intended behaviour | Minimal scope | Checks |
+|---|---|---|---|---|
+| R7-01 | P7-03 (cost), P2b-07 (residual) | Capture stays on and keeps the full canonical body, without blocking the main thread per send | Move hashing and insert off the send path, or batch them; keep the stored bytes identical | Before/after timing on a large synthetic body; byte-equality test |
+| R7-02 | P2b-07 (residual) | Identical bodies (retries, repeated attachments) are stored once by content address, still returning the exact original; the archive is indexed by answer and conversation | Schema plus repository | Equality and lookup tests |
+| R7-03 | P7-03 (access) | The archive's IPC checks sender and frame (main window only) | IPC handler | Unit test |
+| R7-04 | D-5 explicit deletion | The user can delete archive records explicitly (per answer or conversation, from the inspection UI), with confirmation | Repository, IPC and UI | Tests. Conversation deletion does **not** purge the archive until OQ-1 is answered |
+| R7-05 | — | Verify that no transport credential reaches the archive (bodies only; headers are not stored, per `rawGenerationRequestStore.ts:76-98`) and that provider error payloads echoing a key are redacted of that key only | Test with credential-shaped headers and error bodies | Archive contains the user content unchanged and no credentials |
+| R7-06 | P4a-13 (+P7-01), P2b-10 (+P7-02), P4b-02, P4b-05, P4b-14, P4b-13, P6b-05 (RC-05) | Terminal operations leave the runtime registry; subscribe sends only live operations; checkpoints and renderer buffers are bounded | Registry, checkpoint, renderer buffers | Measure before and after (memory and latency, synthetic long session) |
+| R7-07 | P2b-04, P5b-05, P5b-06, P5b-11, P2b-09, I2a-04 (RC-09) | Unreferenced attachment blobs and derived assets are reclaimed by a guarded sweep; request-archive copies are untouched | Blob store | Sweep tests |
+| R7-08 | P2b-03, P2b-08 | FTS triggers do not scan the whole index; hot filters are indexed | Schema upgrade through the reviewed-predecessor mechanism | Benchmark; predecessor-upgrade test |
+
+**Stop if:** R7-02 or R7-08 needs a schema change that the reviewed-predecessor mechanism cannot express. Report it rather than introducing a migration framework.
+
+### Phase 8: final reconciliation and validation
+
+- Re-walk the register: each finding is Fixed (with test), Reclassified, Deferred (with owner decision), Not reproduced, or Still open.
+- Run every partition under `rebuild:node`, then `rebuild:electron` and a packaged Electron smoke on an isolated profile, including `npx @electron/fuses read` and the release-channel guard (R2-03).
+- Review the remaining open coverage (section 5) where a repair touched it.
+- Separate completed repairs from static leads and from behaviour that is still unverified.
+
+## 4. Status
+
+| Phase | Status |
+|---|---|
+| 0 | Complete (this document and repair-phase-0.md) |
+| 1–8 | Not started |
+
+## 5. Still-unreviewed areas
+
+These are from phase-9.md section 7.4, the corrected list. Repairs that touch one of them must read it first.
+- **Main process:** plain-text and tool-continuation coordinators; `interruptedReplayStorageV2`; about 70% of `openRouterChatGenerationAuthorityV2Service.ts`; LM Studio `nativeItemsV1` and `continuationArtifactV1`; OpenAI-compatible `nativeMessages*`; Gemini interactions-image compiler; OpenRouter image descriptor authority; main-side `readBranch` validation; orphan recovery's treatment of `awaiting_tool`; `addon.cc` blob write atomicity and symlink races; `setDfcSelection` revalidation at send; the plugin-distribution modules listed in phase-5a; citation and `groundingChunks` mapping; `fetchPackageToFile` governance; proxy credential handling beyond the redaction points; `JSON.parse` size bounds in SSE parsers; catalog `sync`, `applyPending` and `status` handlers.
+- **Renderer:** the `appChatApp.logic.ts` regions listed in phase-4b; `projectReasoningPresentationV2`; `ChatAppReasoningPanel.vue`; `richtext.css`; `ModelPickerDialog.vue` after template line 2420; about 1,500 template lines of `SettingsPanel.vue`; the lower half of `EndpointDetailPanel.vue` and the other 6a panels; `DraftAttachmentDetailsDialog.vue`; `ingestLocalFiles`.
+- **Build and runtime:** installer contents; GitHub environment settings; signature `expiresAt`; privacy-scan internals beyond P7-11; runtime CSP under `file://`; DOMPurify mXSS for MathML and SVG.
+
+## 6. Owner questions (recorded; none blocks Phase 1)
+
+- **OQ-1 (D-5):** should deleting a conversation also delete its request-archive records, or should the archive keep them until the user deletes them explicitly? Until answered, no automatic purge is added and R7-04 provides explicit deletion only.
+- **OQ-2 (D-1, D-2):** has any formal release shipped the legacy (pre-epoch-2) layout or a schema older than the reviewed predecessors? This decides whether P2a-03, P3a-16 and P2a-11 are live, and whether the I2a-01 purge needs more than the R2-03 guard.
+- **OQ-3:** keep the in-app browser (then harden it, R6-10) or remove its exposed IPC?
+- **OQ-4 (D-6):** may the first cloud rule candidate still activate automatically on a fresh install, or should bootstrap activation need user action? R6-04 adds authenticity either way.
