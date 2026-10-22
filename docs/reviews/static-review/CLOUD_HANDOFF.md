@@ -34,6 +34,7 @@ Read these reports and the applicable repository instructions (`AGENTS.md`) befo
 | 11 | [Phase 6a: settings, model picker, sidebar, search, startup](phase-6a.md) | P6a-01..17 |
 | 12 | [Phase 6b: rendering, console, composer, i18n](phase-6b.md) | P6b-01..15 |
 | 13 | [Phase 7: cross-cutting](phase-7.md) | P7-01..11, I7-01..06 |
+| 14 | [Phase 8: build, release and tests](phase-8.md) | P8-01..18, I8-01..03 |
 
 These are static-review reports and do not show runtime behaviour.
 - Preserve their finding IDs, uncertainty labels, coverage gaps and rejected hypotheses.
@@ -42,9 +43,11 @@ These are static-review reports and do not show runtime behaviour.
 
 ## Current stopping point
 
-**Phase 7 (cross-cutting) is complete and was reviewed in the local checkout `D:\Starverse` after the cloud handoff. Phase 8 has not started.**
+**Phase 8 (build, release and tests) is complete. Phase 9 has not started.** Phases 7 and 8 were reviewed in the local checkout `D:\Starverse` after the cloud handoff.
 
-Phase 7 headline: no High; one Medium (P7-01, the main-process runtime registry never evicts and re-hydrates every operation on subscribe); Low-Medium P7-02 (O(n²) body checkpointing) and P7-03 (always-on plaintext raw request capture, extends P2b-07/P2a-09). P0-03 is resolved by P7-11. I7-01 corrects P1-08 on `object-src`.
+Phase 7 headline: no High; one Medium (P7-01, the main-process runtime registry never evicts and re-hydrates every operation on subscribe); Low-Medium P7-02 and P7-03. P0-03 is resolved by P7-11. I7-01 corrects P1-08 on `object-src`.
+
+Phase 8 headline: no High; four Medium: P8-01 (no `.gitattributes`, so the shipped schema digest depends on the build checkout's line endings; extends P2b-01), P8-02 (no Electron fuses), P8-03 (path-prefix PR test scope skips DB/Windows tests for shared-core changes), P8-04 (`epochNativeBoundary.test.ts` runs in no partition).
 
 No review report is partial. No subagents or background work are running.
 
@@ -103,9 +106,7 @@ The cross-phase links are recorded in each report:
 
 ## Exact next step
 
-Wait for the user's explicit instruction. When the user says "continue", run **Phase 8 (build, release and tests)** only, per the Phase 0 coverage map and the Phase 7 hand-off: `package.json` build, `vite.config.ts`, native build scripts, NSIS, CI workflows, test partitions, gates (including the privacy-gate gaps in P7-11), the Magika release workflow, Electron fuses and ASAR integrity, better-sqlite3 asar unpacking, and the dead `electron.vite.config.ts` (P0-02, I7-02). Save the report as `phase-8.md`.
-
-Phase 9 (consolidation) follows only after a further "continue".
+Wait for the user's explicit instruction. When the user says "continue", run **Phase 9 (consolidation)** only: a single deduplicated finding register across Phases 0–8 with final severities, root-cause groupings, corrections recorded by cross-reference (not by editing earlier reports), the open "Not covered" lists and carried questions, and a recommended repair and verification order. Save the report as `phase-9.md`.
 
 ## Review workflow to preserve
 
