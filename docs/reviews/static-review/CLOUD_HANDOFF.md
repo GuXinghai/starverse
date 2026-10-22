@@ -33,6 +33,7 @@ Read these reports and the applicable repository instructions (`AGENTS.md`) befo
 | 10 | [Phase 5b: files and attachments](phase-5b.md) | P5b-01..13 |
 | 11 | [Phase 6a: settings, model picker, sidebar, search, startup](phase-6a.md) | P6a-01..17 |
 | 12 | [Phase 6b: rendering, console, composer, i18n](phase-6b.md) | P6b-01..15 |
+| 13 | [Phase 7: cross-cutting](phase-7.md) | P7-01..11, I7-01..06 |
 
 These are static-review reports and do not show runtime behaviour.
 - Preserve their finding IDs, uncertainty labels, coverage gaps and rejected hypotheses.
@@ -41,7 +42,9 @@ These are static-review reports and do not show runtime behaviour.
 
 ## Current stopping point
 
-**Phase 6 (frontend) is complete. Phase 7 has not started.**
+**Phase 7 (cross-cutting) is complete and was reviewed in the local checkout `D:\Starverse` after the cloud handoff. Phase 8 has not started.**
+
+Phase 7 headline: no High; one Medium (P7-01, the main-process runtime registry never evicts and re-hydrates every operation on subscribe); Low-Medium P7-02 (O(n²) body checkpointing) and P7-03 (always-on plaintext raw request capture, extends P2b-07/P2a-09). P0-03 is resolved by P7-11. I7-01 corrects P1-08 on `object-src`.
 
 No review report is partial. No subagents or background work are running.
 
@@ -100,22 +103,9 @@ The cross-phase links are recorded in each report:
 
 ## Exact next step
 
-Wait for the user's explicit instruction. When the user says "continue", run **Phase 7 (cross-cutting)** only, per the Phase 0 coverage map:
-- Logging and redaction.
-- Markdown, KaTeX and Shiki sanitization as a system property, building on the Phase 6b held-up list.
-- Proxy and network policy.
-- CSP.
-- Unbounded caches.
-- Blocking synchronous work.
-- Tracked-artifact privacy, including `artifacts/`.
+Wait for the user's explicit instruction. When the user says "continue", run **Phase 8 (build, release and tests)** only, per the Phase 0 coverage map and the Phase 7 hand-off: `package.json` build, `vite.config.ts`, native build scripts, NSIS, CI workflows, test partitions, gates (including the privacy-gate gaps in P7-11), the Magika release workflow, Electron fuses and ASAR integrity, better-sqlite3 asar unpacking, and the dead `electron.vite.config.ts` (P0-02, I7-02). Save the report as `phase-8.md`.
 
-Also include:
-- Provider-supplied HTML and URL sources (Google search suggestions, citation annotations), deferred from Phase 6b.
-- `inappBrowser.ts` and the agent windows.
-
-Phase 7 may be split into 7a and 7b with two subagents. Save the report as `phase-7.md`, or `phase-7a.md` and `phase-7b.md`, in this directory.
-
-Phases 8 (build, release and tests) and 9 (consolidation) follow, one at a time, each only after a "continue".
+Phase 9 (consolidation) follows only after a further "continue".
 
 ## Review workflow to preserve
 
