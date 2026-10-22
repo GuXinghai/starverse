@@ -1,20 +1,46 @@
 import { dialog } from 'electron'
+import type { SupportedLocale } from '../../src/shared/i18n/localeTypes'
+import { t, tf } from '../i18n/mainI18n'
 
 export const SCHEMA_MISMATCH_RECOVERY_AUTHORITY = 'SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH' as const
 
 type SchemaMismatchRecoveryEnvironment = Readonly<Record<string, string | undefined>>
 
-export function schemaMismatchRecoveryDialogOptions(): Electron.MessageBoxOptions {
+// P2a-02: the database (conversations and OpenAI-compatible providers with their
+// keys) moves to the backup; config.json, including built-in provider keys, stays.
+export function schemaMismatchRecoveryDialogOptions(
+  backupRoot: string,
+  locale?: SupportedLocale,
+): Electron.MessageBoxOptions {
   return {
     type: 'warning',
-    title: 'Starverse startup failed',
-    message: '数据库 schema 与本版本不匹配（检测到 schema 变更）。',
-    detail: '旧数据无法自动迁移。选择“备份并重置”后，Starverse 会先备份当前数据库，再创建新数据库。应用配置和凭据不会被重置。',
-    buttons: ['备份并重置', '退出'],
+    title: t('dialogs.schemaRecovery.title', locale),
+    message: t('dialogs.schemaRecovery.message', locale),
+    detail: tf('dialogs.schemaRecovery.detail', { backupRoot }, locale),
+    buttons: [t('dialogs.schemaRecovery.confirm', locale), t('dialogs.schemaRecovery.quit', locale)],
     defaultId: 1,
     cancelId: 1,
     noLink: true,
   }
+}
+
+export function schemaMismatchRecoveredNoticeOptions(
+  backupDirectory: string,
+  locale?: SupportedLocale,
+): Electron.MessageBoxOptions {
+  return {
+    type: 'info',
+    title: 'Starverse',
+    message: t('dialogs.schemaRecovery.successMessage', locale),
+    detail: tf('dialogs.schemaRecovery.successDetail', { backupDirectory }, locale),
+    buttons: [t('dialogs.schemaRecovery.ok', locale)],
+    noLink: true,
+  }
+}
+
+/** Non-blocking: startup continues while the notice is shown. */
+export function notifySchemaMismatchRecovered(backupDirectory: string, locale?: SupportedLocale): void {
+  void dialog.showMessageBox(schemaMismatchRecoveredNoticeOptions(backupDirectory, locale)).catch(() => undefined)
 }
 
 export function isSchemaMismatchRecoveryAutomaticallyApproved(
@@ -33,9 +59,11 @@ export function shouldAttemptSchemaMismatchRecovery(
 }
 
 export async function confirmSchemaMismatchRecovery(
+  backupRoot: string,
+  locale?: SupportedLocale,
   env: SchemaMismatchRecoveryEnvironment = process.env,
 ): Promise<boolean> {
   if (isSchemaMismatchRecoveryAutomaticallyApproved(env)) return true
-  const result = await dialog.showMessageBox(schemaMismatchRecoveryDialogOptions())
+  const result = await dialog.showMessageBox(schemaMismatchRecoveryDialogOptions(backupRoot, locale))
   return result.response === 0
 }

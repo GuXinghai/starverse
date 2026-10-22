@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  closeResourcesInOrderV2,
   createAppShutdownCoordinatorV2,
   createStoreBackedQuitWarningSourceV2,
   type ActiveWorkSourceV2,
@@ -126,5 +127,25 @@ describe('app shutdown coordinator', () => {
     coordinator.handleBeforeQuit({ preventDefault: () => undefined })
     await settle()
     expect(exit).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('closeResourcesInOrderV2', () => {
+  it('P1-04: closes the database even when an earlier close step fails, then reports the first failure', async () => {
+    const order: string[] = []
+    const first = new Error('store close failed')
+    await expect(closeResourcesInOrderV2([
+      () => { order.push('store'); throw first },
+      async () => { order.push('refresh'); throw new Error('refresh dispose failed') },
+      () => { order.push('fixture') },
+    ], async () => { order.push('database') })).rejects.toBe(first)
+    expect(order).toEqual(['store', 'refresh', 'fixture', 'database'])
+  })
+
+  it('runs every step in order and resolves when all succeed', async () => {
+    const order: string[] = []
+    await closeResourcesInOrderV2([() => { order.push('a') }, async () => { order.push('b') }],
+      async () => { order.push('database') })
+    expect(order).toEqual(['a', 'b', 'database'])
   })
 })

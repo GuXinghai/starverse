@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const showMessageBox = vi.hoisted(() => vi.fn())
+const BACKUP_ROOT = 'C:/Users/me/AppData/Roaming/Starverse/epoch-2-recovery-backups'
 
 vi.mock('electron', () => ({
   dialog: { showMessageBox },
@@ -8,6 +9,7 @@ vi.mock('electron', () => ({
 
 import {
   confirmSchemaMismatchRecovery,
+  schemaMismatchRecoveredNoticeOptions,
   isSchemaMismatchRecoveryAutomaticallyApproved,
   schemaMismatchRecoveryDialogOptions,
   shouldAttemptSchemaMismatchRecovery,
@@ -32,7 +34,7 @@ describe('schema mismatch recovery prompt', () => {
   it('keeps the explicit environment authority as a non-interactive bypass', async () => {
     const env = { SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH: '1' }
 
-    await expect(confirmSchemaMismatchRecovery(env)).resolves.toBe(true)
+    await expect(confirmSchemaMismatchRecovery(BACKUP_ROOT, 'zh-CN', env)).resolves.toBe(true)
     expect(isSchemaMismatchRecoveryAutomaticallyApproved(env)).toBe(true)
     expect(showMessageBox).not.toHaveBeenCalled()
   })
@@ -40,7 +42,7 @@ describe('schema mismatch recovery prompt', () => {
   it('confirms backup and reset from the destructive action button', async () => {
     showMessageBox.mockResolvedValueOnce({ response: 0 })
 
-    await expect(confirmSchemaMismatchRecovery({})).resolves.toBe(true)
+    await expect(confirmSchemaMismatchRecovery(BACKUP_ROOT, 'zh-CN', {})).resolves.toBe(true)
     expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
       type: 'warning',
       buttons: ['备份并重置', '退出'],
@@ -53,14 +55,31 @@ describe('schema mismatch recovery prompt', () => {
   it('keeps the application fail-closed when the user exits', async () => {
     showMessageBox.mockResolvedValueOnce({ response: 1 })
 
-    await expect(confirmSchemaMismatchRecovery({})).resolves.toBe(false)
+    await expect(confirmSchemaMismatchRecovery(BACKUP_ROOT, 'zh-CN', {})).resolves.toBe(false)
   })
 
-  it('explains that the database is backed up while config and credentials remain', () => {
-    const options = schemaMismatchRecoveryDialogOptions()
+  // P2a-02: the dialog must say what moves to the backup, what stays and where
+  // the backup goes; the old text claimed that no credentials were reset.
+  it('P2a-02: states what moves to the backup, what stays, and where the backup is', () => {
+    const zh = schemaMismatchRecoveryDialogOptions(BACKUP_ROOT, 'zh-CN')
+    expect(zh.detail).toContain('OpenAI 兼容服务商及其 API 密钥')
+    expect(zh.detail).toContain('保留：应用设置和内置服务商的 API 密钥')
+    expect(zh.detail).toContain(BACKUP_ROOT)
+    expect(zh.detail).not.toContain('凭据不会被重置')
 
-    expect(options.message).toContain('schema')
-    expect(options.detail).toContain('备份当前数据库')
-    expect(options.detail).toContain('配置和凭据不会被重置')
+    const en = schemaMismatchRecoveryDialogOptions(BACKUP_ROOT, 'en-US')
+    expect(en.message).toContain('schema')
+    expect(en.detail).toContain('OpenAI-compatible providers with their API keys')
+    expect(en.detail).toContain('Kept: app settings and the API keys of built-in providers')
+    expect(en.detail).toContain(BACKUP_ROOT)
+    expect(en.buttons).toEqual(['Back up and reset', 'Quit'])
+  })
+
+  it('P2a-02: reports the backup directory after a successful recovery', () => {
+    const directory = `${BACKUP_ROOT}/epoch-2-1700000000000`
+    const notice = schemaMismatchRecoveredNoticeOptions(directory, 'en-US')
+    expect(notice).toMatchObject({ type: 'info', message: 'The database was backed up and reset.', buttons: ['OK'] })
+    expect(notice.detail).toContain(directory)
+    expect(schemaMismatchRecoveredNoticeOptions(directory, 'zh-CN').detail).toContain(directory)
   })
 })

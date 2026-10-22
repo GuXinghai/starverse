@@ -434,12 +434,28 @@ type RecoverySchedulerV2 = {
   timer: ReturnType<typeof setTimeout> | null
   inFlight: Promise<void> | null
   retryCounts: Map<string, number>
+  exhausted: Set<string>
   quiesced: boolean
   sealed: boolean
   nowMs: () => number
 }
 
 const recoverySchedulersByDb = new WeakMap<BetterSqlite3.Database, RecoverySchedulerV2>()
+
+export type GenerationNativeCompletionRecoveryExhaustedHandlerV2 = (key: GenerationNativeCompletionReceiptKeyV2) => void
+const exhaustedHandlersByDb = new WeakMap<BetterSqlite3.Database, GenerationNativeCompletionRecoveryExhaustedHandlerV2>()
+
+/**
+ * Receives each pending receipt whose bounded retries are used up, once per
+ * process, so its operation can reach a terminal state (P2b-02). The receipt
+ * itself stays pending; it is immutable evidence of the provider completion.
+ */
+export function onGenerationNativeCompletionRecoveryExhaustedV2(
+  db: BetterSqlite3.Database,
+  handler: GenerationNativeCompletionRecoveryExhaustedHandlerV2,
+): void {
+  exhaustedHandlersByDb.set(db, handler)
+}
 
 function receiptCursorId(key: GenerationNativeCompletionReceiptKeyV2): string {
   return `${key.operationId}\u0000${key.requestSequence}\u0000${key.attempt}`
@@ -448,7 +464,8 @@ function receiptCursorId(key: GenerationNativeCompletionReceiptKeyV2): string {
 function schedulerFor(db: BetterSqlite3.Database): RecoverySchedulerV2 {
   let scheduler = recoverySchedulersByDb.get(db)
   if (!scheduler) {
-    scheduler = { timer: null, inFlight: null, retryCounts: new Map(), quiesced: false, sealed: false, nowMs: Date.now }
+    scheduler = { timer: null, inFlight: null, retryCounts: new Map(), exhausted: new Set(), quiesced: false, sealed: false,
+      nowMs: Date.now }
     recoverySchedulersByDb.set(db, scheduler)
   }
   return scheduler
@@ -509,6 +526,14 @@ function schedulePendingReceiptRecoveryV2(db: BetterSqlite3.Database, nowMs: () 
       const pendingIds = new Set<string>()
       forEachPendingSummary(repo, (summary) => pendingIds.add(receiptCursorId(summary)))
       for (const id of scheduler.retryCounts.keys()) if (!pendingIds.has(id)) scheduler.retryCounts.delete(id)
+      for (const key of selected) {
+        const id = receiptCursorId(key)
+        if (!pendingIds.has(id) || scheduler.exhausted.has(id) ||
+            (scheduler.retryCounts.get(id) ?? 0) < RECOVERY_RETRY_DELAYS_MS.length) continue
+        scheduler.exhausted.add(id)
+        try { exhaustedHandlersByDb.get(db)?.(Object.freeze({ operationId: key.operationId,
+          requestSequence: key.requestSequence, attempt: key.attempt })) } catch { /* The receipt stays durable evidence. */ }
+      }
       scheduleAgain = true
     }).catch(() => {
       // A transient database error leaves the durable receipt untouched. Retries remain bounded.

@@ -39,6 +39,7 @@ Read these reports and the applicable repository instructions (`AGENTS.md`) befo
 | 16 | [Repair Phase 0: corrections and reclassification](repair-phase-0.md) | Corrections C-01..C-07; owner decisions D-1..D-6 applied |
 | 17 | [Repair plan](repair-plan.md) | Repair phases 1–8, items R1-01..R7-08, owner questions OQ-1..OQ-4 |
 | 18 | [Repair Phase 1: verification foundations](repair-phase-1.md) | R1-01..R1-04; fixes P8-03, P8-04, P8-05; P8-11 in part; failing regression tests for P2a-01, P2b-01, P3b-01, P4a-01, P4a-03, P4a-04, P4a-05 |
+| 19 | [Repair Phase 2: data integrity, startup and failure isolation](repair-phase-2.md) | R2-01, R2-02, R2-04..R2-07; fixes P2b-01, P8-01, P2a-02, P2a-01, P4a-01, P2b-02, P4a-02, P2b-06, P2b-05 (isolation only), P4a-18, P1-06, P1-04; I4a-07 open |
 
 These are static-review reports and do not show runtime behaviour.
 - Preserve their finding IDs, uncertainty labels, coverage gaps and rejected hypotheses.
@@ -47,7 +48,7 @@ These are static-review reports and do not show runtime behaviour.
 
 ## Current stopping point
 
-**Repair Phase 1 is complete; repair Phase 2 has not started.** Phase 1 is on branch `codex/static-review-repairs`, cut from the review branch tip (`3e0f26c`); see [repair-phase-1.md](repair-phase-1.md). Phase 1 found that every test partition and `verify:ssot` already fail at the baseline, so CI is red independently of the repairs (section 4 of that report). Repair Phase 0 is complete. The owner gave six decisions (D-1 to D-6 in [repair-plan.md](repair-plan.md) section 1) and asked for the repairs to run one phase at a time, each authorised by "continue".
+**Repair Phase 2 is complete; repair Phase 3 has not started.** Phase 2 is on branch `codex/static-review-repairs`; see [repair-phase-2.md](repair-phase-2.md). It fixed the line-ending schema digest, the schema-recovery dialog, the `config_replaced` crash window, non-terminal operations, startup-aborting corrupt artifacts and the minimal main-process failure handlers, and ran an isolated offline Electron smoke. R2-06 is partly done: the corrupt operation is isolated, but its lock, a restricted mode and the conversation error state await an owner decision (section 6 of that report). Repair Phase 1 ([repair-phase-1.md](repair-phase-1.md)) found that every test partition and `verify:ssot` already fail at the baseline, so CI is red independently of the repairs. The owner asked for the repairs to run one phase at a time, each authorised by "continue".
 
 **Owner answers (after Phase 0):** OQ-1 → D-5a (conversation deletion also deletes its request records and archive indexes); OQ-2 → D-2r (no development/release distinction this round; legacy data and incompatible databases may be reset by default; R2-03 release guard withdrawn and deferred to release preparation); OQ-3 → D-7 (keep and harden the in-app browser); OQ-4 → D-8 (investigate first-install rule activation in R4-01 without changing it). Repairs run on branch `codex/static-review-repairs`.
 
@@ -113,7 +114,7 @@ The cross-phase links are recorded in each report:
 
 ## Exact next step
 
-Wait for the owner's "continue", then run **repair Phase 2 (data integrity, startup and failure isolation)** only, as defined in [repair-plan.md](repair-plan.md) section 3, on `codex/static-review-repairs`. OQ-1 to OQ-3 are answered (D-5a, D-2r, OQ-3 keep and harden); OQ-4 remains an investigation item under R4-01. Phase 2 starts by flipping the R1-03 tests it fixes (P2b-01, P2a-01, P4a-01) from `it.fails` to `it`. The Phase 1 report lists the gates and limitations it leaves open.
+Wait for the owner's "continue", then run **repair Phase 3 (generation and protocol correctness)** only, as defined in [repair-plan.md](repair-plan.md) section 3, on `codex/static-review-repairs`. Its dependency R2-05 is done. Phase 3 starts by flipping the remaining `it.fails` tests (P3b-01, P4a-03, P4a-04, P4a-05) to `it` as it fixes them. The owner question on R2-06 (terminalise a quarantined operation; restricted mode) can be answered at the same time. The better-sqlite3 ABI target was left at `electron`; run `npm run rebuild:node` before Node/Vitest database tests.
 
 ## Review workflow to preserve
 

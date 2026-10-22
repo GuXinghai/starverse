@@ -18,6 +18,22 @@ export type RegisterActiveWorkSourceV2 = (source: ActiveWorkSourceV2) => void
 
 export const APP_SHUTDOWN_DRAIN_TIMEOUT_MS_V2 = 5_000
 
+/**
+ * Runs every close step in order and the final step (the database) even when an
+ * earlier step fails (P1-04). The first failure is rethrown afterwards.
+ */
+export async function closeResourcesInOrderV2(
+  steps: readonly (() => unknown)[],
+  final: () => Promise<void>,
+): Promise<void> {
+  const failures: unknown[] = []
+  for (const step of steps) {
+    try { await step() } catch (error) { failures.push(error) }
+  }
+  try { await final() } catch (error) { failures.push(error) }
+  if (failures.length > 0) throw failures[0]
+}
+
 export function createStoreBackedQuitWarningSourceV2(store: Readonly<{ get: (key: string) => unknown }>): () => boolean {
   return () => {
     try {

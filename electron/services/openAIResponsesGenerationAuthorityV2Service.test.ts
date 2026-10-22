@@ -755,6 +755,35 @@ describe('OpenAI Responses stream replay authority persistence', () => {
     } finally { db.close() }
   })
 
+  // P2b-02 (+P4a-02): a receipt that can never materialise must not leave its
+  // operation open once the bounded retries are used up.
+  it('P2b-02: fails the operation when receipt materialization keeps failing after its retries', async () => {
+    const db = database(['synthetic'], [])
+    try {
+      const command = await streamFixture(db)
+      const sse = streamFrame('response.output_item.done', 1, { output_index: 0, item: streamReasoning }) +
+        streamFrame('response.output_item.done', 2, { output_index: 1, item: streamMessage }) +
+        terminalFrame('completed', [{ ...streamReasoning, encrypted_content: 'exhausted-retry' }, streamMessage], 3)
+      const runner = createOpenAIResponsesStreamRunnerV2({ db, credentialService: streamCredentials(), nowMs: () => 300,
+        fetchImpl: async () => new Response(sse, { headers: { 'content-type': 'text/event-stream' } }) })
+      const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(db, () => 350)
+      const insertSpy = vi.spyOn(OpenAIResponsesArtifactsV2Repo.prototype, 'insertOperationTerminal')
+        .mockImplementation(() => { throw new Error('injected persistent native artifact failure') })
+      try {
+        expect(runtimeRegistry.start(command, (signal) => runner.run(command, signal))).toBe(true)
+        await vi.waitFor(() => expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?')
+          .get('operation:source')).toEqual({ state: 'failed' }), { timeout: 10_000 })
+      } finally { insertSpy.mockRestore() }
+      expect(new GenerationExecutionV2Repo(db).getOperation('operation:source').operation)
+        .toMatchObject({ errorCode: 'GENERATION_V2_NATIVE_COMPLETION_MATERIALIZATION_EXHAUSTED' })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(command.preparedRequest.answerRootId))
+        .toEqual({ status: 'failed' })
+      expect(db.prepare('SELECT materialization_state AS state FROM generation_native_completion_receipt_v2').get())
+        .toEqual({ state: 'pending' })
+      expect(runtimeRegistry.getSnapshot('operation:source')?.status).toBe('failed')
+    } finally { db.close() }
+  }, 20_000)
+
   it('treats a post-commit projection sink exception as non-fatal to provider completion', async () => {
     const db = database(['synthetic'], [])
     try {

@@ -41,6 +41,16 @@
       "devStartupError": "开发启动错误",
       "viteDevServerMissing": "开发模式下缺少 VITE_DEV_SERVER_URL。拒绝加载 dist/index.html。"
     },
+    "schemaRecovery": {
+      "title": "Starverse 需要重置数据库",
+      "message": "数据库结构与当前版本的 Starverse 不匹配。",
+      "detail": "现有数据无法自动迁移。选择“备份并重置”后，Starverse 会把当前数据库移动到备份文件夹，再创建一个新的空数据库。\n\n移入备份、之后不再可用：数据库中的全部数据，包括对话及其历史记录，以及 OpenAI 兼容服务商及其 API 密钥。\n保留：应用设置和内置服务商的 API 密钥。\n\n备份文件夹：\n{backupRoot}",
+      "confirm": "备份并重置",
+      "quit": "退出",
+      "successMessage": "数据库已备份并重置。",
+      "successDetail": "原数据库已移动到：\n{backupDirectory}\nOpenAI 兼容服务商及其 API 密钥需要重新设置。",
+      "ok": "确定"
+    },
     "rendererRecovery": {
       "title": "Starverse 窗口异常",
       "crashed": "应用窗口意外停止工作。故障已记录到日志。",

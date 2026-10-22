@@ -20,6 +20,7 @@ import { GenerationRecentUsageAuthorityV2 } from './generationRecentUsageAuthori
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
+  onGenerationNativeCompletionRecoveryExhaustedV2,
 } from './generationNativeCompletionV2'
 
 type RuntimeEntry = {
@@ -109,6 +110,10 @@ export class GenerationOperationRuntimeRegistryV2 {
     this.#reasoning = new AnswerReasoningProjectionV2Repo(db, nowMs)
     this.#recentUsage = new GenerationRecentUsageAuthorityV2(db)
     this.#recentUsage.reconcile()
+    // A receipt that can never materialise must not keep its operation open (P2b-02).
+    onGenerationNativeCompletionRecoveryExhaustedV2(db, (key) => this.#failOperation(key.operationId,
+      'GENERATION_V2_NATIVE_COMPLETION_MATERIALIZATION_EXHAUSTED',
+      'Provider completed, but its result could not be stored locally after retries.'))
   }
 
   readonly projectionSink: CoordinatedGenerationStreamProjectionSinkV2 = Object.freeze({
@@ -220,7 +225,16 @@ export class GenerationOperationRuntimeRegistryV2 {
     }
     queueMicrotask(() => {
       void run(controller.signal)
-        .catch((error) => { if (!this.#sealed) this.#terminalizeUnhandledRunFailure(result, error) })
+        .catch((error) => {
+          if (this.#sealed) return
+          try {
+            this.#terminalizeUnhandledRunFailure(result, error)
+          } catch {
+            // Do not leave a rejected promise behind (P4a-18). Startup orphan
+            // recovery remains the backstop for the operation itself.
+            console.error('[generation-runtime] GENERATION_V2_RUNTIME_TERMINALIZE_FAILED')
+          }
+        })
         .finally(() => {
           const current = this.#entries.get(snapshot.binding.operationId)
           if (current?.abort) current.abort = null
@@ -231,16 +245,26 @@ export class GenerationOperationRuntimeRegistryV2 {
 
   #terminalizeUnhandledRunFailure(result: StartableGenerationResultV2, error: unknown): void {
     const operationId = result.execution.operation.operationId.value
-    if (isGenerationNativeCompletionMaterializationPendingV2Error(error)) return
+    // A persisted receipt belongs to receipt recovery. Without one, nothing can
+    // recover the operation, so it fails here (P4a-01).
+    const receiptLost = isGenerationNativeCompletionMaterializationPendingV2Error(error) && !error.receiptPersisted
+    if (isGenerationNativeCompletionMaterializationPendingV2Error(error) && !receiptLost) return
     try {
       if (hasPendingGenerationNativeCompletionForOperationV2(this.db, operationId)) return
     } catch { /* The normal unhandled-run fallback remains available if the receipt table is unavailable. */ }
+    const rawMessage = error instanceof Error ? error.message : String(error)
+    const errorCode = receiptLost ? error.code : 'GENERATION_V2_RUNTIME_RUNNER_FAILED'
+    const errorMessage = receiptLost
+      ? 'Provider completed, but its result could not be stored locally.'
+      : rawMessage.length > 0 && rawMessage.length <= 8_192 && !rawMessage.includes('\u0000')
+        ? rawMessage
+        : 'Generation runner failed before it could persist a terminal result.'
+    this.#failOperation(operationId, errorCode, errorMessage)
+  }
+
+  #failOperation(operationId: string, errorCode: string, errorMessage: string): void {
     const current = this.#execution.findOperation(operationId)
     if (!current || ['completed', 'failed', 'cancelled'].includes(current.operation.state)) return
-    const rawMessage = error instanceof Error ? error.message : String(error)
-    const errorMessage = rawMessage.length > 0 && rawMessage.length <= 8_192 && !rawMessage.includes('\u0000')
-      ? rawMessage
-      : 'Generation runner failed before it could persist a terminal result.'
     const at = Math.max(this.nowMs(), current.operation.updatedAtMs)
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(this.db, (context) => {
       const execution = this.#execution.findOperationInTransaction(context, operationId)
@@ -275,7 +299,7 @@ export class GenerationOperationRuntimeRegistryV2 {
                 kind: 'provider_failed',
                 phase: 'pre_stream',
                 failure: {
-                  code: 'GENERATION_V2_RUNTIME_RUNNER_FAILED',
+                  code: errorCode,
                   message: errorMessage,
                 },
               },
@@ -293,7 +317,7 @@ export class GenerationOperationRuntimeRegistryV2 {
       )
       this.#execution.terminalizeOperation(context, execution, {
         state: 'failed',
-        errorCode: 'GENERATION_V2_RUNTIME_RUNNER_FAILED',
+        errorCode,
         errorMessage,
       }, at)
     })
@@ -302,7 +326,7 @@ export class GenerationOperationRuntimeRegistryV2 {
       operationId,
       answerRootId: current.operation.targetAnswerId.value,
       state: 'failed',
-      errorCode: 'GENERATION_V2_RUNTIME_RUNNER_FAILED',
+      errorCode,
       errorMessage,
     }))
   }

@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { loadNativeArtifactJsonV2 } from '../../infra/db/repo/nativeArtifactStorageV2'
+import { loadNativeArtifactJsonV2, NativeArtifactStorageV2Error } from '../../infra/db/repo/nativeArtifactStorageV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import {
   GenerationExecutionV2Repo,
@@ -71,15 +71,21 @@ function loadRecoveryArtifactJson(
   if (typeof row.operationId !== 'string' || typeof row.answerRootId !== 'string' ||
       !Number.isSafeInteger(row.requestSequence) || typeof row[jsonField] !== 'string' ||
       typeof row[hashField] !== 'string') invalid()
-  return loadNativeArtifactJsonV2(db, {
-    operationId: row.operationId,
-    answerRootId: row.answerRootId,
-    requestSequence: row.requestSequence as number,
-    artifactKind,
-  }, row[jsonField] as string, {
-    artifactCodecVersion,
-    artifactHash: row[hashField] as string,
-  })
+  try {
+    return loadNativeArtifactJsonV2(db, {
+      operationId: row.operationId,
+      answerRootId: row.answerRootId,
+      requestSequence: row.requestSequence as number,
+      artifactKind,
+    }, row[jsonField] as string, {
+      artifactCodecVersion,
+      artifactHash: row[hashField] as string,
+    })
+  } catch (error) {
+    // A corrupt stored artifact belongs to this operation alone (P2b-05).
+    if (error instanceof NativeArtifactStorageV2Error) invalid()
+    throw error
+  }
 }
 
 export function hasPersistedOpenRouterAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {

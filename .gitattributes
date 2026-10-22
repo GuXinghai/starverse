@@ -1,0 +1,2 @@
+# Schema fragments are hashed into the database identity; keep them LF everywhere (P2b-01).
+*.sql text eol=lf

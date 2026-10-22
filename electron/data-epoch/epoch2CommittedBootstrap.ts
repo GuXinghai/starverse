@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { registerGenerationHistoryByteReaderV2 } from '../../infra/db/repo/portableGenerationHistoryV2'
 import BetterSqlite3 from 'better-sqlite3'
 import {
@@ -30,8 +31,12 @@ export type Epoch2CommittedRuntime = Readonly<{
   close: () => Promise<void>
 }>
 
-function beforeOrAtConfigReplacement(journal: Epoch2ResetJournal | null): boolean {
+function beforeOrAtConfigReplacement(journal: Epoch2ResetJournal | null, layout: Epoch2WorkspaceLayout): boolean {
   if (journal === null) return true
+  // The reset is complete at `config_replaced`. An epoch root found there was
+  // left by a crash before the `epoch_root_created` journal write (P2a-01);
+  // root creation resumes it and fails closed on unexpected content.
+  if (journal.phase === 'config_replaced' && fs.existsSync(layout.epochRoot)) return false
   return EPOCH2_RESET_PHASES.indexOf(journal.phase) <= EPOCH2_RESET_PHASES.indexOf('config_replaced')
 }
 
@@ -60,7 +65,7 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
   let liveDatabase: BetterSqlite3.Database | undefined
   const credentialMutationQueue = createCredentialMutationQueue()
   try {
-    if (beforeOrAtConfigReplacement(readEpoch2ResetJournal({ layout: input.layout, lease }))) {
+    if (beforeOrAtConfigReplacement(readEpoch2ResetJournal({ layout: input.layout, lease }), input.layout)) {
       startupMilestone('reset_resume_start')
       await runEpoch2ResetThroughConfigReplacement({
         layout: input.layout,

@@ -139,6 +139,30 @@ describe('orphan recovery isolation and clock rollback', () => {
           .get('operation:broken')).toEqual({ state: 'streaming' })
       } finally { db.close() }
     })
+
+  // P2b-05 (+I4a-07): a chunked artifact whose content chunk is missing fails
+  // in the storage layer, not as a classified recovery error. It must not abort
+  // recovery for every other operation, and with it application startup.
+  it.each(['anthropic_messages_native_history_v1'])(
+    'P2b-05: isolates awaiting-tool history %s with a missing content chunk and recovers the rest', artifactKind => {
+      const db = createDb()
+      try {
+        seedOrphanRequest(db, 'broken', true)
+        seedOrphanRequest(db, 'valid', false)
+        db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',
+          terminal_fingerprint=?,terminal_at_ms=70 WHERE operation_id=?`).run(HASH, 'operation:broken')
+        db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=70,terminal_at_ms=70 WHERE operation_id=?")
+          .run('operation:broken')
+        const manifestJson = JSON.stringify({ artifactStorageVersion: 1, artifactKind, artifactCodecVersion: 1,
+          artifactHash: HASH, rawByteLength: 2, rawSha256: HASH, chunkHashes: [HASH] })
+        db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES(?,1,?,?,1,?,?,70,'request_terminal')`)
+          .run('answer:broken', 'operation:broken', artifactKind, manifestJson, HASH)
+        expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
+          operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+        expect(db.prepare('SELECT artifact_json AS json FROM generation_native_artifact_v2 WHERE operation_id=?')
+          .get('operation:broken')).toEqual({ json: manifestJson })
+      } finally { db.close() }
+    })
 })
 
 function providerBinding() {
@@ -460,10 +484,9 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
   })
 
   // P4a-01: when the native-completion receipt insert fails, the runner rethrows
-  // a materialization-pending error with `receiptPersisted: false`. The registry
-  // ignores that error class, so no receipt exists to recover from and the
-  // operation is never terminalized. Remove `.fails` when fixed.
-  it.fails('P4a-01: terminalizes the operation when the completion receipt could not be persisted', async () => {
+  // a materialization-pending error with `receiptPersisted: false`. No receipt
+  // exists to recover from, so the registry must end the operation as failed.
+  it('P4a-01: terminalizes the operation when the completion receipt could not be persisted', async () => {
     const db = createDb()
     try {
       const execution = seedOperation(db, 'receipt-insert-failure')
@@ -475,9 +498,10 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
       await new Promise(resolve => setTimeout(resolve, 50))
 
       expect(new GenerationExecutionV2Repo(db).getOperation('operation:receipt-insert-failure').operation)
-        .toMatchObject({ state: 'failed' })
+        .toMatchObject({ state: 'failed', errorCode: 'GENERATION_V2_NATIVE_COMPLETION_RECEIPT_PERSIST_FAILED' })
       expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?')
         .get('answer:receipt-insert-failure')).toEqual({ status: 'failed' })
+      expect(registry.countActive()).toBe(0)
     } finally {
       db.close()
     }
@@ -724,6 +748,36 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
     } finally {
       db.close()
     }
+  })
+
+  // P4a-18: a runner failure whose terminalization itself throws must not
+  // escape as an unhandled rejection in the main process.
+  it('P4a-18: logs instead of rejecting when terminalizing a failed runner throws', async () => {
+    const db = createDb()
+    try {
+      const bundle = seedOperation(db, 'terminalize-throws')
+      const registry = new GenerationOperationRuntimeRegistryV2(db)
+      let fail!: (error: Error) => void
+      registry.start({ kind: 'created', execution: bundle }, () => new Promise<void>((_resolve, reject) => { fail = reject }))
+      await vi.waitFor(() => expect(fail).toBeTypeOf('function'))
+      const lookup = vi.spyOn(GenerationExecutionV2Repo.prototype, 'findOperation')
+        .mockImplementation(() => { throw new Error('injected database failure') })
+      const unhandled = vi.fn()
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      process.once('unhandledRejection', unhandled)
+      let loggedCalls: unknown[][]
+      try {
+        fail(new Error('runner failure'))
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        loggedCalls = [...logged.mock.calls]
+      } finally {
+        process.off('unhandledRejection', unhandled)
+        logged.mockRestore()
+        lookup.mockRestore()
+      }
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(loggedCalls).toContainEqual(['[generation-runtime] GENERATION_V2_RUNTIME_TERMINALIZE_FAILED'])
+    } finally { db.close() }
   })
 
   it('times out a stuck operation at shutdown and then ignores its late failure instead of writing to a closed db', async () => {

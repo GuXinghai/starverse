@@ -1,11 +1,13 @@
+import path from 'node:path'
 import { app, dialog } from 'electron'
+import { matchSystemLocale } from '../src/shared/i18n/localeMatcher'
 import { applyIsolatedEpoch2SmokeAppDataRoot, configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
 import {
   bootstrapEpoch2ApplicationRuntime,
   installEpoch2ApplicationRuntime,
   resolveEpoch2BootstrapLayout,
 } from './bootstrap/epoch2ApplicationRuntime'
-import { recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
+import { EPOCH2_RECOVERY_BACKUP_ROOT, recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
 import { createFreshEpoch2Config, repairCorruptEpoch2Config } from './data-epoch/corruptConfigRecovery'
 import {
   confirmFreshConfigCreation,
@@ -16,12 +18,14 @@ import {
 import { formatEpoch2ConfigRecoverySuccess, formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
 import {
   confirmSchemaMismatchRecovery,
+  notifySchemaMismatchRecovered,
   SCHEMA_MISMATCH_RECOVERY_AUTHORITY,
   shouldAttemptSchemaMismatchRecovery,
 } from './data-epoch/schemaMismatchRecoveryPrompt'
 import { acquireEpochRootLease } from './data-epoch/win32EpochRootLease'
 import { requestMainWindowActivation } from './windows/mainWindowActivation'
 import { getAgentAutomationOptions, initializeAgentAutomation } from './bootstrap/agentAutomationRuntime'
+import { startWithEpoch2RuntimeCleanup } from './bootstrap/epoch2StartupCleanup'
 
 initializeAgentAutomation({ app, env: process.env, repositoryRoot: process.cwd() })
 applyIsolatedEpoch2SmokeAppDataRoot({ app, env: process.env })
@@ -36,6 +40,12 @@ if (!isPrimaryInstance) {
   app.on('second-instance', () => requestMainWindowActivation())
 }
 
+// Record uncaught main-process failures without changing Electron's default
+// handling (P4a-18). Only the error name is logged, never its message.
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  process.stderr.write(`[main-process] ${origin} ${error instanceof Error ? error.name : typeof error}\n`)
+})
+
 function startupFailureCode(error: unknown): string {
   const candidate = error && typeof error === 'object' && 'code' in error
     ? (error as { code?: unknown }).code
@@ -47,24 +57,30 @@ function startupFailureCode(error: unknown): string {
 
 async function startup(): Promise<void> {
   const runtime = await bootstrapEpoch2ApplicationRuntime()
-  installEpoch2ApplicationRuntime(runtime)
-  const { startMainV2 } = await import('./mainV2')
-  await startMainV2()
+  await startWithEpoch2RuntimeCleanup(runtime, async () => {
+    installEpoch2ApplicationRuntime(runtime)
+    const { startMainV2 } = await import('./mainV2')
+    await startMainV2()
+  })
 }
 
 async function startWithSchemaMismatchRecovery(): Promise<void> {
   process.stderr.write(`[epoch2-startup] EPOCH2_DATABASE_SCHEMA_MISMATCH: installed database schema differs ` +
     `from this build; recovery authority: ${SCHEMA_MISMATCH_RECOVERY_AUTHORITY}=1\n`)
-  if (!await confirmSchemaMismatchRecovery()) {
-    app.quit()
-    return
-  }
+  // The config store is not open yet, so the dialogs follow the system language.
+  const locale = matchSystemLocale(app.getPreferredSystemLanguages())
+  let backupDirectory: string
   try {
     const layout = resolveEpoch2BootstrapLayout()
+    if (!await confirmSchemaMismatchRecovery(path.join(layout.productRoot, EPOCH2_RECOVERY_BACKUP_ROOT), locale)) {
+      app.quit()
+      return
+    }
     const lease = acquireEpochRootLease(layout)
     try {
       const recovered = recoverEpoch2DatabaseSchemaMismatch({ layout, lease })
       process.stderr.write(formatEpoch2SchemaRecoverySuccess(recovered.backedUpFiles.length))
+      backupDirectory = recovered.backupDirectory
     } finally {
       lease.release()
     }
@@ -77,6 +93,7 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
   }
   try {
     await startup()
+    notifySchemaMismatchRecovered(backupDirectory, locale)
   } catch (error) {
     const retryCode = startupFailureCode(error)
     process.stderr.write(`[epoch2-startup] ${retryCode}\n`)

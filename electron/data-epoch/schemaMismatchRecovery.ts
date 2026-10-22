@@ -106,8 +106,10 @@ function moveDatabaseFamilyToBackup(input: Readonly<{
  * The existing database family is moved (renamed) into a timestamped backup
  * directory under the product root and the reset journal is regressed to
  * `epoch_root_created` with a brand-new operation, so the next bootstrap
- * recreates a fresh database with the current schema. Config and credential
- * vaults are untouched. The caller must hold the epoch-2 root lease.
+ * recreates a fresh database with the current schema. Everything stored in
+ * the database moves with it, including OpenAI-compatible providers and their
+ * credentials; config.json (with built-in provider credentials) is untouched.
+ * The caller must hold the epoch-2 root lease.
  */
 export function recoverEpoch2DatabaseSchemaMismatch(input: Readonly<{
   layout: Epoch2WorkspaceLayout

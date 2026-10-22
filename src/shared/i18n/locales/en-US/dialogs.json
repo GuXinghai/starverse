@@ -41,6 +41,16 @@
       "devStartupError": "Dev startup error",
       "viteDevServerMissing": "VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html."
     },
+    "schemaRecovery": {
+      "title": "Starverse database reset required",
+      "message": "The database schema does not match this version of Starverse.",
+      "detail": "Existing data cannot be migrated automatically. If you choose \"Back up and reset\", Starverse moves the current database into a backup folder and creates a new, empty database.\n\nMoved to the backup and not available afterwards: everything stored in the database, including conversations and their history, and OpenAI-compatible providers with their API keys.\nKept: app settings and the API keys of built-in providers.\n\nBackup folder:\n{backupRoot}",
+      "confirm": "Back up and reset",
+      "quit": "Quit",
+      "successMessage": "The database was backed up and reset.",
+      "successDetail": "The previous database was moved to:\n{backupDirectory}\nOpenAI-compatible providers and their API keys need to be set up again.",
+      "ok": "OK"
+    },
     "rendererRecovery": {
       "title": "Starverse window problem",
       "crashed": "The app window stopped working unexpectedly. The failure has been logged.",

@@ -4,6 +4,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { app } from 'electron'
 import {
+  canonicalizeGenerationV2SchemaDigestInActiveTransaction,
   installGenerationV2SchemaInActiveTransaction,
   verifyInstalledGenerationV2SchemaInActiveTransaction,
   upgradeComposerEditSessionSchemaInActiveTransaction,
@@ -333,6 +334,8 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         if (emptyInsideTransaction !== initiallyEmpty) {
           throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
         }
+        if (!initiallyEmpty) canonicalizeGenerationV2SchemaDigestInActiveTransaction(db, schemaRoot,
+          bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
         if (!initiallyEmpty) upgradeGeminiThinkingSemanticsInActiveTransaction(db, schemaRoot,
           bundle => readAndValidateIdentity({ db, bundle, layout: input.layout }))
         if (!initiallyEmpty) upgradeComposerEditSessionSchemaInActiveTransaction(db, schemaRoot,

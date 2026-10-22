@@ -3,7 +3,7 @@ import { normalizeProjectDuplicatePolicy } from '../src/shared/settings/projectD
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { checkConfigIntegrity, checkTotalSize, CURRENT_CONFIG_VERSION, migrateConfig, validateAndCleanConfig } from './config/configSchema'
-import { createAppShutdownCoordinatorV2, createStoreBackedQuitWarningSourceV2 } from './services/appShutdownCoordinatorV2'
+import { closeResourcesInOrderV2, createAppShutdownCoordinatorV2, createStoreBackedQuitWarningSourceV2 } from './services/appShutdownCoordinatorV2'
 import { RawGenerationRequestStore } from './debug/rawGenerationRequestStore'
 import { initMainI18n, t } from './i18n/mainI18n'
 import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
@@ -118,13 +118,12 @@ export async function startMainV2(): Promise<void> {
       const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
       return result.response === 0
     },
-    closeResources: async () => {
-      rawGenerationRequestStore.close()
-      await packagedTestDocxFixtureAuthority?.dispose()
-      await cloudRulesCandidateRefresh.dispose()
-      await modelsDevSourceRefresh.dispose()
-      await runtime.epoch2.close()
-    },
+    closeResources: () => closeResourcesInOrderV2([
+      () => rawGenerationRequestStore.close(),
+      () => packagedTestDocxFixtureAuthority?.dispose(),
+      () => cloudRulesCandidateRefresh.dispose(),
+      () => modelsDevSourceRefresh.dispose(),
+    ], () => runtime.epoch2.close()),
     exit: (code) => app.exit(code),
     onShutdownStarted: () => {
       mainWindowLifecycle.clearWindowListeners()

@@ -175,7 +175,8 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 |---|---|
 | 0 | Complete (this document and repair-phase-0.md) |
 | 1 | Complete, see [repair-phase-1.md](repair-phase-1.md) |
-| 2–8 | Not started |
+| 2 | Complete, see [repair-phase-2.md](repair-phase-2.md); R2-06 partly done (owner question in that report, section 6) |
+| 3–8 | Not started |
 
 ## 5. Still-unreviewed areas
 

@@ -24,6 +24,11 @@ const COMPOSER_EDIT_SESSION_PREDECESSOR_DIGESTS = Object.freeze([
   'dbc731ea21ed71aacd13963bcb0be554dc4a03fbdbe4d5fc18a2dfa1ae74595d', // CRLF serialized assets
   'f37bcbb510e7b7a20d61fa30601dd36fb8cbe2d58c8131b1c25e14e103aea51f', // reviewed mixed-ending Windows checkout
 ])
+// Current-schema digests stamped before fragments were hashed with LF line
+// endings (P2b-01). Only the identical current schema is re-stamped from them.
+const CURRENT_SCHEMA_RAW_LINE_ENDING_DIGESTS = Object.freeze([
+  '89007f35743f10b3a55732af0e3899a1077a5cd8494cb288b23af4e67c73d890', // reviewed mixed-ending Windows checkout
+])
 const LEGACY_MODEL_EVIDENCE_NAMESPACES = Object.freeze([
   Object.freeze({ setTable: 'deepseek_stable_model_evidence_sets', clockTable: 'deepseek_stable_model_evidence_generation_clock',
     setDeleteTrigger: 'deepseek_stable_model_evidence_no_delete',
@@ -211,7 +216,7 @@ function assertRoot(rootPath: string): string {
   return path.resolve(rootPath)
 }
 
-function readFragment(rootPath: string, id: string, fileName: string): LoadedFragment {
+function readFragment(rootPath: string, id: string, fileName: string, raw = false): LoadedFragment {
   const v2Root = path.resolve(rootPath, 'infra', 'db', 'v2')
   const fragmentPath = path.resolve(v2Root, fileName)
   const relative = path.relative(v2Root, fragmentPath)
@@ -222,21 +227,23 @@ function readFragment(rootPath: string, id: string, fileName: string): LoadedFra
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_FRAGMENT_BYTES) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_TOO_LARGE')
   }
-  const sql = bytes.toString('utf8')
-  if (Buffer.byteLength(sql, 'utf8') !== bytes.byteLength || sql.includes('\0') ||
+  const rawSql = bytes.toString('utf8')
+  // The schema identity must not depend on the checkout's line endings (P2b-01).
+  const sql = raw ? rawSql : rawSql.replace(/\r\n/gu, '\n')
+  if (Buffer.byteLength(rawSql, 'utf8') !== bytes.byteLength || sql.includes('\0') ||
       !sql.startsWith('-- Generation Compiler V2') ||
       /^\s*(?:PRAGMA|ATTACH|DETACH|VACUUM|COMMIT|ROLLBACK)\b/imu.test(sql) ||
       /^\s*BEGIN(?:\s+(?:DEFERRED|IMMEDIATE|EXCLUSIVE|TRANSACTION))?\s*;/imu.test(sql) ||
       /CREATE\s+(?:TABLE|VIEW|TRIGGER|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:project|convo|message|message_body|branch|branch_choice|branch_answer_hide)\b/iu.test(sql)) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
   }
-  return Object.freeze({ id, fileName, bytes, sql })
+  return Object.freeze({ id, fileName, bytes: raw ? bytes : Buffer.from(sql, 'utf8'), sql })
 }
 
-function loadFragments(rootPath: string): readonly LoadedFragment[] {
+function loadFragments(rootPath: string, raw = false): readonly LoadedFragment[] {
   const root = assertRoot(rootPath)
   return Object.freeze(FRAGMENTS.map((fragment) =>
-    readFragment(root, fragment.id, fragment.fileName)))
+    readFragment(root, fragment.id, fragment.fileName, raw)))
 }
 
 function loadPreRuleV2Fragments(rootPath: string): readonly LoadedFragment[] {
@@ -448,6 +455,62 @@ export function verifyInstalledGenerationV2SchemaInActiveTransaction(
     digestCurrentFragments(fragments),
     extractExpectedObjects(fragments),
   )
+}
+
+/**
+ * Re-stamps a database whose manifest carries the current schema's digest as
+ * computed from CRLF or mixed-ending fragment bytes (P2b-01). The installed
+ * schema must otherwise verify exactly; any other digest is left to the
+ * reviewed upgrades and the mismatch classification.
+ */
+export function canonicalizeGenerationV2SchemaDigestInActiveTransaction(
+  db: BetterSqlite3.Database, rootPath: string,
+  validatePredecessorIdentity: (bundle: GenerationV2SchemaBundle) => void,
+): void {
+  if (!db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+  const manifestObject = db.prepare("SELECT type FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'")
+    .get() as { type: string } | undefined
+  if (manifestObject?.type !== 'table') return
+  const manifest = db.prepare('SELECT schema_digest FROM generation_v2_schema_manifest WHERE manifest_id=?')
+    .get(MANIFEST_ID) as { schema_digest?: unknown } | undefined
+  const fragments = loadFragments(rootPath)
+  const schemaDigest = digestCurrentFragments(fragments)
+  const storedDigest = manifest?.schema_digest
+  if (typeof storedDigest !== 'string' || storedDigest === schemaDigest) return
+  const crlf = fragments.map(fragment => {
+    const sql = fragment.sql.replace(/\n/gu, '\r\n')
+    return Object.freeze({ ...fragment, sql, bytes: Buffer.from(sql, 'utf8') })
+  })
+  const aliases = new Set([
+    ...CURRENT_SCHEMA_RAW_LINE_ENDING_DIGESTS,
+    digestCurrentFragments(crlf),
+    digestCurrentFragments(loadFragments(rootPath, true)),
+  ])
+  if (!aliases.has(storedDigest)) return
+  const expectedObjects = extractExpectedObjects(fragments)
+  const previous = verifyLoadedGenerationV2Schema(db, fragments, storedDigest, expectedObjects)
+  // An alias names bytes, not objects: the installed objects must be the current ones.
+  const expectedDb = new BetterSqlite3(':memory:')
+  try {
+    expectedDb.pragma('foreign_keys = ON')
+    for (const fragment of fragments) expectedDb.exec(fragment.sql)
+    expectedDb.exec(MANIFEST_TABLE_SQL)
+    if (!schemaRowsEqual(installedSchemaRows(db), installedSchemaRows(expectedDb))) {
+      throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+    }
+  } finally { expectedDb.close() }
+  validatePredecessorIdentity(previous)
+  const identityTrigger = db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_app_meta_v2_immutable'")
+    .get() as { sql?: unknown } | undefined
+  if (typeof identityTrigger?.sql !== 'string') throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+  if (db.prepare('UPDATE app_meta_v2 SET schema_digest=? WHERE singleton_id=1 AND schema_digest=?')
+    .run(schemaDigest, storedDigest).changes !== 1) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  db.exec(identityTrigger.sql)
+  db.prepare('UPDATE generation_v2_schema_manifest SET schema_digest=? WHERE manifest_id=?').run(schemaDigest, MANIFEST_ID)
+  verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, expectedObjects)
 }
 
 // Reviewed pre-Gemini-thinking ontology/coverage bundle. SQL is unchanged by this
