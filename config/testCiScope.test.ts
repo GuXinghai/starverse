@@ -54,6 +54,37 @@ describe('test CI scope classifier', () => {
     })
   })
 
+  // P8-03: shared source trees are imported by both Electron/infra and renderer
+  // code, so their changes must reach the DB-backed and UI partitions.
+  it('runs both partitions for shared-core source changes', () => {
+    for (const file of [
+      'src/core/generation-v2/providers/anthropic/chatStreamV1.ts',
+      'src/shared/serialization/canonicalJsonV2.ts',
+      'config/appCsp.ts',
+      'tests/helpers/dbBridge.ts',
+      '.github/workflows/ci.yml',
+    ]) {
+      expect(resolveTestCiScope([file]), file).toMatchObject({ ui: true, integration: true })
+    }
+  })
+
+  it('keeps unit-owned shared-tree tests in the unit partition only', () => {
+    expect(resolveTestCiScope(['src/core/generation-v2/compiler/stableSerialize.test.ts'])).toMatchObject({
+      ui: false, integration: false,
+    })
+  })
+
+  it('routes scripts tests and sources to integration', () => {
+    expect(resolveTestCiScope(['scripts/agent/control.test.mjs'])).toMatchObject({ ui: false, integration: true })
+    expect(resolveTestCiScope(['scripts/agent/control.mjs'])).toMatchObject({ ui: false, integration: true })
+  })
+
+  it('runs every partition for a full run such as a push to main', () => {
+    expect(resolveTestCiScope(['README.md'], { fullRun: true })).toMatchObject({
+      ui: true, integration: true, reason: 'full-run',
+    })
+  })
+
   it('fails closed when the comparison base is unavailable', () => {
     expect(resolveTestCiScope([], { baseAvailable: false })).toMatchObject({
       ui: true, integration: true, reason: 'base-unavailable',

@@ -66,6 +66,7 @@ function defaultOwner(repoPath) {
     || lower.startsWith('electron/')
     || lower.startsWith('infra/')
     || lower.startsWith('tests/integration/')
+    || lower.startsWith('scripts/')
   ) return 'integration'
 
   return 'unit'

@@ -111,7 +111,7 @@
     "lint": "eslint . --ext .js,.cjs,.mjs,.ts,.tsx,.vue",
     "lint:changed": "node ./scripts/lint-changed.cjs",
     "typecheck": "vue-tsc --noEmit",
-    "verify:ssot": "npm run test && npm run gate:generation-v2-goal3-authority && node scripts/gates/tc17-ui-guardrails.mjs && node scripts/gates/tc18-ui-isolation.mjs && node scripts/gates/tc12.mjs --skip-tests && node scripts/gates/tc16-ssot-reasoning-visibility.mjs && npm run gate:network-egress && npm run gate:privacy && node scripts/gates/tc15-git-clean.mjs",
+    "verify:ssot": "npm run test && npm run gate:generation-v2-goal3-authority && node scripts/gates/tc17-ui-guardrails.mjs && node scripts/gates/tc18-ui-isolation.mjs && node scripts/gates/tc12.mjs --skip-tests && node scripts/gates/tc16-ssot-reasoning-visibility.mjs && npm run gate:network-egress && npm run gate:privacy && node scripts/gates/network-egress-gate.mjs --self-test && node scripts/gates/privacy-scan.mjs --self-test && npm run gate:generation-v2-zero-residual && npm run gate:generation-v2-capability-rule-authority && npm run gate:docs && npm run gate:tc13 && node scripts/gates/tc15-git-clean.mjs",
     "verify:live": "node scripts/gates/tc14-ui-live-smoke.mjs",
     "gate:tc13": "node scripts/gates/tc13-ui-isolation.mjs",
     "gate:tc14": "node scripts/gates/tc14-ui-live-smoke.mjs",

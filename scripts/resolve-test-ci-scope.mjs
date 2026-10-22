@@ -24,7 +24,16 @@ function isGlobalTestInfrastructure(file) {
     'tests/test-partition-overrides.json',
     'scripts/check-test-partitions.mjs',
     'scripts/resolve-test-ci-scope.mjs',
+    '.nvmrc',
+    '.github/workflows/ci.yml',
   ].includes(file)
+}
+
+// Shared trees imported by both Electron/infra and renderer code (P8-03).
+// src/next/ keeps override-based routing; pushes to main run every partition.
+function isSharedSource(file) {
+  return ['src/core/', 'src/shared/', 'config/', 'tests/helpers/', 'tests/fixtures/', 'tests/utils/']
+    .some(prefix => file.startsWith(prefix)) && !testSuffix.test(file)
 }
 
 function testOwner(file, overrides) {
@@ -32,7 +41,8 @@ function testOwner(file, overrides) {
   if (file.startsWith('src/ui-app/') || file.startsWith('src/ui-kit/') ||
       (file.startsWith('tests/e2e/') && /ui/i.test(file))) return 'ui'
   if (file.startsWith('electron/') || file.startsWith('infra/') ||
-      file.startsWith('tests/integration/') || file.startsWith('tests/e2e/')) return 'integration'
+      file.startsWith('tests/integration/') || file.startsWith('tests/e2e/') ||
+      file.startsWith('scripts/')) return 'integration'
   return 'unit'
 }
 
@@ -50,7 +60,8 @@ function sourceOwners(file, overrides) {
  * Resolve optional test partitions for a changed-file set. Unit is deliberately
  * always handled by CI; only UI and integration are conditional.
  */
-export function resolveTestCiScope(changedFiles, { baseAvailable = true, overrides = readOverrides() } = {}) {
+export function resolveTestCiScope(changedFiles, { baseAvailable = true, fullRun = false, overrides = readOverrides() } = {}) {
+  if (fullRun) return { ui: true, integration: true, reason: 'full-run' }
   if (!baseAvailable) return { ui: true, integration: true, reason: 'base-unavailable' }
 
   let ui = false
@@ -64,6 +75,10 @@ export function resolveTestCiScope(changedFiles, { baseAvailable = true, overrid
       continue
     }
     if (slowSuffix.test(path.basename(file))) continue
+    if (isSharedSource(file)) {
+      ui = true
+      integration = true
+    }
     if (file.startsWith('src/ui-app/') || file.startsWith('src/ui-kit/') ||
         file.endsWith('.vue') || file === 'tests/setup-ui.ts' ||
         file.startsWith('tests/helpers/electronBridge') || file.startsWith('tests/helpers/generationV2Bridge') ||
@@ -73,7 +88,7 @@ export function resolveTestCiScope(changedFiles, { baseAvailable = true, overrid
         file.startsWith('tests/integration/') ||
         (file.startsWith('tests/e2e/') && !/ui/i.test(file)) ||
         file === 'tests/setup-node.ts' || file === 'vitest.integration.config.ts' ||
-        file.startsWith('scripts/dfc/')) integration = true
+        file.startsWith('scripts/')) integration = true
     if (testSuffix.test(file)) {
       const owner = testOwner(file, overrides)
       if (owner === 'ui') ui = true
@@ -112,8 +127,9 @@ function writeGithubOutput(scope) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const base = process.env.GITHUB_BASE_SHA ?? ''
-  const available = baseExists(base)
-  const scope = resolveTestCiScope(available ? changedFilesSince(base) : [], { baseAvailable: available })
+  const fullRun = process.env.SV_TEST_SCOPE_FULL === 'true'
+  const available = fullRun || baseExists(base)
+  const scope = resolveTestCiScope(available && !fullRun ? changedFilesSince(base) : [], { baseAvailable: available, fullRun })
   writeGithubOutput(scope)
   process.stdout.write(`${JSON.stringify(scope)}\n`)
 }

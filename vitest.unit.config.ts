@@ -18,11 +18,9 @@ const unitExclude = [
   'src/ui-app/**/*.ui.test.*',
   ...partitionOverridePaths.ui,
   ...partitionOverridePaths.integration,
-  'tests/e2e/**',
-  'tests/integration/**',
-  'electron/**/*.test.*',
-  'infra/**/*.test.*',
-  'scripts/**/*.test.*',
+  // electron/, infra/, scripts/ and tests/ are outside unitInclude already.
+  // Excluding them here would also drop unit overrides, because Vitest applies
+  // exclude after include (P8-04).
 ]
 
 const slow = applySlowGate(unitInclude)

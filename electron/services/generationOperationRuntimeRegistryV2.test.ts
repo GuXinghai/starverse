@@ -21,6 +21,7 @@ import {
 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
+import { GenerationNativeCompletionMaterializationPendingV2Error } from './generationNativeCompletionV2'
 import { GenerationOperationRuntimeRegistryV2 } from './generationOperationRuntimeRegistryV2'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
@@ -453,6 +454,30 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
         status: 'failed',
         lastSequence: 1,
       })
+    } finally {
+      db.close()
+    }
+  })
+
+  // P4a-01: when the native-completion receipt insert fails, the runner rethrows
+  // a materialization-pending error with `receiptPersisted: false`. The registry
+  // ignores that error class, so no receipt exists to recover from and the
+  // operation is never terminalized. Remove `.fails` when fixed.
+  it.fails('P4a-01: terminalizes the operation when the completion receipt could not be persisted', async () => {
+    const db = createDb()
+    try {
+      const execution = seedOperation(db, 'receipt-insert-failure')
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+      expect(registry.start(
+        { kind: 'created', execution },
+        async () => { throw new GenerationNativeCompletionMaterializationPendingV2Error({ receiptPersisted: false }) },
+      )).toBe(true)
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(new GenerationExecutionV2Repo(db).getOperation('operation:receipt-insert-failure').operation)
+        .toMatchObject({ state: 'failed' })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?')
+        .get('answer:receipt-insert-failure')).toEqual({ status: 'failed' })
     } finally {
       db.close()
     }

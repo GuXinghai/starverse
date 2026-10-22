@@ -12,6 +12,8 @@ import { completeOpenAIResponsesProjectedRequestV2 } from '../../../src/core/gen
 import { decodeOpenAIResponsesReplayItemsV1 } from '../../../src/core/generation-v2/providers/openai-responses/nativeItemsV1'
 import { compileOpenAIResponsesRequestV1 } from '../../../src/core/generation-v2/providers/openai-responses/responsesRequestV1'
 import { createOpenRouterNativeHistoryArtifactV1 } from '../../../src/core/generation-v2/providers/openrouter/nativeMessagesV1'
+import { compileAnthropicMessagesRequestV1 } from '../../../src/core/generation-v2/providers/anthropic/messagesRequestV1'
+import { decodeResolvedGenerationIntentV2 } from '../../../src/core/generation-v2/domain/resolvedGenerationIntentV2'
 import { compileOpenRouterChatRequestV1 } from '../../../src/core/generation-v2/providers/openrouter/chatRequestV1'
 import { createDeepSeekNativeHistoryArtifactV2 } from '../../../src/core/generation-v2/providers/deepseek/nativeMessagesV1'
 import { createAnthropicNativeHistoryArtifactV1 } from '../../../src/core/generation-v2/providers/anthropic/nativeContentBlocksV1'
@@ -604,6 +606,43 @@ describe('portable history across text protocols', () => {
     addTurn(db, 'anthropic', 2, false)
     transaction(db, context => expect(JSON.stringify(loadPortableGenerationHistoryV2(db, context, 'operation:2', 'anthropic'))).toContain('historical attachment body'))
     unregister()
+  })
+
+  // P3b-01: switching a conversation to Anthropic routes earlier non-Anthropic
+  // answers through portable history, which emits string assistant content.
+  // The Anthropic request decoder requires an array of content blocks for
+  // assistant turns, so the switched request cannot compile. Remove `.fails` when fixed.
+  it.fails('P3b-01: portable history for an Anthropic target compiles through the Anthropic request decoder', () => {
+    const db = database()
+    addTurn(db, 'openrouter', 1, true)
+    addTurn(db, 'anthropic', 2, false)
+    const intent = decodeResolvedGenerationIntentV2({ schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' },
+      web: { mode: 'disabled' }, image: { mode: 'disabled' }, tools: { mode: 'disabled' }, attachments: [],
+      providerExtension: { kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'model_recommended' } }).value
+    transaction(db, context => {
+      const history = loadPortableGenerationHistoryV2(db, context, 'operation:2', 'anthropic')
+      expect(JSON.stringify(history)).toContain('answer 1')
+      expect(() => compileAnthropicMessagesRequestV1({ modelId: 'claude-test', intent,
+        messages: [...history ?? [], { role: 'user', content: 'question 2' }] })).not.toThrow()
+    })
+  })
+
+  // P4a-03: an interrupted Anthropic turn without a native checkpoint falls back
+  // to persisted text and emits string assistant content, which the Anthropic
+  // request decoder rejects, so later requests in the conversation cannot compile.
+  // Remove `.fails` when fixed.
+  it.fails('P4a-03: the interrupted Anthropic text fallback compiles through the Anthropic request decoder', () => {
+    const db = database()
+    addTurn(db, 'anthropic', 1, true, [], undefined, 'cancelled')
+    const intent = decodeResolvedGenerationIntentV2({ schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' },
+      web: { mode: 'disabled' }, image: { mode: 'disabled' }, tools: { mode: 'disabled' }, attachments: [],
+      providerExtension: { kind: 'anthropic_messages', thinkingDisplay: 'provider_default', thinkingMode: 'model_recommended' } }).value
+    transaction(db, context => {
+      const replay = new GenerationInterruptedReplayV2Repo(db).load(context, 'answer:1', 'anthropic')
+      expect(JSON.stringify(replay)).toContain('answer 1')
+      expect(() => compileAnthropicMessagesRequestV1({ modelId: 'claude-test', intent,
+        messages: [...replay ?? [], { role: 'user', content: 'question 2' }] })).not.toThrow()
+    })
   })
 
   it.each(['openai', 'lmstudio'] as const)(

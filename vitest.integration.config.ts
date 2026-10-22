@@ -7,7 +7,7 @@ const integrationInclude = [
   'tests/integration/**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}',
   'tests/e2e/**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}',
   'scripts/**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}',
-  'tools/**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}',
+  // tools/ is unit-owned by default; integration-owned tools tests use overrides.
   ...partitionOverridePaths.integration,
 ]
 

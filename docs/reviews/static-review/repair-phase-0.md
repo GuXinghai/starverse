@@ -172,3 +172,21 @@ The decisions are numbered D-1 to D-6 in [repair-plan.md](repair-plan.md) sectio
 It requires `npm run rebuild:node` under the AGENTS.md ABI policy and runs only scoped tests. Implementation would go on a new branch, proposed as `codex/static-review-repairs`, cut from this branch's tip.
 
 This phase is complete. I have stopped and am waiting for your instruction to continue.
+
+---
+
+## Addendum: owner answers and a count correction (added 2026-10-22, before repair Phase 1)
+
+The text above is the Phase 0 record and is unchanged. These later decisions supersede parts of it.
+
+### Owner answers to OQ-1 to OQ-4
+- **OQ-1 → D-5a.** Deleting a conversation also deletes its original request records and archive indexes, scoped to that conversation and never removing shared resources still referenced elsewhere. Section 4's P2b-07 row ("deletion-scope question OQ-1") is resolved: conversation-scoped purge becomes part of R7-04.
+- **OQ-2 → D-2r.** This round makes no development/release distinction. Old data and incompatible databases may be deleted and recreated by default on the designated legacy-data and schema-recovery paths. **Superseded:** the release-guard requirement in section 4 (rows I2a-01 and the `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH` exception in C-04) and repair item R2-03. Formal-release data protection becomes future release-preparation work. P2a-03, P3a-16 and P2a-11 are accepted (legacy data may be reset) rather than pending. D-4 still applies: ordinary runtime failures must not become automatic resets, and the false mismatch in P2b-01 is still a defect.
+- **OQ-3 → D-7.** Keep the in-app browser and harden it (R6-10 covers P1-02, P1-03 and P7-05).
+- **OQ-4 → D-8.** Investigation only. R4-01 traces first-install activation; behaviour is preserved until the evidence justifies a change.
+
+### Predecessor-upgrade count (C-04)
+C-04 says "six additive upgrades" but its list names seven routines, because the request-contract entry includes the pre-capacity contract. Both counts are right for different things:
+- **Six exported entry points** run in sequence at `freshEpochDatabaseInitializer.ts:336-347`: Gemini thinking semantics, composer edit session, interrupted replay, request contract, request rules, and OpenAI image output.
+- **Seven upgrade routines** in total. `upgradeRequestContractSchemaInActiveTransaction` (`schemaComposerV2.ts:775-786`) dispatches internally to a seventh, non-exported routine, `upgradePreCapacityRequestContractSchemaInActiveTransaction` (`:687`), when the database is at the pre-capacity contract.
+- The number of recognised predecessor **digests** is larger again, because some steps pin LF, CRLF and mixed-ending variants (`:22-26`, `:461-465`).

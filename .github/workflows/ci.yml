@@ -23,6 +23,8 @@ jobs:
         name: Classify changed paths
         env:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # Pushes (main only, per `on:`) run every partition (P8-03).
+          SV_TEST_SCOPE_FULL: ${{ github.event_name == 'push' }}
         run: node scripts/resolve-test-ci-scope.mjs
 
   verify-ssot:
@@ -57,6 +59,8 @@ jobs:
         run: npm run typecheck
       - name: Run verify:ssot
         run: bash -o pipefail -lc "npm run verify:ssot | tee verify.log"
+      - name: Gate vite renderer resolution (P8-11)
+        run: npm run gate:vite-renderer-resolution
       - name: Build renderer artifacts
         run: npx vite build
       - name: Gate tc20 (KaTeX CSS artifact assertion)

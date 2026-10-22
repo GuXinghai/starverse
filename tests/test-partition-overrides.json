@@ -1,5 +1,6 @@
 {
   "electron/data-epoch/epochNativeBoundary.test.ts": "unit",
+  "src/ui-app/rendererImportBoundary.test.ts": "unit",
   "src/ui-app/app/sendButtonMode.test.ts": "unit",
   "src/ui-app/app/reasoningArtifactLifecycle.test.ts": "unit",
   "src/ui-app/app/reasoningArtifactCollector.test.ts": "unit",

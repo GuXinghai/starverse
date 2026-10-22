@@ -2,7 +2,7 @@
 
 **Status**: active
 **Document Role**: handoff
-**Last updated**: 2026-10-22 (repair Phase 0)
+**Last updated**: 2026-10-22 (repair Phase 1)
 
 ## Repository and baseline
 
@@ -38,6 +38,7 @@ Read these reports and the applicable repository instructions (`AGENTS.md`) befo
 | 15 | [Phase 9: consolidation](phase-9.md) | No new IDs; reconciled register, root-cause groups RC-01..18; section 7 holds the post-review corrections |
 | 16 | [Repair Phase 0: corrections and reclassification](repair-phase-0.md) | Corrections C-01..C-07; owner decisions D-1..D-6 applied |
 | 17 | [Repair plan](repair-plan.md) | Repair phases 1–8, items R1-01..R7-08, owner questions OQ-1..OQ-4 |
+| 18 | [Repair Phase 1: verification foundations](repair-phase-1.md) | R1-01..R1-04; fixes P8-03, P8-04, P8-05; P8-11 in part; failing regression tests for P2a-01, P2b-01, P3b-01, P4a-01, P4a-03, P4a-04, P4a-05 |
 
 These are static-review reports and do not show runtime behaviour.
 - Preserve their finding IDs, uncertainty labels, coverage gaps and rejected hypotheses.
@@ -46,7 +47,9 @@ These are static-review reports and do not show runtime behaviour.
 
 ## Current stopping point
 
-**Repair Phase 0 is complete; repair Phase 1 has not started.** The owner gave six decisions (D-1 to D-6 in [repair-plan.md](repair-plan.md) section 1) and asked for the repairs to run one phase at a time, each authorised by "continue".
+**Repair Phase 1 is complete; repair Phase 2 has not started.** Phase 1 is on branch `codex/static-review-repairs`, cut from the review branch tip (`3e0f26c`); see [repair-phase-1.md](repair-phase-1.md). Phase 1 found that every test partition and `verify:ssot` already fail at the baseline, so CI is red independently of the repairs (section 4 of that report). Repair Phase 0 is complete. The owner gave six decisions (D-1 to D-6 in [repair-plan.md](repair-plan.md) section 1) and asked for the repairs to run one phase at a time, each authorised by "continue".
+
+**Owner answers (after Phase 0):** OQ-1 → D-5a (conversation deletion also deletes its request records and archive indexes); OQ-2 → D-2r (no development/release distinction this round; legacy data and incompatible databases may be reset by default; R2-03 release guard withdrawn and deferred to release preparation); OQ-3 → D-7 (keep and harden the in-app browser); OQ-4 → D-8 (investigate first-install rule activation in R4-01 without changing it). Repairs run on branch `codex/static-review-repairs`.
 
 Phase 0 produced:
 - [repair-phase-0.md](repair-phase-0.md): corrections C-01 to C-07 (P4a-06 back to Suspected, P4b-03/P4b-04 conditions restored, other overstated labels, the reviewed predecessor-upgrade boundary, counting rules, coverage reconciled by path, Phase 3b's mislabelled IDs) and the owner-policy reclassification.
@@ -110,7 +113,7 @@ The cross-phase links are recorded in each report:
 
 ## Exact next step
 
-Wait for the owner's "continue", then run **repair Phase 1 (verification foundations)** only, as defined in repair-plan.md section 3. Implementation goes on a new branch, `codex/static-review-repairs`, cut from this branch's tip. Owner questions OQ-1 to OQ-4 are recorded there and do not block Phase 1.
+Wait for the owner's "continue", then run **repair Phase 2 (data integrity, startup and failure isolation)** only, as defined in [repair-plan.md](repair-plan.md) section 3, on `codex/static-review-repairs`. OQ-1 to OQ-3 are answered (D-5a, D-2r, OQ-3 keep and harden); OQ-4 remains an investigation item under R4-01. Phase 2 starts by flipping the R1-03 tests it fixes (P2b-01, P2a-01, P4a-01) from `it.fails` to `it`. The Phase 1 report lists the gates and limitations it leaves open.
 
 ## Review workflow to preserve
 

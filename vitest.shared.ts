@@ -72,13 +72,13 @@ function cliTestPaths() {
  * explicit slow-segment test CLI path.  Without both conditions, slow files
  * remain excluded even when a broad Vitest command is used.
  */
-function ownerForTestPath(repoPath: string): 'unit' | 'ui' | 'integration' {
+export function ownerForTestPath(repoPath: string): 'unit' | 'ui' | 'integration' {
   const override = (partitionOverrides as Record<string, string>)[repoPath]
   if (override === 'unit' || override === 'ui' || override === 'integration') return override
   if (repoPath.startsWith('src/ui-app/') || repoPath.startsWith('src/ui-kit/') ||
       (repoPath.startsWith('tests/e2e/') && /ui/i.test(repoPath))) return 'ui'
   if (repoPath.startsWith('electron/') || repoPath.startsWith('infra/') || repoPath.startsWith('tests/integration/') ||
-      repoPath.startsWith('tests/e2e/')) return 'integration'
+      repoPath.startsWith('tests/e2e/') || repoPath.startsWith('scripts/')) return 'integration'
   return 'unit'
 }
 

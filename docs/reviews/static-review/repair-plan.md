@@ -2,7 +2,7 @@
 
 **Status**: active
 **Document Role**: plan
-**Last updated**: 2026-10-22 (repair Phase 0)
+**Last updated**: 2026-10-22 (owner answers to OQ-1–OQ-4; repair Phase 1)
 
 This plan replaces the repair order in [phase-9.md](phase-9.md) section 5, which stays as a historical record. Finding IDs and evidence classes come from phase-9.md as corrected by [repair-phase-0.md](repair-phase-0.md).
 
@@ -13,16 +13,21 @@ Each phase runs only when the owner says "continue", and stops with a report. A 
 | ID | Decision | What it allows | What it does not allow |
 |---|---|---|---|
 | D-1 | Development data may be deleted and recreated | Resetting the application's designated development data during development. No mandatory backup or migration system is needed as a prerequisite | Touching unrelated directories or arbitrary user files |
-| D-2 | Development builds may reset incompatible databases; formal releases must not silently delete or recreate user data | A development-only reset path, kept clearly separate from release behaviour. A packaged development build is not automatically a formal release | Shipping development-only destructive recovery in a formal release; breaking the reviewed predecessor upgrades. A full migration framework is not required this round |
+| D-2 | ~~Development builds may reset incompatible databases; formal releases must not silently delete or recreate user data~~ **Superseded for this round by D-2r below (OQ-2 answer).** | — | — |
+| D-2r | (OQ-2 answer) No development/release distinction in this round. Old application data or an incompatible database may be deleted and recreated by default, through the designated legacy-data and schema-recovery paths | Default reset on the legacy-data and schema-recovery paths; keeping the existing reviewed predecessor upgrades | A general migration framework or a release-protection gate now; deleting unrelated files; turning ordinary runtime failures into automatic database resets (D-4 still applies). Formal-release data protection is future release-preparation work |
 | D-3 | No generation timeouts this round | Repairing cancellation, cleanup, terminal states and recovery on their own | Adding generation connect, first-byte, idle or overall timeouts. Download and probe bounds are **not** waived |
 | D-4 | Keep failures local | Isolating one broken generation, receipt, conversation, plugin or integration. An explicit restricted mode when integrity cannot be established | Hiding errors, or marking incomplete work as successful |
-| D-5 | Original request bodies are a long-term product record | Fixing storage cost, indexing, duplication, access boundaries and explicit user deletion | Disabling capture by default, expiring or truncating originals, deleting by age, or redacting user-authored content and calling it the original. Transport credentials must stay out |
+| D-5 | Original request bodies are a long-term product record while their conversation exists | Fixing storage cost, indexing, duplication, access boundaries and explicit user deletion | Disabling capture by default, expiring or truncating originals, deleting by age, or redacting user-authored content and calling it the original. Application-injected credentials must stay out |
+| D-5a | (OQ-1 answer) Deleting a conversation also deletes its original request records and related archive indexes | Conversation-scoped archive deletion | Deleting shared resources still referenced elsewhere; age-based expiry; truncation; default-off capture |
+| D-7 | (OQ-3 answer) Keep the in-app browser for future use | Repairing and hardening it | Removing it as dead or unnecessary |
+| D-8 | (OQ-4 answer) Investigate first-install automatic rule activation; preserve current behaviour | Tracing trigger, validation, timing and relationship to capability refresh | Changing the activation policy before evidence is reported and a change is justified |
 | D-6 | Refresh when a rule set becomes effective | Proactively recomputing capabilities, UI projections and pending-send configuration. Keeping the send-time revision check, and re-preparing a stale pending request | Activating staged candidates early; silently resetting or clamping user values; resending a request that already reached the provider; changing in-flight frozen snapshots; blanket rejection of documented test and internal-replay paths |
 
 **Deferred by owner:**
 - Generation timeouts (I4a-01; D-3).
-- A general schema migration framework (I2a-02; D-2).
-- Any new automatic purge of request archives (D-5, OQ-1).
+- A general schema migration framework (I2a-02; D-2r).
+- Formal-release data protection: a development/release channel, a guard against destructive or auto-approved recovery in releases, and the legacy-purge guard (formerly R2-03; D-2r). This is future release-preparation work.
+- Any age-based or other automatic archive purge beyond conversation deletion (D-5, D-5a).
 
 ## 2. Working rules for every phase
 
@@ -59,17 +64,17 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 
 | Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
 |---|---|---|---|---|---|---|
-| R2-01 | P2b-01 (+P8-01) | One schema produces one digest whatever the checkout's line endings. Databases stamped by the current schema from LF, CRLF or mixed checkouts are all recognised. The reviewed predecessor upgrades keep working | B. The R1-03 test hashes LF, CRLF and mixed copies of the fragments | Add `.gitattributes` (`*.sql text eol=lf`); normalise CRLF before hashing; accept the current schema's raw CRLF and mixed digests as aliases and re-stamp them inside the existing transaction | R1-03 test flips; the existing `schemaComposerV2.test.ts` upgrade tests; an Electron smoke on an isolated profile created from a CRLF checkout | No false `EPOCH2_DATABASE_SCHEMA_MISMATCH` for an identical schema; predecessor fixtures still upgrade |
-| R2-02 | P2a-02 | The recovery dialog states exactly what moves to the backup (including OpenAI-compatible providers and their credentials) and where the backup is; success is shown in the UI, not only on stderr | A | `schemaMismatchRecoveryPrompt.ts`, `epoch2MainEntry.ts`; localise the strings | Unit test of the dialog options; Electron smoke of the dialog on an isolated profile | Text matches `schemaMismatchRecovery.ts` behaviour; backup path shown |
-| R2-03 | I2a-01, C-04 auto-approve env var | A formal release never runs destructive or auto-approved recovery: no unattended legacy purge, and `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH` is ignored. Development builds keep both | New requirement (D-2) | Introduce one build-time release-channel marker (a formal release is declared, not inferred from `app.isPackaged`); gate the auto-approval and the legacy purge on it; in a release, a mismatch or legacy layout leads to the consent dialog or a restricted mode, never a silent action; add a packaging gate that fails a release build if a development-only authority is reachable; write `docs/maintenance/release-data-safety.md` | Unit tests of the gate in both channels; the packaging-gate self-test | Release channel: no path deletes or recreates user data without consent. Development channel unchanged |
+| R2-01 | P2b-01 (+P8-01) | One schema produces one digest whatever the checkout's line endings. Databases stamped by the current schema from LF, CRLF or mixed checkouts are all recognised. The reviewed predecessor upgrades keep working | B. The R1-03 test hashes LF, CRLF and mixed copies of the fragments | Add `.gitattributes` (`*.sql text eol=lf`); normalise CRLF before hashing; accept the current schema's raw CRLF and mixed digests as aliases and re-stamp them inside the existing transaction | R1-03 test flips; the existing `schemaComposerV2.test.ts` upgrade tests; an Electron smoke on an isolated profile created from a CRLF checkout | No false `EPOCH2_DATABASE_SCHEMA_MISMATCH` for an identical schema; predecessor fixtures still upgrade. D-2r allows resetting genuinely incompatible databases, not identical ones |
+| R2-02 | P2a-02 (lower priority under D-2r) | The recovery dialog states exactly what moves to the backup (including OpenAI-compatible providers and their credentials) and where the backup is; success is shown in the UI, not only on stderr | A | `schemaMismatchRecoveryPrompt.ts`, `epoch2MainEntry.ts`; localise the strings | Unit test of the dialog options; Electron smoke of the dialog on an isolated profile | Text matches `schemaMismatchRecovery.ts` behaviour; backup path shown |
+| ~~R2-03~~ | I2a-01, C-04 auto-approve env var | **Withdrawn by D-2r (OQ-2).** No development/release separation or release guard this round. The legacy purge and the schema-recovery path stay as they are, and `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH` is accepted behaviour. Recorded as future release-preparation work | — | — | — | — |
 | R2-04 | P2a-01 | A crash between epoch-root creation and the journal write is resumable | B. Reproduce with a test that creates the root and stops before the journal write | `epochRootCoordinatorCore.ts` / `epoch2CommittedBootstrap.ts`: treat an empty root left at `config_replaced` as resumable | The R1-03 test flips; existing epoch tests (Windows partition) | Later starts proceed. A non-empty unexpected root still fails closed |
 | R2-05 | P4a-01, P2b-02 (+P4a-02), P2b-06 | Every operation reaches a terminal state: a failed receipt insert ends the operation as failed with Stop working; a receipt that can never materialise ends after the retry budget; the branch lock is released | A / B | `generationNativeCompletionV2.ts`, `generationOperationRuntimeRegistryV2.ts:234`, `generationOrphanRecoveryV2.ts:165-166` | R1-03 test for P4a-01; a test for a non-materialisable pending receipt | No operation remains `streaming` without a live runner. The error is recorded, not reported as success (D-4) |
 | R2-06 | P2b-05, I4a-07 | One corrupt artifact quarantines its own operation and leaves the rest of startup working; if database integrity cannot be established, the app enters an explicit restricted mode | S. Reproduce first with a corrupt-artifact fixture | Orphan recovery: per-operation try/quarantine; startup restricted mode only for integrity failures | Fixture test; an Electron smoke with a corrupted isolated profile | The app starts, the affected conversation shows an error state, and the rest is usable |
 | R2-07 | P4a-18, P1-06, P1-04 (RC-17) | Unhandled main-process failures are logged and surfaced; a startup failure closes the runtime; a failing `closeResources` step does not skip the DB close | S / A / B | Minimal handlers only | Unit tests where possible | Failure is visible and does not leave the DB open |
 
 **Optional if small:** P2a-05 (recovery resume after a crash), P2a-06 (config rename window).
-**Not in Phase 2:** migration framework (deferred); legacy-path findings P2a-03, P3a-16, P2a-11 (pending OQ-2).
-**Real-runtime checks:** `npm run rebuild:electron` followed by an Electron smoke on isolated profiles for R2-01, R2-02, R2-03 (development channel) and R2-06. A packaged release-channel check of R2-03 is deferred to Phase 8 if a release-channel package cannot be built locally.
+**Not in Phase 2:** migration framework and release guard (deferred, D-2r); legacy-path findings P2a-03, P3a-16, P2a-11 (accepted under D-2r: legacy data may be reset; no repair this round).
+**Real-runtime checks:** `npm run rebuild:electron` followed by an Electron smoke on isolated profiles for R2-01, R2-02 and R2-06.
 **Stop if:** R2-01 cannot accept the existing digests without changing a pinned predecessor constant. Report it rather than editing the pinned values.
 
 ### Phase 3: generation and protocol correctness
@@ -97,7 +102,7 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 
 | Item | Findings | Intended behaviour | Evidence / reproduction | Minimal scope | Checks | Acceptance |
 |---|---|---|---|---|---|---|
-| R4-01 | New (D-6) | Map current behaviour before changing it | Mapping by one read-only subagent: how activation (cloud apply, rollback, user save, bootstrap) changes `capabilityRevision`; what the renderer recomputes; how `STALE_CAPABILITY_REVISION` is handled at send | Report only | — | A written map with file:line; gaps listed |
+| R4-01 | New (D-6, D-8) | Map current behaviour before changing it. Includes OQ-4: first-install automatic activation (`applyBootstrapCandidate`, `cloudRulesApplicationV1Service.ts:178-191`, reached through `modelFactsSemanticInvalidationV1.ts:22` from `mainV2.ts:205`): its trigger, validation, timing, and whether it bumps the capability revision and reaches renderers | Mapping by one read-only subagent: how activation (cloud apply, rollback, user save, bootstrap) changes `capabilityRevision`; what the renderer recomputes; how `STALE_CAPABILITY_REVISION` is handled at send | Report only; activation policy unchanged (D-8) | — | A written map with file:line; gaps listed; an OQ-4 evidence section proposing, not making, any justified change |
 | R4-02 | New (D-6) | When a rule set becomes effective, main notifies renderers; capability projections, model-picker facts, composer chips and pending-send configuration are recomputed | Depends on R4-01 | One activation event from main; renderer subscribers re-derive | Logic tests: activation leads to recomputed projection | UI reflects the new rules without a reload |
 | R4-03 | New (D-6), P3b-02 clamp, P6a-11, P6b-10 | A user value the new rules allow is preserved. A value they forbid is flagged with an explanation and blocks sending until adjusted, never silently reset or clamped | A | Validation result surfaced in the composer and console | Tests for preserved, conflicting and newly unsupported values | No silent value change |
 | R4-04 | New (D-6) | A stale pending request (not yet sent) is refreshed and revalidated before dispatch; a request that already reached the provider is never resent; in-flight generations keep their frozen snapshot | B | Renderer send path: on `STALE_CAPABILITY_REVISION`, re-prepare and revalidate once, then send or surface the conflict | Tests: stale-before-send re-prepares; in-flight is untouched | No automatic resend after dispatch |
@@ -130,13 +135,13 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | R6-01 | P8-02 | Electron fuses set: `RunAsNode` off, ASAR integrity on, and the related fuses | Builder config | `npx @electron/fuses read` on a built executable (packaged check) |
 | R6-02 | P5a-01 | LibreOffice runs with macros, links and network disabled | Runner arguments and profile | Fixture DOCX with a macro and an external link (isolated) |
 | R6-03 | P5a-02, P5a-03 (+P1-10) | Plugin code is re-verified on load; the health check cannot run manifest-chosen commands; `register-local-package` is not reachable in a release | Plugin lifecycle | Unit tests with a tampered package |
-| R6-04 | P3a-01 | Rule assets are signature-checked against a compiled-in key (bootstrap opt-in is OQ-4) | Cloud rules refresh | Tampered-fixture test |
+| R6-04 | P3a-01 | Rule assets are signature-checked against a compiled-in key. Bootstrap activation policy unchanged unless R4-01's OQ-4 evidence justifies a change | Cloud rules refresh | Tampered-fixture test |
 | R6-05 | P5b-03, P1-12, P3b-05, P3a-10, P3a-11, P5a-10, P5b-12, P7-06 (RC-08) | Downloads and probes are bounded in size and time and check each hop's host at connection level. D-3 does not cover these | Network helpers | Local test servers |
 | R6-06 | P1-11, P5a-13, P1-09, P5b-10, P7-09, P4b-06 (RC-11) | IPC handlers check sender and frame and validate values; the vestigial relay is removed | IPC cores | Unit tests per handler |
 | R6-07 | P1-08 / I7-01, P7-04, P8-14 (RC-12) | CSP adds `base-uri` and `form-action`, production `connect-src 'self'`, an `img[src]` hook; dev and prod CSP follow Vite mode | CSP config | CSP unit tests and a packaged check |
 | R6-08 | P8-08, P8-09, P8-13, P8-10 | Release workflows use least privilege and protected refs; assets are not silently replaced | Workflows | Workflow review; no release is published |
 | R6-09 | P2a-09, P7-07, P6a-13 (RC-18) | Credentials and endpoint userinfo never reach logs, error archives or localStorage. Only app-injected transport credentials are redacted; user-authored content is never redacted | Sanitiser wiring | Tests with credential-shaped values |
-| R6-10 | P1-02, P1-03, P7-05 | Depends on OQ-3: harden the in-app browser if kept, or remove its exposed IPC | — | — |
+| R6-10 | P1-02, P1-03, P7-05 | (D-7) The in-app browser is kept: it is built and loaded correctly, its session has permission request and check handlers, and remote content is hardened (sandbox, no node integration, navigation and window-open policy) | `inappBrowser.ts`, its preload and build entry | Handler unit tests; an Electron smoke opening a local test page |
 
 **Real-runtime checks:** a packaged build for R6-01 and R6-07. Nothing is published.
 
@@ -149,7 +154,7 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | R7-01 | P7-03 (cost), P2b-07 (residual) | Capture stays on and keeps the full canonical body, without blocking the main thread per send | Move hashing and insert off the send path, or batch them; keep the stored bytes identical | Before/after timing on a large synthetic body; byte-equality test |
 | R7-02 | P2b-07 (residual) | Identical bodies (retries, repeated attachments) are stored once by content address, still returning the exact original; the archive is indexed by answer and conversation | Schema plus repository | Equality and lookup tests |
 | R7-03 | P7-03 (access) | The archive's IPC checks sender and frame (main window only) | IPC handler | Unit test |
-| R7-04 | D-5 explicit deletion | The user can delete archive records explicitly (per answer or conversation, from the inspection UI), with confirmation | Repository, IPC and UI | Tests. Conversation deletion does **not** purge the archive until OQ-1 is answered |
+| R7-04 | D-5a (OQ-1), P2b-07 | Deleting a conversation deletes its request records (`raw_generation_requests`, `raw_provider_errors`) and archive indexes. Content-addressed bodies (R7-02) are removed only when no other conversation references them. The archive is a separate SQLite file, so the purge must survive a crash between the two deletes (for example a pending-purge marker retried at startup). Explicit per-answer deletion from the inspection UI is optional | Raw store repository and the conversation-delete path | Tests: delete removes only that conversation's records; shared bodies survive; an interrupted purge completes on the next start |
 | R7-05 | — | Verify that no transport credential reaches the archive (bodies only; headers are not stored, per `rawGenerationRequestStore.ts:76-98`) and that provider error payloads echoing a key are redacted of that key only | Test with credential-shaped headers and error bodies | Archive contains the user content unchanged and no credentials |
 | R7-06 | P4a-13 (+P7-01), P2b-10 (+P7-02), P4b-02, P4b-05, P4b-14, P4b-13, P6b-05 (RC-05) | Terminal operations leave the runtime registry; subscribe sends only live operations; checkpoints and renderer buffers are bounded | Registry, checkpoint, renderer buffers | Measure before and after (memory and latency, synthetic long session) |
 | R7-07 | P2b-04, P5b-05, P5b-06, P5b-11, P2b-09, I2a-04 (RC-09) | Unreferenced attachment blobs and derived assets are reclaimed by a guarded sweep; request-archive copies are untouched | Blob store | Sweep tests |
@@ -169,7 +174,8 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | Phase | Status |
 |---|---|
 | 0 | Complete (this document and repair-phase-0.md) |
-| 1–8 | Not started |
+| 1 | Complete, see [repair-phase-1.md](repair-phase-1.md) |
+| 2–8 | Not started |
 
 ## 5. Still-unreviewed areas
 
@@ -178,9 +184,9 @@ These are from phase-9.md section 7.4, the corrected list. Repairs that touch on
 - **Renderer:** the `appChatApp.logic.ts` regions listed in phase-4b; `projectReasoningPresentationV2`; `ChatAppReasoningPanel.vue`; `richtext.css`; `ModelPickerDialog.vue` after template line 2420; about 1,500 template lines of `SettingsPanel.vue`; the lower half of `EndpointDetailPanel.vue` and the other 6a panels; `DraftAttachmentDetailsDialog.vue`; `ingestLocalFiles`.
 - **Build and runtime:** installer contents; GitHub environment settings; signature `expiresAt`; privacy-scan internals beyond P7-11; runtime CSP under `file://`; DOMPurify mXSS for MathML and SVG.
 
-## 6. Owner questions (recorded; none blocks Phase 1)
+## 6. Owner questions
 
-- **OQ-1 (D-5):** should deleting a conversation also delete its request-archive records, or should the archive keep them until the user deletes them explicitly? Until answered, no automatic purge is added and R7-04 provides explicit deletion only.
-- **OQ-2 (D-1, D-2):** has any formal release shipped the legacy (pre-epoch-2) layout or a schema older than the reviewed predecessors? This decides whether P2a-03, P3a-16 and P2a-11 are live, and whether the I2a-01 purge needs more than the R2-03 guard.
-- **OQ-3:** keep the in-app browser (then harden it, R6-10) or remove its exposed IPC?
-- **OQ-4 (D-6):** may the first cloud rule candidate still activate automatically on a fresh install, or should bootstrap activation need user action? R6-04 adds authenticity either way.
+- **OQ-1: answered (D-5a).** Conversation deletion also deletes that conversation's request records and archive indexes, never shared resources still referenced elsewhere. Implemented in R7-04.
+- **OQ-2: answered (D-2r).** No development/release distinction this round; legacy data and incompatible databases may be reset by default on the designated paths. R2-03 is withdrawn; formal-release protection is future work.
+- **OQ-3: answered (D-7).** Keep and harden the in-app browser (R6-10).
+- **OQ-4: open as an investigation item (D-8).** Traced in R4-01; activation behaviour is preserved until evidence justifies a change.

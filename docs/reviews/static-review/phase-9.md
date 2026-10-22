@@ -317,3 +317,8 @@ Every other item in section 4.5 remains open. The current list is in [repair-pla
 
 ### 7.5 Phase 3b summary labels
 Phase 3b's verification summary cites "P3b-09" for `apiRequestBodySchemaV2.ts:137` (that is **P3b-14**) and "P3b-08" for `generationV2ComposerIpc.ts:144, 162` (that is **P3b-05** and **P3b-06**). The finding bodies are correct.
+
+### 7.6 Later owner answers (added before repair Phase 1)
+- OQ-1 to OQ-3 are answered and OQ-4 is an investigation item; see the addendum in [repair-phase-0.md](repair-phase-0.md) and [repair-plan.md](repair-plan.md) section 1 (D-2r, D-5a, D-7, D-8).
+- Section 7.3's reference to repair R2-03 is superseded: R2-03 is withdrawn by D-2r.
+- Section 7.3's "six reviewed predecessor upgrades" counts the six entry points; there are seven upgrade routines in total (repair-phase-0.md addendum).

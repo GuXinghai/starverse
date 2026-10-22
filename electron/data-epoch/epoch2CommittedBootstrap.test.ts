@@ -23,6 +23,7 @@ vi.mock('electron', () => ({
   safeStorage: safeStorageMock,
 }))
 
+import { runEpoch2ResetThroughConfigReplacement } from './dataEpochCoordinatorCore'
 import { bootstrapEpoch2ToCommitted } from './epoch2CommittedBootstrap'
 import { readEpoch2ResetJournal } from './resetJournalStore'
 import { resolveEpoch2WorkspaceLayout } from './rootManifest'
@@ -96,6 +97,30 @@ describe('epoch-2 committed bootstrap facade', () => {
     } finally { await runtime.close() }
     const reopened = acquireEpochRootLease(layout, 'linux')
     reopened.release()
+  })
+
+  // P2a-01: the epoch root is created before the journal records
+  // `epoch_root_created`. A crash between the two leaves the journal at
+  // `config_replaced` with the root present, and every later start re-runs the
+  // reset, which refuses the existing root. Remove `.fails` when fixed.
+  it.fails('P2a-01: starts after a crash between epoch-root creation and the journal write', async () => {
+    const layout = fixture('starverse-epoch-committed-root-crash')
+    const lease = acquireEpochRootLease(layout, 'linux')
+    try {
+      await runEpoch2ResetThroughConfigReplacement({ layout, lease, clearDefaultSessionData: async () => {} })
+      expect(readEpoch2ResetJournal({ layout, lease })?.phase).toBe('config_replaced')
+    } finally { lease.release() }
+    fs.mkdirSync(layout.epochRoot, { recursive: true })
+    const runtime = await bootstrapEpoch2ToCommitted({
+      layout,
+      platform: 'linux',
+      enforceCredentialStoragePermissions: vi.fn(),
+      clearDefaultSessionData: async () => {},
+      openCredentialStore: () => new JsonConfigStore(path.join(layout.productRoot, 'config.json')) as never,
+    })
+    try {
+      expect(runtime.journal.phase).toBe('committed')
+    } finally { await runtime.close() }
   })
 
   windowsIt('commits the complete reset/database/credential runtime and holds the lease', async () => {
