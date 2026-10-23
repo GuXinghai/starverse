@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, dialog } from 'electron'
+import { app } from 'electron'
 import { matchSystemLocale } from '../src/shared/i18n/localeMatcher'
 import { applyIsolatedEpoch2SmokeAppDataRoot, configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
 import {
@@ -15,6 +15,7 @@ import {
   notifyConfigRepaired,
   notifyFreshConfigCreated,
 } from './data-epoch/corruptConfigRecoveryPrompt'
+import { showStartupFailure } from './data-epoch/startupFailurePrompt'
 import { formatEpoch2ConfigRecoverySuccess, formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
 import {
   confirmSchemaMismatchRecovery,
@@ -55,6 +56,19 @@ function startupFailureCode(error: unknown): string {
     : 'EPOCH2_STARTUP_UNCLASSIFIED'
 }
 
+// Fatal startup failures leave the database as it is: no repair, recreation,
+// migration or cleanup. Logs carry only the code; the dialog adds the
+// database location so the user can back it up before troubleshooting.
+function reportStartupFailure(code: string): void {
+  process.stderr.write(`[epoch2-startup] ${code}\n`)
+  let databasePath: string | null = null
+  try {
+    databasePath = resolveEpoch2BootstrapLayout().databasePath
+  } catch { /* the location is optional in the dialog */ }
+  showStartupFailure(code, databasePath, matchSystemLocale(app.getPreferredSystemLanguages()))
+  app.quit()
+}
+
 async function startup(): Promise<void> {
   const runtime = await bootstrapEpoch2ApplicationRuntime()
   await startWithEpoch2RuntimeCleanup(runtime, async () => {
@@ -86,9 +100,7 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
     }
   } catch (recoveryError) {
     const recoveryCode = startupFailureCode(recoveryError)
-    process.stderr.write(`[epoch2-startup] ${recoveryCode}\n`)
-    dialog.showErrorBox('Starverse startup failed', recoveryCode)
-    app.quit()
+    reportStartupFailure(recoveryCode)
     return
   }
   try {
@@ -96,9 +108,7 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
     notifySchemaMismatchRecovered(backupDirectory, locale)
   } catch (error) {
     const retryCode = startupFailureCode(error)
-    process.stderr.write(`[epoch2-startup] ${retryCode}\n`)
-    dialog.showErrorBox('Starverse startup failed', retryCode)
-    app.quit()
+    reportStartupFailure(retryCode)
   }
 }
 
@@ -136,10 +146,7 @@ async function startWithConfigRecovery(): Promise<void> {
     }
   } catch (recoveryError) {
     const recoveryCode = startupFailureCode(recoveryError)
-    process.stderr.write(`[epoch2-startup] ${recoveryCode}
-`)
-    dialog.showErrorBox('Starverse startup failed', recoveryCode)
-    app.quit()
+    reportStartupFailure(recoveryCode)
     return
   }
   try {
@@ -147,10 +154,7 @@ async function startWithConfigRecovery(): Promise<void> {
     notice?.()
   } catch (error) {
     const retryCode = startupFailureCode(error)
-    process.stderr.write(`[epoch2-startup] ${retryCode}
-`)
-    dialog.showErrorBox('Starverse startup failed', retryCode)
-    app.quit()
+    reportStartupFailure(retryCode)
   }
 }
 
@@ -175,8 +179,6 @@ if (isPrimaryInstance) void app.whenReady().then(async () => {
     }
     // Keep startup diagnostics useful for packaged/automation launchers without
     // emitting raw exception messages, paths, credentials or configuration.
-    process.stderr.write(`[epoch2-startup] ${code}\n`)
-    dialog.showErrorBox('Starverse startup failed', code)
-    app.quit()
+    reportStartupFailure(code)
   }
 })

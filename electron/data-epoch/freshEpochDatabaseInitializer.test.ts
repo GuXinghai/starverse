@@ -684,6 +684,49 @@ describe('fresh epoch-2 database initializer', () => {
     } finally { value.lease.release() }
   })
 
+  windowsIt('fail-closed startup: classifies a damaged database file as corrupt and leaves its bytes unchanged', async () => {
+    const value = fixture('starverse-fresh-db-corrupt-header')
+    try {
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const bytes = fs.readFileSync(value.layout.databasePath)
+      bytes.fill(0x5a, 0, 16)
+      fs.writeFileSync(value.layout.databasePath, bytes)
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_CORRUPT')
+      await expect(verifyExistingFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_CORRUPT')
+      expect(fs.readFileSync(value.layout.databasePath).equals(bytes)).toBe(true)
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('fail-closed startup: classifies a locked database as busy, not corrupt, and changes nothing', async () => {
+    const value = fixture('starverse-fresh-db-busy')
+    try {
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const before = fs.readFileSync(value.layout.databasePath)
+      const holder = new BetterSqlite3(value.layout.databasePath)
+      try {
+        holder.exec('BEGIN EXCLUSIVE')
+        await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_DATABASE_BUSY')
+        holder.exec('ROLLBACK')
+      } finally { holder.close() }
+      expect(fs.readFileSync(value.layout.databasePath).equals(before)).toBe(true)
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).resolves.toMatchObject({ created: false })
+    } finally { value.lease.release() }
+  }, 30_000)
+
+  windowsIt('fail-closed startup: classifies a read-only database file as access denied, not corrupt', async () => {
+    const value = fixture('starverse-fresh-db-readonly')
+    try {
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const before = fs.readFileSync(value.layout.databasePath)
+      fs.chmodSync(value.layout.databasePath, 0o444)
+      try {
+        // The Win32 file authority opens the file for writing before SQLite does.
+        await expect(initializeOrVerifyFreshEpoch2Database(value)).rejects.toThrow('EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED')
+      } finally { fs.chmodSync(value.layout.databasePath, 0o666) }
+      expect(fs.readFileSync(value.layout.databasePath).equals(before)).toBe(true)
+    } finally { value.lease.release() }
+  })
+
   windowsIt('classifies an app_meta schema digest divergence as a schema mismatch', async () => {
     const value = fixture('starverse-fresh-db-app-meta-mismatch')
     try {

@@ -252,4 +252,78 @@ The smoke profiles, the temporary wrapper and fixture test, and a renderer serve
 - Electron smoke retried after rebuild: yes
 - No native artifacts committed: confirmed
 
+## 11. Addendum (2026-10-23): fail-closed startup policy
+
+*This section was added after the owner removed global restricted mode from scope. The text above is unchanged; the global-mode proposal in section 10.4 is withdrawn.*
+
+The owner decided: no global restricted mode, read-only runtime, permission system or corruption-aware export. A database-wide integrity failure stops startup, shows a clear localized dialog and keeps the original database. The policy is D-4r in `repair-plan.md` section 1.
+
+### 11.1 Review of the existing startup behaviour
+
+| Requirement | Before | Gap |
+|---|---|---|
+| Startup stops and the database is kept | The database is verified in bootstrap (`initializeOrVerifyFreshEpoch2Database`: schema verification, `foreign_key_check`, `PRAGMA integrity_check`) inside one transaction. Any failure rolls back, and startup quits | None |
+| No automatic repair, recreation or cleanup | Only `EPOCH2_DATABASE_SCHEMA_MISMATCH` (D-2r, with confirmation) and `EPOCH2_CONFIG_CORRUPT` have recovery paths | None |
+| No database-writing task after the failure | Verification runs before `startMainV2`, which starts orphan recovery and the refresh jobs. A failure inside `startMainV2` closes the runtime and its connection | None |
+| The dialog explains that startup stopped to protect data | `showErrorBox('Starverse startup failed', code)`: English, code only | **Yes** |
+| Stable code and database location | Code yes, location no | **Yes** |
+| No secrets in logs | stderr carries only an allow-listed code | None |
+| Corruption is told apart from I/O, permission and busy failures | Every SQLite failure became `EPOCH2_DATABASE_TRANSACTION_FAILED` or `EPOCH2_DATABASE_OPEN_FAILED` | **Yes** |
+
+### 11.2 Changes
+
+- `electron/data-epoch/freshEpochDatabaseInitializer.ts`: `classifySqliteFailure` maps SQLite result codes to separate codes in `translateFailure` and `openDatabase`:
+  - `SQLITE_CORRUPT*` and `SQLITE_NOTADB`: `EPOCH2_DATABASE_CORRUPT`
+  - `SQLITE_IOERR*` and `SQLITE_FULL`: `EPOCH2_DATABASE_IO_FAILED`
+  - `SQLITE_PERM`, `SQLITE_READONLY*` and `SQLITE_AUTH`: `EPOCH2_DATABASE_ACCESS_DENIED`
+  - `SQLITE_BUSY*` and `SQLITE_LOCKED*`: `EPOCH2_DATABASE_BUSY`
+  - `SQLITE_CANTOPEN*`: `EPOCH2_DATABASE_OPEN_CANTOPEN`
+  - Other failures keep their earlier codes, so the existing tests still apply unchanged.
+- `electron/data-epoch/startupFailurePrompt.ts` (new) builds the fatal dialog:
+  - a reason chosen by failure kind: integrity, I/O, access, busy or other;
+  - a statement that startup was stopped to protect existing data and that nothing was repaired, recreated, migrated or deleted;
+  - the error code and the database file path.
+  - It never includes raw error text.
+- `electron/epoch2MainEntry.ts`: all four fatal paths (the main path and both recovery paths, each with its retry) use `reportStartupFailure`. It logs only the code, adds the database location when it can be resolved, follows the system language, and quits.
+- `dialogs.startupFailure.*` strings in zh-CN and en-US.
+
+### 11.3 Tests and checks
+
+| Test | What it proves |
+|---|---|
+| `freshEpochDatabaseInitializer.test.ts` "fail-closed startup: classifies a damaged database file as corrupt…" | A real database with a damaged header gives `EPOCH2_DATABASE_CORRUPT` on both the open and the verify paths. The file bytes are unchanged |
+| same file, "…locked database as busy…" | Another connection holding an exclusive lock gives `EPOCH2_DATABASE_BUSY`, not corruption. The file is unchanged, and the next start succeeds |
+| same file, "…read-only database file…" | A read-only file is refused by the Win32 file authority (`EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED`), not reported as corruption. The file is unchanged |
+| `startupFailurePrompt.test.ts` | Codes map to the right kind. Both locales show the "stopped to protect data" text, the code and the path. A busy failure shows a different reason, and a missing path is omitted |
+
+- **Mutation check:** with classification disabled, the corrupt and busy tests fail. The file was restored.
+- **Baseline:** the 9 other failures in the initializer test file fail identically with the HEAD initializer. They are the known CRLF/predecessor baseline (repair-phase-1.md section 4).
+- **Static checks:** typecheck passes, the partition gate passes, the i18n tests pass (97), and lint shows 0 errors on the changed files.
+
+**Electron smoke** used an isolated temporary profile, created by a normal offline agent launch, whose database header was then damaged:
+
+| Run | Result |
+|---|---|
+| Agent automation (offline) | Exit 1, stderr `[agent-startup] EPOCH2_DATABASE_CORRUPT` |
+| Normal startup path (isolated smoke app-data root; dialogs recorded) | stderr `[epoch2-startup] EPOCH2_DATABASE_CORRUPT`. The dialog was titled "Starverse 启动失败" (system language), with the integrity reason, the "not repaired, recreated, migrated or deleted" line, the code and the database path |
+| After both runs | The database SHA-256 was unchanged. No backup, journal or new database file was created |
+
+The temporary profile, wrapper and renderer server were removed or stopped.
+
+### 11.4 Limitations
+
+- Corruption that `PRAGMA integrity_check` does not detect is found only when the damaged rows are read, and is handled at operation or branch scope.
+- A failed schema verification that is not a SQLite error keeps the generic `EPOCH2_DATABASE_TRANSACTION_FAILED` code. The dialog presents it as "integrity not confirmed".
+- `EPOCH2_DATABASE_BUSY` needs SQLite's default 5-second open wait to elapse before it is reported. The root lease normally prevents a second Starverse instance.
+- Failures from the live connection opened after verification (`epoch2CommittedBootstrap.ts`) are still reported as `EPOCH2_STARTUP_UNCLASSIFIED` or by their bootstrap code. That window is short and directly follows a successful verification.
+- R2-06 follow-ups R2-06a–e are tracked separately in `repair-plan.md` (Phase 2).
+
+**Native module (this addendum)**
+- better-sqlite3 ABI mismatch encountered: no
+- Rebuild command run: `npm run rebuild:node` (tests), `npm run rebuild:electron` (smoke), `npm run rebuild:node` (integration partition)
+- Current ABI target after task: node
+- Tests retried after rebuild: none needed
+- Electron smoke retried after rebuild: yes
+- No native artifacts committed: confirmed
+
 This phase is complete. I have stopped and am waiting for your instruction to continue.

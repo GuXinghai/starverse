@@ -16,7 +16,8 @@ Each phase runs only when the owner says "continue", and stops with a report. A 
 | D-2 | ~~Development builds may reset incompatible databases; formal releases must not silently delete or recreate user data~~ **Superseded for this round by D-2r below (OQ-2 answer).** | — | — |
 | D-2r | (OQ-2 answer) No development/release distinction in this round. Old application data or an incompatible database may be deleted and recreated by default, through the designated legacy-data and schema-recovery paths | Default reset on the legacy-data and schema-recovery paths; keeping the existing reviewed predecessor upgrades | A general migration framework or a release-protection gate now; deleting unrelated files; turning ordinary runtime failures into automatic database resets (D-4 still applies). Formal-release data protection is future release-preparation work |
 | D-3 | No generation timeouts this round | Repairing cancellation, cleanup, terminal states and recovery on their own | Adding generation connect, first-byte, idle or overall timeouts. Download and probe bounds are **not** waived |
-| D-4 | Keep failures local | Isolating one broken generation, receipt, conversation, plugin or integration. An explicit restricted mode when integrity cannot be established | Hiding errors, or marking incomplete work as successful |
+| D-4 | ~~Keep failures local [...] An explicit restricted mode when integrity cannot be established~~ **Superseded for this round by D-4r below.** | — | — |
+| D-4r | Keep failures local and fail closed. Isolate one broken generation, receipt, conversation, plugin or integration. When database integrity cannot be established, stop startup and keep the database (see the fail-closed integrity policy below) | Operation-level terminalization, branch-level restriction, and a localized fatal startup dialog with a stable code and the database location | Hiding errors; marking incomplete work as successful; a global restricted mode, read-only runtime, permission system or corruption-aware export; automatic repair, recreation, migration or destructive cleanup of a damaged database |
 | D-5 | Original request bodies are a long-term product record while their conversation exists | Fixing storage cost, indexing, duplication, access boundaries and explicit user deletion | Disabling capture by default, expiring or truncating originals, deleting by age, or redacting user-authored content and calling it the original. Application-injected credentials must stay out |
 | D-5a | (OQ-1 answer) Deleting a conversation also deletes its original request records and related archive indexes | Conversation-scoped archive deletion | Deleting shared resources still referenced elsewhere; age-based expiry; truncation; default-off capture |
 | D-7 | (OQ-3 answer) Keep the in-app browser for future use | Repairing and hardening it | Removing it as dead or unnecessary |
@@ -28,6 +29,36 @@ Each phase runs only when the owner says "continue", and stops with a report. A 
 - A general schema migration framework (I2a-02; D-2r).
 - Formal-release data protection: a development/release channel, a guard against destructive or auto-approved recovery in releases, and the legacy-purge guard (formerly R2-03; D-2r). This is future release-preparation work.
 - Any age-based or other automatic archive purge beyond conversation deletion (D-5, D-5a).
+
+### Fail-closed integrity policy (D-4r, owner decision 2026-10-23)
+
+The response depends on how far the damage reaches. Data is always kept as it is.
+
+| Scope | Response | Implemented by |
+|---|---|---|
+| One operation | Terminalize the operation as `failed` with a specific error code, and release its branch lock when the repository invariants allow it. Its rows and artifacts are kept | R2-06 (`GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT`) |
+| One branch | Keep only that branch restricted. Other branches and conversations work normally | R2-06 (branch restriction banner) |
+| The whole database | Stop startup. Show a clear, localized error dialog. Keep the original database: no automatic repair, recreation, migration or destructive cleanup | R2-06 fail-closed startup (repair-phase-2.md section 11) |
+
+For database-wide failures:
+- The dialog says that startup was stopped to protect existing data.
+- It shows a stable error code and the database file location, for manual backup and troubleshooting.
+- Logs carry only the code. They never include API keys, conversation content, raw error text or paths.
+- Corruption is reported separately from:
+  - storage I/O errors (`EPOCH2_DATABASE_IO_FAILED`);
+  - permission and read-only failures (`EPOCH2_DATABASE_ACCESS_DENIED`, `EPOCH2_DATABASE_OPEN_CANTOPEN`, `EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED`);
+  - a temporarily locked database (`EPOCH2_DATABASE_BUSY`).
+- A damaged file is `EPOCH2_DATABASE_CORRUPT`. A failed schema or integrity verification keeps its existing codes (`EPOCH2_DATABASE_TRANSACTION_FAILED`, `EPOCH2_DATABASE_STATE_INVALID`, `EPOCH2_DATABASE_POSTCOMMIT_INVALID`), and the dialog treats all of these as "integrity not confirmed".
+- No recovery, refresh or other database-writing task runs after the failure:
+  - The database is verified during bootstrap, before `startMainV2` starts orphan recovery or the refresh jobs.
+  - A later fatal failure inside `startMainV2` closes the runtime and its database connection (`startWithEpoch2RuntimeCleanup`), so jobs that were already started cannot write.
+
+**Out of scope:** a global restricted mode, a read-only runtime, a permission system and a corruption-aware conversation export.
+
+**Limitations:**
+- Corruption that `PRAGMA integrity_check` and the schema verification do not detect is found only when the damaged rows are read. It is then handled at operation or branch scope, or surfaces as an ordinary error.
+- The schema-mismatch recovery path (D-2r) is unchanged. It still backs up and resets an incompatible database after confirmation.
+- Under agent automation, startup exits with the code on stderr and shows no dialog, as before.
 
 ## 2. Working rules for every phase
 
@@ -69,12 +100,22 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | ~~R2-03~~ | I2a-01, C-04 auto-approve env var | **Withdrawn by D-2r (OQ-2).** No development/release separation or release guard this round. The legacy purge and the schema-recovery path stay as they are, and `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH` is accepted behaviour. Recorded as future release-preparation work | — | — | — | — |
 | R2-04 | P2a-01 | A crash between epoch-root creation and the journal write is resumable | B. Reproduce with a test that creates the root and stops before the journal write | `epochRootCoordinatorCore.ts` / `epoch2CommittedBootstrap.ts`: treat an empty root left at `config_replaced` as resumable | The R1-03 test flips; existing epoch tests (Windows partition) | Later starts proceed. A non-empty unexpected root still fails closed |
 | R2-05 | P4a-01, P2b-02 (+P4a-02), P2b-06 | Every operation reaches a terminal state: a failed receipt insert ends the operation as failed with Stop working; a receipt that can never materialise ends after the retry budget; the branch lock is released | A / B | `generationNativeCompletionV2.ts`, `generationOperationRuntimeRegistryV2.ts:234`, `generationOrphanRecoveryV2.ts:165-166` | R1-03 test for P4a-01; a test for a non-materialisable pending receipt | No operation remains `streaming` without a live runner. The error is recorded, not reported as success (D-4) |
-| R2-06 | P2b-05, I4a-07 | One corrupt artifact quarantines its own operation and leaves the rest of startup working; if database integrity cannot be established, the app enters an explicit restricted mode | S. Reproduce first with a corrupt-artifact fixture | Orphan recovery: per-operation try/quarantine; startup restricted mode only for integrity failures | Fixture test; an Electron smoke with a corrupted isolated profile | The app starts, the affected conversation shows an error state, and the rest is usable |
+| R2-06 | P2b-05, I4a-07 | One corrupt artifact quarantines its own operation and leaves the rest of startup working; ~~if database integrity cannot be established, the app enters an explicit restricted mode~~ if database integrity cannot be established, startup stops with a localized dialog and the database is kept (D-4r) | S. Reproduce first with a corrupt-artifact fixture | Orphan recovery: per-operation try/quarantine; ~~startup restricted mode only for integrity failures~~ fail-closed startup classification and dialog | Fixture test; an Electron smoke with a corrupted isolated profile | The app starts, the affected conversation shows an error state, and the rest is usable |
 | R2-07 | P4a-18, P1-06, P1-04 (RC-17) | Unhandled main-process failures are logged and surfaced; a startup failure closes the runtime; a failing `closeResources` step does not skip the DB close | S / A / B | Minimal handlers only | Unit tests where possible | Failure is visible and does not leave the DB open |
 
 **Optional if small:** P2a-05 (recovery resume after a crash), P2a-06 (config rename window).
 **Not in Phase 2:** migration framework and release guard (deferred, D-2r); legacy-path findings P2a-03, P3a-16, P2a-11 (accepted under D-2r: legacy data may be reset; no repair this round).
 **Real-runtime checks:** `npm run rebuild:electron` followed by an Electron smoke on isolated profiles for R2-01, R2-02 and R2-06.
+
+**R2-06 follow-ups (tracked separately; not part of Phase 3):**
+
+| Item | Gap | Notes |
+|---|---|---|
+| R2-06a | Retrying a recovered corrupt-artifact answer was traced statically, not run end to end | Retry reads only the answer's snapshot and ledger. Needs a runtime or integration check |
+| R2-06b | Later sends on a branch whose history includes a corrupt-artifact turn fail with a raw `NativeArtifactStorageV2Error` | Fails closed correctly; the message is not localized or mapped to a stable code |
+| R2-06c | A restricted branch's head answer can still show the generating indicator while it is `streaming` | The banner explains the state; the indicator is misleading |
+| R2-06d | An operation whose bundle cannot be decoded keeps its branch locked, and the branch read fails, so the banner cannot be shown | Showing it would mean relaxing the `ConversationReadV2Repo` decode check; not done |
+| R2-06e | Gemini and LM Studio fold storage corruption into `*_HISTORY_STATE_INVALID` | Their corrupt awaiting-tool artifacts stay branch-restricted instead of being terminalized |
 **Stop if:** R2-01 cannot accept the existing digests without changing a pinned predecessor constant. Report it rather than editing the pinned values.
 
 ### Phase 3: generation and protocol correctness
@@ -175,7 +216,7 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 |---|---|
 | 0 | Complete (this document and repair-phase-0.md) |
 | 1 | Complete, see [repair-phase-1.md](repair-phase-1.md) |
-| 2 | Complete, see [repair-phase-2.md](repair-phase-2.md). R2-06 completed for the operation and branch scopes after the owner decision (addendum, section 10); global restricted mode is blocked and proposed as separate work |
+| 2 | Complete, see [repair-phase-2.md](repair-phase-2.md). R2-06 completed for the operation and branch scopes after the owner decision (addendum, section 10). Database-wide failures follow the fail-closed startup policy (D-4r; addendum, section 11). Global restricted mode is removed from scope. Follow-ups R2-06a–e are tracked separately |
 | 3–8 | Not started |
 
 ## 5. Still-unreviewed areas

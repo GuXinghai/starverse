@@ -66,6 +66,17 @@
       "detail": "现在退出将中断这些任务，未完成的生成、文件处理或插件任务可能丢失。",
       "quit": "仍然退出",
       "cancel": "取消"
+    },
+    "startupFailure": {
+      "title": "Starverse 启动失败",
+      "integrity": "Starverse 无法确认数据库完好，为保护现有数据，已停止启动。",
+      "io": "由于存储错误（例如磁盘已满或已断开），Starverse 无法读写数据库。为保护现有数据，已停止启动。",
+      "access": "Starverse 没有打开数据库的权限，或数据库文件为只读。为保护现有数据，已停止启动。",
+      "busy": "数据库正被其他程序使用。为保护现有数据，已停止启动。请关闭其他正在运行的 Starverse 后重试。",
+      "other": "Starverse 无法启动。为保护现有数据，已停止启动。",
+      "preserved": "数据库未被修复、重建、迁移或删除。排查问题前，请先备份数据库文件。",
+      "code": "错误代码：{code}",
+      "databasePath": "数据库文件：\n{databasePath}"
     }
   }
 }

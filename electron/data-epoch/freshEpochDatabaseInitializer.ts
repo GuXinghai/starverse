@@ -49,6 +49,10 @@ export class FreshEpochDatabaseInitializerError extends Error {
     | 'EPOCH2_DATABASE_SCHEMA_MISMATCH'
     | 'EPOCH2_DATABASE_TRANSACTION_FAILED'
     | 'EPOCH2_DATABASE_POSTCOMMIT_INVALID'
+    | 'EPOCH2_DATABASE_CORRUPT'
+    | 'EPOCH2_DATABASE_IO_FAILED'
+    | 'EPOCH2_DATABASE_ACCESS_DENIED'
+    | 'EPOCH2_DATABASE_BUSY'
     | 'EPOCH2_SCOPE_KEY_STORAGE_UNAVAILABLE'
     | 'EPOCH2_SCOPE_KEY_ENCRYPT_FAILED'
     | 'EPOCH2_SCOPE_KEY_DECRYPT_FAILED'
@@ -84,7 +88,22 @@ function translateFailure(
       error.code === 'GENERATION_V2_SCHEMA_DIGEST_MISMATCH') {
     return new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_SCHEMA_MISMATCH')
   }
-  return new FreshEpochDatabaseInitializerError(fallback)
+  return new FreshEpochDatabaseInitializerError(classifySqliteFailure(error) ?? fallback)
+}
+
+// Separates a damaged database file from storage, permission and lock failures,
+// which leave the data intact and are usually fixed outside the app.
+function classifySqliteFailure(error: unknown): FreshEpochDatabaseInitializerError['code'] | null {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code
+    : undefined
+  if (typeof code !== 'string') return null
+  if (/^SQLITE_(?:CORRUPT|NOTADB)(?:_|$)/u.test(code)) return 'EPOCH2_DATABASE_CORRUPT'
+  if (/^SQLITE_(?:IOERR|FULL)(?:_|$)/u.test(code)) return 'EPOCH2_DATABASE_IO_FAILED'
+  if (/^SQLITE_(?:PERM|READONLY|AUTH)(?:_|$)/u.test(code)) return 'EPOCH2_DATABASE_ACCESS_DENIED'
+  if (/^SQLITE_(?:BUSY|LOCKED)(?:_|$)/u.test(code)) return 'EPOCH2_DATABASE_BUSY'
+  if (/^SQLITE_CANTOPEN(?:_|$)/u.test(code)) return 'EPOCH2_DATABASE_OPEN_CANTOPEN'
+  return null
 }
 
 function createRetiredScopeEnvelopeMarker(): Buffer {
@@ -217,14 +236,7 @@ function openDatabase(
       ? { readonly: true, fileMustExist: true }
       : undefined)
   } catch (error) {
-    const sqliteCode = error && typeof error === 'object' && 'code' in error
-      ? (error as { code?: unknown }).code
-      : undefined
-    throw new FreshEpochDatabaseInitializerError(
-      sqliteCode === 'SQLITE_CANTOPEN'
-        ? 'EPOCH2_DATABASE_OPEN_CANTOPEN'
-        : 'EPOCH2_DATABASE_OPEN_FAILED',
-    )
+    throw new FreshEpochDatabaseInitializerError(classifySqliteFailure(error) ?? 'EPOCH2_DATABASE_OPEN_FAILED')
   }
 }
 

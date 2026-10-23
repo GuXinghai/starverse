@@ -66,6 +66,17 @@
       "detail": "Quitting now will interrupt it. Unfinished generations, file processing or plugin tasks may be lost.",
       "quit": "Quit anyway",
       "cancel": "Cancel"
+    },
+    "startupFailure": {
+      "title": "Starverse startup failed",
+      "integrity": "Starverse could not confirm that its database is intact, so startup was stopped to protect your existing data.",
+      "io": "Starverse could not read or write its database because of a storage error, such as a full or disconnected disk. Startup was stopped to protect your existing data.",
+      "access": "Starverse is not allowed to open its database, or the file is read-only. Startup was stopped to protect your existing data.",
+      "busy": "Another program is using the database. Startup was stopped to protect your existing data. Close other copies of Starverse and try again.",
+      "other": "Starverse could not start. Startup was stopped to protect your existing data.",
+      "preserved": "The database was not repaired, recreated, migrated or deleted. Back up the database file before troubleshooting.",
+      "code": "Error code: {code}",
+      "databasePath": "Database file:\n{databasePath}"
     }
   }
 }
