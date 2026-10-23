@@ -65,6 +65,7 @@ const {
   onResetSystemTemplate,
   onRefreshWorkspace,
   activeDraftConflict,
+  activeBranchIntegrityRestriction,
   draftConflictReloadConfirmation,
   cancelDraftConflictReload,
   confirmDraftConflictReload,
@@ -548,6 +549,13 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       </template>
 
       <template #topbar>
+        <div v-if="activeBranchIntegrityRestriction" class="sv-notice sv-notice-warning mx-6 mt-3 flex-col gap-2" role="alert"
+          data-testid="branch-integrity-restriction">
+          <p class="font-medium">{{ t('errors.generationRecovery.branchRestrictedTitle') }}</p>
+          <p>{{ t('errors.generationRecovery.branchRestrictedReason') }}</p>
+          <p>{{ t('errors.generationRecovery.branchRestrictedScope') }}</p>
+          <p>{{ t('errors.generationRecovery.branchRestrictedActions') }}</p>
+        </div>
         <div v-if="activeDraftConflict" class="sv-notice sv-notice-warning mx-6 mt-3 flex-col gap-2" role="alert" data-testid="draft-conflict">
           <p>{{ t('errors.draftConflict.message') }}</p>
           <textarea readonly :value="activeDraftConflict.captured.text" class="sv-textarea w-full" :aria-label="t('errors.draftConflict.retainedText')" data-testid="draft-conflict-retained-text" />

@@ -20,7 +20,7 @@ import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
 import { registerRawGenerationDebugIpc } from './ipc/rawGenerationDebugIpc'
 import { registerShellIpc } from './ipc/shellIpc'
 import { registerStoreIpc } from './ipc/storeIpc'
-import { recoverGenerationOrphansV2 } from './services/generationOrphanRecoveryV2'
+import { readGenerationRecoveryBranchRestrictionsV2, recoverGenerationOrphansV2 } from './services/generationOrphanRecoveryV2'
 import { createInAppBrowserManager } from './services/inappBrowser'
 import { createEpoch2EnginePluginLifecycleService } from './services/epoch2EnginePluginLifecycleService'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
@@ -256,8 +256,13 @@ export async function startMainV2(): Promise<void> {
     console.error('[generation-recovery] GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID',
       { count: orphanRecovery.unrecoveredOperationIds.length })
   }
+  if (orphanRecovery.failedOperationIds.length > 0) {
+    console.error('[generation-recovery] GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT',
+      { count: orphanRecovery.failedOperationIds.length })
+  }
   setGenerationTotalTimeoutSourceV2(createStoreBackedGenerationTotalTimeoutSourceV2(store))
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
+  branchIntegrityRestrictions: readGenerationRecoveryBranchRestrictionsV2(runtime.epoch2.database, orphanRecovery),
   getProjectDuplicatePolicy: () => normalizeProjectDuplicatePolicy(store.get('generationV2UiPreferences.projectDuplicatePolicy')),
   cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode,
   notifyModelFactsSemanticInvalidated, registerActiveWorkSource: shutdownCoordinator.registerSource })

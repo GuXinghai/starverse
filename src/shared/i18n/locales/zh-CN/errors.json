@@ -1,5 +1,12 @@
 {
   "errors": {
+    "generationRecovery": {
+      "artifactCorrupt": "此回答的已存储结果已损坏，因此生成已停止。相关记录已保留以供排查，不会被当作有效回答使用。可重试此回答以替换它。",
+      "branchRestrictedTitle": "此分支已受限",
+      "branchRestrictedReason": "Starverse 启动时发现此分支中一次生成的已存储状态不一致，且无法安全地结束它。相关记录已原样保留以供排查。",
+      "branchRestrictedScope": "只有此分支受影响，其他分支和对话可正常使用。",
+      "branchRestrictedActions": "你仍可阅读此分支，但不能在此分支中发送新消息。"
+    },
     "imagePreviewUnavailable": "图片预览暂时无法加载。请重新打开此会话后重试。",
     "startup": {
       "loading": "正在打开工作区…",

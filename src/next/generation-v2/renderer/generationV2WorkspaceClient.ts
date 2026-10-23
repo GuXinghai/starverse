@@ -41,7 +41,9 @@ export type GenerationV2BranchView = Readonly<{ branchId: string; conversationId
         | Readonly<{kind:'url_reference';referenceId:string;referenceRevision:string;urlDigest:string;
           mediaKind:'image'|'document'|'audio'|'video'|'other';capturedAtMs:number;provenance:'user_supplied';
           include:boolean;sendAs:'url_reference';conversion:'none'}>)[];
-      images: readonly Readonly<{assetId:string;assetRevisionId:string;sha256:string;mime:string;storageRef:string}>[] }>[] }>[] }>
+      images: readonly Readonly<{assetId:string;assetRevisionId:string;sha256:string;mime:string;storageRef:string}>[] }>[] }>[];
+  /** Set when startup recovery left this branch's operation locked because its stored state is inconsistent (R2-06). */
+  integrityRestriction?: Readonly<{ scope: 'branch'; code: string }> | null }>
 export type GenerationV2LocalEndpointProfile = Readonly<{ endpointProfileId:string; providerId:LocalEndpointExecutionProviderId;
   protocolContractId:LocalEndpointProtocolV2;
   baseUrl:string; credentialMode:'none'; credentialScopeId:string; protocolConfig:Readonly<Record<string,unknown>>;

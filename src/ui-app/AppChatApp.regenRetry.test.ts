@@ -14,6 +14,8 @@ type AnswerState = {
   createdAtMs: number
   actionKind: 'initial' | 'regenerate' | 'retry_replace' | 'retry_as_new'
   modelId: string
+  errorCode?: string
+  errorMessage?: string
 }
 
 describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
@@ -28,6 +30,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
   let retry: ReturnType<typeof vi.fn>
   let runtimeAbort: ReturnType<typeof vi.fn>
   let runtimeEventListener: ((value: unknown) => void) | null
+  let integrityRestriction: Readonly<{ scope: 'branch'; code: string }> | null
 
   const ok = <T>(value: T) => ({ ok: true as const, value })
 
@@ -38,8 +41,8 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
       chosen: answer.answerRootId === chosenAnswerRootId,
       operationId: `operation:${answer.answerRootId}`,
       providerId: 'openrouter',
-      errorCode: answer.status === 'failed' ? 'provider_error' : null,
-      errorMessage: answer.status === 'failed' ? 'provider error' : null,
+      errorCode: answer.errorCode ?? (answer.status === 'failed' ? 'provider_error' : null),
+      errorMessage: answer.errorMessage ?? (answer.status === 'failed' ? 'provider error' : null),
       endpointProfileId: 'openrouter-first-party-v1',
       protocolContractId: 'openrouter-chat-completions-v1',
       capabilityRevision: 'capability-v2:frozen',
@@ -57,6 +60,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
       branchId, conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1',
       branchName: branchId === 'b1' ? 'Main' : 'Generated branch', headMessageId: branchHead,
       beforeMessageId: null, hasMoreTurns: false,
+      ...(integrityRestriction && branchId === 'b1' ? { integrityRestriction } : {}),
       turns: [{
         questionId: 'u1', questionBody: 'Q1', questionCreatedAtMs: 1, chosenAnswerRootId: branchChosen,
         contextFilter: {
@@ -132,6 +136,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
   }
 
   beforeEach(() => {
+    integrityRestriction = null
     installGenerationV2TestBridge()
     originalGenerationV2 = (globalThis as any).generationV2
     originalRawGenerationDebug = (globalThis as any).rawGenerationDebug
@@ -593,5 +598,44 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
 
     expect(await screen.findByTestId('raw-data-request-1')).toHaveTextContent('"raw-model"')
     expect(await screen.findByTestId('raw-data-provider-error-1')).toHaveTextContent('raw provider error')
+  })
+
+  // R2-06: startup recovery ends an operation with a corrupt stored artifact as
+  // failed. The answer shows that failure, localized, and can still be retried.
+  it('R2-06: shows a recovered corrupt-artifact failure as a localized error and keeps retry available', async () => {
+    answers = [{
+      answerRootId: 'a1', status: 'failed', body: 'partial text', createdAtMs: 2,
+      actionKind: 'initial', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      errorCode: 'GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT',
+      errorMessage: 'A stored result of this generation is corrupt. The generation was stopped and its records were kept.',
+    }]
+    render(AppChatApp)
+
+    expect(await screen.findByText(new RegExp(t('errors.generationRecovery.artifactCorrupt').slice(0, 12)))).toBeInTheDocument()
+    expect(screen.getByText(/GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT/)).toBeInTheDocument()
+    expect(screen.queryByText(/The generation was stopped and its records were kept/)).toBeNull()
+    expect(screen.getByTestId('retry-a-a1')).toBeEnabled()
+  })
+
+  // R2-06: a branch whose operation recovery could not end safely is restricted.
+  // The reason, scope and remaining actions are shown, and sending is blocked.
+  it.each([false, true])('R2-06: shows the branch restriction and blocks sending only when restricted (restricted=%s)', async restricted => {
+    const user = userEvent.setup()
+    if (restricted) integrityRestriction = { scope: 'branch', code: 'GENERATION_V2_RECOVERY_STATE_INVALID' }
+    render(AppChatApp)
+    await screen.findByText('A1')
+    await user.type(screen.getByTestId('composer-draft'), 'next question')
+
+    if (restricted) {
+      const banner = await screen.findByTestId('branch-integrity-restriction')
+      for (const key of ['branchRestrictedTitle', 'branchRestrictedReason', 'branchRestrictedScope', 'branchRestrictedActions']) {
+        expect(banner).toHaveTextContent(t(`errors.generationRecovery.${key}`))
+      }
+      expect(banner).toHaveAttribute('role', 'alert')
+      await waitFor(() => expect(screen.getByTestId('composer-send')).toBeDisabled())
+    } else {
+      expect(screen.queryByTestId('branch-integrity-restriction')).toBeNull()
+      await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+    }
   })
 })

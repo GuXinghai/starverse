@@ -1,5 +1,12 @@
 {
   "errors": {
+    "generationRecovery": {
+      "artifactCorrupt": "The stored result of this answer is corrupt, so its generation was stopped. Its records were kept for investigation and are not used as a valid answer. Retry this answer to replace it.",
+      "branchRestrictedTitle": "This branch is restricted",
+      "branchRestrictedReason": "When Starverse started, a generation in this branch had stored state that is inconsistent, and it could not be ended safely. Its records were kept unchanged for investigation.",
+      "branchRestrictedScope": "Only this branch is affected. Other branches and conversations work normally.",
+      "branchRestrictedActions": "You can still read this branch. New messages cannot be sent in it."
+    },
     "imagePreviewUnavailable": "The image preview could not be loaded. Reopen this conversation to try again.",
     "startup": {
       "loading": "Opening your workspace…",

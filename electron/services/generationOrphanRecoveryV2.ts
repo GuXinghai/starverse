@@ -33,6 +33,8 @@ import { stableSerializeProviderRequestV2 } from '../../src/shared/serialization
 
 const ERROR_CODE = 'stream_interrupted'
 const ERROR_MESSAGE = 'Assistant generation was interrupted before completion.'
+const ARTIFACT_CORRUPT_ERROR_CODE = 'GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT'
+const ARTIFACT_CORRUPT_ERROR_MESSAGE = 'A stored result of this generation is corrupt. The generation was stopped and its records were kept.'
 
 type ActiveRow = Readonly<{
   operationId: unknown
@@ -47,10 +49,12 @@ export type GenerationOrphanRecoveryResultV2 = Readonly<{
   recovered: number
   operationIds: readonly string[]
   unrecoveredOperationIds: readonly string[]
+  /** Ended as failed because one of their own stored artifacts is corrupt (R2-06). */
+  failedOperationIds: readonly string[]
 }>
 
 export class GenerationOrphanRecoveryV2Error extends Error {
-  constructor(readonly code: 'GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID') {
+  constructor(readonly code: 'GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID' | 'GENERATION_V2_ORPHAN_RECOVERY_ARTIFACT_CORRUPT') {
     super(code)
     this.name = 'GenerationOrphanRecoveryV2Error'
   }
@@ -83,7 +87,9 @@ function loadRecoveryArtifactJson(
     })
   } catch (error) {
     // A corrupt stored artifact belongs to this operation alone (P2b-05).
-    if (error instanceof NativeArtifactStorageV2Error) invalid()
+    if (error instanceof NativeArtifactStorageV2Error) {
+      throw new GenerationOrphanRecoveryV2Error('GENERATION_V2_ORPHAN_RECOVERY_ARTIFACT_CORRUPT')
+    }
     throw error
   }
 }
@@ -146,6 +152,87 @@ export function hasPersistedOpenAIResponsesAwaitingToolStateV2(row: Readonly<Rec
   }
 }
 
+function persistedRecoveryTime(db: BetterSqlite3.Database, operationId: string, answerId: string): number {
+  const persistedTime = db.prepare(`SELECT max(at_ms) AS atMs FROM (
+    SELECT updated_at_ms AS at_ms FROM generation_operation_v2 WHERE operation_id=?
+    UNION ALL SELECT updated_at_ms FROM generation_request_v2 WHERE operation_id=?
+    UNION ALL SELECT started_at_ms FROM generation_attempt_v2 WHERE operation_id=?
+    UNION ALL SELECT updated_at_ms FROM message_v2 WHERE message_id=?
+  )`).get(operationId, operationId, operationId, answerId) as { atMs: unknown }
+  if (!Number.isSafeInteger(persistedTime.atMs) || (persistedTime.atMs as number) < 0) invalid()
+  return persistedTime.atMs as number
+}
+
+/**
+ * Ends an awaiting-tool operation whose own stored artifact is corrupt as
+ * failed (R2-06). This releases its branch lock and shows the failure on its
+ * answer. Requests, attempts and artifacts are kept unchanged as evidence; the
+ * corrupt artifact is never decoded or used. Returns false, changing nothing,
+ * unless the operation still decodes, is streaming, has no prepared or
+ * streaming request and no open attempt, and its answer is still streaming.
+ */
+function failOperationWithCorruptArtifact(
+  db: BetterSqlite3.Database,
+  executionRepo: GenerationExecutionV2Repo,
+  graphRepo: ConversationGraphV2Repo,
+  operationId: string,
+  atMs: number,
+): boolean {
+  let failed = false
+  runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+    let operation: GenerationExecutionOperationBundleV2 | null
+    try {
+      operation = executionRepo.findOperationInTransaction(context, operationId)
+    } catch (error) {
+      if (error instanceof GenerationExecutionV2RepoError &&
+          (error.code === 'GENERATION_V2_EXECUTION_STATE_INVALID' || error.code === 'GENERATION_V2_EXECUTION_NOT_FOUND')) return
+      throw error
+    }
+    if (!operation || operation.operation.state !== 'streaming') return
+    const answerId = operation.operation.targetAnswerId.value
+    const active = db.prepare(`SELECT
+      (SELECT count(*) FROM generation_request_v2 WHERE operation_id=? AND state IN ('prepared', 'streaming')) AS requests,
+      (SELECT count(*) FROM generation_attempt_v2 WHERE operation_id=? AND state='open') AS attempts,
+      (SELECT status FROM message_v2 WHERE message_id=?) AS answerStatus`).get(
+      operationId, operationId, answerId,
+    ) as { requests: unknown, attempts: unknown, answerStatus: unknown }
+    if (active.requests !== 0 || active.attempts !== 0 || active.answerStatus !== 'streaming') return
+    const recoveryAtMs = Math.max(atMs, persistedRecoveryTime(db, operationId, answerId))
+    graphRepo.terminalizeAssistantMessage(context, answerId, 'failed', null, recoveryAtMs)
+    executionRepo.terminalizeOperation(context, operation, {
+      state: 'failed', errorCode: ARTIFACT_CORRUPT_ERROR_CODE, errorMessage: ARTIFACT_CORRUPT_ERROR_MESSAGE,
+    }, recoveryAtMs)
+    failed = true
+  })
+  return failed
+}
+
+export const GENERATION_V2_BRANCH_RESTRICTION_CODE = 'GENERATION_V2_RECOVERY_STATE_INVALID' as const
+
+export type GenerationV2BranchIntegrityRestriction = Readonly<{
+  scope: 'branch'
+  code: typeof GENERATION_V2_BRANCH_RESTRICTION_CODE
+}>
+
+/**
+ * Branches whose operation recovery could neither recover nor safely end
+ * (R2-06). Those rows keep their branch lock, so only these branches are
+ * restricted; every other branch and conversation stays fully usable.
+ */
+export function readGenerationRecoveryBranchRestrictionsV2(
+  db: BetterSqlite3.Database,
+  result: GenerationOrphanRecoveryResultV2,
+): ReadonlyMap<string, GenerationV2BranchIntegrityRestriction> {
+  const restrictions = new Map<string, GenerationV2BranchIntegrityRestriction>()
+  const restriction = Object.freeze({ scope: 'branch' as const, code: GENERATION_V2_BRANCH_RESTRICTION_CODE })
+  for (const operationId of result.unrecoveredOperationIds) {
+    const row = db.prepare('SELECT branch_id AS branchId FROM generation_operation_v2 WHERE operation_id=?')
+      .get(operationId) as { branchId: unknown } | undefined
+    if (typeof row?.branchId === 'string') restrictions.set(row.branchId, restriction)
+  }
+  return restrictions
+}
+
 export function recoverGenerationOrphansV2(
   db: BetterSqlite3.Database,
   atMs: number = Date.now(),
@@ -158,6 +245,7 @@ export function recoverGenerationOrphansV2(
   const lmStudioHistoryRepo = new LmStudioOpenResponsesNativeHistoryV2Repo(db)
   const recovered: string[] = []
   const unrecovered: string[] = []
+  const failed: string[] = []
     const operationIds = (db.prepare(`SELECT operation_id AS operationId
       FROM generation_operation_v2
       WHERE state IN ('committed', 'streaming')
@@ -331,14 +419,8 @@ export function recoverGenerationOrphansV2(
           throw error
         }
       })()
-      const persistedTime = db.prepare(`SELECT max(at_ms) AS atMs FROM (
-        SELECT updated_at_ms AS at_ms FROM generation_operation_v2 WHERE operation_id=?
-        UNION ALL SELECT updated_at_ms FROM generation_request_v2 WHERE operation_id=?
-        UNION ALL SELECT started_at_ms FROM generation_attempt_v2 WHERE operation_id=?
-        UNION ALL SELECT updated_at_ms FROM message_v2 WHERE message_id=?
-      )`).get(operationId, operationId, operationId, operation.operation.targetAnswerId.value) as { atMs: unknown }
-      if (!Number.isSafeInteger(persistedTime.atMs) || (persistedTime.atMs as number) < 0) invalid()
-      const recoveryAtMs = Math.max(atMs, persistedTime.atMs as number)
+      const recoveryAtMs = Math.max(atMs,
+        persistedRecoveryTime(db, operationId, operation.operation.targetAnswerId.value))
       if (coherentStreaming) {
         const attempt = db.prepare(`SELECT attempt FROM generation_attempt_v2
           WHERE operation_id=? AND request_sequence=? AND state='open'`).get(
@@ -365,10 +447,17 @@ export function recoverGenerationOrphansV2(
       } catch (error) {
         // Preserve incoherent rows and their branch locks. Only a classified
         // local-state failure is isolated; database/I/O failures remain fatal.
+        // A corrupt artifact of an operation that can still be read ends that
+        // operation alone as failed, keeping its rows (R2-06).
         if (!(error instanceof GenerationOrphanRecoveryV2Error)) throw error
+        if (error.code === 'GENERATION_V2_ORPHAN_RECOVERY_ARTIFACT_CORRUPT' &&
+            failOperationWithCorruptArtifact(db, executionRepo, graphRepo, operationId, atMs)) {
+          failed.push(operationId)
+          continue
+        }
         unrecovered.push(operationId)
       }
     }
   return Object.freeze({ recovered: recovered.length, operationIds: Object.freeze(recovered),
-    unrecoveredOperationIds: Object.freeze(unrecovered) })
+    unrecoveredOperationIds: Object.freeze(unrecovered), failedOperationIds: Object.freeze(failed) })
 }

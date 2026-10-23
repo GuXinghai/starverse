@@ -14,6 +14,7 @@ import {
 } from '../../src/core/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/core/generation-v2/contracts/providerContractRegistryV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
+import { ConversationReadV2Repo } from '../../infra/db/repo/conversationReadV2Repo'
 import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWorkspaceV2Repo'
 import {
   GenerationExecutionV2Repo,
@@ -23,7 +24,9 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GenerationNativeCompletionMaterializationPendingV2Error } from './generationNativeCompletionV2'
 import { GenerationOperationRuntimeRegistryV2 } from './generationOperationRuntimeRegistryV2'
-import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
+import { readGenerationRecoveryBranchRestrictionsV2, recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
+import { registerGenerationV2WorkspaceIpc } from '../ipc/generationV2WorkspaceIpc'
+import type { IpcInvokeHandler } from '../ipc/types'
 import { readRegenerateSourceAttachmentsV2 } from './regenerateSourceAttachmentsV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/core/generation-v2/compiler/semanticConsumptionLedgerV2'
 
@@ -57,7 +60,7 @@ describe('orphan recovery isolation and clock rollback', () => {
     try {
       seedOrphanRequest(db, 'clock', streaming)
       expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-        operationIds: ['operation:clock'], unrecoveredOperationIds: [] })
+        operationIds: ['operation:clock'], unrecoveredOperationIds: [], failedOperationIds: [] })
       const at = streaming ? 60 : 30
       for (const table of ['generation_operation_v2', 'generation_request_v2']) {
         expect(db.prepare(`SELECT state,terminal_at_ms AS at FROM ${table} WHERE operation_id=?`)
@@ -76,7 +79,7 @@ describe('orphan recovery isolation and clock rollback', () => {
       seedOperation(db, 'broken')
       seedOrphanRequest(db, 'valid', false)
       expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'], failedOperationIds: [] })
       expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?')
         .get('operation:broken')).toEqual({ state: 'committed' })
       expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?')
@@ -92,7 +95,7 @@ describe('orphan recovery isolation and clock rollback', () => {
       db.exec('DROP TRIGGER trg_assistant_generation_snapshot_v2_immutable')
       db.prepare("UPDATE assistant_generation_snapshot_v2 SET canonical_json='{}' WHERE operation_id=?").run('operation:corrupt')
       expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:corrupt'] })
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:corrupt'], failedOperationIds: [] })
       expect(db.prepare('SELECT canonical_json AS json FROM assistant_generation_snapshot_v2 WHERE operation_id=?')
         .get('operation:corrupt')).toEqual({ json: '{}' })
     } finally { db.close() }
@@ -112,7 +115,7 @@ describe('orphan recovery isolation and clock rollback', () => {
       db.exec('DROP TRIGGER trg_generation_request_v2_structure_immutable')
       db.prepare("UPDATE generation_request_v2 SET model_id='corrupted-model' WHERE operation_id=?").run('operation:broken')
       expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+        operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'], failedOperationIds: [] })
       expect(db.prepare('SELECT model_id AS model,state FROM generation_request_v2 WHERE operation_id=?')
         .get('operation:broken')).toEqual({ model: 'corrupted-model', state: 'prepared' })
     } finally { db.close() }
@@ -132,7 +135,7 @@ describe('orphan recovery isolation and clock rollback', () => {
         db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES(?,1,?,?,1,?,?,70,'request_terminal')`)
           .run('answer:broken', 'operation:broken', artifactKind, malformedJson, HASH)
         expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-          operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+          operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'], failedOperationIds: [] })
         expect(db.prepare('SELECT artifact_json AS json FROM generation_native_artifact_v2 WHERE operation_id=?')
           .get('operation:broken')).toEqual({ json: malformedJson })
         expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?')
@@ -140,29 +143,117 @@ describe('orphan recovery isolation and clock rollback', () => {
       } finally { db.close() }
     })
 
-  // P2b-05 (+I4a-07): a chunked artifact whose content chunk is missing fails
-  // in the storage layer, not as a classified recovery error. It must not abort
-  // recovery for every other operation, and with it application startup.
+  // P2b-05 (+I4a-07), R2-06: a chunked artifact whose content chunk is missing
+  // fails in the storage layer. It must not abort recovery or startup, and the
+  // operation it belongs to must end as failed, releasing its branch lock,
+  // while every row and the corrupt artifact stay as evidence.
+  function seedCorruptAwaitingToolOperation(db: BetterSqlite3.Database, artifactKind: string): string {
+    seedOrphanRequest(db, 'broken', true)
+    db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',
+      terminal_fingerprint=?,terminal_at_ms=70 WHERE operation_id=?`).run(HASH, 'operation:broken')
+    db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=70,terminal_at_ms=70 WHERE operation_id=?")
+      .run('operation:broken')
+    const manifestJson = JSON.stringify({ artifactStorageVersion: 1, artifactKind, artifactCodecVersion: 1,
+      artifactHash: HASH, rawByteLength: 2, rawSha256: HASH, chunkHashes: [HASH] })
+    db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES(?,1,?,?,1,?,?,70,'request_terminal')`)
+      .run('answer:broken', 'operation:broken', artifactKind, manifestJson, HASH)
+    return manifestJson
+  }
+
+  const evidence = (db: BetterSqlite3.Database) => ({
+    request: db.prepare('SELECT state,terminal_at_ms AS at FROM generation_request_v2 WHERE operation_id=?').get('operation:broken'),
+    attempt: db.prepare('SELECT state,outcome_json AS outcome FROM generation_attempt_v2 WHERE operation_id=?').get('operation:broken'),
+    artifacts: db.prepare('SELECT * FROM generation_native_artifact_v2 WHERE operation_id=?').all('operation:broken'),
+  })
+
   it.each(['anthropic_messages_native_history_v1'])(
-    'P2b-05: isolates awaiting-tool history %s with a missing content chunk and recovers the rest', artifactKind => {
+    'P2b-05, R2-06: fails awaiting-tool history %s with a missing content chunk, keeps its evidence and recovers the rest',
+    artifactKind => {
       const db = createDb()
       try {
-        seedOrphanRequest(db, 'broken', true)
         seedOrphanRequest(db, 'valid', false)
-        db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',
-          terminal_fingerprint=?,terminal_at_ms=70 WHERE operation_id=?`).run(HASH, 'operation:broken')
-        db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=70,terminal_at_ms=70 WHERE operation_id=?")
-          .run('operation:broken')
-        const manifestJson = JSON.stringify({ artifactStorageVersion: 1, artifactKind, artifactCodecVersion: 1,
-          artifactHash: HASH, rawByteLength: 2, rawSha256: HASH, chunkHashes: [HASH] })
-        db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES(?,1,?,?,1,?,?,70,'request_terminal')`)
-          .run('answer:broken', 'operation:broken', artifactKind, manifestJson, HASH)
-        expect(recoverGenerationOrphansV2(db, 1)).toEqual({ recovered: 1,
-          operationIds: ['operation:valid'], unrecoveredOperationIds: ['operation:broken'] })
+        const manifestJson = seedCorruptAwaitingToolOperation(db, artifactKind)
+        const before = evidence(db)
+        expect(recoverGenerationOrphansV2(db, 100)).toEqual({ recovered: 1, operationIds: ['operation:valid'],
+          unrecoveredOperationIds: [], failedOperationIds: ['operation:broken'] })
+
+        expect(db.prepare(`SELECT state,error_code AS code,error_message AS message,terminal_at_ms AS at
+          FROM generation_operation_v2 WHERE operation_id=?`).get('operation:broken')).toEqual({ state: 'failed',
+          code: 'GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT', at: 100,
+          message: 'A stored result of this generation is corrupt. The generation was stopped and its records were kept.' })
+        expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get('answer:broken'))
+          .toEqual({ status: 'failed' })
+        // The branch lock is the partial unique index over committed/streaming operations.
+        expect(db.prepare(`SELECT count(*) AS n FROM generation_operation_v2
+          WHERE branch_id=? AND state IN ('committed','streaming')`).get('branch:broken')).toEqual({ n: 0 })
+        expect(evidence(db)).toEqual(before)
         expect(db.prepare('SELECT artifact_json AS json FROM generation_native_artifact_v2 WHERE operation_id=?')
           .get('operation:broken')).toEqual({ json: manifestJson })
+
+        // The conversation read shows the failure, not a completed answer.
+        const answer = new ConversationReadV2Repo(db).readBranch('branch:broken').turns[0]!.answers[0]!
+        expect(answer).toMatchObject({ status: 'failed', errorCode: 'GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT' })
+
+        // The unaffected operation was recovered as an ordinary interrupted stream.
+        expect(db.prepare('SELECT state,error_code AS code FROM generation_operation_v2 WHERE operation_id=?')
+          .get('operation:valid')).toEqual({ state: 'failed', code: 'stream_interrupted' })
+
+        // A restart finds nothing left to recover and changes nothing.
+        const afterFirst = db.prepare('SELECT * FROM generation_operation_v2 ORDER BY operation_id').all()
+        expect(recoverGenerationOrphansV2(db, 200)).toEqual({ recovered: 0, operationIds: [],
+          unrecoveredOperationIds: [], failedOperationIds: [] })
+        expect(db.prepare('SELECT * FROM generation_operation_v2 ORDER BY operation_id').all()).toEqual(afterFirst)
+        expect(evidence(db)).toEqual(before)
       } finally { db.close() }
     })
+
+  // R2-06: an operation recovery cannot end safely keeps its lock, which
+  // restricts only its own branch. The branch read reports that restriction.
+  it('R2-06: restricts only the branch whose operation could not be ended and reports it through the branch read', async () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'locked', true)
+      db.prepare("UPDATE message_v2 SET status='failed' WHERE message_id=?").run('answer:locked')
+      seedOrphanRequest(db, 'valid', false)
+      const result = recoverGenerationOrphansV2(db, 100)
+      expect(result).toEqual({ recovered: 1, operationIds: ['operation:valid'],
+        unrecoveredOperationIds: ['operation:locked'], failedOperationIds: [] })
+      const restriction = { scope: 'branch', code: 'GENERATION_V2_RECOVERY_STATE_INVALID' }
+      const restrictions = readGenerationRecoveryBranchRestrictionsV2(db, result)
+      expect([...restrictions]).toEqual([['branch:locked', restriction]])
+
+      const handlers = new Map<string, IpcInvokeHandler>()
+      registerGenerationV2WorkspaceIpc({ registerInvoke: (channel, handler) => handlers.set(channel, handler), db,
+        branchIntegrityRestrictions: restrictions,
+        runtimeRegistry: { runWithBranchQuiesced: async (_id, action) => action(),
+          runWithConversationQuiesced: async (_id, action) => action(), runWithProjectQuiesced: async (_id, action) => action() } })
+      const read = (branchId: string) => handlers.get('generation-v2:workspace:read-branch')!({},
+        { branchId, beforeMessageId: null, limit: 50 })
+      expect(await read('branch:locked')).toMatchObject({ ok: true,
+        value: { branchId: 'branch:locked', integrityRestriction: restriction } })
+      expect(await read('branch:valid')).toMatchObject({ ok: true,
+        value: { branchId: 'branch:valid', integrityRestriction: null } })
+      // The database lock still holds for the restricted branch only.
+      const active = (branchId: string) => db.prepare(`SELECT count(*) AS n FROM generation_operation_v2
+        WHERE branch_id=? AND state IN ('committed','streaming')`).get(branchId)
+      expect(active('branch:locked')).toEqual({ n: 1 })
+      expect(active('branch:valid')).toEqual({ n: 0 })
+    } finally { db.close() }
+  })
+
+  it('R2-06: keeps a corrupt-artifact operation whose answer is no longer streaming, without terminalizing it', () => {
+    const db = createDb()
+    try {
+      seedCorruptAwaitingToolOperation(db, 'anthropic_messages_native_history_v1')
+      db.prepare("UPDATE message_v2 SET status='failed' WHERE message_id=?").run('answer:broken')
+      const before = evidence(db)
+      expect(recoverGenerationOrphansV2(db, 100)).toEqual({ recovered: 0, operationIds: [],
+        unrecoveredOperationIds: ['operation:broken'], failedOperationIds: [] })
+      expect(db.prepare('SELECT state,error_code AS code FROM generation_operation_v2 WHERE operation_id=?')
+        .get('operation:broken')).toEqual({ state: 'streaming', code: null })
+      expect(evidence(db)).toEqual(before)
+    } finally { db.close() }
+  })
 })
 
 function providerBinding() {

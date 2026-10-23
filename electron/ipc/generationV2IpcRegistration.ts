@@ -43,6 +43,7 @@ import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/cap
 import { ModelFactsInspectorV1Service } from '../services/modelFactsInspectorV1Service'
 import type { RegisterActiveWorkSourceV2 } from '../services/appShutdownCoordinatorV2'
 import type { ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
+import type { GenerationV2BranchIntegrityRestriction } from '../services/generationOrphanRecoveryV2'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -60,6 +61,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
   proxyMode: () => 'environment' | 'manual' | 'direct' | 'system'
   notifyModelFactsSemanticInvalidated?: ModelFactsSemanticInvalidationNotifierV1
   registerActiveWorkSource?: RegisterActiveWorkSourceV2
+  branchIntegrityRestrictions?: ReadonlyMap<string, GenerationV2BranchIntegrityRestriction>
 }>): readonly string[] {
   input.epoch2.assertCurrent()
   const common = Object.freeze({ db: input.epoch2.database,
@@ -94,7 +96,8 @@ export function registerGenerationV2Ipc(input: Readonly<{
       db: input.epoch2.database, notifyModelFactsSemanticInvalidated: input.notifyModelFactsSemanticInvalidated }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
-      runtimeRegistry, getProjectDuplicatePolicy: input.getProjectDuplicatePolicy }),
+      runtimeRegistry, getProjectDuplicatePolicy: input.getProjectDuplicatePolicy,
+      branchIntegrityRestrictions: input.branchIntegrityRestrictions }),
     ...registerGenerationV2ModelPreferencesIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
     ...registerGenerationV2CredentialSettingsIpc({ registerInvoke: input.registerInvoke,
       credentialService: input.epoch2.credentialService, onCommittedSubjectMutation: notifyCommittedSubjectMutation }),

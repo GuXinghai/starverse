@@ -40,7 +40,7 @@ import { OllamaChatNativeHistoryV2Repo } from './ollamaChatNativeHistoryV2Repo'
 import { LmStudioOpenResponsesNativeHistoryV2Repo } from './lmStudioOpenResponsesNativeHistoryV2Repo'
 import { BranchContextFilterV2Repo } from './branchContextFilterV2Repo'
 import { GenerationInterruptedReplayV2Repo } from './generationInterruptedReplayV2Repo'
-import { loadNativeArtifactJsonV2, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
+import { loadNativeArtifactJsonV2, NativeArtifactStorageV2Error, storeNativeArtifactJsonV2 } from './nativeArtifactStorageV2'
 import { loadInterruptedReplayJsonV2 } from './interruptedReplayStorageV2'
 
 const HASH = 'a'.repeat(64)
@@ -684,4 +684,39 @@ describe('portable history across text protocols', () => {
     },
     60_000,
   )
+
+  // R2-06: recovery ends an operation whose own stored artifact is corrupt as
+  // failed. A later turn that includes it must fail closed on that artifact,
+  // never skip the check or use the corrupt data as history.
+  it('R2-06: fails closed on a failed earlier turn whose stored artifact is corrupt', () => {
+    const db = database()
+    addTurn(db, 'anthropic', 1, false)
+    const { binding, cap } = details('anthropic')
+    const snapshotHash = (db.prepare("SELECT snapshot_hash AS hash FROM assistant_generation_snapshot_v2 WHERE operation_id='operation:1'")
+      .get() as { hash: string }).hash
+    db.prepare(`INSERT INTO generation_request_v2(operation_id,request_sequence,answer_root_id,snapshot_hash,provider_id,endpoint_profile_id,
+      credential_scope_id,contract_id,model_id,effective_endpoint_id,capability_revision,compiler_ledger_json,compiler_ledger_hash,
+      prepared_body_sha256,prepared_body_byte_length,state,created_at_ms,updated_at_ms)
+      VALUES('operation:1',1,'answer:1',?,?,?,?,?,?,'endpoint:main',?,?,?,?,2,'prepared',111,111)`).run(snapshotHash,
+        binding.providerId, binding.endpointProfileId, binding.credentialScopeId, binding.protocolContractId, binding.modelId,
+        cap.revision.value, baseLedger.canonicalJson, baseLedger.sha256, HASH)
+    db.prepare("INSERT INTO generation_attempt_v2 VALUES('operation:1',1,1,'open',NULL,NULL,112,NULL)").run()
+    db.prepare("UPDATE generation_request_v2 SET state='streaming',updated_at_ms=113 WHERE operation_id='operation:1'").run()
+    db.prepare("UPDATE generation_operation_v2 SET state='streaming',updated_at_ms=114 WHERE operation_id='operation:1'").run()
+    db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',terminal_fingerprint=?,
+      terminal_at_ms=119 WHERE operation_id='operation:1'`).run(HASH)
+    db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=120,terminal_at_ms=120 WHERE operation_id='operation:1'").run()
+    // A chunked manifest whose only content chunk does not exist.
+    db.prepare(`INSERT INTO generation_native_artifact_v2 VALUES('answer:1',1,'operation:1','anthropic_messages_native_history_v1',1,?,?,130,
+      'request_terminal')`).run(JSON.stringify({ artifactStorageVersion: 1, artifactKind: 'anthropic_messages_native_history_v1',
+      artifactCodecVersion: 1, artifactHash: HASH, rawByteLength: 2, rawSha256: HASH, chunkHashes: [HASH] }), HASH)
+    db.prepare(`UPDATE generation_operation_v2 SET state='failed',error_code='GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT',
+      error_message='corrupt',updated_at_ms=140,terminal_at_ms=140 WHERE operation_id='operation:1'`).run()
+    db.prepare("UPDATE message_v2 SET status='failed',updated_at_ms=140 WHERE message_id='answer:1'").run()
+    addTurn(db, 'openai', 2, false)
+    transaction(db, context => {
+      expect(() => loadPortableGenerationHistoryV2(db, context, 'operation:2', 'openai'))
+        .toThrow(NativeArtifactStorageV2Error)
+    })
+  })
 })

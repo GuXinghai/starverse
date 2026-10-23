@@ -781,6 +781,7 @@ export function useAppChatAppLogic() {
     draftAttachmentRecords.value.some((attachment) => attachment.includeInNextRequest)
   )
   const composerCanSend = computed(() => {
+    if (activeBranchIntegrityRestriction.value) return false
     if (isRunning.value) return false
     if (!activeSessionCapabilityReady.value) return false
     if (isDraftInteractionLocked.value) return false
@@ -1211,6 +1212,9 @@ export function useAppChatAppLogic() {
     return Boolean(s && s.isTarget && !s.isComplete)
   })
 
+  // R2-06: the branch keeps an operation that startup recovery could not end
+  // safely; its database lock blocks new generations here, so say so plainly.
+  const activeBranchIntegrityRestriction = computed(() => generationV2BranchView.value?.integrityRestriction ?? null)
   const activeGenerationV2Answer = computed(() => {
     const view = generationV2BranchView.value
     if (!view?.headMessageId) return null
@@ -1534,6 +1538,11 @@ export function useAppChatAppLogic() {
     networkError?: unknown
   }>
 
+  // Startup recovery stores an English message with these codes; show it localized (R2-06).
+  const GENERATION_RECOVERY_ERROR_TEXT_KEYS: Readonly<Record<string, string>> = {
+    GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT: 'errors.generationRecovery.artifactCorrupt',
+  }
+
   function toErrorPanelView(message: MessageVM): ErrorPanelViewModel | null {
     const envelope = message.errorEnvelope ?? null
     const summary = (message.errorSummary ?? null) as ErrorSummary | null
@@ -1550,7 +1559,9 @@ export function useAppChatAppLogic() {
     const provider = envelope?.openrouter?.provider ?? metadataProvider ?? summary?.provider ?? 'unknown'
     const code = envelope?.openrouter?.code ?? summary?.code ?? 'error'
     const networkErrorMessage = resolveNetworkErrorDisplayMessage(metadata?.networkError ?? summary?.networkError)
-    const text = networkErrorMessage ?? envelope?.openrouter?.message ?? summary?.message ?? 'Unknown error'
+    const recoveryTextKey = summary?.code ? GENERATION_RECOVERY_ERROR_TEXT_KEYS[summary.code] : undefined
+    const text = networkErrorMessage ?? (recoveryTextKey ? t(recoveryTextKey) : null) ??
+      envelope?.openrouter?.message ?? summary?.message ?? 'Unknown error'
 
     return {
       completionClass,
@@ -6917,6 +6928,7 @@ export function useAppChatAppLogic() {
   async function onSend() {
     if (!activeSessionCapabilityReady.value) return
     if (sendOrchestrationLocked || isRunning.value || isDraftInteractionLocked.value) return
+    if (activeBranchIntegrityRestriction.value) return
     if (!draft.value.trim() && draftAttachmentRecords.value.length === 0) return
     const scope = getActiveDraftScope()
     if (!scope) return
@@ -8674,6 +8686,7 @@ export function useAppChatAppLogic() {
     refreshConvos,
     onRefreshWorkspace,
     activeDraftConflict,
+    activeBranchIntegrityRestriction,
     draftConflictReloadConfirmation,
     cancelDraftConflictReload,
     confirmDraftConflictReload,

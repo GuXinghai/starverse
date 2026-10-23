@@ -158,4 +158,98 @@ Two read-only `Explore` agents were used, each requested with `model: sonnet` an
 
 Repair Phase 3 (generation and protocol correctness): R3-01 to R3-08 in [repair-plan.md](repair-plan.md). It depends on R2-05, which is done, and starts by flipping the remaining `it.fails` tests for P3b-01, P4a-03, P4a-04 and P4a-05 as it fixes them. The R2-06 owner question above can be answered alongside it.
 
+## 10. Addendum (2026-10-23): R2-06 owner decision and follow-up
+
+*This section was added after the owner answered the R2-06 question in section 6. The text above is unchanged.*
+
+The owner decided:
+1. A corrupt operation is terminalized as `failed` with its own error code, and its branch lock is released.
+2. Its rows and corrupt artifacts are kept.
+3. The failure is shown in the conversation.
+4. Restriction follows the scope of the failure: operation, then branch, then global.
+5. A restriction states its reason, scope and remaining actions.
+
+### 10.1 Feasibility check before implementation
+
+Two read-only mapping agents (`Explore`, requested as `model: sonnet`, `effort: high`) traced the schema triggers, repo preconditions, history consumers and UI paths. The coordinator verified the key points against the source:
+- **Safe through the existing repos:** an operation that still decodes, is `streaming`, has no `prepared`/`streaming` request and no open attempt, and whose answer is still `streaming` (the awaiting-tool shape).
+  - The schema allows `streaming → failed` here. `trg_generation_operation_v2_terminal_requests` fires only for prepared or streaming requests.
+  - `terminalizeAssistantMessage` and `terminalizeOperation` do not read artifacts.
+  - The runtime's own `#failOperation` already ends operations of this shape.
+- **Not safe:** an operation whose bundle cannot be decoded (`findOperationInTransaction` fails). The repos refuse such an operation, and ending it would need raw SQL that bypasses the repo checks. Request-level incoherence and an answer that is no longer `streaming` are also excluded, because the repo steps would throw or leave the operation and its answer inconsistent.
+- **Later sends fail closed.** Later sends on the same branch include the failed turn. `loadPortableGenerationHistoryV2` reads its artifacts and throws `NativeArtifactStorageV2Error` on the corrupt one. The corrupt data is never used as history and the check is not bypassed. Retrying the failed answer reads only its snapshot and ledger, not its artifacts.
+- **No global restricted mode is possible today.** No restricted, read-only or safe mode exists, and there is no conversation export. Startup runs many write paths (recovery, model catalog and cloud-rule refresh), and the IPC handlers assume a writable database.
+
+### 10.2 What changed
+
+**Operation level** (`electron/services/generationOrphanRecoveryV2.ts`)
+- `NativeArtifactStorageV2Error` while loading an awaiting-tool artifact is now classified as `GENERATION_V2_ORPHAN_RECOVERY_ARTIFACT_CORRUPT`.
+- After the recovery transaction rolls back, `failOperationWithCorruptArtifact` runs a separate transaction. It re-checks the safe shape, then sets the answer and the operation to `failed` with `GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT`, which releases the branch lock.
+- If the shape does not hold, it changes nothing and the operation stays in `unrecoveredOperationIds`.
+- Requests, attempts and artifacts are not touched.
+- The result has a new `failedOperationIds` field. `mainV2.ts` logs its count by code.
+
+**Branch level**
+- `readGenerationRecoveryBranchRestrictionsV2` maps the operations recovery could neither recover nor end to their branches.
+- The workspace `read-branch` IPC now returns `integrityRestriction: { scope: 'branch', code: 'GENERATION_V2_RECOVERY_STATE_INVALID' }` for those branches and `null` for all others.
+- The renderer shows an alert above the transcript for a restricted branch. It gives the reason, the scope (only this branch; other branches and conversations work normally) and what still works (reading this branch).
+- Sending is blocked on that branch only, in both `composerCanSend` and `onSend`. The database lock remains the real enforcement.
+
+**UI failure state**
+- The error panel shows a localized message for `GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT` instead of the stored English text.
+- The message says the result is corrupt, the records were kept and are not used as a valid answer, and the answer can be retried to replace it.
+- The answer's status is `failed` and is never shown as completed.
+- New strings are in `errors.generationRecovery.*` for zh-CN and en-US.
+
+**Global level:** not implemented. See 10.4.
+
+### 10.3 Tests and checks
+
+| Test | What it proves |
+|---|---|
+| `generationOperationRuntimeRegistryV2.test.ts` "P2b-05, R2-06: fails awaiting-tool history…" | The operation is terminalized with the exact error code and message, its answer is failed, and its branch has no active operation. Request, attempt and artifact rows are byte-identical before and after. The branch read shows `failed` with the code. The unaffected orphan is recovered normally. A second recovery run (restart) changes nothing. |
+| same file, "R2-06: keeps a corrupt-artifact operation whose answer is no longer streaming…" | Outside the safe shape, nothing is terminalized and the evidence is unchanged. |
+| same file, "R2-06: restricts only the branch…" | Recovery → restriction map → `read-branch` IPC. The restriction appears for the locked branch only, and the database lock still holds for that branch only. |
+| `portableGenerationHistoryV2.test.ts` "R2-06: fails closed on a failed earlier turn whose stored artifact is corrupt" | A later turn including the failed one throws `NativeArtifactStorageV2Error`. The corrupt data is never used as history. |
+| `AppChatApp.regenRetry.test.ts` "R2-06: shows a recovered corrupt-artifact failure…" | The localized message is shown and the stored English text is not. Retry stays enabled. |
+| same file, "R2-06: shows the branch restriction and blocks sending only when restricted" (both cases) | All four banner lines appear, with `role="alert"`, and Send is disabled. With no restriction there is no banner and Send is enabled. |
+
+- **Assertion updates:** the existing exact-equality assertions on the recovery result now include `failedOperationIds: []`. No assertion was weakened.
+- **Mutation checks:** each new behaviour was disabled in turn, and its test failed: the terminalization call, the error-code text mapping, and the composer send guard. Each file was restored and confirmed.
+- **Static checks:** typecheck passes, the partition gate passes, and lint shows 0 errors.
+- **Touched files:** all pass, except 7 integration tests in the coordinator and portable-history files that are in the Phase 1 baseline (timeouts).
+- **Full partitions:** unit 10 failed (baseline 13), UI 18 (baseline 18), integration 38 (Phase 1 baseline 34). Every failing name is in the Phase 1 baseline failure lists. The differences are the known flaky timeouts.
+
+**Electron smoke** used two isolated offline agent profiles under `%TEMP%`, fixtures written with the Node ABI, and checks through the app's own preload bridge (`window.generationV2.workspace.readBranch`):
+
+| Scenario | Result |
+|---|---|
+| Corrupt awaiting-tool artifact, plus one interrupted orphan | Renderer mounted. The broken branch reads `failed` / `GENERATION_V2_RECOVERY_ARTIFACT_CORRUPT`, with no restriction. The other branch reads `failed` / `stream_interrupted`. In the database, the request is still `completed`, the artifact row is kept, and there are no active locks. stderr logged the code with `count: 1`. |
+| Restart of the same profile | Renderer mounted, same state, no further changes |
+| Operation recovery cannot end (streaming, answer already failed), plus one orphan | Renderer mounted. The locked branch reads `integrityRestriction: { scope: 'branch', code: 'GENERATION_V2_RECOVERY_STATE_INVALID' }`. The other branch has none. The database lock remains on `branch:locked` only. |
+
+The smoke profiles, the temporary wrapper and fixture test, and a renderer server left running from the Phase 2 smoke were all removed or stopped.
+
+### 10.4 Remaining limitations and unresolved findings
+
+- **No global restricted mode (blocked).** When overall database integrity can't be established, startup still fails closed with a dialog showing only the error code. Two things are missing:
+  - **A read-only runtime:** open the database read-only, skip recovery and the refresh jobs, and register only the read IPC.
+  - **Conversation export:** none exists yet.
+
+  Both are new features that touch startup and IPC-wide write gating. Adding them as a workaround would risk writes to a database whose consistency is unknown.
+  - **Proposed:** a separate phase. Classify integrity failures in `epoch2MainEntry.ts`, add a read-only startup profile with a minimal IPC set, and add an export of the readable conversations, with its own smoke on a deliberately corrupted profile.
+- **Undecodable operation (branch-level, unreadable):** the operation stays locked (restricted to its branch). The branch read itself also fails, so the banner cannot be shown, because `ConversationReadV2Repo` requires every answer's snapshot to decode. Showing it would mean relaxing that read check, which was not done.
+- **Gemini and LM Studio:** their history repos fold storage corruption into `*_HISTORY_STATE_INVALID`, which cannot be told apart from other invalid state. Their corrupt awaiting-tool artifacts therefore stay branch-restricted, not operation-terminalized. The same applies to artifacts that load but fail to decode, which reach the generic "no awaiting-tool state" path.
+- **Sends after recovery:** later sends on a branch whose history includes a corrupt-artifact turn fail with `NativeArtifactStorageV2Error`, shown as a raw error. Retrying the failed answer (retry reads only its snapshot) is the path forward. That remedy was traced statically, not run end to end.
+- **The restricted branch's head answer** may still render with the generating indicator if it is `streaming`. The banner explains the state, but the indicator itself was not changed.
+- **I4a-07:** handled for the operation and branch scopes above. The database-wide case remains open with the global mode.
+
+**Native module (this follow-up)**
+- better-sqlite3 ABI mismatch encountered: no
+- Rebuild command run: `npm run rebuild:node` (tests), `npm run rebuild:electron` (smoke), `npm run rebuild:node` (fixtures), `npm run rebuild:electron` (smoke)
+- Current ABI target after task: electron
+- Tests retried after rebuild: none needed
+- Electron smoke retried after rebuild: yes
+- No native artifacts committed: confirmed
+
 This phase is complete. I have stopped and am waiting for your instruction to continue.

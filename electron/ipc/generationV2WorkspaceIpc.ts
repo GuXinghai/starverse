@@ -15,6 +15,7 @@ import type { RegisterInvoke } from './types'
 import { SystemChatTemplateV2Repo } from '../../infra/db/repo/systemChatTemplateV2Repo'
 import { ConversationRoutePreferenceV2Repo } from '../../infra/db/repo/conversationRoutePreferenceV2Repo'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
+import type { GenerationV2BranchIntegrityRestriction } from '../services/generationOrphanRecoveryV2'
 
 export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:ensure-default', 'generation-v2:workspace:list-projects',
@@ -70,6 +71,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
     'runWithBranchQuiesced' | 'runWithConversationQuiesced' | 'runWithProjectQuiesced'>
   nowMs?: () => number
   getProjectDuplicatePolicy?: () => ProjectDuplicatePolicy
+  branchIntegrityRestrictions?: ReadonlyMap<string, GenerationV2BranchIntegrityRestriction>
 }>): readonly string[] {
   const nowMs = input.nowMs ?? Date.now
   const graph = new ConversationGraphV2Repo(input.db)
@@ -136,11 +138,13 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[3], safe((payload) => {
     const raw = object(payload, ['branchId', 'beforeMessageId', 'limit'])
-    return read.readBranch(
+    const view = read.readBranch(
       text(raw.branchId),
       nullableText(raw.beforeMessageId),
       boundedInteger(raw.limit, 1, 50),
     )
+    return Object.freeze({ ...view,
+      integrityRestriction: input.branchIntegrityRestrictions?.get(view.branchId) ?? null })
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[4], safe((payload) => {
     const raw = object(payload, ['branchId', 'messageId'])
