@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  createGenerationAbortScope, createStoreBackedGenerationTotalTimeoutSourceV2, isValidGenerationTotalTimeoutMsV2,
+  abortableGenerationReadV2, createGenerationAbortScope, createStoreBackedGenerationTotalTimeoutSourceV2, isValidGenerationTotalTimeoutMsV2,
   setGenerationTotalTimeoutSourceV2,
 } from './generationTimeoutPolicyV2'
 
@@ -73,6 +73,24 @@ describe('generation total-timeout boundary', () => {
       expect(src, f).not.toMatch(/setTimeout\(\(\) => \{[^}]*abort\('timeout'\)/)
       expect(src, f).toContain('createGenerationAbortScope')
     }
+  })
+
+  it('P4a-17: every runner stream read settles on abort', () => {
+    const dir = __dirname
+    for (const f of readdirSync(dir).filter((n) => /(?:StreamRunnerV2|InitialStreamRunnerV2)\.ts$/.test(n))) {
+      const src = readFileSync(join(dir, f), 'utf8')
+      expect(src, f).not.toMatch(/await reader\.read\(\)/)
+    }
+  })
+
+  it('P4a-17: abortableGenerationReadV2 rejects a stalled read with the abort reason', async () => {
+    const controller = new AbortController()
+    const stalled = new Promise<never>(() => undefined)
+    const read = abortableGenerationReadV2(stalled, controller.signal)
+    controller.abort('user_cancelled')
+    await expect(read).rejects.toBe('user_cancelled')
+    await expect(abortableGenerationReadV2(Promise.resolve(1), controller.signal)).rejects.toBe('user_cancelled')
+    await expect(abortableGenerationReadV2(Promise.resolve(2), new AbortController().signal)).resolves.toBe(2)
   })
 
   describe('configured Settings value handoff', () => {

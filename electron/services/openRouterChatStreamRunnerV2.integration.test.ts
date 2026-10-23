@@ -15,6 +15,9 @@ import { OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1 } from '../../src/core/genera
 import { createOpenRouterChatPlainTextInitialSendCoordinatorV2 } from './openRouterChatPlainTextInitialSendCoordinatorV2'
 import { createOpenRouterChatStreamRunnerV2 } from './openRouterChatStreamRunnerV2'
 import { recoverPendingGenerationNativeCompletionsV2 } from './generationNativeCompletionV2'
+import { GENERATION_V2_PROVIDER_OUTPUT_INCOMPLETE } from './generationProviderFinishV2'
+import { GenerationBodyCheckpointV2 } from './generationBodyCheckpointV2'
+import { OpenRouterChatStreamAssemblerV1 } from '../../src/core/generation-v2/providers/openrouter/chatStreamV1'
 
 const transportMocks = vi.hoisted(() => ({ leases: new WeakSet<object>() }))
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
@@ -76,20 +79,81 @@ function database(): BetterSqlite3.Database {
   return db
 }
 
-function streamResponse(): Response {
+function streamResponse(finishReason = 'stop'): Response {
   const usage = { prompt_tokens: 7, completion_tokens: 9, total_tokens: 16,
     cost: 0.000031, is_byok: true, cost_details: { upstream_inference_cost: 0.000029 } }
   const events = [
     { id: 'gen-receipt', model: modelId, provider: 'OpenAI',
       choices: [{ index: 0, delta: { role: 'assistant', content: 'Saved from the exact request history.' }, finish_reason: null }] },
     { id: 'gen-receipt', model: modelId, provider: 'OpenAI',
-      choices: [{ index: 0, delta: { content: '', role: 'assistant' }, finish_reason: 'stop' }], usage },
+      choices: [{ index: 0, delta: { content: '', role: 'assistant' }, finish_reason: finishReason }], usage },
   ]
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n'
   return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
 }
 
 describe('OpenRouter native completion receipt recovery', () => {
+  async function submitSource(db: BetterSqlite3.Database) {
+    return createOpenRouterChatPlainTextInitialSendCoordinatorV2({ db,
+      credentialService: credentialService(), nowMs: () => 200, createGraphId: (kind) => `${kind}:source` }).submit({
+      expectedCredentialRevision: 1, expectedCredentialScopeId: credentialScopeId,
+      command: { operationId: 'operation:source', branchId: 'branch:test', expectedHeadMessageId: null,
+        userBody: 'Original request body', modelId, commandAttachments: [] },
+    })
+  }
+
+  it('P4a-08: a failed final checkpoint flush leaves no receipt and no completed answer with a stale body', async () => {
+    const db = database()
+    const flush = vi.spyOn(GenerationBodyCheckpointV2.prototype, 'flush')
+      .mockImplementationOnce(() => { throw new Error('injected final checkpoint flush failure') })
+    try {
+      const command = await submitSource(db)
+      await createOpenRouterChatStreamRunnerV2({ db, credentialService: credentialService(), nowMs: () => 300,
+        fetchImpl: async () => streamResponse() }).run(command).catch(() => undefined)
+      expect(flush).toHaveBeenCalled()
+      expect(new GenerationNativeCompletionReceiptV2Repo(db).listPending()).toHaveLength(0)
+      expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?').get('operation:source'))
+        .not.toEqual({ state: 'completed' })
+    } finally { flush.mockRestore(); db.close() }
+  })
+
+  it('P4a-12: a throwing interrupted snapshot does not mask the stream error or skip reader cleanup', async () => {
+    const db = database()
+    const snapshot = vi.spyOn(OpenRouterChatStreamAssemblerV1.prototype, 'interruptedSnapshot')
+      .mockImplementation(() => { throw new Error('injected snapshot failure') })
+    let cancelled = false
+    try {
+      const command = await submitSource(db)
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new TextEncoder().encode('data: {not json}\n\n')) },
+        cancel() { cancelled = true },
+      })
+      const result = await createOpenRouterChatStreamRunnerV2({ db, credentialService: credentialService(), nowMs: () => 300,
+        fetchImpl: async () => new Response(body, { headers: { 'content-type': 'text/event-stream' } }) }).run(command)
+        .catch((error: unknown) => ({ thrown: error instanceof Error ? error.message : String(error) }))
+      expect(JSON.stringify(result)).not.toContain('injected snapshot failure')
+      expect(cancelled).toBe(true)
+    } finally { snapshot.mockRestore(); db.close() }
+  })
+
+  it('P4a-15: records a length-truncated stream as failed, not completed', async () => {
+    const db = database()
+    try {
+      const command = await createOpenRouterChatPlainTextInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 200, createGraphId: (kind) => `${kind}:source` }).submit({
+        expectedCredentialRevision: 1, expectedCredentialScopeId: credentialScopeId,
+        command: { operationId: 'operation:source', branchId: 'branch:test', expectedHeadMessageId: null,
+          userBody: 'Original request body', modelId, commandAttachments: [] },
+      })
+      const result = await createOpenRouterChatStreamRunnerV2({ db, credentialService: credentialService(), nowMs: () => 300,
+        fetchImpl: async () => streamResponse('length') }).run(command)
+      expect(result).toMatchObject({ state: 'failed', errorCode: GENERATION_V2_PROVIDER_OUTPUT_INCOMPLETE })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(result.answerRootId)).toEqual({ status: 'failed' })
+      expect(db.prepare('SELECT state, error_code AS code FROM generation_operation_v2 WHERE operation_id=?').get('operation:source'))
+        .toEqual({ state: 'failed', code: GENERATION_V2_PROVIDER_OUTPUT_INCOMPLETE })
+    } finally { db.close() }
+  })
+
   it('validates and replays completion against the persisted nonempty prepared history without refetching', async () => {
     let db = database()
     let fetchCount = 0

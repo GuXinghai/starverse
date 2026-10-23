@@ -151,6 +151,18 @@ export function createAnthropicMessagesNativeContentAccumulator(input: Readonly<
           state.inputJsonPartial = `${state.inputJsonPartial ?? ''}${delta.partial_json}`
         }
         break
+      case 'citations_delta': {
+        // Each delta adds one citation to the current text block (Anthropic streaming docs).
+        const citation = asRecord(delta.citation)
+        if (state.block.type !== 'text' || !citation) {
+          diagnostics.push({ type: 'invalid_citations_delta', index })
+          break
+        }
+        const existing = Array.isArray(state.block.citations) ? state.block.citations : []
+        state.block.citations = [...existing,
+          clonePlainJsonObject(citation, `$.content_block_delta[${index}].delta.citation`)]
+        break
+      }
       default:
         diagnostics.push({
           type: 'unknown_content_block_delta',

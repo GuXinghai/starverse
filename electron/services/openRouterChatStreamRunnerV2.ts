@@ -36,6 +36,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 
 
 export function formatOpenRouterChatTransportFailureMessage(error: unknown, responseReceived: boolean): string {
@@ -224,6 +225,9 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
     errorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream',
   ): OpenRouterChatStreamRunResultV2 {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({ state, finishReason: stream?.finishReason, errorCode, errorMessage })
+    state = finish.state; errorCode = finish.errorCode; errorMessage = finish.errorMessage
     let resultState: OpenRouterChatStreamRunResultV2['state'] = state
     const at = nowMs()
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -347,10 +351,14 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
       }
       accept(decoder.finish())
       const result = assembler.finish()
+      // The completed body is read back from the checkpoint, so it must be durable
+      // before the receipt makes the completion recoverable (P4a-08).
+      checkpoint.flush()
       persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
       return result
     } finally {
-      interruptedSnapshots.set(command, assembler.interruptedSnapshot())
+      // A failing snapshot must not skip the cleanup below or mask the stream error (P4a-12).
+      try { interruptedSnapshots.set(command, assembler.interruptedSnapshot()) } catch { /* cleanup continues */ }
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* best effort */ }

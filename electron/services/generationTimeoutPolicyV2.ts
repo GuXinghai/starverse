@@ -42,6 +42,19 @@ export function createStoreBackedGenerationTotalTimeoutSourceV2(store: Readonly<
   }
 }
 
+/**
+ * Settles a pending stream read when the generation is aborted, so Stop ends a stalled
+ * stream even if the transport does not error the body on abort (P4a-17).
+ */
+export async function abortableGenerationReadV2<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw signal.reason
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
+}
+
 export function createGenerationAbortScope(
   external: AbortSignal | undefined,
   explicitTotalTimeoutMs?: GenerationTotalTimeoutMsV2,

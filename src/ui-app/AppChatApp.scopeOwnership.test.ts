@@ -192,17 +192,19 @@ describe('workspace composer scope ownership', () => {
     await sending
   })
 
-  it('does not let an older same-page regenerate failure overwrite a newer action', async () => {
+  // P4b-01 (R3-07): this test used to submit a second same-page regenerate
+  // while the first was in flight, which is the reported defect. The second
+  // click is now ignored, so the only failure shown is the first one.
+  it('P4b-01: ignores a second same-page regenerate while the first is in flight and reports the first failure', async () => {
     await mountLogic()
-    const first = deferred<any>(), second = deferred<any>()
-    bridge.openRouter.chat.regenerate.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
+    const first = deferred<any>()
+    bridge.openRouter.chat.regenerate.mockImplementationOnce(() => first.promise)
     const a = logic.onRegenerateFromQuestion('question:A')
     await waitFor(() => expect(bridge.openRouter.chat.regenerate).toHaveBeenCalledTimes(1))
-    const b = logic.onRegenerateFromQuestion('question:A')
-    await waitFor(() => expect(bridge.openRouter.chat.regenerate).toHaveBeenCalledTimes(2))
-    second.resolve({ ok: false, code: 'LATEST_FAILURE' }); await b
-    first.resolve({ ok: false, code: 'STALE_FAILURE' }); await a
-    expect(logic.loadError.value).toBe('LATEST_FAILURE')
+    await logic.onRegenerateFromQuestion('question:A')
+    expect(bridge.openRouter.chat.regenerate).toHaveBeenCalledTimes(1)
+    first.resolve({ ok: false, code: 'FIRST_FAILURE' }); await a
+    expect(logic.loadError.value).toBe('FIRST_FAILURE')
   })
 
   it('drops a delayed compose picker after A-B-A and a compose-edit-compose round trip', async () => {

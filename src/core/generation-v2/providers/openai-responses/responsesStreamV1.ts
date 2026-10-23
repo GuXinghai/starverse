@@ -7,6 +7,7 @@ import {
   type OpenAIResponsesReturnedItemV1,
 } from './nativeItemsV1'
 import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
+import { SseLineEndingNormalizerV1 } from '../sseLineEndingsV1'
 
 const MAX_EVENT_BYTES = 24 * 1024 * 1024
 const MAX_STREAM_BYTES = 64 * 1024 * 1024
@@ -194,6 +195,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
   #lastSequence: number | null = null
   #finished = false
   #lastFrame: ClosedObject | null = null
+  readonly #lines = new SseLineEndingNormalizerV1()
   #parsedEvents: OpenAIResponsesStreamEventV1[] = []
 
   takeParsedEventsAfterError(): readonly OpenAIResponsesStreamEventV1[] {
@@ -202,9 +204,9 @@ export class OpenAIResponsesTypedSseDecoderV1 {
     return events
   }
 
-  #events(text: string): OpenAIResponsesStreamEventV1[] {
+  #events(text: string, final = false): OpenAIResponsesStreamEventV1[] {
     this.#lastFrame = null
-    this.#buffer += text.replace(/\r\n?/gu, '\n')
+    this.#buffer += final ? this.#lines.finish(text) : this.#lines.push(text)
     if (utf8ByteLength(this.#buffer) > MAX_EVENT_BYTES) return fail('GENERATION_V2_OPENAI_STREAM_LIMIT_EXCEEDED')
     const output: OpenAIResponsesStreamEventV1[] = []
     while (true) {
@@ -212,7 +214,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
       if (boundary < 0) break
       const frame = this.#buffer.slice(0, boundary)
       this.#buffer = this.#buffer.slice(boundary + 2)
-      if (frame.length === 0 || frame.startsWith(':')) continue
+      if (frame.length === 0) continue
       let eventName: string | undefined
       const data: string[] = []
       for (const line of frame.split('\n')) {
@@ -222,6 +224,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
         } else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
         else if (!line.startsWith(':')) return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
       }
+      if (eventName === undefined && data.length === 0) continue
       const dataText = data.join('\n')
       if (!eventName || data.length === 0 || dataText === '[DONE]') return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
       let parsed: unknown
@@ -266,7 +269,7 @@ export class OpenAIResponsesTypedSseDecoderV1 {
     if (this.#finished) return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     this.#finished = true
     let events: OpenAIResponsesStreamEventV1[]
-    try { events = this.#events(this.#decoder.decode()) } catch (error) {
+    try { events = this.#events(this.#decoder.decode(), true) } catch (error) {
       if (error instanceof OpenAIResponsesStreamV1Error) throw error
       return fail('GENERATION_V2_OPENAI_STREAM_INVALID_SSE')
     }

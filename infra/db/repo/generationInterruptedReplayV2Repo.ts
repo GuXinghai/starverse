@@ -123,6 +123,9 @@ export class GenerationInterruptedReplayV2Repo {
     ]
     if (protocol === 'gemini') return [{ role: 'user', parts: [{ text: row.question }] },
       ...(row.body ? [{ role: 'model', parts: [{ text: row.body }] }] : [])]
+    // Anthropic accepts assistant content only as native blocks (P4a-03).
+    if (protocol === 'anthropic') return [{ role: 'user', content: row.question },
+      ...(row.body ? [{ role: 'assistant', content: [{ type: 'text', text: row.body, citations: null }] }] : [])]
     return [{ role: 'user', content: row.question }, ...(row.body && !(protocol === 'deepseek' && requireCompleteReasoning && row.reasoningMode === 'enabled') ? [{ role: 'assistant', content: row.body }] : [])]
   }
 }

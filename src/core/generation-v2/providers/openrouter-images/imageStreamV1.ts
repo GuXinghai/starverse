@@ -253,11 +253,16 @@ export class OpenRouterImageSseDecoderV1 {
       if (utf8ByteLength(frame) > MAX_FRAME_BYTES) return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_LIMIT_EXCEEDED')
       if (this.#doneSeen) return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_SSE')
       const data: string[] = []
+      let comment = false
       for (const line of frame.split(/\r?\n/u)) {
         if (line === 'data' || line.startsWith('data:')) data.push(line === 'data' ? '' : line.slice(5).replace(/^ /u, ''))
+        else if (line.startsWith(':')) comment = true
         else if (line.length !== 0) return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_SSE')
       }
-      if (data.length === 0) return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_SSE')
+      if (data.length === 0) {
+        if (comment) continue
+        return fail('GENERATION_V2_OPENROUTER_IMAGE_STREAM_INVALID_SSE')
+      }
       const raw = data.join('\n')
       if (raw === '[DONE]') {
         this.#doneSeen = true

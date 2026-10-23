@@ -23,6 +23,9 @@ import {
   onGenerationNativeCompletionRecoveryExhaustedV2,
 } from './generationNativeCompletionV2'
 
+const AWAITING_TOOL_CANCEL_CODE = 'user_cancelled'
+const AWAITING_TOOL_CANCEL_MESSAGE = 'Generation cancelled by user.'
+
 type RuntimeEntry = {
   snapshot: GenerationOperationRuntimeSnapshotV2
   abort: (() => boolean) | null
@@ -350,8 +353,78 @@ export class GenerationOperationRuntimeRegistryV2 {
     this.#sealed = true
   }
 
+  /**
+   * Stop. A running operation is aborted through its runner. One whose stream
+   * ended awaiting a tool result has no runner and, with tools disabled, no
+   * continuation, so Stop ends it as cancelled (P4b-04).
+   */
   abort(operationId: string): boolean {
-    return this.#entries.get(operationId)?.abort?.() ?? false
+    const live = this.#entries.get(operationId)?.abort
+    if (live) return live()
+    return this.#cancelAwaitingTool(operationId)
+  }
+
+  /**
+   * Ends an operation left awaiting a tool result as cancelled and publishes
+   * the terminal. Returns false, changing nothing, unless the operation is
+   * streaming with a completed request, no prepared or streaming request, no
+   * open attempt, no pending completion receipt, and a streaming answer.
+   */
+  #cancelAwaitingTool(operationId: string): boolean {
+    if (this.#sealed) return false
+    let answerRootId: string | null = null
+    try {
+      if (hasPendingGenerationNativeCompletionForOperationV2(this.db, operationId)) return false
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(this.db, (context) => {
+        const execution = this.#execution.findOperationInTransaction(context, operationId)
+        if (!execution || execution.operation.state !== 'streaming') return
+        const answerId = execution.operation.targetAnswerId.value
+        const row = this.db.prepare(`SELECT
+          (SELECT count(*) FROM generation_request_v2 WHERE operation_id=? AND state IN ('prepared','streaming')) AS active,
+          (SELECT count(*) FROM generation_request_v2 WHERE operation_id=? AND state='completed') AS completed,
+          (SELECT count(*) FROM generation_attempt_v2 WHERE operation_id=? AND state='open') AS attempts,
+          (SELECT max(updated_at_ms) FROM generation_request_v2 WHERE operation_id=?) AS requestAt,
+          (SELECT status FROM message_v2 WHERE message_id=?) AS answerStatus,
+          (SELECT updated_at_ms FROM message_v2 WHERE message_id=?) AS answerAt`).get(
+          operationId, operationId, operationId, operationId, answerId, answerId,
+        ) as { active: unknown; completed: unknown; attempts: unknown; requestAt: unknown;
+          answerStatus: unknown; answerAt: unknown }
+        if (row.active !== 0 || row.attempts !== 0 || row.completed === 0 || row.answerStatus !== 'streaming') return
+        const at = Math.max(this.nowMs(), execution.operation.updatedAtMs,
+          Number.isSafeInteger(row.requestAt) ? row.requestAt as number : 0,
+          Number.isSafeInteger(row.answerAt) ? row.answerAt as number : 0)
+        new ConversationGraphV2Repo(this.db).terminalizeAssistantMessage(context, answerId, 'cancelled', null, at)
+        this.#execution.terminalizeOperation(context, execution, {
+          state: 'cancelled',
+          errorCode: AWAITING_TOOL_CANCEL_CODE,
+          errorMessage: AWAITING_TOOL_CANCEL_MESSAGE,
+        }, at)
+        answerRootId = answerId
+      })
+    } catch {
+      console.error('[generation-runtime] GENERATION_V2_RUNTIME_AWAITING_TOOL_CANCEL_FAILED')
+      return false
+    }
+    if (answerRootId === null) return false
+    this.publishPersistedProjection(Object.freeze({
+      type: 'terminal',
+      operationId,
+      answerRootId,
+      state: 'cancelled',
+      errorCode: AWAITING_TOOL_CANCEL_CODE,
+      errorMessage: AWAITING_TOOL_CANCEL_MESSAGE,
+    }))
+    return true
+  }
+
+  /** Cancels every operation in a scope that is left awaiting a tool result, so it cannot block deletion. */
+  #cancelAwaitingToolWhere(scopeSql: string, scopeId: string): void {
+    const rows = this.db.prepare(`SELECT operation_id AS operationId FROM generation_operation_v2
+      WHERE state='streaming' AND ${scopeSql} ORDER BY operation_id`).all(scopeId) as { operationId: unknown }[]
+    for (const row of rows) {
+      if (typeof row.operationId !== 'string' || this.#entries.get(row.operationId)?.abort) continue
+      this.#cancelAwaitingTool(row.operationId)
+    }
   }
 
   async runWithBranchQuiesced<T>(
@@ -364,6 +437,7 @@ export class GenerationOperationRuntimeRegistryV2 {
     }
     this.#quiescingBranches.add(branchId)
     try {
+      this.#cancelAwaitingToolWhere('branch_id=?', branchId)
       await this.#abortAndDrainScope(
         (entry) => entry.snapshot.binding.branchId === branchId,
         timeoutMs,
@@ -385,6 +459,7 @@ export class GenerationOperationRuntimeRegistryV2 {
     }
     this.#quiescingConversations.add(conversationId)
     try {
+      this.#cancelAwaitingToolWhere('conversation_id=?', conversationId)
       await this.#abortAndDrainScope(
         (entry) => entry.snapshot.binding.conversationId === conversationId,
         timeoutMs,
@@ -406,6 +481,8 @@ export class GenerationOperationRuntimeRegistryV2 {
     }
     this.#quiescingProjects.add(projectId)
     try {
+      this.#cancelAwaitingToolWhere(
+        'conversation_id IN (SELECT conversation_id FROM conversation_v2 WHERE project_id=?)', projectId)
       await this.#abortAndDrainScope(
         (entry) => this.#projectIdForConversation(entry.snapshot.binding.conversationId) === projectId,
         timeoutMs,
@@ -453,8 +530,15 @@ export class GenerationOperationRuntimeRegistryV2 {
         if (remaining.size === 0) finish()
       }
       const unsubscribe = this.subscribe((event) => {
-        if (remaining.has(event.operationId) && event.payload.type === 'terminal' &&
-            event.payload.state !== 'awaiting_tool') remaining.delete(event.operationId)
+        if (!remaining.has(event.operationId) || event.payload.type !== 'terminal') return
+        if (event.payload.state === 'awaiting_tool') {
+          // The abort was requested, so a stream that still ended awaiting a
+          // tool is cancelled once this event has reached every listener (P4a-19).
+          const { operationId } = event
+          queueMicrotask(() => { if (!settled) this.#cancelAwaitingTool(operationId) })
+          return
+        }
+        remaining.delete(event.operationId)
         if (remaining.size === 0) finish()
       })
       const timer = setTimeout(() => finish(new GenerationOperationRuntimeRegistryV2Error(timeoutCode)), timeoutMs)

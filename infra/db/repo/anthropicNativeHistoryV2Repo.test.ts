@@ -40,7 +40,7 @@ import {
 } from './anthropicNativeHistoryV2Repo'
 import { compileAnthropicMessagesPreparedRequestV2 } from '../../../electron/services/anthropicMessagesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2 } from '../../../electron/services/generationTextCommandResultV2'
-import { createAnthropicMessagesStreamRunnerV2 } from '../../../electron/services/anthropicMessagesStreamRunnerV2'
+import { ANTHROPIC_PAUSE_TURN_ERROR_CODE, createAnthropicMessagesStreamRunnerV2 } from '../../../electron/services/anthropicMessagesStreamRunnerV2'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
@@ -367,6 +367,41 @@ describe('Anthropic native history V2 repository', () => {
         .toEqual({ chosen: 'answer:1' })
       expect(db.prepare(`SELECT head_message_id AS head FROM branch_v2`).get()).toEqual({ head: 'answer:1' })
       expect(db.prepare(`SELECT count(*) AS count FROM generation_native_artifact_v2`).get()).toEqual({ count: 1 })
+    } finally { db.close() }
+  })
+
+  it('P4a-07: does not store a pause_turn terminal as a completed turn', async () => {
+    const db = createDb(':memory:', false)
+    try {
+      const command = createRunnerCommand(db)
+      const wire = [
+        ['message_start', { message: {
+          id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', content: [],
+          stop_reason: null, stop_sequence: null,
+          usage: {
+            cache_creation: null, cache_creation_input_tokens: null, cache_read_input_tokens: null,
+            inference_geo: null, input_tokens: 3, output_tokens: 1, output_tokens_details: null,
+            server_tool_use: null, service_tier: 'standard',
+          },
+        } }],
+        ['content_block_start', { index: 0, content_block: { type: 'text', text: '', citations: null } }],
+        ['content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'partial' } }],
+        ['content_block_stop', { index: 0 }],
+        ['message_delta', { delta: { stop_reason: 'pause_turn', stop_sequence: null }, usage: { output_tokens: 2 } }],
+        ['message_stop', {}],
+      ].map(([type, value]) => `event: ${type}\ndata: ${JSON.stringify({ ...(value as object), type })}\n\n`).join('')
+      const scope = command.preparedRequest.credentialScopeId
+      const result = await createAnthropicMessagesStreamRunnerV2({
+        db, credentialService: runnerCredentialService(scope),
+        fetchImpl: vi.fn(async () => new Response(wire, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
+        nowMs: (() => { let now = 40; return () => now++ })(),
+      }).run(command)
+      expect(result).toMatchObject({ state: 'failed', errorCode: ANTHROPIC_PAUSE_TURN_ERROR_CODE })
+      expect(db.prepare(`SELECT status FROM message_v2 WHERE message_id='answer:1'`).get())
+        .toEqual({ status: 'failed' })
+      expect(db.prepare(`SELECT state, error_code AS code FROM generation_operation_v2`).get())
+        .toEqual({ state: 'failed', code: ANTHROPIC_PAUSE_TURN_ERROR_CODE })
+      expect(db.prepare(`SELECT count(*) AS count FROM generation_native_artifact_v2`).get()).toEqual({ count: 0 })
     } finally { db.close() }
   })
 

@@ -612,7 +612,7 @@ describe('portable history across text protocols', () => {
   // answers through portable history, which emits string assistant content.
   // The Anthropic request decoder requires an array of content blocks for
   // assistant turns, so the switched request cannot compile. Remove `.fails` when fixed.
-  it.fails('P3b-01: portable history for an Anthropic target compiles through the Anthropic request decoder', () => {
+  it('P3b-01: portable history for an Anthropic target compiles through the Anthropic request decoder', () => {
     const db = database()
     addTurn(db, 'openrouter', 1, true)
     addTurn(db, 'anthropic', 2, false)
@@ -631,7 +631,7 @@ describe('portable history across text protocols', () => {
   // to persisted text and emits string assistant content, which the Anthropic
   // request decoder rejects, so later requests in the conversation cannot compile.
   // Remove `.fails` when fixed.
-  it.fails('P4a-03: the interrupted Anthropic text fallback compiles through the Anthropic request decoder', () => {
+  it('P4a-03: the interrupted Anthropic text fallback compiles through the Anthropic request decoder', () => {
     const db = database()
     addTurn(db, 'anthropic', 1, true, [], undefined, 'cancelled')
     const intent = decodeResolvedGenerationIntentV2({ schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' },

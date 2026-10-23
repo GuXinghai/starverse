@@ -315,6 +315,31 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(readBranch).toHaveBeenCalledTimes(readsBeforeProjection)
   })
 
+  it('P4b-01: a second regenerate or retry click while the first is in flight submits nothing', async () => {
+    const user = userEvent.setup()
+    let completeRegenerate!: (value: any) => void
+    let completeRetry!: (value: any) => void
+    regenerate.mockImplementationOnce(() => new Promise((resolve) => { completeRegenerate = resolve }))
+    retry.mockImplementationOnce(() => new Promise((resolve) => { completeRetry = resolve }))
+    render(AppChatApp)
+    await screen.findByText('A1')
+
+    await user.click(screen.getByTestId('regen-q-u1'))
+    await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByTestId('regen-q-u1'))
+    await user.click(screen.getByTestId('retry-new-a-a1'))
+    expect(regenerate).toHaveBeenCalledTimes(1)
+    expect(retry).not.toHaveBeenCalled()
+    completeRegenerate({ ok: false, code: 'TEST_REGENERATE_REJECTED' })
+
+    await waitFor(() => expect(screen.getByTestId('retry-new-a-a1')).toBeEnabled())
+    await user.click(screen.getByTestId('retry-new-a-a1'))
+    await waitFor(() => expect(retry).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByTestId('retry-new-a-a1'))
+    expect(retry).toHaveBeenCalledTimes(1)
+    completeRetry({ ok: false, code: 'TEST_RETRY_REJECTED' })
+  })
+
   it('retry as new binds the rendered chosen answer and preserves it as a sibling', async () => {
     const user = userEvent.setup()
     render(AppChatApp)
@@ -427,6 +452,34 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
 
     await user.click(await screen.findByTestId('composer-stop'))
     await waitFor(() => expect(runtimeAbort).toHaveBeenCalledWith('operation:a1'))
+  })
+
+  it('P4b-03: Stop shows feedback when the operation could not be aborted', async () => {
+    const user = userEvent.setup()
+    answers[0] = { ...answers[0], status: 'streaming', body: 'stuck partial' }
+    runtimeAbort.mockImplementation(async () => ok({ aborted: false }))
+    render(AppChatApp)
+
+    await screen.findByText('stuck partial')
+    await user.click(await screen.findByTestId('composer-stop'))
+    await screen.findByText(/GENERATION_V2_RUNTIME_ABORT_NOT_ACCEPTED/)
+    expect(screen.getByTestId('composer-stop')).toBeInTheDocument()
+  })
+
+  it('P4b-03: a branch read that shows the answer terminal settles a stale generating runtime', async () => {
+    const user = userEvent.setup()
+    answers[0] = { ...answers[0], status: 'streaming', body: 'lost terminal partial' }
+    // The terminal event never arrives; the database already holds the completed answer.
+    runtimeAbort.mockImplementation(async () => {
+      answers[0] = { ...answers[0], status: 'completed', body: 'completed in database' }
+      return ok({ aborted: false })
+    })
+    render(AppChatApp)
+
+    await screen.findByText('lost terminal partial')
+    await user.click(await screen.findByTestId('composer-stop'))
+    await waitFor(() => expect(screen.queryByTestId('composer-stop')).not.toBeInTheDocument())
+    expect(screen.queryByText(/GENERATION_V2_RUNTIME_ABORT_NOT_ACCEPTED/)).not.toBeInTheDocument()
   })
 
   it('does not steal navigation when a child-branch command commits after the user leaves', async () => {

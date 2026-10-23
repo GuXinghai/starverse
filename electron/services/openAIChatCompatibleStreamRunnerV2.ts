@@ -23,7 +23,7 @@ import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStrea
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { readOpenAICompatibleJsonResponseBytesV2 } from './openAIChatCompatibleResponseBodyV2'
-import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -32,6 +32,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 
@@ -79,6 +80,9 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
     errorCode: string | null, errorMessage: string | null, phase: 'pre_stream' | 'mid_stream',
     assistantReasoning: Readonly<{ reasoning: string; hasCompleteToolChain: boolean }> | null = null,
     discovery: readonly CompatibleDiscoveryObservation[] = []) {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({ state, finishReason: result?.finishReason, errorCode, errorMessage })
+    state = finish.state; errorCode = finish.errorCode; errorMessage = finish.errorMessage
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
       if (!execution) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_AUTHORITY_INVALID')
@@ -219,7 +223,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       const assembler = new OpenAIChatCompatibleResponseAssemblerV2(); const reasoning = createReasoningCoordinator(command); const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
       if (contentType.includes('text/event-stream')) {
         const parser = new CompatibleSseWireParser({ expectedChoiceCount: 1 }); const reader = response.body.getReader()
-        try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, visible, checkpoint, command) }
+        try { while (true) { const item = await abortableGenerationReadV2(reader.read(), scope.signal); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, visible, checkpoint, command) }
           consume(parser.finish(), assembler, reasoning, visible, checkpoint, command)
         } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       } else if (contentType.includes('application/json')) {

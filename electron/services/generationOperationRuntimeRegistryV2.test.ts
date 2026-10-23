@@ -887,4 +887,87 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
     process.off('unhandledRejection', unhandled)
     expect(unhandled).not.toHaveBeenCalled()
   })
+
+  // P4b-04, P4a-19: a stream that ended awaiting a tool result has no runner
+  // and, with tools disabled, no continuation. Stop, deletion quiesce and the
+  // shutdown drain end it as cancelled instead of leaving it unstoppable.
+  function endStreamAwaitingTool(db: BetterSqlite3.Database, suffix: string) {
+    db.prepare(`UPDATE generation_attempt_v2 SET state='terminal',outcome_json='{"kind":"provider_completed"}',
+      terminal_fingerprint=?,terminal_at_ms=70 WHERE operation_id=?`).run(HASH, `operation:${suffix}`)
+    db.prepare("UPDATE generation_request_v2 SET state='completed',updated_at_ms=70,terminal_at_ms=70 WHERE operation_id=?")
+      .run(`operation:${suffix}`)
+  }
+  const lockCount = (db: BetterSqlite3.Database, suffix: string) => db.prepare(`SELECT count(*) AS n
+    FROM generation_operation_v2 WHERE branch_id=? AND state IN ('committed','streaming')`).get(`branch:${suffix}`)
+
+  it('P4b-04: Stop cancels an operation left awaiting a tool result and releases its branch', () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'tool', true)
+      endStreamAwaitingTool(db, 'tool')
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 100)
+      const events: unknown[] = []
+      registry.subscribe((event) => events.push(event.payload))
+      expect(registry.getSnapshot('operation:tool')?.status).toBe('generating')
+
+      expect(registry.abort('operation:tool')).toBe(true)
+      expect(db.prepare('SELECT state,error_code AS code,terminal_at_ms AS at FROM generation_operation_v2 WHERE operation_id=?')
+        .get('operation:tool')).toEqual({ state: 'cancelled', code: 'user_cancelled', at: 100 })
+      expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get('answer:tool')).toEqual({ status: 'cancelled' })
+      expect(lockCount(db, 'tool')).toEqual({ n: 0 })
+      expect(events).toEqual([expect.objectContaining({ type: 'terminal', state: 'cancelled', errorCode: 'user_cancelled' })])
+      expect(registry.getSnapshot('operation:tool')?.status).toBe('cancelled')
+      expect(registry.abort('operation:tool')).toBe(false)
+    } finally { db.close() }
+  })
+
+  it('P4b-04: Stop leaves a prepared, streaming or receipt-pending operation to its own owner', () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'prepared', false)
+      seedOrphanRequest(db, 'streaming', true)
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 100)
+      expect(registry.abort('operation:prepared')).toBe(false)
+      expect(registry.abort('operation:streaming')).toBe(false)
+      expect(registry.abort('operation:unknown')).toBe(false)
+      expect(db.prepare(`SELECT operation_id AS id,state FROM generation_operation_v2 ORDER BY operation_id`).all())
+        .toEqual([{ id: 'operation:prepared', state: 'committed' }, { id: 'operation:streaming', state: 'streaming' }])
+    } finally { db.close() }
+  })
+
+  it('P4b-04: conversation quiesce cancels an awaiting-tool operation so deletion is not blocked', async () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'tool-delete', true)
+      endStreamAwaitingTool(db, 'tool-delete')
+      seedOrphanRequest(db, 'tool-other', true)
+      endStreamAwaitingTool(db, 'tool-other')
+      // A fresh registry, as after a restart: the operation has no runtime entry.
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 100)
+      let locked: unknown
+      await registry.runWithConversationQuiesced('conversation:tool-delete', () => { locked = lockCount(db, 'tool-delete') }, 50)
+      expect(locked).toEqual({ n: 0 })
+      expect(lockCount(db, 'tool-other')).toEqual({ n: 1 })
+    } finally { db.close() }
+  })
+
+  it('P4a-19: shutdown drains a runner that ends awaiting a tool result after the abort, without timing out', async () => {
+    const db = createDb()
+    try {
+      seedOrphanRequest(db, 'tool-quit', true)
+      const bundle = new GenerationExecutionV2Repo(db).findOperation('operation:tool-quit')!
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 100)
+      const states: unknown[] = []
+      registry.subscribe((event) => { if (event.payload.type === 'terminal') states.push(event.payload.state) })
+      registry.start({ kind: 'created', execution: bundle }, async (signal) => {
+        if (!signal.aborted) await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }))
+        endStreamAwaitingTool(db, 'tool-quit')
+        registry.publishPersistedProjection({ type: 'terminal', operationId: 'operation:tool-quit',
+          answerRootId: 'answer:tool-quit', state: 'awaiting_tool', errorCode: null, errorMessage: null })
+      })
+      await registry.quiesceForShutdown(1_000)
+      expect(states).toEqual(['awaiting_tool', 'cancelled'])
+      expect(lockCount(db, 'tool-quit')).toEqual({ n: 0 })
+    } finally { db.close() }
+  })
 })

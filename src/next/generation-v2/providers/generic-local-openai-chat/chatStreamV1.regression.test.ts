@@ -15,7 +15,7 @@ describe('generic local OpenAI chat stream assembler', () => {
   // P4a-04: the request sets `stream_options.include_usage`, and OpenAI-compatible
   // servers send that usage chunk after the finish-reason chunk. The assembler
   // rejects any chunk after the finish reason. Remove `.fails` when fixed.
-  it.fails('P4a-04: accepts the trailing usage-only chunk after the finish reason', () => {
+  it('P4a-04: accepts the trailing usage-only chunk after the finish reason', () => {
     const assembler = new GenericLocalOpenAIChatStreamAssemblerV1()
     assembler.push({ id: 'c1', model: 'm', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hi' } }] })
     assembler.push({ id: 'c1', model: 'm', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })

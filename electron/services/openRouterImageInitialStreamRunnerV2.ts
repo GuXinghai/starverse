@@ -18,7 +18,7 @@ import { isPreparedProviderRequestV2 } from '../../src/core/generation-v2/compil
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { OpenRouterImageInitialSendResultV2 } from './openRouterImageInitialSendCoordinatorV2'
 import type { OpenRouterImageActionResultV2 } from './openRouterImageActionCoordinatorV2'
-import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -46,7 +46,7 @@ export class OpenRouterImageInitialStreamRunnerV2Error extends Error {
 }
 
 
-async function readResult(response: Response): Promise<OpenRouterImageSingleResultV1> {
+async function readResult(response: Response, signal: AbortSignal): Promise<OpenRouterImageSingleResultV1> {
   if (!response.ok || !response.body) {
     try { await response.body?.cancel() } catch { /* best effort */ }
     throw new OpenRouterImageInitialStreamRunnerV2Error('GENERATION_V2_OPENROUTER_IMAGE_RUNNER_HTTP_FAILED')
@@ -58,7 +58,7 @@ async function readResult(response: Response): Promise<OpenRouterImageSingleResu
     const reader = response.body.getReader()
     try {
       while (true) {
-        const item = await reader.read()
+        const item = await abortableGenerationReadV2(reader.read(), signal)
         if (item.done) break
         for (const event of decoder.push(item.value)) assembler.push(event)
       }
@@ -221,7 +221,7 @@ export function createOpenRouterImageInitialStreamRunnerV2(input: Readonly<{
                 authorization: `Bearer ${lease.credential}` },
               body: Buffer.from(created.preparedRequest.body.copyBytes()),
             })
-            return readResult(response)
+            return readResult(response, scope.signal)
           },
         })
         materializeNewGenerationNativeCompletionV2({

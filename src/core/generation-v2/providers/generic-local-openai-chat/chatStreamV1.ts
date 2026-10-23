@@ -1,3 +1,5 @@
+import { SseLineEndingNormalizerV1 } from '../sseLineEndingsV1'
+
 export type GenericLocalOpenAIChatStreamResultV1 = Readonly<{
   assistantMessage: Readonly<{ role: 'assistant'; content: string | null }>
   responseId: string
@@ -8,6 +10,7 @@ export type GenericLocalOpenAIChatStreamResultV1 = Readonly<{
 
 export class GenericLocalOpenAIChatSseDecoderV1 {
   readonly #decoder = new TextDecoder('utf-8', { fatal: true })
+  readonly #lines = new SseLineEndingNormalizerV1()
   #buffer = ''
   #done = false
   #wireBytes = 0
@@ -15,11 +18,11 @@ export class GenericLocalOpenAIChatSseDecoderV1 {
     if (this.#done) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_SEQUENCE_INVALID')
     this.#wireBytes += bytes.byteLength
     if (this.#wireBytes > 64 * 1024 * 1024) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_LIMIT_EXCEEDED')
-    this.#buffer += this.#decoder.decode(bytes, { stream: true }).replace(/\r\n?/gu, '\n')
+    this.#buffer += this.#lines.push(this.#decoder.decode(bytes, { stream: true }))
     return this.#drain()
   }
   finish(): readonly unknown[] {
-    this.#buffer += this.#decoder.decode().replace(/\r\n?/gu, '\n')
+    this.#buffer += this.#lines.finish(this.#decoder.decode())
     const values = this.#drain()
     if (this.#buffer.length !== 0 || !this.#done) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_TERMINAL_INVALID')
     return values
@@ -45,12 +48,14 @@ export class GenericLocalOpenAIChatStreamAssemblerV1 {
   #id: string | null = null; #model: string | null = null; #content = ''; #finish: string | null = null
   #usage: Readonly<Record<string, unknown>> | null = null
   push(value: unknown): string {
-    if (!value || typeof value !== 'object' || Array.isArray(value) || this.#finish) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
     const chunk = value as Record<string, unknown>
     if (typeof chunk.id !== 'string' || typeof chunk.model !== 'string') throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
     if (this.#id && this.#id !== chunk.id || this.#model && this.#model !== chunk.model) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_SEQUENCE_INVALID')
     this.#id = chunk.id; this.#model = chunk.model
     if (!Array.isArray(chunk.choices) || chunk.choices.length > 1) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
+    // include_usage sends one usage-only chunk after the finish reason (P4a-04).
+    if (this.#finish && chunk.choices.length !== 0) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
     if (chunk.choices.length === 0) {
       if (!chunk.usage || typeof chunk.usage !== 'object' || Array.isArray(chunk.usage) || this.#usage) throw new Error('GENERATION_V2_GENERIC_LOCAL_STREAM_INVALID')
       this.#usage = Object.freeze({ ...(chunk.usage as Record<string, unknown>) }); return ''

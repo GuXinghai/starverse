@@ -24,7 +24,7 @@ import {
   type GenerationStreamProjectionSinkV2,
 } from "./generationStreamProjectionV2";
 import { createGenerationTextBodyCheckpointV2 } from "./generationBodyCheckpointV2";
-import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -33,6 +33,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
 
 export function createOllamaChatStreamRunnerV2(
@@ -87,6 +88,16 @@ export function createOllamaChatStreamRunnerV2(
     message: string | null,
     phase: "pre_stream" | "mid_stream",
   ) {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({
+      state,
+      finishReason: result?.doneReason,
+      errorCode: code,
+      errorMessage: message,
+    });
+    state = finish.state;
+    code = finish.errorCode;
+    message = finish.errorMessage;
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (c) => {
       const e = exec.findOperationInTransaction(
         c,
@@ -266,7 +277,7 @@ export function createOllamaChatStreamRunnerV2(
           reader = response.body.getReader();
         try {
           while (true) {
-            const item = await reader.read();
+            const item = await abortableGenerationReadV2(reader.read(), s.signal);
             if (item.done) break;
             if (item.value.byteLength) started = true;
             for (const row of decoder.push(item.value)) {

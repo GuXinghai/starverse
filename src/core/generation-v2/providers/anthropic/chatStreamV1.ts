@@ -238,10 +238,12 @@ export class AnthropicMessagesStreamAssemblerV1 {
         if (!this.#openBlocks.has(blockIndex)) return fail('GENERATION_V2_ANTHROPIC_STREAM_SEQUENCE_INVALID')
         const delta = record(value.delta)
         const deltaType = nonEmptyString(delta.type)
-        if (!['text_delta', 'thinking_delta', 'signature_delta', 'input_json_delta'].includes(deltaType)) {
+        if (!['text_delta', 'thinking_delta', 'signature_delta', 'input_json_delta', 'citations_delta'].includes(deltaType)) {
           return fail('GENERATION_V2_ANTHROPIC_STREAM_INVALID_EVENT')
         }
-        if ((deltaType === 'text_delta' && typeof delta.text !== 'string') ||
+        if ((deltaType === 'citations_delta' &&
+              (!delta.citation || typeof delta.citation !== 'object' || Array.isArray(delta.citation))) ||
+            (deltaType === 'text_delta' && typeof delta.text !== 'string') ||
             (deltaType === 'thinking_delta' && typeof delta.thinking !== 'string') ||
             (deltaType === 'signature_delta' && typeof delta.signature !== 'string') ||
             (deltaType === 'input_json_delta' && typeof delta.partial_json !== 'string')) {

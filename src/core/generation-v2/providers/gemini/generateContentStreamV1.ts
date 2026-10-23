@@ -6,6 +6,7 @@ import {
   type GeminiGenerateContentNativeContentV1,
   type GeminiGenerateContentPartV1,
 } from './generateContentNativeHistoryV1'
+import { SseLineEndingNormalizerV1 } from '../sseLineEndingsV1'
 
 export const GEMINI_GENERATE_CONTENT_STREAM_MAX_WIRE_BYTES_V1 = 64 * 1_024 * 1_024
 export const GEMINI_GENERATE_CONTENT_STREAM_MAX_NATIVE_BYTES_V1 = GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1
@@ -147,6 +148,7 @@ function decodeGeminiGenerateContentStreamDeltaContentV1(
 
 export class GeminiGenerateContentSseDecoderV1 {
   readonly #decoder = new TextDecoder('utf-8', { fatal: true })
+  readonly #lines = new SseLineEndingNormalizerV1()
   #buffer = ''
   #wireBytes = 0
   #finished = false
@@ -157,7 +159,7 @@ export class GeminiGenerateContentSseDecoderV1 {
     if (this.#wireBytes > GEMINI_GENERATE_CONTENT_STREAM_MAX_WIRE_BYTES_V1) {
       return fail('GENERATION_V2_GEMINI_STREAM_LIMIT_EXCEEDED')
     }
-    try { this.#buffer += this.#decoder.decode(bytes, { stream: true }).replace(/\r\n?|\n/gu, '\n') } catch {
+    try { this.#buffer += this.#lines.push(this.#decoder.decode(bytes, { stream: true })) } catch {
       return fail('GENERATION_V2_GEMINI_SSE_INVALID')
     }
     if (new TextEncoder().encode(this.#buffer).byteLength > MAX_PENDING_FRAME_BYTES) {
@@ -169,7 +171,7 @@ export class GeminiGenerateContentSseDecoderV1 {
   finish(): readonly Readonly<Record<string, unknown>>[] {
     if (this.#finished) return fail('GENERATION_V2_GEMINI_SSE_INVALID')
     this.#finished = true
-    try { this.#buffer += this.#decoder.decode().replace(/\r\n?|\n/gu, '\n') } catch {
+    try { this.#buffer += this.#lines.finish(this.#decoder.decode()) } catch {
       return fail('GENERATION_V2_GEMINI_SSE_INVALID')
     }
     const result = [...this.#drain()]

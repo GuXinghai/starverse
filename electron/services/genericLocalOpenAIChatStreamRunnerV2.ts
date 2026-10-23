@@ -14,7 +14,7 @@ import { GenericLocalOpenAIChatSseDecoderV1, GenericLocalOpenAIChatStreamAssembl
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
-import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -23,6 +23,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 
 
 const receivedLocalWireFacts = new WeakMap<object, unknown[]>()
@@ -41,6 +42,9 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
     requestRepo.markStreaming(context, request, nowMs()); if (execution.operation.state === 'committed') executionRepo.markOperationStreaming(context, execution, nowMs()) }) }
   function terminal(command: GenerationTextCommandResultV2, state: 'completed'|'failed'|'cancelled', result: GenericLocalOpenAIChatStreamResultV1 | null,
     errorCode: string | null, errorMessage: string | null, phase: 'pre_stream'|'mid_stream') {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({ state, finishReason: result?.finishReason, errorCode, errorMessage })
+    state = finish.state; errorCode = finish.errorCode; errorMessage = finish.errorMessage
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId); if (!execution) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
@@ -110,7 +114,7 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
         headers: { 'content-type': 'application/json', accept: 'text/event-stream' }, body: Buffer.from(bytes) }) } finally { bytes.fill(0) }
       if (!response.ok || !response.body) { try { await response.body?.cancel() } catch {}; throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_HTTP_FAILED') }
       const decoder = new GenericLocalOpenAIChatSseDecoderV1(); const assembler = new GenericLocalOpenAIChatStreamAssemblerV1(); const reader = response.body.getReader()
-      try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true
+      try { while (true) { const item = await abortableGenerationReadV2(reader.read(), scope.signal); if (item.done) break; if (item.value.byteLength) started = true
         for (const chunk of decoder.push(item.value)) { receivedLocalWireFacts.get(command)!.push(chunk); const delta = assembler.push(chunk); if (delta) { visible += delta; checkpoint.update(visible) } } }
         for (const chunk of decoder.finish()) { receivedLocalWireFacts.get(command)!.push(chunk); assembler.push(chunk) }
       } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }

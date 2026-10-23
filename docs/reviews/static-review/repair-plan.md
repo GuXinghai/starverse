@@ -217,7 +217,8 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | 0 | Complete (this document and repair-phase-0.md) |
 | 1 | Complete, see [repair-phase-1.md](repair-phase-1.md) |
 | 2 | Complete, see [repair-phase-2.md](repair-phase-2.md). R2-06 completed for the operation and branch scopes after the owner decision (addendum, section 10). Database-wide failures follow the fail-closed startup policy (D-4r; addendum, section 11). Global restricted mode is removed from scope. Follow-ups R2-06a–e are tracked separately |
-| 3–8 | Not started |
+| 3 | Complete, see [repair-phase-3.md](repair-phase-3.md). R3-01 to R3-08 done. R3-04 used the documented `citations_delta` shape. P4b-04 needed no tool-continuation UI: an operation left `awaiting_tool` is cancelled on Stop or quiesce |
+| 4–8 | Not started |
 
 ## 5. Still-unreviewed areas
 

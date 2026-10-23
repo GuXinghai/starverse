@@ -3,6 +3,8 @@ import { GenericLocalOpenAIChatSseDecoderV1 } from '../../../core/generation-v2/
 import { GeminiGenerateContentSseDecoderV1 } from '../../../core/generation-v2/providers/gemini/generateContentStreamV1'
 import { OpenAIResponsesTypedSseDecoderV1 } from '../../../core/generation-v2/providers/openai-responses/responsesStreamV1'
 import { OpenRouterChatSseDecoderV1 } from '../../../core/generation-v2/providers/openrouter/chatStreamV1'
+import { OpenRouterImageSseDecoderV1 } from '../../../core/generation-v2/providers/openrouter-images/imageStreamV1'
+import { SseLineEndingNormalizerV1 } from '../../../core/generation-v2/providers/sseLineEndingsV1'
 
 type Decoder = { push(bytes: Uint8Array): readonly unknown[]; finish(): readonly unknown[] }
 
@@ -60,11 +62,37 @@ describe('SSE decoders: chunk boundaries inside CRLF', () => {
       expect(decode(testCase.create, [testCase.stream])).not.toHaveProperty('error')
     })
 
-    // P4a-05: CRLF is normalised per chunk, so a chunk ending in CR followed by
-    // one starting with LF yields an extra line break. Remove `.fails` when fixed.
-    it.fails(`P4a-05: ${testCase.name} decodes identically when a chunk ends between CR and LF`, () => {
+    // P4a-05: CRLF was normalised per chunk, so a chunk ending in CR followed by
+    // one starting with LF yielded an extra line break.
+    it(`P4a-05: ${testCase.name} decodes identically when a chunk ends between CR and LF`, () => {
       expect(decode(testCase.create, splitAfterFirstCr(testCase.stream)))
         .toEqual(decode(testCase.create, [testCase.stream]))
     })
+
+    it(`P4a-05: ${testCase.name} decodes identically for every two-chunk split`, () => {
+      const whole = decode(testCase.create, [testCase.stream])
+      for (let index = 1; index < testCase.stream.length; index += 1) {
+        expect(decode(testCase.create, [testCase.stream.slice(0, index), testCase.stream.slice(index)])).toEqual(whole)
+      }
+    })
   }
+})
+
+describe('SSE line endings and comments', () => {
+  it('P4a-05: the shared normalizer keeps a split CRLF as one line break and flushes a final CR', () => {
+    const lines = new SseLineEndingNormalizerV1()
+    expect(lines.push('a\r') + lines.push('\nb\r\r') + lines.push('c') + lines.finish('\r')).toBe('a\nb\n\nc\n')
+  })
+
+  it('P4a-16: OpenAI Responses keeps the data of a frame that starts with a comment line', () => {
+    const frame = 'event: response.in_progress\ndata: {"type":"response.in_progress","sequence_number":0}\n\n'
+    const commented = decode(() => new OpenAIResponsesTypedSseDecoderV1(), [`: note\n${frame}`])
+    expect(commented).toEqual(decode(() => new OpenAIResponsesTypedSseDecoderV1(), [frame]))
+    expect(commented).toHaveLength(1)
+  })
+
+  it('P4a-09: OpenRouter Images ignores keepalive comment lines and comment-only frames', () => {
+    expect(decode(() => new OpenRouterImageSseDecoderV1(), [': keepalive\n\n', 'data: [DONE]\n\n']))
+      .toEqual([{ type: 'done' }])
+  })
 })

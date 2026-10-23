@@ -176,6 +176,24 @@ describe('OpenAI-compatible V2 coordinator', () => {
       messages: [{ role: 'user', content: 'hello' }] })
   })
 
+  // P4a-17: a response body that stops sending and ignores the fetch signal
+  // must not keep the operation open after Stop.
+  it('P4a-17: Stop settles a stalled stream body as cancelled', async () => {
+    const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
+    const credential = { getStatus: async () => ({ configured: false, revision: 0 }) } as never
+    const first = `data: ${JSON.stringify({ id: 'chatcmpl-1', model: 'model-x', choices: [{ index: 0, delta: { role: 'assistant', content: 'partial' }, finish_reason: null }] })}\n\n`
+    const stalled = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode(first)) } })
+    const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: credential, nowMs: () => 100,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(stalled, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
+      streamProjectionSink: { publish: (event) => sink.push(event) }, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
+    await runtime.submitInitial({ operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'assistant_body', content: 'partial' })))
+    expect(runtime.abort('operation:1')).toBe(true)
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'cancelled', answerRootId: 'answer:2' })), { timeout: 2_000 })
+    expect(db.prepare('SELECT state FROM generation_operation_v2 WHERE operation_id=?').get('operation:1')).toEqual({ state: 'cancelled' })
+  })
+
   it('rejects foreign raw attachments and regenerates the empty source using current provider configuration', async () => {
     const db = database(); databases.push(db); let id = 0
     const foreignUrl = 'https://example.test/composer.png'

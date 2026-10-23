@@ -22,7 +22,7 @@ import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailureP
   type ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
-import { createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope, isValidGenerationTotalTimeoutMsV2 } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -61,7 +61,8 @@ function responseHeaders(response: Response): Readonly<Record<string, string>> {
   return Object.freeze(Object.fromEntries(response.headers.entries()))
 }
 
-async function readResult(response: Response, expectedModel: string, onStreamBytes: () => void): Promise<GeminiInteractionsImageResultV1> {
+async function readResult(response: Response, expectedModel: string, onStreamBytes: () => void,
+  signal: AbortSignal): Promise<GeminiInteractionsImageResultV1> {
   if (!response.ok) {
     const bodyText = await responseBodyText(response)
     throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED', {
@@ -84,7 +85,7 @@ async function readResult(response: Response, expectedModel: string, onStreamByt
   const reader = response.body.getReader()
   try {
     while (true) {
-      const item = await reader.read()
+      const item = await abortableGenerationReadV2(reader.read(), signal)
       if (item.done) break
       if (item.value.byteLength > 0) onStreamBytes()
       let decodedEvents: ReturnType<typeof decoder.push> = []
@@ -321,7 +322,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           const response = await fetchImpl(created.preparedRequest.endpoint, { method: 'POST', redirect: 'error',
             signal: scope.signal, headers: { 'content-type': 'application/json', accept: created.preparedRequest.headersPlan.accept,
               'x-goog-api-key': lease.credential }, body: Buffer.from(created.preparedRequest.body.copyBytes()) })
-          return readResult(response, created.preparedRequest.modelId, () => { responseStarted = true })
+          return readResult(response, created.preparedRequest.modelId, () => { responseStarted = true }, scope.signal)
         } })
       providerResultCompleted = true
       materializeNewGenerationNativeCompletionV2({

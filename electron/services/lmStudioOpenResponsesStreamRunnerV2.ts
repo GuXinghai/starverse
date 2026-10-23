@@ -15,7 +15,7 @@ import { LmStudioOpenResponsesStreamV1Error, LmStudioOpenResponsesTypedSseDecode
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
-import { createGenerationAbortScope } from './generationTimeoutPolicyV2'
+import { abortableGenerationReadV2, createGenerationAbortScope } from './generationTimeoutPolicyV2'
 import {
   hasPendingGenerationNativeCompletionForOperationV2,
   isGenerationNativeCompletionMaterializationPendingV2Error,
@@ -172,7 +172,7 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
       if (!response.ok || !response.body) { try { await response.body?.cancel() } catch { /* best effort */ }
         throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_HTTP_FAILED') }
       const decoder = new LmStudioOpenResponsesTypedSseDecoderV1(event => receivedLocalWireFacts.get(command)!.push(event)); const reader = response.body.getReader()
-      try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength > 0) started = true
+      try { while (true) { const item = await abortableGenerationReadV2(reader.read(), scope.signal); if (item.done) break; if (item.value.byteLength > 0) started = true
         for (const event of decoder.push(item.value)) if ('delta' in event) {
           if (event.type === 'output_text') { visible += event.delta; checkpoint.update(visible) }
           else if (event.type === 'reasoning_text') publishGenerationStreamProjectionV2(input.streamProjectionSink, {

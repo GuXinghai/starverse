@@ -148,6 +148,29 @@ describe('Anthropic Messages named-SSE V1', () => {
     ]))
   })
 
+  it('P4a-06: appends documented citations_delta citations to the current text block', () => {
+    const stream = new AnthropicMessagesChatStreamV1()
+    const citation = { type: 'char_location', cited_text: 'The sky is blue.', document_index: 0,
+      document_title: 'Doc', start_char_index: 20, end_char_index: 36 }
+    stream.push(encoder.encode(startMessage() +
+      blockStart(0, { type: 'text', text: '', citations: null }) +
+      blockDelta(0, { type: 'text_delta', text: 'The sky is blue' }) +
+      blockDelta(0, { type: 'citations_delta', citation }) +
+      blockDelta(0, { type: 'citations_delta', citation: { ...citation, start_char_index: 0, end_char_index: 19 } }) +
+      blockStop(0) + messageDelta('end_turn') + messageStop()))
+    const snapshot = stream.finish()
+    expect(snapshot.content).toEqual([{ type: 'text', text: 'The sky is blue',
+      citations: [citation, { ...citation, start_char_index: 0, end_char_index: 19 }] }])
+    expect(createAnthropicNativeHistoryArtifactV1(snapshot).assistantMessage.content).toEqual(snapshot.content)
+  })
+
+  it('P4a-06: rejects a citations_delta without a citation object', () => {
+    const stream = new AnthropicMessagesChatStreamV1()
+    expect(() => stream.push(encoder.encode(startMessage() + blockStart(0, { type: 'text', text: '', citations: null }) +
+      blockDelta(0, { type: 'citations_delta', citation: 'not an object' }))))
+      .toThrow('GENERATION_V2_ANTHROPIC_STREAM_INVALID_EVENT')
+  })
+
   it('rejects deltas after block stop, duplicate block stop, and index holes', () => {
     for (const suffix of [
       blockStart(0, { type: 'text', text: '' }) + blockStop(0) + blockDelta(0, { type: 'text_delta', text: 'late' }),

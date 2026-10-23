@@ -1,6 +1,7 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import type { OpenRouterNativeMessageV1 } from './nativeMessagesV1'
 import { GENERATION_SUCCESS_RESPONSE_MAX_BYTES_V1 } from '../../capacity/generationCapacityV1'
+import { SseLineEndingNormalizerV1 } from '../sseLineEndingsV1'
 
 export type OpenRouterChatSseEventV1 =
   | Readonly<{ type: 'json'; value: unknown; rawData: string }>
@@ -77,6 +78,7 @@ function cloneObject(value: unknown): Readonly<Record<string, unknown>> {
 
 export class OpenRouterChatSseDecoderV1 {
   readonly #decoder = new TextDecoder('utf-8', { fatal: true })
+  readonly #lines = new SseLineEndingNormalizerV1()
   #buffer = ''
   #wireBytes = 0
   #finished = false
@@ -85,7 +87,7 @@ export class OpenRouterChatSseDecoderV1 {
     if (this.#finished || !(bytes instanceof Uint8Array)) return fail('GENERATION_V2_OPENROUTER_CHAT_SSE_INVALID')
     this.#wireBytes += bytes.byteLength
     if (this.#wireBytes > MAX_WIRE_BYTES) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_LIMIT_EXCEEDED')
-    try { this.#buffer += this.#decoder.decode(bytes, { stream: true }).replace(/\r\n?|\n/gu, '\n') } catch {
+    try { this.#buffer += this.#lines.push(this.#decoder.decode(bytes, { stream: true })) } catch {
       return fail('GENERATION_V2_OPENROUTER_CHAT_SSE_INVALID')
     }
     if (new TextEncoder().encode(this.#buffer).byteLength > MAX_PENDING_BYTES) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_LIMIT_EXCEEDED')
@@ -95,7 +97,7 @@ export class OpenRouterChatSseDecoderV1 {
   finish(): readonly OpenRouterChatSseEventV1[] {
     if (this.#finished) return fail('GENERATION_V2_OPENROUTER_CHAT_SSE_INVALID')
     this.#finished = true
-    try { this.#buffer += this.#decoder.decode().replace(/\r\n?|\n/gu, '\n') } catch {
+    try { this.#buffer += this.#lines.finish(this.#decoder.decode()) } catch {
       return fail('GENERATION_V2_OPENROUTER_CHAT_SSE_INVALID')
     }
     const events = this.#drain()

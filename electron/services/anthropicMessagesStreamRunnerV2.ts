@@ -40,6 +40,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { incompleteProviderFinishV2 } from './generationProviderFinishV2'
 
 const MAX_WIRE_BYTES = 64 * 1_024 * 1_024
 
@@ -50,6 +51,9 @@ export type AnthropicMessagesStreamRunResultV2 = Readonly<{
   errorCode: string | null
   errorMessage: string | null
 }>
+
+export const ANTHROPIC_PAUSE_TURN_ERROR_CODE = 'GENERATION_V2_ANTHROPIC_PAUSE_TURN_UNSUPPORTED'
+const ANTHROPIC_PAUSE_TURN_ERROR_MESSAGE = 'The provider paused this turn before it finished. Continuing a paused turn is not supported.'
 
 export class AnthropicMessagesStreamRunnerV2Error extends Error {
   constructor(readonly code:
@@ -180,6 +184,20 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
     errorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream',
   ): AnthropicMessagesStreamRunResultV2 {
+    if (state === 'completed') {
+      const stopReason = createAnthropicNativeHistoryArtifactV1(nativeSnapshot).stopReason
+      // pause_turn asks the client to continue the turn, which is not supported, so
+      // the paused turn is not complete and must not be stored as one (P4a-07).
+      // max_tokens and refusal are not completed answers either (P4a-15).
+      const incomplete = stopReason === 'pause_turn'
+        ? { code: ANTHROPIC_PAUSE_TURN_ERROR_CODE, message: ANTHROPIC_PAUSE_TURN_ERROR_MESSAGE }
+        : incompleteProviderFinishV2(stopReason)
+      if (incomplete) {
+        state = 'failed'
+        errorCode = incomplete.code
+        errorMessage = incomplete.message
+      }
+    }
     const at = nowMs()
     let resultState: AnthropicMessagesStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -298,11 +316,15 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
         accept(stream.push(item.value))
       }
       const snapshot = normalizeAnthropicTerminalSnapshot(stream.finish())
+      // The completed body is read back from the checkpoint, so it must be durable
+      // before the receipt makes the completion recoverable (P4a-08).
+      checkpoint.flush()
       persistGenerationNativeCompletionReceiptV2(input.db, command, snapshot, nowMs())
       completed = true
       return snapshot
     } finally {
-      interruptedSnapshots.set(command, stream.interruptedSnapshot())
+      // A failing snapshot must not skip the cleanup below or mask the stream error (P4a-12).
+      try { interruptedSnapshots.set(command, stream.interruptedSnapshot()) } catch { /* cleanup continues */ }
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         if (!completed) {

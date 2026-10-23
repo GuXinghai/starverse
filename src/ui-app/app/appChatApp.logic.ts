@@ -445,6 +445,9 @@ export function useAppChatAppLogic() {
   const activeDraftConflict = computed(() => activeConvoId.value
     ? pendingDraftConflicts.value.get(activeConvoId.value) ?? null : null)
   const submittingComposerConversationIds = shallowRef<ReadonlySet<string>>(new Set())
+  // Regenerate/retry submissions in flight, set before the first await so a second
+  // click cannot mint a second operation for the same conversation (P4b-01).
+  const answerActionConversationIds = new Set<string>()
   let applyingDraftProjection = false
   let unsubscribeFileTypeDetectionUpdated: (()=>void)|null=null
   const lastDraftScopeKey = ref<string | null>(null)
@@ -2483,6 +2486,17 @@ export function useAppChatAppLogic() {
       [...runtimeMessageMetaById.value].filter(([messageId]) => !persistedIds.has(messageId)),
     )
     retainReasoningArtifactsForMessageIds(rows.map((m) => m.id))
+    // The branch read is authoritative: a terminal answer settles a cached
+    // "generating" snapshot whose terminal event never arrived (P4b-03).
+    let settledStaleRuntime = false
+    for (const turn of v2View.turns) {
+      for (const answer of turn.answers) {
+        if (answer.status !== 'streaming' && branchRuntimeCache.settleStaleGenerating(answer.operationId)) {
+          settledStaleRuntime = true
+        }
+      }
+    }
+    if (settledStaleRuntime) branchRuntimeCacheRevision.value += 1
     hydrateStateFromPersistedMessages(
       bid,
       rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta })),
@@ -3399,18 +3413,37 @@ export function useAppChatAppLogic() {
         chatError.value = 'GENERATION_V2_RUNTIME_OPERATION_UNKNOWN'
         return
       }
-      await abortGenerationV2(
+      await stopAndReconcile(runtime.branchId, () => abortGenerationV2(
         generationV2RouteForPersistedAnswer({ protocolContractId: snapshot.binding.contractId }),
-        runtime.activeOperationId,
-      )
-      if (activeBranchId.value === runtime.branchId) await refreshRenderableBranchView(runtime.branchId)
+        runtime.activeOperationId!,
+      ))
       return
     }
     const v2Answer = activeGenerationV2Answer.value
-    if (v2Answer?.status === 'streaming') {
-      await abortGenerationV2(generationV2RouteForPersistedAnswer(v2Answer), v2Answer.operationId)
-      if (activeBranchId.value) await refreshRenderableBranchView(activeBranchId.value)
+    const branchId = activeBranchId.value
+    if (v2Answer?.status === 'streaming' && branchId) {
+      await stopAndReconcile(branchId, () =>
+        abortGenerationV2(generationV2RouteForPersistedAnswer(v2Answer), v2Answer.operationId))
     }
+  }
+
+  // Stop never fails silently (P4b-03): a rejected or refused abort is shown,
+  // and the branch is re-read so a generation that already ended stops showing
+  // as generating.
+  async function stopAndReconcile(branchId: string, abort: () => Promise<boolean>) {
+    let feedback: string | null = null
+    try {
+      if (!await abort()) feedback = 'GENERATION_V2_RUNTIME_ABORT_NOT_ACCEPTED'
+    } catch (error) {
+      feedback = error instanceof Error ? error.message : String(error)
+    }
+    if (activeBranchId.value !== branchId) return
+    try {
+      await refreshRenderableBranchView(branchId)
+    } catch (error) {
+      feedback ??= error instanceof Error ? error.message : String(error)
+    }
+    if (feedback && activeBranchId.value === branchId && isRunning.value) chatError.value = feedback
   }
 
   function onToggleReasoningPanelState(messageId?: string) {
@@ -7890,6 +7923,9 @@ export function useAppChatAppLogic() {
     const selection = canonicalSendSelection()
     if (!selection) return
     const { compatibleIntent, modelId } = selection
+    const actionConvoId = activeConvoId.value
+    if (!actionConvoId || answerActionConversationIds.has(actionConvoId)) return
+    answerActionConversationIds.add(actionConvoId)
     const reportChatError = beginChatAction()
     try {
       const view = generationV2BranchView.value
@@ -7938,7 +7974,10 @@ export function useAppChatAppLogic() {
       }
     } catch (error) {
       reportChatError(error instanceof Error ? error.message : String(error))
-      await refreshRenderableBranchView(branch.id)
+      // Refresh only the branch still on screen; a failed refresh must not throw out of this handler (P4b-12).
+      if (activeBranchId.value === branch.id) await refreshRenderableBranchView(branch.id).catch(() => undefined)
+    } finally {
+      answerActionConversationIds.delete(actionConvoId)
     }
   }
 
@@ -8184,6 +8223,9 @@ export function useAppChatAppLogic() {
     if (!branch?.id || !qid || !current || !turn || !answer || turn.chosenAnswerRootId !== current ||
         answer.status === 'streaming' || !view?.headMessageId ||
         (mode === 'replace' && branch.headMessageId !== current)) return
+    const actionConvoId = activeConvoId.value
+    if (!actionConvoId || answerActionConversationIds.has(actionConvoId)) return
+    answerActionConversationIds.add(actionConvoId)
     const reportChatError = beginChatAction()
     try {
       const operationId = crypto.randomUUID()
@@ -8213,7 +8255,10 @@ export function useAppChatAppLogic() {
       }
     } catch (error) {
       reportChatError(error instanceof Error ? error.message : String(error))
-      await refreshRenderableBranchView(branch.id)
+      // Refresh only the branch still on screen; a failed refresh must not throw out of this handler (P4b-12).
+      if (activeBranchId.value === branch.id) await refreshRenderableBranchView(branch.id).catch(() => undefined)
+    } finally {
+      answerActionConversationIds.delete(actionConvoId)
     }
   }
 
@@ -8506,14 +8551,20 @@ export function useAppChatAppLogic() {
   })
 
   let unsubscribeGenerationV2Runtime: (() => void) | null = null
-  let generationV2RuntimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  // One pending refresh per branch, so a timer for one branch cannot swallow another's (P4b-12).
+  const generationV2RuntimeRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   function scheduleCurrentRuntimeRefresh(branchId: string) {
-    if (generationV2RuntimeRefreshTimer) return
-    generationV2RuntimeRefreshTimer = setTimeout(() => {
-      generationV2RuntimeRefreshTimer = null
-      if (activeBranchId.value === branchId) void refreshRenderableBranchView(branchId)
-    }, 40)
+    if (generationV2RuntimeRefreshTimers.has(branchId)) return
+    generationV2RuntimeRefreshTimers.set(branchId, setTimeout(() => {
+      generationV2RuntimeRefreshTimers.delete(branchId)
+      if (activeBranchId.value !== branchId) return
+      refreshRenderableBranchView(branchId).catch((error: unknown) => {
+        // A branch or conversation switch makes the read stale; anything else is shown (P4b-03).
+        const message = error instanceof Error ? error.message : String(error)
+        if (activeBranchId.value === branchId && message !== 'GENERATION_V2_BRANCH_PROJECTION_STALE') chatError.value = message
+      })
+    }, 40))
   }
 
   onMounted(() => {
@@ -8600,8 +8651,8 @@ export function useAppChatAppLogic() {
     window.removeEventListener('beforeunload', handlePageHide)
     unsubscribeGenerationV2Runtime?.()
     unsubscribeGenerationV2Runtime = null
-    if (generationV2RuntimeRefreshTimer) clearTimeout(generationV2RuntimeRefreshTimer)
-    generationV2RuntimeRefreshTimer = null
+    for (const timer of generationV2RuntimeRefreshTimers.values()) clearTimeout(timer)
+    generationV2RuntimeRefreshTimers.clear()
 
     diagnosticsBridge?.dispose()
 

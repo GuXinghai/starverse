@@ -131,6 +131,8 @@ function message(target: PortableHistoryTargetV2, role: 'user' | 'assistant' | '
     return { type: 'message', role, id: `msg_portable_${sha(identity).slice(0, 32)}`, status: 'completed',
       content: [{ type: 'output_text', text, annotations: [], ...(target === 'lmstudio' ? { logprobs: [] } : {}) }] }
   }
+  // Anthropic accepts assistant content only as native blocks (P3b-01).
+  if (target === 'anthropic' && role === 'assistant') return { role, content: [{ type: 'text', text, citations: null }, ...parts] }
   if (target === 'anthropic' && parts.length) return { role, content: [{ type: 'text', text }, ...parts] }
   if (target === 'openrouter' && parts.length) return { role, content: [{ type: 'text', text }, ...parts] }
   return { role, content: [text, ...parts.map(part => part.text).filter(value => typeof value === 'string')].join('\n\n') }

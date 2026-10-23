@@ -41,8 +41,9 @@ export async function submitGenerationV2Initial(route:GenerationV2Route,command:
 export async function submitGenerationV2Retry(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).retry(capabilityBound(command,expectedCapabilityRevision)))}
 export async function submitGenerationV2Regenerate(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).regenerate(capabilityBound(command,expectedCapabilityRevision)))}
 export async function submitGenerationV2EditResend(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).editResend(capabilityBound(command,expectedCapabilityRevision)))}
-export async function abortGenerationV2(_route:GenerationV2Route,operationId:string){
-  return runtimeBridge().abort(operationId)
+export async function abortGenerationV2(_route:GenerationV2Route,operationId:string):Promise<boolean>{
+  // Unwrapped so a refused or failed abort reaches the caller (P4b-03).
+  return runtimeResult<{ aborted: boolean }>(await runtimeBridge().abort(operationId)).aborted === true
 }
 
 type RuntimeBridgeResult<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>

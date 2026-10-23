@@ -55,6 +55,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
 
@@ -160,6 +161,9 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     phase: 'pre_stream' | 'mid_stream',
     errorFact: ProviderFailureV2 | null = null,
   ): DeepSeekInitialStreamRunResultV2 {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({ state, finishReason: streamResult?.finishReason, errorCode, errorMessage })
+    state = finish.state; errorCode = finish.errorCode; errorMessage = finish.errorMessage
     const at = nowMs()
     let resultState: DeepSeekInitialStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -335,10 +339,14 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       }
       accept(eventsToDeltas(decoder.finish()))
       const result = assembler.acceptDone()
+      // The completed body is read back from the checkpoint, so it must be durable
+      // before the receipt makes the completion recoverable (P4a-08).
+      checkpoint.flush()
       persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
       return Object.freeze({ result, visibleContent })
     } finally {
-      interruptedSnapshots.set(command, assembler.interruptedSnapshot())
+      // A failing snapshot must not skip the cleanup below or mask the stream error (P4a-12).
+      try { interruptedSnapshots.set(command, assembler.interruptedSnapshot()) } catch { /* cleanup continues */ }
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* best-effort */ }

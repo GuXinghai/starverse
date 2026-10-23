@@ -39,6 +39,7 @@ import {
   preserveGenerationNativeCompletionPendingFailureV2,
   registerGenerationNativeCompletionMaterializerV2,
 } from './generationNativeCompletionV2'
+import { settleProviderFinishV2 } from './generationProviderFinishV2'
 
 export type GeminiGenerateContentStreamRunResultV2 = Readonly<{
   operationId: string
@@ -124,6 +125,9 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
   function finalize(command: GenerationTextCommandResultV2, state: 'completed' | 'failed' | 'cancelled',
     stream: GeminiGenerateContentStreamResultV1 | null, errorCode: string | null, errorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream', errorFact: ProviderFailureV2 | null = null): GeminiGenerateContentStreamRunResultV2 {
+    // A truncated or blocked finish is not a completed answer (P4a-15).
+    const finish = settleProviderFinishV2({ state, finishReason: stream?.finishReason, errorCode, errorMessage })
+    state = finish.state; errorCode = finish.errorCode; errorMessage = finish.errorMessage
     const at = nowMs()
     let resultState: GeminiGenerateContentStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -232,10 +236,14 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
         }
       }
       const result = stream.finish()
+      // The completed body is read back from the checkpoint, so it must be durable
+      // before the receipt makes the completion recoverable (P4a-08).
+      checkpoint.flush()
       persistGenerationNativeCompletionReceiptV2(input.db, command, result, nowMs())
       return result
     } finally {
-      interruptedSnapshots.set(command, stream.interruptedSnapshot())
+      // A failing snapshot must not skip the cleanup below or mask the stream error (P4a-12).
+      try { interruptedSnapshots.set(command, stream.interruptedSnapshot()) } catch { /* cleanup continues */ }
       try { checkpoint.flush() } finally {
         checkpoint.dispose()
         try { await reader.cancel() } catch { /* release only */ }

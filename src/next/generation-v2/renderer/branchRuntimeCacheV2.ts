@@ -79,6 +79,17 @@ export class BranchRuntimeCacheV2 {
     return this.#byOperation.get(operationId) ?? null
   }
 
+  /**
+   * Drops a cached "generating" snapshot once the database shows its answer is
+   * terminal, so a lost terminal event cannot keep the branch generating
+   * (P4b-03). Returns whether anything was dropped.
+   */
+  settleStaleGenerating(operationId: string): boolean {
+    if (this.#byOperation.get(operationId)?.status !== 'generating') return false
+    this.#byOperation.delete(operationId)
+    return true
+  }
+
   prune(currentBranchId?: string | null): void {
     const selectedByBranch = new Map<string, GenerationOperationRuntimeSnapshotV2>()
     for (const snapshot of this.#byOperation.values()) {
