@@ -366,6 +366,7 @@
       "configuredCount": "{count} configured",
       "empty": "No generation parameters are available for this provider/model.",
       "unsupportedForModel": "{param} is not supported by this provider/model.",
+      "invalidValue": "Not saved: this value is not allowed by the current rules. Allowed: {hint}",
       "mode": {
         "inherit": "inherit",
         "custom": "custom",

@@ -327,6 +327,19 @@ describe('actual App current semantic invalidation', () => {
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
+  it('R4-02: re-derives the capability projection after a models.dev source publication event', async () => {
+    render(AppChatApp)
+    await readyDraft()
+    const before = bridge.capabilities.resolve.mock.calls.length
+    for (const listener of listeners) listener({ kind: 'model_facts_source', sourceKind: 'models_dev', canonicalSourceRevision: 'latest' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(bridge.capabilities.resolve).toHaveBeenCalledTimes(before)
+    for (const listener of listeners) listener({ kind: 'model_facts_source', sourceKind: 'models_dev',
+      canonicalSourceRevision: `canonical-source-v1:${'c'.repeat(64)}` })
+    await waitFor(() => expect(bridge.capabilities.resolve.mock.calls.length).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+  })
+
   it('refreshes unchanged selection after a valid credential event, blocks send while pending, and removes its listener', async () => {
     const view = render(AppChatApp)
     await readyDraft()
@@ -501,7 +514,10 @@ describe('actual App current semantic invalidation', () => {
     await waitFor(() => expect(bridge.workspace.setLastFormalConversation).toHaveBeenCalledWith(conversationB))
   })
 
-  it('does not author config or submit an already-started send after a committed rule invalidates its captured authority', async () => {
+  // R4-04 (D-6): this test used to require the user to click Send again after a committed rule
+  // invalidated a send in progress. The send now waits for the current projection and is
+  // re-prepared once; it still never authors config or submits under the old authority.
+  it('R4-04: re-prepares an already-started send under the new authority after a committed rule invalidates it', async () => {
     render(AppChatApp)
     await readyDraft()
     const previousRevision = latest.controlsProjection.capabilityRevision
@@ -539,14 +555,13 @@ describe('actual App current semantic invalidation', () => {
     await waitFor(() => expect(held?.ok).toBe(true))
     expect(screen.getByTestId('composer-send')).toBeDisabled()
     flushGate.resolve()
-    await screen.findByText('GENERATION_V2_CAPABILITY_PROJECTION_STALE')
+    await new Promise(resolve => setTimeout(resolve, 50))
     expect(bridge.workspace.updateConfig).not.toHaveBeenCalled()
     expect(db.prepare('SELECT * FROM generation_config_v2 ORDER BY owner_kind,owner_id').all()).toEqual(beforeConfig)
     expect(bridge.openRouter.chat.initial).not.toHaveBeenCalled()
     resolutionGate.resolve()
-    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
-    await fireEvent.click(screen.getByTestId('composer-send'))
     await waitFor(() => expect(bridge.openRouter.chat.initial).toHaveBeenCalledOnce())
+    expect(screen.queryByText('GENERATION_V2_CAPABILITY_PROJECTION_STALE')).toBeNull()
     expect(bridge.openRouter.chat.initial.mock.calls[0][0].expectedCapabilityRevision).toBe(held.value.controlsProjection.capabilityRevision)
     expect(held.value.controlsProjection.capabilityRevision).not.toBe(previousRevision)
     const authored = db.prepare("SELECT semantic_json FROM generation_config_v2 WHERE owner_kind='conversation' AND owner_id=?").get(conversationA) as { semantic_json: string }

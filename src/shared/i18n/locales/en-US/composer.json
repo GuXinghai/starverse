@@ -20,6 +20,7 @@
     },
     "status": {
       "noSendableInput": "No sendable input",
+      "imageResolutionUnsupported": "The selected image resolution is not supported by the current model rules. Choose a supported resolution to send.",
       "updatingSendPlan": "Updating send plan…",
       "model": "Model",
       "review": "Review"

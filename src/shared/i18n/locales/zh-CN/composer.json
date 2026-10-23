@@ -20,6 +20,7 @@
     },
     "status": {
       "noSendableInput": "无可发送内容",
+      "imageResolutionUnsupported": "当前模型规则不支持所选的图像分辨率。请选择受支持的分辨率后再发送。",
       "updatingSendPlan": "正在更新发送计划…",
       "model": "模型",
       "review": "查看"

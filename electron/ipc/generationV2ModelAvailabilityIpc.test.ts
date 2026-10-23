@@ -3,6 +3,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { CanonicalModelFactSourceV1Repo } from '../../infra/db/repo/canonicalModelFactSourceV1Repo'
+import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import { canonicalProviderNativeSourceScopeIdV1 } from
   '../../infra/db/services/canonicalModelFactSourceIngestionV1Service'
 import { GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS, GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS,
@@ -303,5 +304,82 @@ describe('generationV2ModelAvailabilityIpc', () => {
         expect(payload.providerSpecific?.imageGenerationPolicy).toBeUndefined()
       }
     } finally { db.close() }
+  })
+
+  describe('P3a-09: provider-native facts follow the applied catalog snapshot', () => {
+    const openRouterFactScope = () => canonicalProviderNativeSourceScopeIdV1({ providerAuthorityId: 'openrouter',
+      providerNativeSurfaceId: 'openrouter-chat-models-v1', endpointProfileId: 'openrouter-first-party-v1',
+      credentialScopeId: 'scope:test', credentialRevision: 1 })
+    const factFor = (db: BetterSqlite3.Database, nativeModelId: string) => {
+      const facts = new CanonicalModelFactSourceV1Repo(db)
+      const current = facts.readSourceState('provider_native', openRouterFactScope())?.currentSourceRevision
+      if (!current) return null
+      return facts.readSubjectFact({ canonicalSourceRevision: current, subject: { providerAuthorityId: 'openrouter',
+        endpointProfileId: 'openrouter-first-party-v1', nativeModelId } }) ?? null
+    }
+    const register = (db: BetterSqlite3.Database, models: Array<ReturnType<typeof openRouterRawModel>>) => {
+      const handlers = new Map<string, Handler>()
+      const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify({
+        data: url.includes('/providers') ? [] : [models.shift()],
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      registerGenerationV2ModelAvailabilityIpc({
+        registerInvoke: (channel, handler) => handlers.set(channel, handler as Handler),
+        credentialService: credentialService() as never, db, fetchImpl: fetchImpl as never,
+      })
+      return {
+        sync: handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[0])!,
+        apply: handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[4])!,
+        discard: handlers.get(GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS[5])!,
+      }
+    }
+
+    it('does not publish facts for a manual snapshot until it is applied', async () => {
+      const db = database()
+      try {
+        const { sync, apply } = register(db, [openRouterRawModel('openai/active', 'Active'),
+          openRouterRawModel('openai/pending', 'Pending')])
+        await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000 })
+        expect(factFor(db, 'openai/active')).not.toBeNull()
+        const pending = await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000, applyMode: 'manual' }) as any
+        expect(pending).toMatchObject({ ok: true, status: 'pending' })
+        expect(factFor(db, 'openai/pending')).toBeNull()
+        expect(factFor(db, 'openai/active')).not.toBeNull()
+
+        await apply({}, { providerKey: 'openrouter', snapshotDigest: pending.pendingSnapshotDigest })
+        expect(factFor(db, 'openai/pending')).not.toBeNull()
+        expect(factFor(db, 'openai/active')).toBeNull()
+      } finally { db.close() }
+    })
+
+    it('drops held facts when the pending snapshot is discarded', async () => {
+      const db = database()
+      try {
+        const { sync, discard } = register(db, [openRouterRawModel('openai/active', 'Active'),
+          openRouterRawModel('openai/pending', 'Pending')])
+        await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000 })
+        const pending = await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000, applyMode: 'manual' }) as any
+        await discard({}, { providerKey: 'openrouter', snapshotDigest: pending.pendingSnapshotDigest })
+        expect(factFor(db, 'openai/pending')).toBeNull()
+        expect(factFor(db, 'openai/active')).not.toBeNull()
+      } finally { db.close() }
+    })
+
+    it('does not publish facts when the catalog commit fails', async () => {
+      const db = database()
+      const commit = vi.spyOn(ModelCatalogV2Repo.prototype, 'commitSync').mockImplementation(() => {
+        throw new Error('disk full')
+      })
+      try {
+        const { sync } = register(db, [openRouterRawModel('openai/uncommitted', 'Uncommitted')])
+        expect(await sync({}, { providerKey: 'openrouter', timeoutMs: 5_000 }))
+          .toMatchObject({ ok: false, code: 'MODEL_CATALOG_PUBLICATION_FAILED' })
+        expect(factFor(db, 'openai/uncommitted')).toBeNull()
+        expect(new CanonicalModelFactSourceV1Repo(db).readSourceState('provider_native', openRouterFactScope()))
+          .toMatchObject({ currentSourceRevision: null, staleReason: 'MODEL_CATALOG_PUBLICATION_FAILED' })
+      } finally {
+        commit.mockRestore()
+        db.close()
+      }
+    })
   })
 })

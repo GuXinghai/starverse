@@ -13,4 +13,14 @@ describe('closed semantic invalidation event', () => {
       expect(() => decodeModelFactsSemanticInvalidationV1(invalid)).toThrow('GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATION_INVALID')
     }
   })
+
+  it('R4-02: accepts a models.dev source publication and rejects other source kinds', () => {
+    const event = { kind: 'model_facts_source', sourceKind: 'models_dev',
+      canonicalSourceRevision: `canonical-source-v1:${'b'.repeat(64)}` }
+    expect(decodeModelFactsSemanticInvalidationV1(event)).toEqual(event)
+    for (const invalid of [{ ...event, sourceKind: 'provider_native' }, { ...event, canonicalSourceRevision: 'latest' },
+      { ...event, extra: true }]) {
+      expect(() => decodeModelFactsSemanticInvalidationV1(invalid)).toThrow('GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATION_INVALID')
+    }
+  })
 })

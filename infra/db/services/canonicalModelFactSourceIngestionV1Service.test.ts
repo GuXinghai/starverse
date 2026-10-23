@@ -80,4 +80,28 @@ describe('Canonical Model Fact Source Ingestion V1 service', () => {
           staleReason: 'network_unavailable', lastAttemptedAtMs: 299 })
     } finally { db.close() }
   })
+
+  it('P3a-06: keeps the current models.dev revision when a complete snapshot loses most subjects', () => {
+    const db = database()
+    try {
+      const service = new CanonicalModelFactSourceIngestionV1Service(db, () => 400)
+      const payload = (count: number) => ({ openai: { id: 'openai', models: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [`gpt-shrink-${index}`, { id: `gpt-shrink-${index}`, reasoning: true }])) } })
+      const request = (count: number, fetchedAtMs: number) => ({ distributionId: 'models.dev-official-api',
+        distributionChannel: 'https://models.dev/api.json',
+        rawEnvelope: { recordKey: 'models-dev:api.json', payload: payload(count) }, fetchedAtMs })
+      const full = service.refreshModelsDev(request(60, 390))
+      expect(full.subjectFacts).toHaveLength(60)
+      const scopeId = full.source.sourceRevision.sourceScopeId
+      const current = full.source.sourceRevision.canonicalSourceRevision
+
+      expect(() => service.refreshModelsDev(request(29, 391))).toThrow('CANONICAL_MODEL_FACT_MODELS_DEV_SHRINK_REJECTED')
+      expect(service.sourceRepo.readSourceState('models_dev', scopeId)?.currentSourceRevision).toBe(current)
+
+      const smaller = service.refreshModelsDev(request(30, 392))
+      expect(smaller.subjectFacts).toHaveLength(30)
+      expect(service.sourceRepo.readSourceState('models_dev', scopeId)?.currentSourceRevision)
+        .toBe(smaller.source.sourceRevision.canonicalSourceRevision)
+    } finally { db.close() }
+  })
 })

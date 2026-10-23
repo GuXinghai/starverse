@@ -678,7 +678,9 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     expect(initial).toHaveBeenCalledTimes(1)
   })
 
-  it('refreshes capability after a stale initial send without automatically resubmitting', async () => {
+  // R4-04 (D-6): this test used to assert that a stale initial send is never resubmitted.
+  // The owner decision re-prepares a stale pending send once; a second stale result is surfaced.
+  it('R4-04: re-prepares a stale initial send once with a fresh operation, then surfaces a second stale result', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL, {
       rejectCode: 'STALE_CAPABILITY_REVISION',
     })
@@ -692,13 +694,15 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     await user.type(draftBox(), 'stale request')
     await user.click(sendButton())
 
-    await waitFor(() => expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeSend))
+    await screen.findByText('STALE_CAPABILITY_REVISION')
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(2)
+    expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeSend)
     expect(turns).toEqual([])
     expect((draftBox() as HTMLTextAreaElement).value).toBe('stale request')
-    expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
-      expectedCapabilityRevision: 'capability-v2:test',
-    }))
+    const [first, second] = initialStubs['openRouter.chat'].mock.calls.map(([packet]: any[]) => packet)
+    expect(first).toMatchObject({ expectedCapabilityRevision: 'capability-v2:test' })
+    expect(second).toMatchObject({ expectedCapabilityRevision: 'capability-v2:test' })
+    expect(second.command.operationId).not.toBe(first.command.operationId)
   })
 
   it('preserves a newer draft when accepted-send cleanup loses its revision', async () => {

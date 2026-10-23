@@ -385,11 +385,13 @@ const lockImageGenerationSizeControl = computed(() =>
 const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
 )
+// R4-03: show the persisted value, never a substitute; an excluded value is flagged below.
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  props.sessionConfig.imageGeneration.resolution !== '' && imageGenerationSizeOptions.value.length > 0 &&
-    !imageGenerationSizeOptions.value.includes(props.sessionConfig.imageGeneration.resolution)
-    ? imageGenerationSizeOptions.value[0]
-    : props.sessionConfig.imageGeneration.resolution
+  props.sessionConfig.imageGeneration.resolution
+)
+const imageGenerationResolutionConflict = computed(() =>
+  effectiveImageGenerationResolution.value !== '' && imageGenerationSizeOptions.value.length > 0 &&
+    !imageGenerationSizeOptions.value.includes(effectiveImageGenerationResolution.value)
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
   imageGenerationAspectRatioOptions.value.length > 0 &&
@@ -2644,6 +2646,13 @@ function formatWebSearchLevel(level: string): string {
             {{ resolution }}
           </button>
         </div>
+        <p
+          v-if="!isOpenAIResponsesSelected && showImageGenerationSizeControl && imageGenerationResolutionConflict"
+          class="sv-notice sv-notice-danger"
+          data-testid="session-image-resolution-conflict"
+        >
+          {{ effectiveImageGenerationResolution }}: {{ t('composer.status.imageResolutionUnsupported') }}
+        </p>
         <div v-if="!isOpenAIResponsesSelected" class="flex flex-wrap gap-1.5 empty:hidden">
           <button
             v-for="ratio in imageGenerationAspectRatioOptions"

@@ -44,7 +44,7 @@ import { CloudRulesApplicationV1Repo } from '../infra/db/repo/cloudRulesApplicat
 import { CloudRulesDistributionV1Repo } from '../infra/db/repo/cloudRulesDistributionV1Repo'
 import { GENERATION_V2_MODEL_FACTS_SEMANTIC_INVALIDATED,
   type ModelFactsSemanticInvalidationV1 } from '../src/core/generation-v2/model-facts/semanticInvalidationV1'
-import { applyBootstrapCapabilityRulesWithInvalidationV1 } from './services/modelFactsSemanticInvalidationV1'
+import { applyBootstrapCapabilityRulesWithInvalidationV1, notifyModelFactsSemanticInvalidationV1 } from './services/modelFactsSemanticInvalidationV1'
 import { applyAgentSessionNetworkPolicy, assertAgentNetworkAccess, getAgentAutomationOptions } from './bootstrap/agentAutomationRuntime'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -191,6 +191,8 @@ export async function startMainV2(): Promise<void> {
   const modelsDevSourceRefresh = new ModelsDevOfficialSourceRefreshV1({
   db: runtime.epoch2.database,
   fetchImpl: cloudFetch,
+  onPublished: (canonicalSourceRevision) => notifyModelFactsSemanticInvalidationV1(notifyModelFactsSemanticInvalidated,
+    { kind: 'model_facts_source', sourceKind: 'models_dev', canonicalSourceRevision }),
 })
   void modelsDevSourceRefresh.start().then((result) => {
     if (!result.ok) console.warn('[models-dev-source-v1] refresh failed', { code: result.code })

@@ -25,6 +25,7 @@ export type ModelsDevOfficialSourceRefreshFailureCodeV1 =
   | 'MODELS_DEV_OFFICIAL_BODY_TOO_LARGE'
   | 'MODELS_DEV_OFFICIAL_ENVELOPE_INVALID'
   | 'MODELS_DEV_OFFICIAL_PUBLICATION_FAILED'
+  | 'MODELS_DEV_OFFICIAL_SNAPSHOT_SHRINK_REJECTED'
 
 type JsonRecord = Record<string, unknown>
 
@@ -79,6 +80,7 @@ function failureCode(error: unknown): ModelsDevOfficialSourceRefreshFailureCodeV
       code === 'MODELS_DEV_OFFICIAL_BODY_INVALID' ||
       code === 'MODELS_DEV_OFFICIAL_BODY_TOO_LARGE' ||
       code === 'MODELS_DEV_OFFICIAL_ENVELOPE_INVALID') return code
+  if (code === 'CANONICAL_MODEL_FACT_MODELS_DEV_SHRINK_REJECTED') return 'MODELS_DEV_OFFICIAL_SNAPSHOT_SHRINK_REJECTED'
   return 'MODELS_DEV_OFFICIAL_PUBLICATION_FAILED'
 }
 
@@ -99,6 +101,8 @@ export class ModelsDevOfficialSourceRefreshV1 {
     nowMs?: () => number
     refreshCadenceMs?: number
     timeoutMs?: number
+    /** R4-02: called after a new revision becomes current, so renderers can re-derive. */
+    onPublished?: (canonicalSourceRevision: string) => void
   }>) {
     this.ingestion = new CanonicalModelFactSourceIngestionV1Service(input.db, input.nowMs ?? Date.now)
   }
@@ -193,8 +197,11 @@ export class ModelsDevOfficialSourceRefreshV1 {
         fetchedAtMs: now,
         lastAttemptedAtMs: now,
       })
-      return Object.freeze({ ok: true, status: 'refreshed',
-        canonicalSourceRevision: publication.source.sourceRevision.canonicalSourceRevision })
+      const published = publication.source.sourceRevision.canonicalSourceRevision
+      if (published !== state.currentSourceRevision) {
+        try { this.input.onPublished?.(published) } catch { /* the publication has already committed */ }
+      }
+      return Object.freeze({ ok: true, status: 'refreshed', canonicalSourceRevision: published })
     } catch (error) {
       return this.fail(now, failureCode(error))
     } finally {

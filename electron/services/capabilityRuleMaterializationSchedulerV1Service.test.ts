@@ -152,4 +152,22 @@ describe('CapabilityRuleMaterializationSchedulerV1Service', () => {
       db.close()
     }
   })
+
+  it('R4-02: reports a run that moves the active revision, and stays quiet when it does not', async () => {
+    const db = database()
+    let active: string | null = 'revision:a'
+    const materializationService = { activateCurrent: vi.fn(async () => { active = 'revision:b' }) }
+    const onActivated = vi.fn()
+    const scheduler = new CapabilityRuleMaterializationSchedulerV1Service({
+      db, materializationService, readActiveSourceRevision: () => active, onActivated,
+    })
+    try {
+      await scheduler.schedule()
+      expect(onActivated).toHaveBeenCalledExactlyOnceWith('revision:b')
+      await scheduler.schedule()
+      expect(onActivated).toHaveBeenCalledTimes(1)
+    } finally {
+      db.close()
+    }
+  })
 })

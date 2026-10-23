@@ -366,6 +366,7 @@
       "configuredCount": "已配置 {count} 项",
       "empty": "当前提供方/模型没有可用的生成参数。",
       "unsupportedForModel": "当前提供方/模型不支持 {param}。",
+      "invalidValue": "未保存：当前规则不允许该值。允许范围：{hint}",
       "mode": {
         "inherit": "继承",
         "custom": "自定义",

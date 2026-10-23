@@ -343,4 +343,48 @@ describe('UserCapabilityRulesV2Service', () => {
         endpointProfileId: 'openai-default', nativeModelId: 'gpt-test' }).rules).toHaveLength(1)
     } finally { db.close() }
   })
+
+  describe('P3a-08: cross-owner rule graphs are checked before a save becomes effective', () => {
+    const crossRule = (ruleId: string, decisionKey: string, dependencies: string[], code: string) => ({ ...v2Rule(), ruleId,
+      decisionKey, dependencies, effect: { kind: 'validation' as const, code,
+        predicate: { kind: 'eq' as const, path: 'target.protocolContractId' as const, value: 'openai-models-v1' } } })
+    const installCloud = (db: BetterSqlite3.Database, ...rules: ReturnType<typeof crossRule>[]) => {
+      new CapabilityRuleCoreV2Repo(db).replaceOwnershipSnapshot({ expectedSnapshotRevision: null, snapshot: {
+        schemaVersion: 2, ownership: 'cloud', ownerId: 'official', packs: [{ schemaVersion: 2, packId: 'cloud.pack',
+          displayName: 'Cloud', description: null, priority: 0, mode: 'no_control', target: 'enabled', rules }] } })
+    }
+    const saveUser = async (db: BetterSqlite3.Database, ...rules: ReturnType<typeof crossRule>[]) => {
+      const service = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects() }, () => 20)
+      let draft = service.openDraft({ sessionId: 'session.cross-owner' })
+      let targetPackId: string | null = null
+      for (const rule of rules) {
+        draft = service.addRule({ sessionId: draft.sessionId, expectedDraftRevision: draft.draftRevision,
+          targetPackId, firstPack: targetPackId ? undefined : { packId: 'user.pack', displayName: 'User' }, rule } as never)
+        targetPackId = 'user.pack'
+      }
+      return service.saveDraft({ sessionId: draft.sessionId, expectedDraftRevision: draft.draftRevision })
+    }
+
+    it('rejects a user rule that closes a dependency cycle with a cloud rule', async () => {
+      const db = database()
+      try {
+        // Each owner is acyclic on its own; only the merged graph has cross.a -> cross.b -> cross.a.
+        installCloud(db, crossRule('cloud.a', 'cross.a', ['cross.b'], 'CHECK_A'), crossRule('cloud.b', 'cross.b', [], 'CHECK_B'))
+        await expect(saveUser(db, crossRule('user.a', 'cross.a', [], 'CHECK_A'),
+          crossRule('user.b', 'cross.b', ['cross.a'], 'CHECK_B')))
+          .rejects.toThrow('GENERATION_V2_RULE_DEPENDENCY_CYCLE')
+        expect(new CapabilityRuleCoreV2Repo(db).readOwnershipSnapshot({ ownership: 'user', ownerId: 'local-user' })).toBeNull()
+      } finally { db.close() }
+    })
+
+    it('rejects an equal-priority user rule whose effect conflicts with a cloud rule under the same condition', async () => {
+      const db = database()
+      try {
+        installCloud(db, crossRule('cloud.rule', 'cross.same', [], 'CLOUD_CHECK'))
+        await expect(saveUser(db, crossRule('user.rule', 'cross.same', [], 'USER_CHECK')))
+          .rejects.toThrow('GENERATION_V2_RULE_STATIC_CONFLICT')
+        expect(new CapabilityRuleCoreV2Repo(db).readOwnershipSnapshot({ ownership: 'user', ownerId: 'local-user' })).toBeNull()
+      } finally { db.close() }
+    })
+  })
 })

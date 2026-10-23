@@ -27,15 +27,14 @@ export function applyCloudRulesActivationOverridesV2(input: Readonly<{
   document: Extract<CloudRulesReleaseDocumentV1, { schemaVersion: 2 }>
   overrides: readonly CloudRulesActivationOverrideV1[]
 }>): CloudRulesActivationOverlayV2 {
-  const packIds = new Set(input.document.packs.map(pack => pack.packId))
-  const ruleIds = new Set(input.document.packs.flatMap(pack => pack.rules.map(rule => rule.ruleId)))
+  // P3a-22: a well-formed override for a pack or rule absent from this release is kept, so a
+  // user's choice applies again when the release brings it back. Only present ids are applied.
   const packOverrides = new Map<string, Extract<CloudRulesActivationOverrideV1, { kind: 'pack' }>>()
   const ruleOverrides = new Map<string, Extract<CloudRulesActivationOverrideV1, { kind: 'rule' }>>()
   for (const override of input.overrides) {
     if (!override || typeof override !== 'object') invalid()
     if (override.kind === 'pack') {
       const packId = id(override.packId)
-      if (!packIds.has(packId)) continue
       if (override.mode === undefined && override.target === undefined) invalid()
       if (override.mode !== undefined && override.mode !== 'override' &&
           override.mode !== 'default_only' && override.mode !== 'no_control') invalid()
@@ -48,7 +47,6 @@ export function applyCloudRulesActivationOverridesV2(input: Readonly<{
     }
     if (override.kind !== 'rule') invalid()
     const ruleId = id(override.ruleId)
-    if (!ruleIds.has(ruleId)) continue
     if (override.configured !== 'default' && override.configured !== 'on' && override.configured !== 'off') invalid()
     if (ruleOverrides.has(ruleId)) invalid()
     ruleOverrides.set(ruleId, Object.freeze({ kind: 'rule', ruleId, configured: override.configured }))

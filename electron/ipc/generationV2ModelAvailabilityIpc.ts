@@ -56,6 +56,7 @@ const PROVIDER_CATALOG_KEYS = new Set<ProviderCatalogKey>(
   listProviderCatalogSourceDescriptors().map((descriptor) => descriptor.providerKey),
 )
 type ProviderResult = Readonly<Record<string, unknown> & { providerFailure?: ProviderFailureV2 }>
+type ProviderNativeFactPublication = Parameters<CanonicalModelFactSourceIngestionV1Service['refreshProviderNative']>[0]
 type ProviderConfig = Readonly<{
   providerKey: ProviderCredentialKey
   sourceProviderKey: ProviderCatalogKey
@@ -216,6 +217,17 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
   const repo = new ModelCatalogV2Repo(input.db)
   const coordinator = new CatalogScopeCoordinatorV2(repo)
   const modelFactIngestion = new CanonicalModelFactSourceIngestionV1Service(input.db)
+  const pendingFacts = new Map<string, Readonly<{ snapshotDigest: string; facts: ProviderNativeFactPublication;
+    recordFailure: (staleReason: string) => void }>>()
+  const pendingFactKey = (scope: Readonly<Record<string, string>>) => JSON.stringify([scope.providerKey,
+    scope.credentialScopeId, scope.endpointProfileId, scope.operationContractId, scope.category])
+  const publishFacts = (facts: ProviderNativeFactPublication, recordFailure: (staleReason: string) => void) => {
+    try {
+      modelFactIngestion.refreshProviderNative(facts)
+    } catch {
+      recordFailure('CANONICAL_MODEL_FACT_PUBLICATION_FAILED')
+    }
+  }
 
   type CredentialStatus = Awaited<ReturnType<Epoch2RuntimeCredentialService['getStatus']>>
   type ResolvedScope =
@@ -343,7 +355,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const attemptedAtMs = Date.now()
     const operationId = `catalog:${config.sourceProviderKey}:${attemptedAtMs}`
     let factPublicationAttempted = false
-    let factPublicationSucceeded = false
+    let capturedFacts: ProviderNativeFactPublication | null = null
     const recordFactFailure = (staleReason: string) => {
       factPublicationAttempted = true
       try {
@@ -388,21 +400,16 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
             typeof providerResult.observedAtMs !== 'number') {
           recordFactFailure('CANONICAL_MODEL_FACT_RAW_EVIDENCE_UNAVAILABLE')
         } else {
-          factPublicationAttempted = true
-          try {
-            modelFactIngestion.refreshProviderNative({ surfaceId: config.nativeSurfaceId,
-              endpointProfileId: config.profileId, credentialScopeId: resolved.status.credentialScopeId!,
-              credentialRevision: resolved.status.revision,
-              ...(request.category === undefined ? {} : { catalogCategory: request.category }),
-              rawEnvelopes: canonicalRawEnvelopes.map((payload, index) => ({
-                recordKey: `provider-native:${config.nativeSurfaceId}:model-list-page:${index + 1}`,
-                payload,
-              })), recordSetCompleteness: 'complete',
-              fetchedAtMs: providerResult.observedAtMs, lastAttemptedAtMs: providerResult.observedAtMs })
-            factPublicationSucceeded = true
-          } catch {
-            recordFactFailure('CANONICAL_MODEL_FACT_PUBLICATION_FAILED')
-          }
+          // P3a-09: captured here, published only after the catalog snapshot is committed and applied.
+          capturedFacts = Object.freeze({ surfaceId: config.nativeSurfaceId,
+            endpointProfileId: config.profileId, credentialScopeId: resolved.status.credentialScopeId!,
+            credentialRevision: resolved.status.revision,
+            ...(request.category === undefined ? {} : { catalogCategory: request.category }),
+            rawEnvelopes: canonicalRawEnvelopes.map((payload, index) => ({
+              recordKey: `provider-native:${config.nativeSurfaceId}:model-list-page:${index + 1}`,
+              payload,
+            })), recordSetCompleteness: 'complete' as const,
+            fetchedAtMs: providerResult.observedAtMs, lastAttemptedAtMs: providerResult.observedAtMs })
         }
         return Object.freeze({
           ok: true as const,
@@ -412,8 +419,9 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         })
       },
     })
+    const scopeKey = pendingFactKey(resolved.scope)
     if (!result.ok) {
-      if (!factPublicationAttempted && !factPublicationSucceeded) {
+      if (!factPublicationAttempted) {
         recordFactFailure(result.providerFailure.starverseDiagnosticCode)
       }
       return Object.freeze({
@@ -426,7 +434,15 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       })
     }
     const projected = snapshotResult(result.state, config)
-    if (result.ok && result.publication === 'active') await input.onCommittedSubjectMutation?.()
+    if (result.publication === 'active') {
+      pendingFacts.delete(scopeKey)
+      if (capturedFacts) publishFacts(capturedFacts, recordFactFailure)
+      await input.onCommittedSubjectMutation?.()
+    } else if (capturedFacts && result.state.pending) {
+      // A manual snapshot is not accepted yet; its facts wait for applyPending.
+      pendingFacts.set(scopeKey, Object.freeze({ snapshotDigest: result.state.pending.snapshotDigest,
+        facts: capturedFacts, recordFailure: recordFactFailure }))
+    }
     return result.publication === 'pending'
       ? Object.freeze({ ...projected, status: 'pending' })
       : projected
@@ -490,6 +506,13 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         scope: resolved.scope,
         expectedSnapshotDigest: request.snapshotDigest,
       })
+      const scopeKey = pendingFactKey(resolved.scope)
+      const held = pendingFacts.get(scopeKey)
+      pendingFacts.delete(scopeKey)
+      if (held && held.snapshotDigest === request.snapshotDigest &&
+          held.facts.credentialScopeId === resolved.status.credentialScopeId) {
+        publishFacts(held.facts, held.recordFailure)
+      }
       await input.onCommittedSubjectMutation?.()
       return snapshotResult(state, config)
     } catch (error) {
@@ -508,10 +531,13 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const resolved = await resolveScope(config, request.category)
     if (!resolved.ok) return resolvedScopeFailure(resolved)
     try {
-      return snapshotResult(coordinator.discardPending({
+      const state = coordinator.discardPending({
         scope: resolved.scope,
         expectedSnapshotDigest: request.snapshotDigest,
-      }), config)
+      })
+      const scopeKey = pendingFactKey(resolved.scope)
+      if (pendingFacts.get(scopeKey)?.snapshotDigest === request.snapshotDigest) pendingFacts.delete(scopeKey)
+      return snapshotResult(state, config)
     } catch (error) {
       return databaseFailureResult(config, `catalog-discard:${request.snapshotDigest}`,
         'MODEL_CATALOG_PENDING_DISCARD_FAILED', error, resolved.scope)

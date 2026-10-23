@@ -27,6 +27,8 @@ type SchedulerInput = Readonly<{
   nowMs?: () => number
   readActiveSourceRevision?: () => string | null
   logFailure?: (details: Readonly<{ code: string; attempts: number }>) => void
+  /** R4-02: called when a run moves the active Capability Rules source to a new revision. */
+  onActivated?: (canonicalSourceRevision: string) => void
 }>
 
 function errorCode(error: unknown): string {
@@ -56,6 +58,7 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
   readonly #readActiveSourceRevision: () => string | null
   readonly #nowMs: () => number
   readonly #logFailure: (details: Readonly<{ code: string; attempts: number }>) => void
+  readonly #onActivated: ((canonicalSourceRevision: string) => void) | undefined
   #requested = false
   #drainPromise: Promise<void> | null = null
   #stopped = false
@@ -66,6 +69,7 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
     this.#readActiveSourceRevision = input.readActiveSourceRevision ?? (() =>
       this.#sourceRepo.readSourceState('capability_rule', this.#sourceScopeId)?.currentSourceRevision ?? null)
     this.#nowMs = input.nowMs ?? Date.now
+    this.#onActivated = input.onActivated
     this.#logFailure = input.logFailure ?? ((details) => {
       console.error('[generation-v2][capability-rules] materialization failed', details)
     })
@@ -130,6 +134,12 @@ export class CapabilityRuleMaterializationSchedulerV1Service {
           fetchedAtMs: attemptedAtMs,
           lastAttemptedAtMs: attemptedAtMs,
         })
+        if (this.#onActivated) {
+          try {
+            const activated = this.#readActiveSourceRevision()
+            if (activated !== null && activated !== expectedActiveSourceRevision) this.#onActivated(activated)
+          } catch { /* activation has already committed */ }
+        }
         return
       } catch (error) {
         if (isStaleRace(error)) {

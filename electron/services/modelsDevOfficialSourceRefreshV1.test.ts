@@ -94,6 +94,51 @@ describe('ModelsDevOfficialSourceRefreshV1', () => {
     } finally { db.close() }
   })
 
+  it('P3a-06: rejects a truncated snapshot with a stable code and keeps the LKG', async () => {
+    const db = database()
+    let now = 1_700_000_000_000
+    const body = (count: number) => new Response(JSON.stringify({ openai: { id: 'openai', models: Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [`gpt-${index}`, { id: `gpt-${index}`, name: `GPT ${index}` }])) } }),
+    { status: 200, headers: { 'content-type': 'application/json' } })
+    const fetchImpl = vi.fn().mockResolvedValueOnce(body(80)).mockResolvedValueOnce(body(3))
+    try {
+      const refresher = new ModelsDevOfficialSourceRefreshV1({ db, fetchImpl: fetchImpl as typeof fetch,
+        nowMs: () => now, refreshCadenceMs: 1_000 })
+      const first = await refresher.refreshIfDue()
+      const firstRevision = first.ok ? first.canonicalSourceRevision : null
+      expect(firstRevision).not.toBeNull()
+
+      now += 1_001
+      await expect(refresher.refreshIfDue()).resolves.toEqual({ ok: false, status: 'failed',
+        code: 'MODELS_DEV_OFFICIAL_SNAPSHOT_SHRINK_REJECTED' })
+      expect(new CanonicalModelFactSourceV1Repo(db, () => now).readSourceState('models_dev', sourceScopeId()))
+        .toMatchObject({ currentSourceRevision: firstRevision, staleReason: 'MODELS_DEV_OFFICIAL_SNAPSHOT_SHRINK_REJECTED' })
+    } finally { db.close() }
+  })
+
+  it('R4-02: notifies only when a refresh moves the current models.dev revision', async () => {
+    const db = database()
+    let now = 1_700_000_000_000
+    const body = (name: string) => new Response(JSON.stringify({ openai: { id: 'openai', models: {
+      'gpt-test': { id: 'gpt-test', name } } } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    const fetchImpl = vi.fn().mockResolvedValueOnce(body('A')).mockResolvedValueOnce(body('A'))
+      .mockResolvedValueOnce(body('B'))
+    const onPublished = vi.fn()
+    try {
+      const refresher = new ModelsDevOfficialSourceRefreshV1({ db, fetchImpl: fetchImpl as typeof fetch,
+        nowMs: () => now, refreshCadenceMs: 1_000, onPublished })
+      const first = await refresher.refreshIfDue()
+      expect(onPublished).toHaveBeenCalledExactlyOnceWith(first.ok ? first.canonicalSourceRevision : null)
+      now += 1_001
+      await refresher.refreshIfDue()
+      expect(onPublished).toHaveBeenCalledTimes(1)
+      now += 1_001
+      const third = await refresher.refreshIfDue()
+      expect(onPublished).toHaveBeenCalledTimes(2)
+      expect(onPublished).toHaveBeenLastCalledWith(third.ok ? third.canonicalSourceRevision : null)
+    } finally { db.close() }
+  })
+
   it('refreshes again while the app remains running and dispose cancels future work', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_700_000_000_000)

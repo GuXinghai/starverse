@@ -24,6 +24,22 @@ function capabilityProjection() {
   } as any
 }
 
+// R4-03 (P6b-10): an OpenRouter text projection that supports provider web search with the given contexts.
+function webSearchProjection(contexts: readonly string[] | null) {
+  const supported = (domain: unknown) => ({ state: 'supported', domain, visibility: 'visible', constraints: [], evidenceIds: [] })
+  return {
+    schemaVersion: 2,
+    binding: { providerId: 'openrouter', protocolContractId: 'openrouter-chat-completions-v1', endpointProfileId: 'test',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL, operation: 'text' },
+    capabilityRevision: 'capability-v2:test-composer-web-search',
+    controls: contexts === null ? {} : {
+      'web.mode': supported({ kind: 'enum', values: ['disabled', 'provider_search'] }),
+      'web.types': supported({ kind: 'enum_list', values: ['web'], maxItems: 1 }),
+      'web.searchContextSize': supported({ kind: 'enum', values: [...contexts] }),
+    },
+  } as any
+}
+
 describe('ChatAppComposer web search send guard', () => {
   type HarnessSessionConfig = {
     routeSelection: { schemaVersion: 1; kind: 'provider_model'; providerId: 'openrouter'; modelId: string }
@@ -52,13 +68,13 @@ describe('ChatAppComposer web search send guard', () => {
     ;(bridge.modelPreferences as any).listRecents = vi.fn(async () => recents)
   }
 
-  function createSessionConfig(): HarnessSessionConfig {
+  function createSessionConfig(input?: Readonly<{ webSearchEnabled?: boolean; imageEnabled?: boolean }>): HarnessSessionConfig {
     return {
       routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
       reasoning: { enabled: true, effort: 'medium' as const },
-      webSearch: { enabled: true, level: 'low' as const, detail: null },
+      webSearch: { enabled: input?.webSearchEnabled ?? true, level: 'low' as const, detail: null },
       imageGeneration: {
-        enabled: true,
+        enabled: input?.imageEnabled ?? true,
         resolution: '1K' as const,
         aspectRatio: '1:1' as const,
         mode: 'default' as const,
@@ -68,17 +84,18 @@ describe('ChatAppComposer web search send guard', () => {
     }
   }
 
-  function renderHarness(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[]; disabled?: boolean }>) {
+  function renderHarness(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[]; disabled?: boolean
+    projection?: unknown; webSearchEnabled?: boolean; imageEnabled?: boolean }>) {
     installDbBridgeStub(input)
     const Wrapper = defineComponent({
       components: { ChatAppComposer },
       setup() {
         const draft = ref('hello')
         const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
-        const sessionConfig = ref(createSessionConfig())
+        const sessionConfig = ref(createSessionConfig(input))
         const serializedSessionConfig = computed(() => JSON.stringify(sessionConfig.value))
         const sendCount = ref(0)
-        const projection = capabilityProjection()
+        const projection = input?.projection ?? capabilityProjection()
         return {
           draft,
           model,
@@ -201,15 +218,47 @@ describe('ChatAppComposer web search send guard', () => {
     expect(webSearch.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  // R4-03 (P6b-10): this test used to run against a projection with no web-search capability, which the
+  // chip ignored. The chip now follows the projection, so the fixture declares an OpenRouter text
+  // binding that supports provider search; the asserted behaviour is unchanged.
   it('updates web search state through the web search capability chip', async () => {
     const user = userEvent.setup()
-    renderHarness()
+    renderHarness({ projection: webSearchProjection(['low', 'medium', 'high']), imageEnabled: false })
 
     await chooseChipOption('web-search-chip', 'high')
     expect(sessionConfig().webSearch).toMatchObject({ enabled: true, level: 'high' })
 
     await user.click(within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body'))
     expect(sessionConfig().webSearch).toMatchObject({ enabled: false, level: 'high' })
+  })
+
+  it('R4-03: cannot turn web search on when the current projection does not allow it, and explains why', async () => {
+    const user = userEvent.setup()
+    renderHarness({ projection: webSearchProjection(null), webSearchEnabled: false, imageEnabled: false })
+    const body = within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body')
+    expect(body).toBeDisabled()
+    expect(body.getAttribute('title')).toBeTruthy()
+    await user.click(body)
+    expect(sessionConfig().webSearch.enabled).toBe(false)
+  })
+
+  it('R4-03: keeps an enabled search that the rules no longer allow visible and lets the user turn it off', async () => {
+    const user = userEvent.setup()
+    renderHarness({ projection: webSearchProjection(null), webSearchEnabled: true, imageEnabled: false })
+    const body = within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body')
+    expect(body).toBeEnabled()
+    expect(sessionConfig().webSearch.enabled).toBe(true)
+    await user.click(body)
+    expect(sessionConfig().webSearch.enabled).toBe(false)
+  })
+
+  it('R4-03: offers only the search levels the current projection allows', async () => {
+    const user = userEvent.setup()
+    renderHarness({ projection: webSearchProjection(['low']), imageEnabled: false })
+    await user.click(within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-chevron'))
+    const menu = await screen.findByTestId('capability-chip-menu')
+    expect(within(menu).getByText('low')).toBeInTheDocument()
+    expect(within(menu).queryByText('high')).toBeNull()
   })
 
   it('keeps quick model strip anchored below current model controls', async () => {

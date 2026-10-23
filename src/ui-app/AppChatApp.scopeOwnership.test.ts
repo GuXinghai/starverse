@@ -207,6 +207,17 @@ describe('workspace composer scope ownership', () => {
     expect(logic.loadError.value).toBe('FIRST_FAILURE')
   })
 
+  it('R4-04: re-prepares a stale edit-resend once with a fresh operation and surfaces a second stale result', async () => {
+    await mountLogic()
+    await logic.openQuestionEdit('question:A')
+    bridge.openRouter.chat.editResend.mockResolvedValue({ ok: false, code: 'STALE_CAPABILITY_REVISION' })
+    await logic.submitQuestionEdit()
+    expect(bridge.openRouter.chat.editResend).toHaveBeenCalledTimes(2)
+    const [first, second] = bridge.openRouter.chat.editResend.mock.calls.map(([packet]: any[]) => packet)
+    expect(second.command.operationId).not.toBe(first.command.operationId)
+    expect(logic.loadError.value).toBe('STALE_CAPABILITY_REVISION')
+  })
+
   it('drops a delayed compose picker after A-B-A and a compose-edit-compose round trip', async () => {
     await mountLogic()
     const gate = deferred<any>()

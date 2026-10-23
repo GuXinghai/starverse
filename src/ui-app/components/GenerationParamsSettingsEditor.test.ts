@@ -118,6 +118,47 @@ describe('GenerationParamsSettingsEditor', () => {
     expect(screen.queryByTestId('generation-param-mode-reasoningEffort')).toBeNull()
   })
 
+  describe('R4-03 (P6a-11): values the current rules forbid are flagged, never silently changed', () => {
+    const temperatureRange = (max: number) => capabilityProjection({ 'generation.temperature': { kind: 'range', min: 0, max } })
+
+    it('preserves a stored value the current rules allow', () => {
+      render(GenerationParamsSettingsEditor, { props: { modelValue: { temperature: { mode: 'custom', value: 1.5 } },
+        profile: openrouterGenerationProfile, modelId: 'deepseek/deepseek-v4-flash', collapsible: false,
+        capabilityProjection: temperatureRange(2) } })
+      expect(screen.getByTestId('generation-param-value-temperature')).toHaveValue(1.5)
+      expect(screen.queryByTestId('generation-param-invalid-temperature')).toBeNull()
+    })
+
+    it('keeps and flags a stored value that newly changed rules forbid', () => {
+      const { emitted } = render(GenerationParamsSettingsEditor, { props: { modelValue: { temperature: { mode: 'custom', value: 1.5 } },
+        profile: openrouterGenerationProfile, modelId: 'deepseek/deepseek-v4-flash', collapsible: false,
+        capabilityProjection: temperatureRange(1) } })
+      expect(screen.getByTestId('generation-param-value-temperature')).toHaveValue(1.5)
+      expect(screen.getByTestId('generation-param-value-temperature')).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByTestId('generation-param-invalid-temperature').textContent).toContain('0..1')
+      expect(emitted()['update:modelValue']).toBeUndefined()
+    })
+
+    it('keeps rejected input visible with an explanation instead of reverting it', async () => {
+      const user = userEvent.setup()
+      const { emitted } = render(GenerationParamsSettingsEditor, { props: { modelValue: { temperature: { mode: 'custom', value: 0.5 } },
+        profile: openrouterGenerationProfile, modelId: 'deepseek/deepseek-v4-flash', collapsible: false,
+        capabilityProjection: temperatureRange(2) } })
+      const input = screen.getByTestId('generation-param-value-temperature')
+      await user.clear(input)
+      await user.type(input, '5')
+      await user.tab()
+      expect(input).toHaveValue(5)
+      expect(screen.getByTestId('generation-param-invalid-temperature')).toBeVisible()
+      expect(emitted()['update:modelValue']).toBeUndefined()
+      await user.clear(input)
+      await user.type(input, '1.25')
+      await user.tab()
+      expect(screen.queryByTestId('generation-param-invalid-temperature')).toBeNull()
+      expect(emitted()['update:modelValue']?.at(-1)).toEqual([{ temperature: { mode: 'custom', value: 1.25 } }])
+    })
+  })
+
   it('keeps an unknown provider-owned enum editable without inventing an allowed-value list', () => {
     render(GenerationParamsSettingsEditor, {
       props: {

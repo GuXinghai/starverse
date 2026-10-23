@@ -769,14 +769,14 @@ export function useAppChatAppLogic() {
     }
     return null
   })
-  const composerSendGateBlockedReason = computed(() => fileDetectionBlockingReason.value ?? dfcSelectedOptionBlockingReason.value ??
+  const composerSendGateBlockedReason = computed(() => imageResolutionConflictReason.value ??
+    fileDetectionBlockingReason.value ?? dfcSelectedOptionBlockingReason.value ??
     composerSendPlanBlockingSummary.value)
   const composerSendGateWarningReason = computed(() => composerSendPlanWarningSummary.value)
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
   const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
-  const imageResolutionResetCount = ref(0)
-  const isDraftInteractionLocked = computed(() => imageResolutionResetCount.value > 0 || !isReady.value || isAttachmentConfirmationActive.value ||
+  const isDraftInteractionLocked = computed(() => !isReady.value || isAttachmentConfirmationActive.value ||
     (boundDraftScope.value !== null && (!draftScopeHydrated.value ||
       deletingConversationIds.value.has(boundDraftScope.value.convoId) ||
       submittingComposerConversationIds.value.has(boundDraftScope.value.convoId) || activeDraftConflict.value !== null)))
@@ -793,6 +793,7 @@ export function useAppChatAppLogic() {
     if (draft.value.trim().length === 0 && !hasSendableDraftAttachment.value) return false
     if (fileDetectionBlockingReason.value !== null) return false
     if (dfcSelectedOptionBlockingReason.value !== null) return false
+    if (imageResolutionConflictReason.value !== null) return false
     return composerSendPlanCanProceed.value
   })
 
@@ -3632,6 +3633,16 @@ export function useAppChatAppLogic() {
 
   const activeSessionConfig = computed(() => getActiveSessionConfigSnapshot())
   const activeSessionCapabilityProjection = shallowRef<GenerationControlsProjectionV2 | null>(null)
+  // R4-03 (D-6): a retained resolution that the current authoritative enum excludes is never
+  // reset or substituted. It stays selected, is explained, and blocks sending until the user changes it.
+  const imageResolutionConflictReason = computed(() => {
+    const projection = activeSessionCapabilityProjection.value
+    const resolution = activeSessionConfig.value.imageGeneration.resolution
+    const field = projection?.controls['image.resolution']
+    return projection?.binding.operation === 'image_generate' && resolution !== '' &&
+      field?.state === 'supported' && field.domain?.kind === 'enum' && !field.domain.values.includes(resolution)
+      ? 'composer.status.imageResolutionUnsupported' : null
+  })
   const activeSessionRulePreviewResolution = shallowRef<GenerationCapabilityResolutionResultV2 | null>(null)
   const activeSessionConditionalCapabilityProjection = computed(() => {
     const base = activeSessionCapabilityProjection.value
@@ -6972,8 +6983,7 @@ export function useAppChatAppLogic() {
     try {
       await flushDraftPersistence({ failOnError: true, allowDuringSubmit: true })
       if (!isDraftScopeCurrent(scope)) return
-      assertCurrentCapabilityLease(capabilityLease)
-      await onSendUnlocked(capabilityLease)
+      await withOneCapabilityReprepare(onSendUnlocked, capabilityLease, () => isDraftScopeCurrent(scope))
     } catch (error) {
       reportChatError(error instanceof Error ? error.message : 'send_orchestration_failed')
     } finally {
@@ -7609,7 +7619,51 @@ export function useAppChatAppLogic() {
       return null
     }
   }
-  async function refreshActiveSessionCapabilityProjection(): Promise<void> {
+  let latestCapabilityRefresh: Promise<void> = Promise.resolve()
+  function refreshActiveSessionCapabilityProjection(): Promise<void> {
+    const refresh = refreshActiveSessionCapabilityProjectionOnce()
+    latestCapabilityRefresh = refresh
+    return refresh
+  }
+  /** Waits until no newer capability refresh is in flight; true when the projection is ready. */
+  async function settleCurrentCapabilityProjection(): Promise<boolean> {
+    for (let pass = 0; pass < 8; pass += 1) {
+      const pending = latestCapabilityRefresh
+      await pending.catch(() => undefined)
+      if (pending === latestCapabilityRefresh) break
+    }
+    return activeSessionCapabilityReady.value && activeSessionCapabilityProjection.value !== null &&
+      !activeSessionCapabilityPending.value
+  }
+  function isCapabilityStaleBeforeDispatch(error: unknown): boolean {
+    return error instanceof Error &&
+      (error.message === 'GENERATION_V2_CAPABILITY_PROJECTION_STALE' || error.message === 'STALE_CAPABILITY_REVISION')
+  }
+  /**
+   * R4-04 (D-6): both stale codes are raised before any provider request (the renderer lease
+   * check, or main's revision check before the snapshot commits). Re-prepare once against the
+   * current projection with a fresh operation; a second stale result is surfaced to the user.
+   */
+  async function withOneCapabilityReprepare<T>(
+    attempt: (lease: ReturnType<typeof captureCurrentCapabilityLease>) => Promise<T>,
+    lease: ReturnType<typeof captureCurrentCapabilityLease>,
+    stillCurrent: () => boolean,
+  ): Promise<T> {
+    try {
+      assertNoCapabilityValueConflict()
+      return await attempt(lease)
+    } catch (error) {
+      if (!isCapabilityStaleBeforeDispatch(error) || !stillCurrent() || !await settleCurrentCapabilityProjection() ||
+          !stillCurrent()) throw error
+      // The refreshed projection may now forbid a retained value; that is surfaced, not sent.
+      assertNoCapabilityValueConflict()
+      return attempt(captureCurrentCapabilityLease())
+    }
+  }
+  function assertNoCapabilityValueConflict(): void {
+    if (imageResolutionConflictReason.value) throw new Error('GENERATION_V2_IMAGE_RESOLUTION_UNSUPPORTED')
+  }
+  async function refreshActiveSessionCapabilityProjectionOnce(): Promise<void> {
     const config = activeSessionConfig.value
     const previousProjection = activeSessionCapabilityProjection.value
     const selection = canonicalSendSelection()
@@ -7651,27 +7705,11 @@ export function useAppChatAppLogic() {
       const result = await resolveGenerationV2CapabilityForSend(route, selection.modelId, endpointProfileId, selection.compatibleIntent, imageInput)
       if (!isCurrent()) return
       projection = result.controlsProjection
-      const resolution = config.imageGeneration.resolution
-      const resolutionField = projection.controls['image.resolution']
-      // Only an authoritative complete enum can exclude a retained selection.
-      const resetResolution = projection.binding.operation === 'image_generate' && resolution !== '' &&
-        resolutionField?.state === 'supported' && resolutionField.domain?.kind === 'enum' &&
-        !resolutionField.domain.values.includes(resolution)
-      if (resetResolution) imageResolutionResetCount.value += 1
-      try {
-        activeSessionRulePreviewResolution.value = result
-        activeSessionCapabilityProjection.value = projection
-        activeSessionCapabilityPending.value = false
-        activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject })
-        if (resetResolution) {
-          const updated = await updateActiveConvoSessionConfig({ imageGeneration: { resolution: '' } }, () =>
-            isCurrent() && activeSessionCapabilityProjection.value === projection &&
-            activeSessionConfig.value.imageGeneration.resolution === resolution)
-          if (updated && activeConvoId.value === conversationId) hydrateSessionConfigUiFromActiveConvo()
-        }
-      } finally {
-        if (resetResolution) imageResolutionResetCount.value -= 1
-      }
+      // R4-03: an excluded retained resolution is flagged by imageResolutionConflictReason, not reset.
+      activeSessionRulePreviewResolution.value = result
+      activeSessionCapabilityProjection.value = projection
+      activeSessionCapabilityPending.value = false
+      activeSessionCapabilityExplanations.value = buildModelFactControlExplanationsV1({ projection, subject })
     } catch (cause) {
       if (isCurrent()) {
         activeSessionCapabilityPending.value = false
@@ -7939,29 +7977,33 @@ export function useAppChatAppLogic() {
       const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
         : nativeProviderId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
           ? { kind: 'openrouter_images' } : generationV2RouteForProvider(nativeProviderId, modelId)
-      await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
-      assertCurrentCapabilityLease(capabilityLease)
-      const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
-        ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
-      const operationId = crypto.randomUUID()
-      const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
-        sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId }
-      // Regenerate never reads composer attachments; main reads the source question's frozen attachments.
-      const commandAttachments: [] = []
-      const commandModelId = modelId
-      assertCurrentCapabilityLease(capabilityLease)
-      const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,
-        modelId: commandModelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
-      const result = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
-        ? { ...common, requestedProviderTag: null, commandAttachments }
-        : route.kind === 'gemini_interactions_image'
-          ? { ...common, commandAttachments }
-        : { ...common, commandAttachments, ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
-          ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
-      if (!result.ok) {
-        if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
-        throw new Error(result.code)
-      }
+      const result = await withOneCapabilityReprepare(async (lease) => {
+        await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
+        assertCurrentCapabilityLease(lease)
+        const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
+          ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
+        const operationId = crypto.randomUUID()
+        const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
+          sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId }
+        // Regenerate never reads composer attachments; main reads the source question's frozen attachments.
+        const commandAttachments: [] = []
+        const commandModelId = modelId
+        assertCurrentCapabilityLease(lease)
+        const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,
+          modelId: commandModelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
+        const submitted = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
+          ? { ...common, requestedProviderTag: null, commandAttachments }
+          : route.kind === 'gemini_interactions_image'
+            ? { ...common, commandAttachments }
+          : { ...common, commandAttachments, ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
+            ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
+        if (!submitted.ok) {
+          if (submitted.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
+          throw new Error(submitted.code)
+        }
+        return submitted
+      }, capabilityLease, () => activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId &&
+        generationV2BranchView.value?.branchId === view.branchId && generationV2BranchView.value.headMessageId === view.headMessageId)
       notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
@@ -8076,31 +8118,38 @@ export function useAppChatAppLogic() {
       if (!isDraftScopeCurrent(scope) || pendingDraftConflicts.value.has(scope.convoId) ||
           !sameComposerEditIdentity(composerEditIdentity(composerDraft), editSession)) return
       const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
-      await persistCurrentGenerationV2SemanticLayer(v2ProviderId, v2View.conversationId)
-      const endpointProfileId = v2Route.kind === 'lmstudio_openresponses' || v2Route.kind === 'generic_local_openai_chat' || v2Route.kind === 'ollama_chat'
-        ? await resolveGenerationV2LocalProfileForSend(v2Route, v2ModelId) : null
-      if (!isDraftScopeCurrent(scope)) return
-      const operationId = crypto.randomUUID()
       const sourceNavigationRevision = navigationRevision.value
       const sourceConversationId = v2View.conversationId
       const sourceBranchId = v2View.branchId
-      const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
-        sourceQuestionId: oldQuestionId, sourceAnswerRootId: editSession.answerRootId,
-        expectedHeadMessageId: v2View.headMessageId, modelId: v2ModelId, commandAttachments }
-      assertCurrentCapabilityLease(capabilityLease)
-      const capabilityRevision = capabilityRevisionForCurrentProjection({ route: v2Route, providerId: v2ProviderId,
-        modelId: common.modelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
-      const result = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
-        ? { ...common, prompt: newText, requestedProviderTag: null }
-        : v2Route.kind === 'gemini_interactions_image'
-          ? { ...common, prompt: newText }
-        : { ...common, userBody: newText,
-            ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
-            ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
-      if (!result.ok) {
-        if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
-        throw new Error(result.code)
-      }
+      const result = await withOneCapabilityReprepare(async (lease) => {
+        assertCurrentCapabilityLease(lease)
+        await persistCurrentGenerationV2SemanticLayer(v2ProviderId, v2View.conversationId)
+        const endpointProfileId = v2Route.kind === 'lmstudio_openresponses' || v2Route.kind === 'generic_local_openai_chat' || v2Route.kind === 'ollama_chat'
+          ? await resolveGenerationV2LocalProfileForSend(v2Route, v2ModelId) : null
+        if (!isDraftScopeCurrent(scope)) return null
+        const operationId = crypto.randomUUID()
+        const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
+          sourceQuestionId: oldQuestionId, sourceAnswerRootId: editSession.answerRootId,
+          expectedHeadMessageId: v2View.headMessageId, modelId: v2ModelId, commandAttachments }
+        assertCurrentCapabilityLease(lease)
+        const capabilityRevision = capabilityRevisionForCurrentProjection({ route: v2Route, providerId: v2ProviderId,
+          modelId: common.modelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
+        const submitted = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
+          ? { ...common, prompt: newText, requestedProviderTag: null }
+          : v2Route.kind === 'gemini_interactions_image'
+            ? { ...common, prompt: newText }
+          : { ...common, userBody: newText,
+              ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
+              ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
+        if (!submitted.ok) {
+          if (submitted.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
+          throw new Error(submitted.code)
+        }
+        return submitted
+      }, capabilityLease, () => isDraftScopeCurrent(scope) && generationV2BranchView.value?.branchId === v2View.branchId &&
+        generationV2BranchView.value.headMessageId === v2View.headMessageId &&
+        sameComposerEditIdentity(composerEditIdentity(composerDraft), editSession))
+      if (!result) return
       try {
         const cleared = await mutateScopedComposerDraft(scope, () => clearCommittedGenerationV2ComposerDraft({
           conversationId: convoId, expectedRevision: composerDraft.revision }))

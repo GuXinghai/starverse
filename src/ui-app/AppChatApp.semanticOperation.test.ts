@@ -259,7 +259,10 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
     expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('2K')
   })
 
-  it.runIf(providerId === 'google_ai_studio')('resets an excluded resolution to provider default and persists it after a model switch', async () => {
+  // R4-03 (D-6): this test used to assert that an excluded resolution is silently reset to the
+  // provider default and persisted. The owner decision forbids silent resets: the value is kept,
+  // flagged with an explanation in the composer and console, and blocks sending until changed.
+  it.runIf(providerId === 'google_ai_studio')('R4-03: keeps and flags an excluded resolution after a model switch until the user changes it', async () => {
     bridge.capabilities.resolve.mockImplementation(async (request: any) =>
       capabilityBoundary(request, true, request.modelId.endsWith('-only-1k') ? ['1K'] : ['1K', '2K']))
     wrapper = mount(AppChatApp, { attachTo: host })
@@ -267,30 +270,25 @@ describe.each(['openrouter', 'google_ai_studio'] as const)('formal %s operation 
     await emit('updateImageGenerationResolution', '2K')
     await ready('image_generate')
     await waitFor(() => expect(conversationSemantics().image.resolution).toBe('2K'))
-    const resetGate = gate()
-    const updateConfig = bridge.workspace.updateConfig
-    let resetStarted = false
-    bridge.workspace.updateConfig = vi.fn(async (packet: any) => {
-      if (packet.semanticLayer.image?.mode === 'generate' && packet.semanticLayer.image.resolution === undefined) {
-        resetStarted = true
-        await resetGate.promise
-      }
-      return updateConfig(packet)
-    })
+    expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
     wrapper.findComponent(ChatTopSummaryBar).vm.$emit('toggleConsolePanel')
     await flushPromises()
     wrapper.findComponent(ChatSessionConsole).vm.$emit('updateRouteSelection', { schemaVersion: 1, kind: 'provider_model', providerId, modelId: `${modelId}-only-1k` })
-    await waitFor(() => expect(resetStarted).toBe(true))
-    expect(screen.getByTestId('composer-draft')).toBeDisabled()
-    resetGate.resolve()
     await waitFor(() => expect(composer().props('capabilityProjection')?.binding.modelId).toBe(`${modelId}-only-1k`))
     await ready('image_generate')
-    expect(conversationSemantics().image).not.toHaveProperty('resolution')
-    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
+    expect(conversationSemantics().image.resolution).toBe('2K')
+    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('2K')
+    await waitFor(() => expect(screen.getByTestId('composer-send-gate-block')).toBeInTheDocument())
+    expect(composer().props('canSend')).toBe(false)
+    expect(screen.getByTestId('session-image-resolution-conflict').textContent).toContain('2K')
     await invalidate()
     await ready('image_generate')
-    expect(conversationSemantics().image).not.toHaveProperty('resolution')
-    expect(composer().props('sessionConfig')?.imageGeneration.resolution).toBe('')
+    expect(conversationSemantics().image.resolution).toBe('2K')
+    expect(screen.getByTestId('composer-send-gate-block')).toBeInTheDocument()
+    await emit('updateImageGenerationResolution', '1K')
+    await waitFor(() => expect(conversationSemantics().image.resolution).toBe('1K'))
+    await waitFor(() => expect(screen.queryByTestId('composer-send-gate-block')).toBeNull())
+    expect(screen.queryByTestId('session-image-resolution-conflict')).toBeNull()
   })
 
   it('preserves provider-default image resolution without persisting 1K', async () => {

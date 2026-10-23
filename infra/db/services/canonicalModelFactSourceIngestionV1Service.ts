@@ -27,6 +27,14 @@ import {
 } from '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 
+/** Previous snapshots smaller than this are too small for a ratio to be meaningful. */
+export const MODELS_DEV_SHRINK_GUARD_MIN_PREVIOUS_SUBJECTS_V1 = 50
+
+/** True when a complete models.dev snapshot keeps fewer than half of the previous subjects. */
+export function isModelsDevSnapshotShrinkV1(previousSubjects: number, nextSubjects: number): boolean {
+  return previousSubjects >= MODELS_DEV_SHRINK_GUARD_MIN_PREVIOUS_SUBJECTS_V1 && nextSubjects * 2 < previousSubjects
+}
+
 export type CanonicalRawEnvelopeInputV1 = Readonly<{
   recordKey: string
   payload: unknown
@@ -208,6 +216,11 @@ export class CanonicalModelFactSourceIngestionV1Service {
         return subject ? this.sourceRepo.readSubjectFact({ canonicalSourceRevision: input.expectedCurrentRevision!,
           subject })?.payload ?? null : null
       } }) : provisional
+    // P3a-06: a structurally valid but truncated payload would mark every missing subject
+    // absent. Keep the current revision when most of its subjects disappear at once.
+    if (currentSource && isModelsDevSnapshotShrinkV1(currentSource.subjectFactCount, publication.subjectFacts.length)) {
+      throw new Error('CANONICAL_MODEL_FACT_MODELS_DEV_SHRINK_REJECTED')
+    }
     return this.sourceRepo.publishSourceRevision({ rawPayloads, rawSnapshot,
       sourceRevision: publication.sourceRevision, subjectIndexMode: 'complete',
       subjectFacts: publication.subjectFacts, expectedCurrentRevision: input.expectedCurrentRevision,

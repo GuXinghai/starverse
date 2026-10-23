@@ -412,6 +412,7 @@ export interface ComposerMessages {
     }
     readonly status: {
       readonly noSendableInput: string
+      readonly imageResolutionUnsupported: string
       readonly updatingSendPlan: string
       readonly model: string
       readonly review: string

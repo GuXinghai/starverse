@@ -276,7 +276,11 @@ function parseInputValue(spec: GenerationParamSpec, raw: string): string | numbe
   return normalizeGenerationParamValue(spec.key, Number(trimmed), capability)
 }
 
+// R4-03 (P6a-11): a custom switch whose starting value the current rules reject is flagged, not ignored.
+const modeChangeErrorByKey = ref<Partial<Record<GenerationParamKey, true>>>({})
+
 function hasInputError(spec: GenerationParamSpec): boolean {
+  if (modeChangeErrorByKey.value[spec.key]) return true
   if (modeForKey(spec.key) !== 'custom') return false
   const text = inputTextByKey.value[spec.key] ?? ''
   if (!text.trim()) return false
@@ -321,6 +325,7 @@ function setSetting(key: GenerationParamKey, setting: GenerationParamSetting | n
 
 function onModeChange(spec: GenerationParamSpec, nextModeRaw: string) {
   if (props.disabled) return
+  delete modeChangeErrorByKey.value[spec.key]
   if (nextModeRaw === 'inherit') {
     setSetting(spec.key, null)
     return
@@ -344,7 +349,10 @@ function onModeChange(spec: GenerationParamSpec, nextModeRaw: string) {
         ? []
         : (capability.range?.min ?? 0)
   const nextValue = normalizeGenerationParamValue(spec.key, current ?? inherited ?? fallback, capability)
-  if (nextValue === null) return
+  if (nextValue === null) {
+    modeChangeErrorByKey.value[spec.key] = true
+    return
+  }
   inputTextByKey.value[spec.key] = toValueText(nextValue)
   setSetting(spec.key, { mode: 'custom', value: nextValue })
 }
@@ -356,12 +364,9 @@ function onValueInput(spec: GenerationParamSpec, event: Event) {
 function onValueCommit(spec: GenerationParamSpec) {
   if (modeForKey(spec.key) !== 'custom') return
   const parsed = parseInputValue(spec, inputTextByKey.value[spec.key] ?? '')
-  if (parsed === null) {
-    const current = customValueForKey(spec.key)
-    if (current !== undefined) inputTextByKey.value[spec.key] = toValueText(current)
-    else setSetting(spec.key, null)
-    return
-  }
+  // R4-03 (P6a-11): invalid input is kept and flagged (hasInputError), never reverted or dropped to
+  // inherit. The stored setting is unchanged until the user enters a value the current rules accept.
+  if (parsed === null) return
   inputTextByKey.value[spec.key] = toValueText(parsed)
   setSetting(spec.key, { mode: 'custom', value: parsed })
 }
@@ -556,6 +561,13 @@ watch(
             @blur="onValueCommit(spec)"
             @keydown.enter.prevent="onValueCommit(spec)"
           />
+          <p
+            v-if="hasInputError(spec)"
+            class="mt-1 text-xs text-[color:var(--sv-danger)]"
+            :data-testid="`generation-param-invalid-${spec.key}`"
+          >
+            {{ tf('chat.generationParams.invalidValue', { hint: validationHint(spec) }) }}
+          </p>
         </div>
       </div>
 

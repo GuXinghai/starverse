@@ -33,6 +33,7 @@ import {
   type OpenAIResponsesReasoningSummarySetting,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
+import { projectGenerationV2WebSearchControls, webSearchBindingForRouteV2 } from '../app/generationV2WebSearchProjection'
 import UiIcon from '@/ui-kit/icons/UiIcon.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
@@ -394,6 +395,13 @@ const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoni
 })
 const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationPolicyV2(props.capabilityProjection))
 const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
+// R4-03 (P6b-10): the chip follows the same projection gates as the session console. An enabled
+// search can always be turned off; it cannot be turned on, or set to a level, the rules do not allow.
+const webSearchControls = computed(() => projectGenerationV2WebSearchControls(props.capabilityProjection,
+  webSearchBindingForRouteV2(resolvedSessionConfig.value.routeSelection, resolvedSessionConfig.value.imageGeneration.enabled)))
+const webSearchLevelOptions = computed(() => (['low', 'high'] as const).filter(level =>
+  webSearchControls.value.maxResultsBounds !== null || webSearchControls.value.contexts.includes(level)))
+const webSearchEnableBlocked = computed(() => !resolvedSessionConfig.value.webSearch.enabled && !webSearchControls.value.enabled)
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModel.value))
 const reasoningEffortUnavailableReason = computed(() =>
@@ -1394,7 +1402,9 @@ onBeforeUnmount(() => {
             :active-label="resolvedSessionConfig.webSearch.enabled ? resolvedSessionConfig.webSearch.level : null"
             kind="webSearch"
             :disabled="disabled"
-            :options="['low', 'high']"
+            :toggle-disabled="webSearchEnableBlocked"
+            :unavailable-reason="webSearchEnableBlocked ? t(webSearchControls.reason ?? 'errors.webSearch.capabilityUnavailable') : null"
+            :options="resolvedSessionConfig.webSearch.enabled ? webSearchLevelOptions : []"
             :selected-option="resolvedSessionConfig.webSearch.level"
             data-test-id="web-search-chip"
             @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"

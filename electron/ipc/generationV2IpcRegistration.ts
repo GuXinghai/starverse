@@ -42,7 +42,9 @@ import { CapabilityRuleMaterializationV1Service } from '../../infra/db/services/
 import { CapabilityRuleMaterializationSchedulerV1Service } from '../services/capabilityRuleMaterializationSchedulerV1Service'
 import { ModelFactsInspectorV1Service } from '../services/modelFactsInspectorV1Service'
 import type { RegisterActiveWorkSourceV2 } from '../services/appShutdownCoordinatorV2'
-import type { ModelFactsSemanticInvalidationNotifierV1 } from '../services/modelFactsSemanticInvalidationV1'
+import { notifyModelFactsSemanticInvalidationV1, type ModelFactsSemanticInvalidationNotifierV1 } from
+  '../services/modelFactsSemanticInvalidationV1'
+import { CAPABILITY_RULE_SOURCE_SCOPE_ID_V1 } from '../../src/core/generation-v2/model-facts/semanticInvalidationV1'
 import type { GenerationV2BranchIntegrityRestriction } from '../services/generationOrphanRecoveryV2'
 
 /**
@@ -79,6 +81,9 @@ export function registerGenerationV2Ipc(input: Readonly<{
     subjectSetService)
   const materializationScheduler = new CapabilityRuleMaterializationSchedulerV1Service({
     db: input.epoch2.database, materializationService,
+    onActivated: (canonicalSourceRevision) => notifyModelFactsSemanticInvalidationV1(
+      input.notifyModelFactsSemanticInvalidated,
+      { kind: 'capability_rules', sourceScopeId: CAPABILITY_RULE_SOURCE_SCOPE_ID_V1, canonicalSourceRevision }),
   })
   input.registerActiveWorkSource?.({ name: 'capability-rule-materialization',
     activeCount: () => materializationScheduler.activeCount(),

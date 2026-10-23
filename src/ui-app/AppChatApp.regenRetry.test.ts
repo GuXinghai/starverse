@@ -276,7 +276,9 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
-  it('refreshes capability after stale regenerate without creating or resubmitting an answer', async () => {
+  // R4-04 (D-6): this test used to assert no resubmission after a stale regenerate. The owner
+  // decision re-prepares once with a fresh operation; nothing is created and the second stale is surfaced.
+  it('R4-04: re-prepares a stale regenerate once without creating an answer', async () => {
     regenerate.mockResolvedValue({ ok: false, code: 'STALE_CAPABILITY_REVISION' })
     const resolve = (globalThis as any).generationV2.capabilities.resolve as ReturnType<typeof vi.fn>
     const user = userEvent.setup()
@@ -286,8 +288,11 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
 
     await user.click(screen.getByTestId('regen-q-u1'))
 
-    await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeAction))
+    await screen.findByText('STALE_CAPABILITY_REVISION')
+    expect(regenerate).toHaveBeenCalledTimes(2)
+    expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeAction)
+    const [first, second] = regenerate.mock.calls.map(([packet]: any[]) => packet)
+    expect(second.command.operationId).not.toBe(first.command.operationId)
     expect(childAnswer).toBeNull()
     expect(answers.map((answer) => answer.answerRootId)).toEqual(['a1'])
   })
