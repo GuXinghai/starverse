@@ -253,6 +253,10 @@ const catalogProviderNames = Object.freeze(Object.fromEntries(
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let querySeq = 0
+// R4-08 (P6a-07): a fetch owns only the providers it started last. A single-provider refresh used to bump one
+// shared sequence and so discarded the results of a still-running all-provider fetch.
+const providerFetchSeq = new Map<ProviderCatalogKnownProviderKey, number>()
+let pendingFetches = 0
 let modelDetailSeq = 0
 let endpointSeq = 0
 let skipAutoQuery = false
@@ -1521,8 +1525,11 @@ async function fetchPage(options: Readonly<{
   const uiSnapshot = options.restoreUiState ?? (options.preserveUiState ? capturePickerUiSnapshot() : null)
   const currentSeq = ++querySeq
   const providerKeys = options.providerKeys ? [...options.providerKeys] : selectedCatalogProviderKeys.value
+  const owned = () => providerKeys.filter((providerKey) => providerFetchSeq.get(providerKey) === currentSeq)
+  pendingFetches += 1
   loading.value = true
-  hydratingProviderKeys.value = new Set(providerKeys)
+  providerKeys.forEach((providerKey) => providerFetchSeq.set(providerKey, currentSeq))
+  hydratingProviderKeys.value = new Set([...hydratingProviderKeys.value, ...providerKeys])
   error.value = null
   queryNotice.value = null
 
@@ -1542,12 +1549,15 @@ async function fetchPage(options: Readonly<{
     }))
     publishCatalogRuntimeStore()
     const results = await Promise.all(providerKeys.map((providerKey) => fetchProviderCatalog(providerKey)))
-    if (currentSeq !== querySeq) return
+    // Providers that a newer fetch took over are that fetch's to publish; only the ones still owned are applied.
+    const ownedKeys = new Set(owned())
+    if (ownedKeys.size === 0) return
 
-    queryNotice.value = results.map((result) => String(result.notice ?? '').trim()).filter(Boolean).join(' ') || null
+    queryNotice.value = results.filter((_, index) => ownedKeys.has(providerKeys[index]!))
+      .map((result) => String(result.notice ?? '').trim()).filter(Boolean).join(' ') || null
     results.forEach((result, index) => {
       const providerKey = providerKeys[index]
-      if (!providerKey) return
+      if (!providerKey || !ownedKeys.has(providerKey)) return
       const runtimeRequest = runtimeRequests.get(providerKey)
       if (!runtimeRequest) return
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
@@ -1598,14 +1608,14 @@ async function fetchPage(options: Readonly<{
       }), runtimeRequest.category)
     })
     publishCatalogRuntimeStore()
-    const refreshedProviders = new Set(providerKeys)
+    const refreshedProviders = ownedKeys
     items.value = [
       ...items.value.filter((item) => {
         const providerKey = catalogProviderKeyFromItem(item)
         return providerKey === null || !refreshedProviders.has(providerKey)
       }),
       ...providerKeys.flatMap((providerKey) => {
-        const runtimeRequest = runtimeRequests.get(providerKey)
+        const runtimeRequest = ownedKeys.has(providerKey) ? runtimeRequests.get(providerKey) : undefined
         return runtimeRequest ? [...catalogRuntimeStore.read(runtimeRequest.routeKey).items] : []
       }),
     ]
@@ -1617,12 +1627,16 @@ async function fetchPage(options: Readonly<{
       await restorePickerUiSnapshot(uiSnapshot)
     }
   } catch (err: any) {
-    if (currentSeq !== querySeq) return
+    if (owned().length === 0 && providerKeys.length > 0) return
     error.value = err?.message ? String(err.message) : t('errors.modelCatalog.queryFailed')
   } finally {
-    if (currentSeq === querySeq) {
-      loading.value = false
-      hydratingProviderKeys.value = new Set()
+    pendingFetches = Math.max(0, pendingFetches - 1)
+    loading.value = pendingFetches > 0
+    const finished = owned()
+    if (finished.length > 0) {
+      const remaining = new Set(hydratingProviderKeys.value)
+      finished.forEach((providerKey) => { remaining.delete(providerKey); providerFetchSeq.delete(providerKey) })
+      hydratingProviderKeys.value = remaining
     }
   }
 }
@@ -1725,6 +1739,7 @@ function openDialogState() {
   resetFavoriteEditorState()
   skipAutoQuery = false
   querySeq += 1
+  providerFetchSeq.clear()
   void hydrateCatalogThenSync(restoreSnapshot)
   void nextTick(() => {
     searchInputRef.value?.focus()
@@ -1768,11 +1783,17 @@ async function applyLatestCatalogList() {
   if (!pendingRevision) return
   const token = catalogRuntimeStore.beginMutation(scopeKey)
   publishCatalogRuntimeStore()
-  const response = await CatalogQueryService.applyPending({
-    sourceProviderKey: providerKey,
-    snapshotDigest: pendingRevision,
-    ...(category ? { category } : {}),
-  }) as Record<string, unknown>
+  let response: Record<string, unknown>
+  try {
+    response = await CatalogQueryService.applyPending({
+      sourceProviderKey: providerKey,
+      snapshotDigest: pendingRevision,
+      ...(category ? { category } : {}),
+    }) as Record<string, unknown>
+  } catch (err) {
+    // A rejected call must end the mutation; otherwise the route stays 'syncing' and the error is unhandled.
+    response = { ok: false, code: 'MODEL_CATALOG_RENDERER_APPLY_FAILED', message: err instanceof Error ? err.message : String(err) }
+  }
   if (!catalogRuntimeStore.isCurrent(token)) return
   if (response.ok !== true || response.status !== 'synced') {
     const previous = getProviderSyncSnapshot(providerKey, category)
@@ -2026,11 +2047,16 @@ async function keepCurrentCatalogList() {
   if (!pendingRevision) return
   const token = catalogRuntimeStore.beginMutation(scopeKey)
   publishCatalogRuntimeStore()
-  const response = await CatalogQueryService.discardPending({
-    sourceProviderKey: providerKey,
-    snapshotDigest: pendingRevision,
-    ...(category ? { category } : {}),
-  }) as Record<string, unknown>
+  let response: Record<string, unknown>
+  try {
+    response = await CatalogQueryService.discardPending({
+      sourceProviderKey: providerKey,
+      snapshotDigest: pendingRevision,
+      ...(category ? { category } : {}),
+    }) as Record<string, unknown>
+  } catch (err) {
+    response = { ok: false, code: 'MODEL_CATALOG_RENDERER_DISCARD_FAILED', message: err instanceof Error ? err.message : String(err) }
+  }
   if (!catalogRuntimeStore.isCurrent(token)) return
   if (response.ok !== true) {
     const providerFailure = response.providerFailure && typeof response.providerFailure === 'object'
@@ -2204,6 +2230,8 @@ watch(
     if (dialogWasOpen) rememberPickerUiSnapshot()
     clearDebounceTimer()
     querySeq += 1
+    providerFetchSeq.clear()
+    hydratingProviderKeys.value = new Set()
     modelDetailSeq += 1
     endpointSeq += 1
     loading.value = false

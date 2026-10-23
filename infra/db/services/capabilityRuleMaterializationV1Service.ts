@@ -11,7 +11,7 @@ import type { AuthoritativeModelSubjectSetV1 } from
 import { buildCapabilityRuleSourceScopeIdV1 } from
   '../../../src/core/generation-v2/model-facts/sourceScopeV1'
 import { CapabilityRuleCoreV1Repo } from '../repo/capabilityRuleCoreV1Repo'
-import { listCapabilityRuleOwnershipSnapshotsV2 } from '../repo/capabilityRuleCoreV2Repo'
+import { listReadableCapabilityRuleOwnershipSnapshotsV2 } from '../repo/capabilityRuleCoreV2Repo'
 import { prepareGenerationRequestRulesPublicationV2, writeGenerationRequestRulesPublicationV2 } from '../repo/generationRequestRulesV2Repo'
 import { CapabilityRuleMaterializationV1Repo,
   type CapabilityRuleMaterializationStageResultV1 } from
@@ -50,8 +50,8 @@ export class CapabilityRuleMaterializationV1Service {
     defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1
   }>): Promise<PreparedCapabilityRuleMaterializationV1 | null> {
     const subjectSet = await this.subjectSetReader.readCurrent()
-    const v2 = listCapabilityRuleOwnershipSnapshotsV2(this.#db).map(value => value.projected)
-    const ownershipSnapshots = [...this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => snapshot.projected)
+    const v2 = listReadableCapabilityRuleOwnershipSnapshotsV2(this.#db).map(value => value.projected)
+    const ownershipSnapshots = [...this.#ruleRepo.listReadableOwnershipSnapshots().snapshots.map((snapshot) => snapshot.projected)
       .filter(value => !v2.some(next => next.definition.ownership === value.definition.ownership &&
         next.definition.ownerId === value.definition.ownerId)), ...v2]
     const sourceScopeId = buildCapabilityRuleSourceScopeIdV1({ ruleStoreId: input.ruleStoreId })

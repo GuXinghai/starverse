@@ -9,6 +9,9 @@ import { cancelProxyProbe, getProxyConfiguration, getProxyEnvironment, probeProx
 const props = defineProps<{ disabled: boolean }>()
 const configuration = ref<NetworkProxyConfiguration>({ application: { ...DEFAULT_NETWORK_PROXY_SETTINGS }, browser: defaultBrowserProxySettings() })
 const saved = ref('')
+// R4-09 (P6a-02): the defaults above are placeholders, not the stored configuration. Nothing may be saved,
+// and no control may be edited, until the stored configuration has actually been loaded.
+const loaded = ref(false)
 const loading = ref(true)
 const saving = ref(false)
 const probeId = ref<string | null>(null)
@@ -19,7 +22,7 @@ const states = ref<Record<NetworkProxyScope, string>>({ application: 'uninitiali
 const results = ref<Partial<Record<NetworkProxyScope, NetworkProxyProbeResult>>>({})
 const downloadResult = ref<string | null>(null)
 const url = ref('https://api.openai.com/')
-const busy = computed(() => props.disabled || loading.value || saving.value || probeId.value !== null)
+const busy = computed(() => props.disabled || !loaded.value || loading.value || saving.value || probeId.value !== null)
 const scopes: NetworkProxyScope[] = ['application', 'browser']
 const clone = () => JSON.parse(JSON.stringify(configuration.value)) as NetworkProxyConfiguration
 const draftSettings = (scope: NetworkProxyScope) => scope === 'application' ? configuration.value.application : configuration.value.browser.settings
@@ -43,6 +46,7 @@ onMounted(async () => {
     const result = await getProxyConfiguration()
     configuration.value = result.configuration
     saved.value = JSON.stringify(configuration.value)
+    loaded.value = true
     environment.value = await getProxyEnvironment()
     await refreshStates()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : 'proxy_settings_invalid' }
@@ -51,6 +55,7 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (probeId.value) void cancelProxyProbe(probeId.value).catch(() => undefined) })
 
 async function save() {
+  if (!loaded.value) return
   if (JSON.stringify(configuration.value) === saved.value) return
   if (busy.value) throw new Error('proxy_updating')
   saving.value = true

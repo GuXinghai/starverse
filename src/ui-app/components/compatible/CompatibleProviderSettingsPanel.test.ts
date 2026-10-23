@@ -237,4 +237,154 @@ describe('CompatibleProviderSettingsPanel', () => {
       reasoningMapping: { rules: [{ stream: { path: 'choices.*.delta.thought_process', mode: 'append' }, semantic: 'text' }] },
     })
   })
+
+  // R4-09 (P6a-05): races and silent failures.
+  describe('request snapshots, selection races and failure reporting', () => {
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void
+      let reject!: (cause: unknown) => void
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+      return { promise, resolve, reject }
+    }
+    const model = (modelId: string) => ({
+      providerInstanceId: firstId, modelId, sourcePresence: { manual: true, remote: 'absent' }, conflictFields: [],
+      metadata: { capabilities: { text: null }, contextLength: null, pricing: { prompt: null }, fieldProvenance: {} },
+    })
+    const alertText = async () => (await screen.findByRole('alert')).textContent ?? ''
+
+    it('sends the credential that was entered when Save was pressed, not what the form holds when the request is built', async () => {
+      const update = deferred<ReturnType<typeof details>>()
+      registry.update.mockReturnValueOnce(update.promise)
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.update(screen.getByTestId('compatible-secret-input'), 'token-at-click')
+      await fireEvent.click(screen.getByTestId('compatible-save'))
+      await waitFor(() => expect(registry.update).toHaveBeenCalledOnce())
+      await fireEvent.update(screen.getByTestId('compatible-secret-input'), 'changed-while-saving')
+      await fireEvent.update(screen.getByTestId('compatible-auth-mode'), 'none')
+      update.resolve(details(firstId, 'First', 'https://first.example/v1'))
+      await waitFor(() => expect(registry.updateEndpoint).toHaveBeenCalledOnce())
+      expect(registry.updateEndpoint.mock.calls[0]![0].credential).toEqual({ mode: 'bearer', token: 'token-at-click' })
+    })
+
+    it('does not silently drop a username-only edit of basic credentials', async () => {
+      const basic = details(firstId, 'First', 'https://first.example/v1')
+      basic.endpointRevisions[0]!.authMode = 'basic'
+      registry.list.mockResolvedValue([basic])
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.update(screen.getByLabelText(/Username|用户名/), 'someone')
+      await fireEvent.click(screen.getByTestId('compatible-save'))
+      expect(await alertText()).toContain('compatible_basic_password_required')
+      expect(registry.update).not.toHaveBeenCalled()
+      expect(registry.updateEndpoint).not.toHaveBeenCalled()
+    })
+
+    it('cannot switch instance while a request is running, so a result is never filed under another instance', async () => {
+      const test = deferred<unknown>()
+      registry.testConnection.mockReturnValueOnce(test.promise)
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.click(screen.getByText(/Test connection|测试连接/))
+      await waitFor(() => expect(registry.testConnection).toHaveBeenCalledOnce())
+      expect(screen.getByText('Second').closest('button')).toBeDisabled()
+      test.resolve({ ok: true })
+    })
+
+    it('ignores a model list that arrives after another instance was selected', async () => {
+      const slow = deferred<unknown>()
+      catalog.query.mockImplementation(async ({ providerInstanceId }) => providerInstanceId === firstId
+        ? slow.promise
+        : { protocolKey: 'openai_chat_compatible', providerInstanceId, providerName: 'Second', providerStatus: 'active', syncState: null, total: 0, items: [] })
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.click(screen.getByText('Second'))
+      await waitFor(() => expect(catalog.query).toHaveBeenCalledTimes(2))
+      slow.resolve({ protocolKey: 'openai_chat_compatible', providerInstanceId: firstId, providerName: 'First', providerStatus: 'active',
+        syncState: null, total: 1, items: [model('model-of-the-first-instance')] })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(document.body.textContent).not.toContain('model-of-the-first-instance')
+    })
+
+    it('ignores discovery results that arrive after another instance was selected', async () => {
+      const slow = deferred<unknown[]>()
+      registry.listDiscovery.mockImplementation(async (id: string) => id === firstId ? slow.promise : [])
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.click(screen.getByText('Second'))
+      await waitFor(() => expect(registry.listDiscovery).toHaveBeenCalledTimes(2))
+      slow.resolve([{ providerInstanceId: firstId, responseProfileId: 'ocp_response_profile_12345678', profileVersion: 1,
+        streamPath: 'choices.*.delta.first_only', state: 'candidate',
+        aggregate: { schemaVersion: 1, observedShapes: ['string'], redactedPreview: null, sampleCount: 1 }, occurrenceCount: 1,
+        firstObservedAtMs: 1, lastObservedAtMs: 1 }])
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(document.body.textContent).not.toContain('choices.*.delta.first_only')
+    })
+
+    it('shows a failed connection test instead of leaving it as an unhandled rejection', async () => {
+      registry.testConnection.mockRejectedValueOnce(new Error('connection_refused_by_test'))
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.click(screen.getByText(/Test connection|测试连接/))
+      expect(await alertText()).toContain('connection_refused_by_test')
+    })
+
+    it('shows a failed credential delete', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const second = details(firstId, 'First', 'https://first.example/v1')
+      second.credentials[0]!.credentialVersionRef = 'ocp_credential_older_version'
+      registry.list.mockResolvedValue([second])
+      registry.deleteCredential.mockRejectedValueOnce(new Error('credential_delete_failed_by_test'))
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      const list = await screen.findByTestId('compatible-credential-list')
+      await fireEvent.click(list.querySelector('button.sv-btn-danger') as HTMLButtonElement)
+      expect(await alertText()).toContain('credential_delete_failed_by_test')
+    })
+
+    it('shows a failed manual-model write and a failed manual-model delete', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      catalog.query.mockResolvedValue({ protocolKey: 'openai_chat_compatible', providerInstanceId: firstId, providerName: 'First',
+        providerStatus: 'active', syncState: null, total: 1, items: [model('manual-one')] })
+      catalog.upsertManual.mockRejectedValueOnce(new Error('upsert_failed_by_test'))
+      catalog.deleteManual.mockRejectedValueOnce(new Error('delete_failed_by_test'))
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.update(screen.getByPlaceholderText(/Manual model ID|手动模型 ID/), 'new-model')
+      await fireEvent.click(screen.getByTestId('compatible-add-manual-model'))
+      expect(await alertText()).toContain('upsert_failed_by_test')
+      await fireEvent.click((await screen.findByText('manual-one')).closest('li')!.querySelector('button')!)
+      await waitFor(() => expect(document.body.textContent).toContain('delete_failed_by_test'))
+    })
+
+    it('reports a failed discovery ignore, and an unreadable reasoning profile on accept', async () => {
+      registry.listDiscovery.mockResolvedValue([{
+        providerInstanceId: firstId, responseProfileId: 'ocp_response_profile_12345678', profileVersion: 1,
+        streamPath: 'choices.*.delta.thought', state: 'candidate',
+        aggregate: { schemaVersion: 1, observedShapes: ['string'], redactedPreview: null, sampleCount: 1 }, occurrenceCount: 1,
+        firstObservedAtMs: 1, lastObservedAtMs: 1,
+      }])
+      registry.ignoreDiscovery.mockRejectedValueOnce(new Error('ignore_failed_by_test'))
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await screen.findByText('choices.*.delta.thought')
+      await fireEvent.click(screen.getByText(/Ignore|忽略/))
+      await waitFor(() => expect(document.body.textContent).toContain('ignore_failed_by_test'))
+      // This instance has no active configuration, so its reasoning profile text is empty and cannot be parsed.
+      await fireEvent.click(screen.getByText(/Use as reasoning field|设为推理字段/))
+      await waitFor(() => expect(document.body.textContent).not.toContain('ignore_failed_by_test'))
+      expect(await alertText()).toMatch(/JSON|Unexpected|invalid/i)
+      expect(registry.reviseConfiguration).not.toHaveBeenCalled()
+    })
+
+    it.each(['12.5', '-3', '0', 'abc', '1e400'])('does not send %s as a manual model limit', async (value) => {
+      render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+      await fireEvent.click(await screen.findByText('First'))
+      await fireEvent.update(screen.getByPlaceholderText(/Manual model ID|手动模型 ID/), 'limit-model')
+      await fireEvent.update(screen.getByPlaceholderText('context length (unknown if empty)'), value)
+      await fireEvent.click(screen.getByTestId('compatible-add-manual-model'))
+      expect(await alertText()).toContain('compatible_manual_limit_invalid')
+      expect(catalog.upsertManual).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -215,6 +215,11 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
   const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
   const providerConfigs = createProviderConfigs(fetchImpl)
   const repo = new ModelCatalogV2Repo(input.db)
+  // R4-08 (P3a-05): registration runs once per process, before any sync can start, so any scope still marked
+  // 'syncing' was left by an attempt that died with the previous process and would refuse every later sync.
+  try { repo.recoverInterruptedSyncs() } catch (error) {
+    console.warn('[model-catalog] could not recover interrupted syncs', error instanceof Error ? error.message : error)
+  }
   const coordinator = new CatalogScopeCoordinatorV2(repo)
   const modelFactIngestion = new CanonicalModelFactSourceIngestionV1Service(input.db)
   const pendingFacts = new Map<string, Readonly<{ snapshotDigest: string; facts: ProviderNativeFactPublication;

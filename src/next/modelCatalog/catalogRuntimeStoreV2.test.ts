@@ -53,6 +53,31 @@ describe('CatalogRuntimeStoreV2', () => {
     expect(store.read('openrouter::text').items).toEqual([{ id: 'new' }])
   })
 
+  // R4-08 (P6a-07): a query that lands first moves the authority revision. That used to discard the result of a
+  // mutation started before it, which left the route stuck in 'syncing'.
+  it('a mutation result survives a query that landed first, and still discards an older query', () => {
+    const store = new CatalogRuntimeStoreV2<{ id: string }>()
+    const base = store.beginQuery('deepseek')
+    store.acceptAuthority({ token: base, authorityScopeId: 'scope:1', displayedSnapshotDigest: 'a'.repeat(64),
+      pendingSnapshotDigest: 'b'.repeat(64), items: [{ id: 'one' }], stale: false })
+
+    const mutation = store.beginMutation('deepseek')
+    const query = store.beginQuery('deepseek')
+    expect(store.acceptAuthority({ token: query, authorityScopeId: 'scope:1', displayedSnapshotDigest: 'a'.repeat(64),
+      pendingSnapshotDigest: 'b'.repeat(64), items: [{ id: 'one' }], stale: false })).toBe(true)
+    expect(store.acceptAuthority({ token: mutation, authorityScopeId: 'scope:1', displayedSnapshotDigest: 'b'.repeat(64),
+      pendingSnapshotDigest: null, items: [{ id: 'one' }], stale: false })).toBe(true)
+    expect(store.read('deepseek')).toMatchObject({ syncState: 'idle', pendingSnapshotDigest: null })
+
+    const olderQuery = store.beginQuery('deepseek')
+    const laterMutation = store.beginMutation('deepseek')
+    store.acceptAuthority({ token: laterMutation, authorityScopeId: 'scope:1', displayedSnapshotDigest: 'c'.repeat(64),
+      pendingSnapshotDigest: null, items: [{ id: 'two' }], stale: false })
+    expect(store.acceptAuthority({ token: olderQuery, authorityScopeId: 'scope:1', displayedSnapshotDigest: 'a'.repeat(64),
+      pendingSnapshotDigest: null, items: [{ id: 'stale' }], stale: false })).toBe(false)
+    expect(store.read('deepseek').items).toEqual([{ id: 'two' }])
+  })
+
   it('does not reuse a request generation after credential-scope invalidation', () => {
     const store = new CatalogRuntimeStoreV2<{ id: string }>()
     const oldCredentialRequest = store.beginMutation('openrouter::text')

@@ -242,13 +242,21 @@ export class UserCapabilityRulesV1Service {
       subjectSet, undefined,
       { ownership: 'user', ownerId: USER_RULES_LOCAL_OWNER_ID_V1 },
       CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
-    const legacyV1Snapshots = this.#coreRepo.listOwnershipSnapshots()
+    // R4-09 (P3a-07): an owner row that no longer decodes is left out of this publication rather than blocking the
+    // save of the user's own rules; it stays in the database untouched.
+    const readableV1 = this.#coreRepo.listReadableOwnershipSnapshots()
+    const readableV2 = this.#coreV2Repo.listReadableOwnershipSnapshots()
+    if (readableV1.unreadable.length > 0 || readableV2.unreadable.length > 0) {
+      console.warn('[capability-rules] skipped unreadable owner snapshots while saving user rules',
+        { v1: readableV1.unreadable, v2: readableV2.unreadable })
+    }
+    const legacyV1Snapshots = readableV1.snapshots
       .filter((snapshot) => !(snapshot.projected.definition.ownership === 'user' &&
         snapshot.projected.definition.ownerId === USER_RULES_LOCAL_OWNER_ID_V1))
       .map((snapshot) => snapshot.projected)
     const v1OwnerKeys = new Set(legacyV1Snapshots.map(snapshot =>
       `${snapshot.definition.ownership}\0${snapshot.definition.ownerId}`))
-    const v2Snapshots = this.#coreV2Repo.listOwnershipSnapshots()
+    const v2Snapshots = readableV2.snapshots
       .filter(snapshot => !v1OwnerKeys.has(`${snapshot.projected.definition.ownership}\0${snapshot.projected.definition.ownerId}`) &&
         !(snapshot.projected.definition.ownership === 'user' &&
           snapshot.projected.definition.ownerId === USER_RULES_LOCAL_OWNER_ID_V1))

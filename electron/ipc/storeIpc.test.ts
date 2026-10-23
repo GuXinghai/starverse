@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialContract'
+import { providerCatalogPolicyV2StoreKey } from '../../src/shared/modelCatalog/catalogPolicyResolverV2'
+import { listProviderCatalogSourceDescriptors } from '../../src/shared/modelCatalog/providerCatalogRegistry'
 import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -214,6 +216,54 @@ describe('registerStoreIpc', () => {
     expect(store.get).not.toHaveBeenCalledWith('unknownRuntimeAuthority')
     expect(store.set).not.toHaveBeenCalledWith('unknownRuntimeAuthority', 'tamper')
     expect(store.delete).not.toHaveBeenCalledWith('unknownRuntimeAuthority')
+  })
+
+  it('R4-08 (P1-01): reads, writes and deletes the policy key of every registered catalog provider', async () => {
+    const { handlers, store } = registerHandlers()
+    const policy = {
+      startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual', freshnessMs: null, retentionMs: 'never',
+    }
+    const descriptors = listProviderCatalogSourceDescriptors()
+    expect(descriptors.length).toBeGreaterThan(0)
+    for (const descriptor of descriptors) {
+      const key = providerCatalogPolicyV2StoreKey(descriptor.providerKey)
+      expect(await handlers.get('store-get')?.({}, key), key).toBeUndefined()
+      expect(await handlers.get('store-set')?.({}, key, policy), key).toBe(true)
+      expect(await handlers.get('store-get')?.({}, key), key).toEqual(policy)
+      expect(store.get(key)).toEqual(policy)
+      expect(await handlers.get('store-delete')?.({}, key), key).toBe(true)
+      expect(await handlers.get('store-get')?.({}, key), key).toBeUndefined()
+    }
+  })
+
+  it('R4-08 (P1-01): does not treat providerCatalog as a prefix pass-through', async () => {
+    const { handlers, store } = registerHandlers()
+    const policy = {
+      startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual', freshnessMs: null, retentionMs: 'never',
+    }
+    const rejected = [
+      'providerCatalog.not-a-registered-provider.policyV2',
+      'providerCatalog.openrouter.other',
+      'providerCatalog.openrouter.policyV2.extra',
+      'providerCatalog..policyV2',
+      'providerCatalog.openrouter',
+    ]
+    for (const key of rejected) {
+      expect(await handlers.get('store-get')?.({}, key), key).toBeUndefined()
+      expect(await handlers.get('store-set')?.({}, key, policy), key).toBe(false)
+      expect(await handlers.get('store-delete')?.({}, key), key).toBe(false)
+    }
+    expect(store.set).not.toHaveBeenCalled()
+  })
+
+  it('R4-08 (P1-01): refuses to persist a provider policy that does not decode', async () => {
+    const { handlers, store } = registerHandlers()
+    const key = providerCatalogPolicyV2StoreKey('openrouter')
+    for (const bad of [null, 'manual', [], {}, { startupSyncPolicy: 'always' },
+      { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual', freshnessMs: null, retentionMs: -1 }]) {
+      expect(await handlers.get('store-set')?.({}, key, bad), JSON.stringify(bad)).toBe(false)
+    }
+    expect(store.set).not.toHaveBeenCalled()
   })
 
   it('rejects main-owned configuration authority keys and every dot-path descendant', async () => {

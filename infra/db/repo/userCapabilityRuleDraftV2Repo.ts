@@ -201,6 +201,13 @@ export class UserCapabilityRuleDraftV2Repo {
       dirty: draftContentDigest !== baseContentDigest, createdAtMs, updatedAtMs })
   }
 
+  /** The draft's identity without decoding its content, so a draft that no longer decodes can still be cancelled. */
+  readDraftHeader(): Readonly<{ sessionId: string; draftRevision: number }> | null {
+    const row = this.db.prepare(`SELECT session_id, draft_revision FROM user_capability_rule_editing_session_v2
+      WHERE singleton_id=1`).get() as Record<string, unknown> | undefined
+    return row ? Object.freeze({ sessionId: identity(row.session_id), draftRevision: safeInteger(row.draft_revision, 1) }) : null
+  }
+
   openOrCreate(input: Readonly<{ sessionId: string; snapshot?: unknown; notes?: readonly UserCapabilityRuleNoteV2[];
     legacyV1Source?: LegacyV1UserSourceBaselineV2 | null }>): UserCapabilityRuleDraftV2 {
     const sessionId = identity(input.sessionId)
@@ -252,7 +259,7 @@ export class UserCapabilityRuleDraftV2Repo {
   discard(input: Readonly<{ expectedDraftRevision: number }>): void {
     const expected = safeInteger(input.expectedDraftRevision, 1)
     this.runImmediate(() => {
-      const current = this.readDraft()
+      const current = this.readDraftHeader()
       if (!current || current.draftRevision !== expected) this.stale()
       this.db.prepare('DELETE FROM user_capability_rule_editing_session_v2 WHERE singleton_id=1').run()
     })

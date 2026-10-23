@@ -56,7 +56,8 @@ describe('ModelCatalogV2Repo', () => {
       now = 200
       repo.beginSync(scope, 'attempt:2')
       const status = repo.failSync(scope, 'attempt:2', failure('attempt:2'))
-      expect(status).toMatchObject({ authorityRevision: 4, syncState: 'error',
+      // R4-08 (P3a-14): the revision names the active catalog, so beginning and failing a refresh leave it at 2.
+      expect(status).toMatchObject({ authorityRevision: 2, syncState: 'error',
         errorCode: 'PROVIDER_REQUEST_OPEN_FAILED', activeSnapshotDigest: '1'.repeat(64) })
       expect(repo.readActive(scope)?.items).toEqual(active.items)
     } finally { db.close() }
@@ -187,7 +188,8 @@ describe('ModelCatalogV2Repo', () => {
       expect(repo.readPending(scope)?.snapshotDigest).toBe('2'.repeat(64))
 
       expect(repo.applyPendingSnapshot(scope, '2'.repeat(64))).toMatchObject({
-        status: { authorityRevision: 5, activeSnapshotDigest: '2'.repeat(64), lastSucceededAtMs: 190 },
+        // R4-08 (P3a-14): staging a manual snapshot left the revision at 2; applying it changes the active catalog.
+        status: { authorityRevision: 3, activeSnapshotDigest: '2'.repeat(64), lastSucceededAtMs: 190 },
         items: [catalogItem('pending')],
       })
       expect(repo.readPending(scope)).toBeNull()
@@ -213,14 +215,15 @@ describe('ModelCatalogV2Repo', () => {
       expect(repo.readActive(scope)?.items).toEqual([catalogItem('second')])
       expect(repo.clearCurrent(scope)).toBe(1)
       expect(repo.readActive(scope)).toBeNull()
-      expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 7, syncState: 'idle',
+      // R4-08 (P3a-14): two active changes (first, second) plus the clear.
+      expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 4, syncState: 'idle',
         activeSnapshotDigest: null, pendingSnapshotDigest: null, modelCount: 0 })
 
       repo.beginSync(scope, 'attempt:third')
       repo.commitSync({ scope, attemptId: 'attempt:third', responseDigest: 'd'.repeat(64), observedAtMs: 1_000,
         applyMode: 'automatic', items: [catalogItem('third')] })
       expect(repo.clearAllScopes('google_ai_studio')).toBe(1)
-      expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 10, syncState: 'idle' })
+      expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 6, syncState: 'idle' })
     } finally { db.close() }
   })
 

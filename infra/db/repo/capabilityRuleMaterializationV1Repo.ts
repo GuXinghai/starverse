@@ -163,12 +163,13 @@ export class CapabilityRuleMaterializationV1Repo {
         throw new CapabilityRuleMaterializationV1RepoError(
           'GENERATION_V2_CAPABILITY_RULE_MATERIALIZATION_STAGE_STALE')
       }
-      const currentOwnerSnapshotsV1 = this.#ruleRepo.listOwnershipSnapshots().map((snapshot) => Object.freeze({
+      // Owner rows that no longer decode are left out on both the prepare and the stage side (R4-09, P3a-07).
+      const currentOwnerSnapshotsV1 = this.#ruleRepo.listReadableOwnershipSnapshots().snapshots.map((snapshot) => Object.freeze({
         ownership: snapshot.projected.definition.ownership,
         ownerId: snapshot.projected.definition.ownerId,
         snapshotRevision: snapshot.projected.snapshotRevision,
       }))
-      const currentOwnerSnapshotsV2 = this.#ruleV2Repo.listOwnershipSnapshots().map((snapshot) => Object.freeze({
+      const currentOwnerSnapshotsV2 = this.#ruleV2Repo.listReadableOwnershipSnapshots().snapshots.map((snapshot) => Object.freeze({
         ownership: snapshot.projected.definition.ownership,
         ownerId: snapshot.projected.definition.ownerId,
         snapshotRevision: snapshot.projected.snapshotRevision,

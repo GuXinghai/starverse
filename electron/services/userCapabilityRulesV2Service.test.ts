@@ -1,6 +1,6 @@
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { readGenerationRequestRulesV2 } from '../../infra/db/repo/generationRequestRulesV2Repo'
 import { CapabilityRuleCoreV1Repo } from '../../infra/db/repo/capabilityRuleCoreV1Repo'
@@ -297,6 +297,50 @@ describe('UserCapabilityRulesV2Service', () => {
         expect(new CloudRulesApplicationV1Repo(db).readState()).toEqual(cloudState)
       } finally { db.close() }
     }
+  })
+
+  // R4-09 (P3a-07): one rule row that no longer decodes must not lock the user out of every save.
+  it('saves the user rules although another owner row no longer decodes, and leaves that row in place', async () => {
+    const db = database()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const cloud = { schemaVersion: 2 as const, ownership: 'cloud' as const, ownerId: 'cloud-extra', packs: [{
+        ...v2EmptyPack('cloud-extra'), rules: [{ ...v2Rule(), ruleId: 'cloud.rule', decisionKey: 'cloud.decision' }] }] }
+      new CapabilityRuleCoreV2Repo(db).replaceOwnershipSnapshot({ expectedSnapshotRevision: null, snapshot: cloud })
+      // The stored JSON is valid for the table's checks but carries a field a later decoder no longer accepts.
+      db.prepare("UPDATE capability_rule_owner_snapshot_v2 SET snapshot_json=? WHERE owner_id='cloud-extra'").run(
+        JSON.stringify({ schemaVersion: 2, ownership: 'cloud', ownerId: 'cloud-extra', packs: [], fieldFromAnOlderVersion: true }))
+      expect(() => new CapabilityRuleCoreV2Repo(db).listOwnershipSnapshots()).toThrow()
+
+      const service = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects() }, () => 20)
+      const opened = service.openDraft({ sessionId: 'session.bad-neighbour' })
+      const edited = service.addRule({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision,
+        targetPackId: null, firstPack: { packId: 'pack.reasoning', displayName: 'Reasoning' }, rule: v2Rule() })
+      await service.saveDraft({ sessionId: edited.sessionId, expectedDraftRevision: edited.draftRevision })
+
+      expect(service.readCommitted().snapshot?.projected.definition.packs[0]!.rules[0]!.ruleId).toBe('rule.reasoning-v2')
+      expect(db.prepare("SELECT COUNT(*) AS n FROM capability_rule_owner_snapshot_v2 WHERE owner_id='cloud-extra'").get())
+        .toEqual({ n: 1 })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('unreadable owner snapshots'),
+        expect.objectContaining({ v2: [{ ownership: 'cloud', ownerId: 'cloud-extra' }] }))
+    } finally { warn.mockRestore(); db.close() }
+  })
+  it('cancels a draft that no longer decodes, using only its identity', () => {
+    const db = database()
+    try {
+      const service = new UserCapabilityRulesV2Service(db, { readCurrent: async () => subjects() }, () => 20)
+      const opened = service.openDraft({ sessionId: 'session.unreadable' })
+      db.prepare('UPDATE user_capability_rule_editing_session_v2 SET draft_snapshot_json=?').run(
+        JSON.stringify({ schemaVersion: 2, ownership: 'user', ownerId: 'local-user', packs: [], fieldFromAnOlderVersion: true }))
+      expect(() => service.readDraft()).toThrow()
+      expect(() => service.cancelDraft({ sessionId: 'someone-else', expectedDraftRevision: opened.draftRevision }))
+        .toThrow('GENERATION_V2_USER_CAPABILITY_RULES_STALE')
+      expect(() => service.cancelDraft({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision + 1 }))
+        .toThrow('GENERATION_V2_USER_CAPABILITY_RULES_STALE')
+      service.cancelDraft({ sessionId: opened.sessionId, expectedDraftRevision: opened.draftRevision })
+      expect(service.readDraft()).toBeNull()
+      expect(service.openDraft({ sessionId: 'session.after' }).sessionId).toBe('session.after')
+    } finally { db.close() }
   })
 
   it('saves typed request policies, publishes an exact subject bundle, and exports the committed V2 pack', async () => {

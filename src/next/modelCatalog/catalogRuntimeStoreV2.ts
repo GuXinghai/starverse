@@ -121,10 +121,10 @@ export class CatalogRuntimeStoreV2<TItem extends Readonly<Record<string, unknown
 
   isCurrent(token: CatalogRuntimeRequestTokenV2): boolean {
     const current = this.read(token.routeKey)
-    return current.authorityRevision === token.authorityRevision &&
-      (token.kind === 'query'
-        ? current.queryRequestToken === token.requestToken
-        : current.mutationRequestToken === token.requestToken)
+    // R4-08 (P6a-07): a mutation is superseded only by a newer mutation (or a clear). Tying it to the authority
+    // revision made every query that landed first discard the apply/discard result and leave the route 'syncing'.
+    if (token.kind === 'mutation') return current.mutationRequestToken === token.requestToken
+    return current.authorityRevision === token.authorityRevision && current.queryRequestToken === token.requestToken
   }
 
   setPolicy(input: Readonly<{

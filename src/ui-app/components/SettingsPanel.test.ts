@@ -568,6 +568,116 @@ describe('ui-app SettingsPanel', () => {
     expect(credentialUpdate).not.toHaveBeenCalled()
   })
 
+  describe('R4-08 / R4-09 save reporting', () => {
+    const OVERRIDE_KEY = 'providerCatalog.openrouter.policyV2'
+
+    function rejectStoreWrites(rejected: (key: string) => boolean) {
+      const store = (globalThis as any).electronStore
+      const original = store.set.getMockImplementation()
+      store.set.mockImplementation(async (key: string, value: unknown) => rejected(key) ? false : original(key, value))
+      return store.set as ReturnType<typeof vi.fn>
+    }
+
+    async function renderReady() {
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+      await screen.findByText('设置')
+      await waitFor(() => expect(screen.getByTestId('settings-catalog-startup-sync-policy')).not.toBeDisabled())
+      await waitFor(() => expect(screen.getByTestId('settings-save')).not.toBeDisabled())
+    }
+
+    async function enableOpenRouterOverride(user: ReturnType<typeof userEvent.setup>) {
+      await fireEvent.update(screen.getByTestId('settings-catalog-policy-target'), 'provider_override')
+      await user.click(screen.getByTestId('settings-catalog-provider-override-enabled'))
+    }
+
+    // P1-01 / P3a-03: the per-provider policy key was never accepted by the main process, and the false
+    // result of the write was ignored, so the panel reported "saved" while nothing was stored.
+    it('R4-08: shows a rejected provider-override write instead of "saved" and stops there', async () => {
+      const user = userEvent.setup()
+      await renderReady()
+      await enableOpenRouterOverride(user)
+      const storeSet = rejectStoreWrites((key) => key === OVERRIDE_KEY)
+      await user.click(screen.getByTestId('settings-save'))
+      expect(await screen.findByText(/providerCatalog\.openrouter\.policyV2/)).toBeInTheDocument()
+      expect(screen.queryByText(t('common.saved'))).toBeNull()
+      expect(storeSet).not.toHaveBeenCalledWith('generationV2UiPreferences.reasoningPrefs', expect.anything())
+    })
+
+    it('R4-08: an accepted provider override is written once and then counts as saved', async () => {
+      const user = userEvent.setup()
+      await renderReady()
+      await enableOpenRouterOverride(user)
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(screen.getByText(t('common.saved'))).toBeInTheDocument())
+      const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+      expect(storeSet.mock.calls.filter(([key]) => key === OVERRIDE_KEY)).toHaveLength(1)
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(screen.getByText(t('common.saved'))).toBeInTheDocument())
+      expect(storeSet.mock.calls.filter(([key]) => key === OVERRIDE_KEY)).toHaveLength(1)
+    })
+
+    // P6a-03: a failure part-way through used to leave earlier writes persisted but never announced, and the
+    // user saw one error with no indication of what had been saved.
+    it('R4-09: a mid-save failure announces what was saved, names what was not, and skips later writes', async () => {
+      const user = userEvent.setup()
+      const types = ['settings:reasoningPrefsUpdated', 'settings:webSearchDefaultsUpdated', 'settings:maxRecentModelsUpdated']
+      const announced: string[] = []
+      const listener = (event: Event) => announced.push(event.type)
+      for (const type of types) window.addEventListener(type, listener)
+      try {
+        await renderReady()
+        const storeSet = rejectStoreWrites((key) => key === 'generationV2UiPreferences.generationTotalTimeoutMs')
+        await user.click(screen.getByTestId('settings-save'))
+        const message = await screen.findByText(/generationTotalTimeoutMs/)
+        expect(message.textContent).toContain(t('settings.runtime.saveGroupPreferences'))
+        expect(message.textContent).toContain(t('settings.runtime.saveGroupReasoning'))
+        expect(message.textContent).toContain(t('settings.runtime.saveGroupGenerationTimeout'))
+        expect(message.textContent).toContain(t('settings.runtime.saveGroupNetwork'))
+        expect(screen.queryByText(t('common.saved'))).toBeNull()
+        expect(announced).toEqual(['settings:maxRecentModelsUpdated', 'settings:reasoningPrefsUpdated'])
+        expect(storeSet).not.toHaveBeenCalledWith('generationV2UiPreferences.webSearchDefaults', expect.anything())
+      } finally {
+        for (const type of types) window.removeEventListener(type, listener)
+      }
+    })
+
+    it('R4-09: a rejected proxy apply runs last and no longer stops the other settings from being saved', async () => {
+      const user = userEvent.setup()
+      const bridge = (globalThis as any).networkProxy
+      const environmentProxy = { proxyMode: 'environment', manualProxyUrl: '', noProxy: '', strictSSL: true }
+      bridge.getConfiguration = vi.fn(async () => ({ ok: true, states: null, configuration: {
+        application: environmentProxy, browser: { mode: 'inherit', settings: environmentProxy },
+      } }))
+      bridge.updateConfiguration = vi.fn(async () => ({ ok: false, code: 'proxy_session_apply_failed' }))
+      await renderReady()
+      await waitFor(() => expect(screen.getByTestId('proxy-application-mode')).not.toBeDisabled())
+      await fireEvent.update(screen.getByTestId('proxy-application-mode'), 'direct')
+      const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+      await user.click(screen.getByTestId('settings-save'))
+      const message = await screen.findByText(/proxy_session_apply_failed.*|.*仅保存了部分设置/s, { selector: 'div' })
+      expect(bridge.updateConfiguration).toHaveBeenCalledTimes(1)
+      expect(storeSet).toHaveBeenCalledWith('generationV2UiPreferences.webSearchDefaults', null)
+      expect(storeSet).toHaveBeenCalledWith('generationV2UiPreferences.generationParamsDefaults', null)
+      expect(message.textContent).toContain(t('settings.runtime.saveGroupDefaults'))
+      expect(message.textContent).toContain(t('settings.runtime.saveGroupNetwork'))
+    })
+
+    it('R4-09: an invalid catalog draft is rejected before anything is written', async () => {
+      const user = userEvent.setup()
+      await renderReady()
+      await enableOpenRouterOverride(user)
+      await fireEvent.update(screen.getByTestId('settings-catalog-startup-sync-policy'), 'always')
+      await fireEvent.update(screen.getByTestId('settings-catalog-picker-open-sync-policy'), 'never')
+      await fireEvent.update(screen.getByTestId('settings-catalog-freshness'), 'never')
+      const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+      storeSet.mockClear()
+      await user.click(screen.getByTestId('settings-save'))
+      await waitFor(() => expect(screen.getByTestId('settings-save')).not.toBeDisabled())
+      expect(screen.queryByText(t('common.saved'))).toBeNull()
+      expect(storeSet).not.toHaveBeenCalled()
+    })
+  })
+
   it('defaults project duplicate policy to ask and saves the selected policy', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
     const select = await screen.findByTestId('project-duplicate-policy')

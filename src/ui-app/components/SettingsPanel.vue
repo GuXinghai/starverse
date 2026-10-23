@@ -1310,6 +1310,37 @@ async function load() {
   }
 }
 
+type SettingsSaveGroup = 'catalog' | 'preferences' | 'reasoning' | 'generationTimeout' | 'defaults' | 'network'
+type SettingsSaveStep = Readonly<{ group: SettingsSaveGroup; run: () => Promise<unknown>; onSaved?: () => void }>
+
+function settingsSaveGroupLabel(group: SettingsSaveGroup): string {
+  switch (group) {
+    case 'catalog': return t('settings.runtime.saveGroupCatalog')
+    case 'preferences': return t('settings.runtime.saveGroupPreferences')
+    case 'reasoning': return t('settings.runtime.saveGroupReasoning')
+    case 'generationTimeout': return t('settings.runtime.saveGroupGenerationTimeout')
+    case 'defaults': return t('settings.runtime.saveGroupDefaults')
+    case 'network': return t('settings.runtime.saveGroupNetwork')
+  }
+}
+
+// R4-08 (P1-01): the main process answers `false` when it rejects a write. That is a failed save, never a saved one.
+async function requireStoreWrite(write: Promise<unknown>, key: string): Promise<void> {
+  if (await write === false) throw new Error(tf('settings.runtime.storeWriteRejected', { key }))
+}
+
+async function requirePreferenceWrite(write: Promise<boolean>, key: string): Promise<void> {
+  if (!await write) throw new Error(tf('settings.runtime.storeWriteRejected', { key }))
+}
+
+function dispatchSettingsUpdated(type: string, detail: unknown) {
+  try {
+    window.dispatchEvent(new CustomEvent(type, { detail }))
+  } catch {
+    // no-op
+  }
+}
+
 async function save() {
   error.value = null
   savedMessage.value = null
@@ -1334,39 +1365,116 @@ async function save() {
     return
   }
 
-  saving.value = true
+  // R4-09 (P6a-03): everything that can be rejected locally is checked before the first write, so a bad
+  // draft cannot leave an earlier group persisted and announced while a later one is not.
+  let globalCatalogPolicy: ReturnType<typeof validateCatalogPolicyV2> | null = null
+  const providerCatalogWrites: Array<Readonly<{ providerKey: ProviderCatalogKnownProviderKey; storeKey: string; policy: ReturnType<typeof validateCatalogPolicyV2> | null }>> = []
   try {
     if (catalogGlobalPolicyConfigured.value && catalogGlobalPolicyTouched.value) {
-      await store.set(GLOBAL_CATALOG_POLICY_V2_STORE_KEY, validateCatalogPolicyV2({
+      globalCatalogPolicy = validateCatalogPolicyV2({
         startupSyncPolicy: catalogStartupSyncPolicy.value,
         pickerOpenSyncPolicy: catalogPickerOpenSyncPolicy.value,
         listApplyMode: catalogListUpdateMode.value,
         freshnessMs: catalogFreshnessMs.value,
         retentionMs: catalogRetentionMs.value,
-      }))
-      catalogGlobalPolicyTouched.value = false
+      })
     }
     for (const descriptor of catalogProviderDescriptors) {
       const providerKey = descriptor.providerKey
       if (catalogProviderOverrideTouched.value[providerKey] !== true) continue
       const storeKey = providerCatalogPolicyV2StoreKey(providerKey)
-      if (catalogProviderOverrideEnabled.value[providerKey] === true) {
-        const draft = catalogProviderPolicyDrafts.value[providerKey] ?? globalCatalogPolicyDraft()
-        await store.set(storeKey, validateCatalogPolicyV2(draft))
-      } else {
-        await store.delete(storeKey)
-      }
+      providerCatalogWrites.push(catalogProviderOverrideEnabled.value[providerKey] === true
+        ? { providerKey, storeKey, policy: validateCatalogPolicyV2(catalogProviderPolicyDrafts.value[providerKey] ?? globalCatalogPolicyDraft()) }
+        : { providerKey, storeKey, policy: null })
     }
-    catalogProviderOverrideTouched.value = {}
-    await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
-    await proxySettingsPanel.value?.save()
-    const nextReasoningPrefs = buildReasoningPrefs()
-    await setReasoningPrefs(nextReasoningPrefs)
-    await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
-    await setGenerationTotalTimeoutMs(nextGenerationTimeout.ms)
-    await setQuitWarningEnabled(quitWarningEnabled.value)
-    if (!await setProjectDuplicatePolicy(projectDuplicatePolicy.value)) throw new Error('PROJECT_DUPLICATE_POLICY_SAVE_FAILED')
-    await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+    return
+  }
+  const nextReasoningPrefs = buildReasoningPrefs()
+  const normalizedWebSearchDefaults = normalizeSearchSettingsLayer(webSearchDefaults.value)
+  const normalizedGenerationParamsDefaults = normalizeGenerationParamsLayer(generationParamsDefaults.value)
+
+  // The network proxy is the one step that can fail on the main side, so it runs last: a rejected proxy apply
+  // can no longer stop the other settings from being saved.
+  const steps: SettingsSaveStep[] = []
+  if (globalCatalogPolicy) {
+    const policy = globalCatalogPolicy
+    steps.push({
+      group: 'catalog',
+      run: () => requireStoreWrite(store.set(GLOBAL_CATALOG_POLICY_V2_STORE_KEY, policy), GLOBAL_CATALOG_POLICY_V2_STORE_KEY),
+      onSaved: () => { catalogGlobalPolicyTouched.value = false },
+    })
+  }
+  for (const write of providerCatalogWrites) {
+    steps.push({
+      group: 'catalog',
+      run: () => requireStoreWrite(write.policy ? store.set(write.storeKey, write.policy) : store.delete(write.storeKey), write.storeKey),
+      onSaved: () => {
+        const { [write.providerKey]: _saved, ...rest } = catalogProviderOverrideTouched.value
+        catalogProviderOverrideTouched.value = rest
+      },
+    })
+  }
+  steps.push(
+    {
+      group: 'preferences',
+      run: () => requireStoreWrite(store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels), MAX_RECENT_MODELS_KEY),
+      onSaved: () => dispatchSettingsUpdated('settings:maxRecentModelsUpdated', nextMaxRecentModels),
+    },
+    {
+      group: 'preferences',
+      run: () => requirePreferenceWrite(setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true), 'chatReasoningPanelDefaultExpanded'),
+      onSaved: () => dispatchSettingsUpdated('settings:reasoningPanelDefaultExpandedUpdated', reasoningPanelDefaultExpanded.value === true),
+    },
+    { group: 'preferences', run: () => requirePreferenceWrite(setQuitWarningEnabled(quitWarningEnabled.value), 'warnOnQuitWithActiveWork') },
+    { group: 'preferences', run: () => requirePreferenceWrite(setProjectDuplicatePolicy(projectDuplicatePolicy.value), 'projectDuplicatePolicy') },
+    {
+      group: 'preferences',
+      run: () => requirePreferenceWrite(setUserMessageRenderDefault(userMessageRenderDefault.value === true), 'userMessageRenderDefault'),
+      onSaved: () => dispatchSettingsUpdated('settings:userMessageRenderDefaultUpdated', userMessageRenderDefault.value === true),
+    },
+    {
+      group: 'reasoning',
+      run: () => requirePreferenceWrite(setReasoningPrefs(nextReasoningPrefs), 'reasoningPrefs'),
+      onSaved: () => dispatchSettingsUpdated('settings:reasoningPrefsUpdated', nextReasoningPrefs),
+    },
+    { group: 'generationTimeout', run: () => requirePreferenceWrite(setGenerationTotalTimeoutMs(nextGenerationTimeout.ms), 'generationTotalTimeoutMs') },
+    {
+      group: 'defaults',
+      run: () => requirePreferenceWrite(setWebSearchDefaults(normalizedWebSearchDefaults), 'webSearchDefaults'),
+      onSaved: () => dispatchSettingsUpdated('settings:webSearchDefaultsUpdated', normalizedWebSearchDefaults),
+    },
+    {
+      group: 'defaults',
+      run: () => requirePreferenceWrite(setGenerationParamsDefaults(normalizedGenerationParamsDefaults), 'generationParamsDefaults'),
+      onSaved: () => dispatchSettingsUpdated('settings:generationParamsDefaultsUpdated', normalizedGenerationParamsDefaults),
+    },
+    { group: 'network', run: async () => { await proxySettingsPanel.value?.save() } },
+  )
+
+  saving.value = true
+  const completed: SettingsSaveGroup[] = []
+  try {
+    for (const [index, step] of steps.entries()) {
+      try {
+        await step.run()
+      } catch (cause: any) {
+        // A group counts as saved only when every one of its steps finished.
+        const notSaved = [...new Set(steps.slice(index).map((later) => later.group))]
+        const reason = cause?.message ? String(cause.message) : String(cause)
+        error.value = completed.length === 0
+          ? reason
+          : tf('settings.runtime.savePartial', {
+            saved: completed.map(settingsSaveGroupLabel).join(', '),
+            notSaved: notSaved.map(settingsSaveGroupLabel).join(', '),
+            reason,
+          })
+        return
+      }
+      step.onSaved?.()
+      if (steps[index + 1]?.group !== step.group) completed.push(step.group)
+    }
     if (isDev) {
       try {
         if (debugEchoUpstreamBody.value) {
@@ -1384,27 +1492,12 @@ async function save() {
         // no-op
       }
     }
-    const normalizedWebSearchDefaults = normalizeSearchSettingsLayer(webSearchDefaults.value)
-    const normalizedGenerationParamsDefaults = normalizeGenerationParamsLayer(generationParamsDefaults.value)
-    await setWebSearchDefaults(normalizedWebSearchDefaults)
-    await setGenerationParamsDefaults(normalizedGenerationParamsDefaults)
-    try {
-      window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
-      window.dispatchEvent(new CustomEvent('settings:reasoningPanelDefaultExpandedUpdated', { detail: reasoningPanelDefaultExpanded.value === true }))
-      window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
-      window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
-      window.dispatchEvent(new CustomEvent('settings:generationParamsDefaultsUpdated', { detail: normalizedGenerationParamsDefaults }))
-      window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
-    } catch {
-      // no-op
-    }
     savedMessage.value = t('common.saved')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
   }
 }
+
 
 async function clearProviderCredential<TStatus extends Readonly<{ apiKeyConfigured: boolean }>>(input: Readonly<{
   providerKey: ProviderCatalogKnownProviderKey

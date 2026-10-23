@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
+import { catalogItemsContentDigestV2 } from '../../infra/db/repo/catalogSnapshotDigestV2'
 import {
   ModelCatalogV2Repo,
   type ModelCatalogActiveSnapshotV2,
@@ -45,10 +46,10 @@ export type CatalogSyncResultV2 =
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/u
 const EMPTY_SCOPE_STATE: CatalogScopeStateV2 = Object.freeze({ status: null, active: null, pending: null })
 
+// R4-08 (P3a-02): the digest identifies what the provider reported. It ignores fetch times, so refreshing an
+// unchanged catalog keeps its digest and does not look like a new snapshot.
 function responseDigest(items: readonly Readonly<Record<string, unknown>>[]): string {
-  return createHash('sha256')
-    .update(stableSerializeProviderRequestBoundedV2(items, 32 * 1024 * 1024), 'utf8')
-    .digest('hex')
+  return catalogItemsContentDigestV2(items)
 }
 
 export class CatalogScopeCoordinatorV2 {
@@ -163,9 +164,19 @@ export class CatalogScopeCoordinatorV2 {
       return this.#failureResult({ scope: input.scope, failureContext: input.failureContext, providerFailure })
     }
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort('catalog_sync_timeout'), input.timeoutMs)
+    // R4-08 (P3a-05): an adapter that ignores the abort signal must not hold the scope in 'syncing' forever, so
+    // the attempt ends when the signal fires whether or not the adapter ever settles.
+    let rejectOnAbort!: (reason: unknown) => void
+    const aborted = new Promise<never>((_, reject) => { rejectOnAbort = reject })
+    const timer = setTimeout(() => {
+      controller.abort('catalog_sync_timeout')
+      rejectOnAbort(Object.assign(new Error('catalog_sync_timeout'), { name: 'TimeoutError' }))
+    }, input.timeoutMs)
+    aborted.catch(() => undefined)
     try {
-      const result = await input.execute(controller.signal)
+      const executing = input.execute(controller.signal)
+      executing.catch(() => undefined)
+      const result = await Promise.race([executing, aborted])
       if (!result.ok) {
         try {
           this.repo.failSync(input.scope, attemptId, result.providerFailure)

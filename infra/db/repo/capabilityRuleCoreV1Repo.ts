@@ -310,6 +310,33 @@ export class CapabilityRuleCoreV1Repo {
     }))
   }
 
+  /** See CapabilityRuleCoreV2Repo.listReadableOwnershipSnapshots. */
+  listReadableOwnershipSnapshots(): Readonly<{
+    snapshots: readonly CapabilityRuleOwnershipSnapshotFactV1[]
+    unreadable: readonly Readonly<{ ownership: string; ownerId: string }>[]
+  }> {
+    const rows = this.db.prepare(`SELECT ownership, owner_id
+      FROM capability_rule_owner_snapshot_v1 ORDER BY ownership, owner_id`).all() as Array<{
+        ownership: unknown
+        owner_id: unknown
+      }>
+    const snapshots: CapabilityRuleOwnershipSnapshotFactV1[] = []
+    const unreadable: Array<Readonly<{ ownership: string; ownerId: string }>> = []
+    for (const row of rows) {
+      try {
+        if ((row.ownership !== 'cloud' && row.ownership !== 'user') || typeof row.owner_id !== 'string') {
+          return repositoryInvalid()
+        }
+        const snapshot = this.readOwnershipSnapshot({ ownership: row.ownership, ownerId: row.owner_id })
+        if (!snapshot) return repositoryInvalid()
+        snapshots.push(snapshot)
+      } catch {
+        unreadable.push(Object.freeze({ ownership: String(row.ownership), ownerId: String(row.owner_id) }))
+      }
+    }
+    return Object.freeze({ snapshots: Object.freeze(snapshots), unreadable: Object.freeze(unreadable) })
+  }
+
   replaceOwnershipSnapshot(input: Readonly<{
     expectedSnapshotRevision: string | null
     snapshot: unknown

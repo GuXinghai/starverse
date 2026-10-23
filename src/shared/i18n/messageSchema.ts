@@ -117,6 +117,14 @@ export interface SettingsMessages {
       readonly anthropicApiKeyCleared: string
       readonly deepSeekApiKeyCleared: string
       readonly maxRecentModelsPositiveInteger: string
+      readonly storeWriteRejected: string
+      readonly savePartial: string
+      readonly saveGroupCatalog: string
+      readonly saveGroupPreferences: string
+      readonly saveGroupReasoning: string
+      readonly saveGroupGenerationTimeout: string
+      readonly saveGroupDefaults: string
+      readonly saveGroupNetwork: string
       readonly proxyProbePassed: string
       readonly proxyProbeFailed: string
       readonly proxyProbeFailedWithDiagnostic: string

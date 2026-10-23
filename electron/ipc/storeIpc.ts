@@ -5,6 +5,8 @@ import { GENERATION_V2_UI_PREFERENCE_NAMESPACE, GENERATION_V2_UI_PREFERENCE_KEYS
   from '../../src/shared/settings/generationV2UiPreferenceKeys'
 import { QUIT_WARNING_PREFERENCE_KEY } from '../../src/shared/settings/quitWarningPreference'
 import { PROJECT_DUPLICATE_POLICY_KEY, isProjectDuplicatePolicy } from '../../src/shared/settings/projectDuplicatePolicy'
+import { isCatalogPolicyV2 } from '../../src/shared/modelCatalog/catalogPolicyV2'
+import { isProviderCatalogSourceKey } from '../../src/shared/modelCatalog/providerCatalogRegistry'
 import {
   ALLOWED_CONFIG_KEYS,
   checkConfigIntegrity,
@@ -74,8 +76,18 @@ function isRendererBlockedCredentialStoreKey(key: string): boolean {
     isProviderCredentialSecureStoreKey(key)
 }
 
+// R4-08 (P1-01): `providerCatalog.<providerKey>.policyV2` is the per-provider catalog policy. The
+// exact-key allowlist could not express it, so every renderer read returned undefined and every write
+// returned false. Only registered catalog providers are accepted; this is not a prefix pass-through.
+const PROVIDER_CATALOG_POLICY_KEY_PATTERN = /^providerCatalog\.([^.]+)\.policyV2$/u
+
+function isProviderCatalogPolicyConfigKey(key: string): boolean {
+  const match = PROVIDER_CATALOG_POLICY_KEY_PATTERN.exec(key)
+  return match !== null && isProviderCatalogSourceKey(match[1])
+}
+
 function isRendererAccessibleConfigKey(key: string): boolean {
-  return ALLOWED_CONFIG_KEYS.has(key) && !isRendererBlockedCredentialStoreKey(key)
+  return (ALLOWED_CONFIG_KEYS.has(key) || isProviderCatalogPolicyConfigKey(key)) && !isRendererBlockedCredentialStoreKey(key)
 }
 
 function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
@@ -118,6 +130,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
       return true
     }
     if (!isRendererAccessibleConfigKey(keyText)) return false
+    if (isProviderCatalogPolicyConfigKey(keyText) && !isCatalogPolicyV2(value)) return false
 
     const sizeCheck = checkFieldSize(keyText, value, isDev)
     if (!sizeCheck.ok) return false

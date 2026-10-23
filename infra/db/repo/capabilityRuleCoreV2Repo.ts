@@ -105,6 +105,27 @@ export class CapabilityRuleCoreV2Repo {
     return Object.freeze(rows.map(decodeSnapshotRow))
   }
 
+  /**
+   * Like listOwnershipSnapshots, but a row that no longer decodes is reported instead of thrown, so one bad owner
+   * row cannot block a save that does not touch that owner. The row stays in place; nothing is deleted.
+   */
+  listReadableOwnershipSnapshots(): Readonly<{
+    snapshots: readonly CapabilityRuleOwnershipSnapshotFactV2[]
+    unreadable: readonly Readonly<{ ownership: string; ownerId: string }>[]
+  }> {
+    const rows = this.db.prepare(`SELECT ownership, owner_id, snapshot_revision, content_digest,
+      snapshot_json, created_at_ms, updated_at_ms FROM capability_rule_owner_snapshot_v2
+      ORDER BY ownership, owner_id`).all() as SnapshotRow[]
+    const snapshots: CapabilityRuleOwnershipSnapshotFactV2[] = []
+    const unreadable: Array<Readonly<{ ownership: string; ownerId: string }>> = []
+    for (const row of rows) {
+      try { snapshots.push(decodeSnapshotRow(row)) } catch {
+        unreadable.push(Object.freeze({ ownership: String(row.ownership), ownerId: String(row.owner_id) }))
+      }
+    }
+    return Object.freeze({ snapshots: Object.freeze(snapshots), unreadable: Object.freeze(unreadable) })
+  }
+
   replaceOwnershipSnapshot(input: Readonly<{
     expectedSnapshotRevision: string | null
     snapshot: unknown
@@ -194,6 +215,16 @@ export function listCapabilityRuleOwnershipSnapshotsV2(
   db: BetterSqlite3.Database,
 ): readonly CapabilityRuleOwnershipSnapshotFactV2[] {
   return new CapabilityRuleCoreV2Repo(db).listOwnershipSnapshots()
+}
+
+/**
+ * The owner snapshots that still decode. Request-rule publication uses this on both its prepare and write sides, so
+ * one owner row that no longer decodes is left out consistently instead of blocking every save (R4-09, P3a-07).
+ */
+export function listReadableCapabilityRuleOwnershipSnapshotsV2(
+  db: BetterSqlite3.Database,
+): readonly CapabilityRuleOwnershipSnapshotFactV2[] {
+  return new CapabilityRuleCoreV2Repo(db).listReadableOwnershipSnapshots().snapshots
 }
 
 /** Returns the validated applied Cloud baseline owned by the official release source, if present. */

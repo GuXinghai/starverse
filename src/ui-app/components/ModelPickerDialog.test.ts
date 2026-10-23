@@ -2208,5 +2208,60 @@ describe('ModelPickerDialog', () => {
     expect(screen.queryByTestId('model-picker-update-available')).toBeNull()
     expect(screen.getByTestId('model-picker-item-openai/stable')).toBeTruthy()
   })
+
+  // R4-08 (P6a-07): a single-provider refresh shares the fetch sequence with the all-provider fetch it overlaps.
+  // The all-provider fetch used to be discarded wholesale, so the slower provider never appeared.
+  it('a single-provider refresh does not discard the slower providers of a fetch that is still running', async () => {
+    setCatalogSettings({
+      openRouterCatalogPickerOpenSyncPolicy: 'never',
+      openRouterCatalogListUpdateMode: 'automatic',
+    })
+    const user = userEvent.setup()
+    const model = (providerKey: string, modelId: string) => ({
+      providerKey, modelId, modelKey: `${providerKey}::${modelId}`, canonicalSlug: modelId, displayName: modelId,
+      description: null, vendor: providerKey, contextLength: 8192, maxOutputTokens: 4096, createdAtSec: 1,
+      pricing: { prompt: null, completion: null, request: null, image: null },
+      capabilities: { reasoning: false, tools: false, structuredOutputs: false, vision: false, longContext: false },
+    })
+    let releaseOpenAI!: () => void
+    const openAIGate = new Promise<void>((resolve) => { releaseOpenAI = resolve })
+    let openRouterCalls = 0
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? 'openrouter')
+      if (providerKey === 'openai_responses') {
+        await openAIGate
+        return createResult([model(providerKey, 'gpt-slow')], null, { catalogRevision: 'rev-openai', modelCount: 1, lastSyncAtMs: 100 })
+      }
+      openRouterCalls += 1
+      return createResult([model(providerKey, openRouterCalls === 1 ? 'or-old' : 'or-new')], null,
+        { catalogRevision: openRouterCalls === 1 ? 'rev-old' : 'rev-new', modelCount: 1, lastSyncAtMs: 100 })
+    })
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({ ok: true, syncAttempted: true, syncSucceeded: true, providerKey: 'openrouter',
+        modelCount: 1, lastSyncAtMs: 200, errorCode: null, errorMessage: null, catalogRevision: 'rev-new' })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({ providerKey: 'openrouter', syncState: 'ok', status: 'synced',
+        lastSyncAtMs: 100, modelCount: 1, lastErrorCode: null, lastErrorMessage: null, isStale: false, catalogRevision: 'rev-old' })),
+    }
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: 'or-old' },
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          { providerId: 'openai_responses', providerName: 'OpenAI Responses', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+        ],
+      },
+    })
+
+    await waitFor(() => expect(queryFn.mock.calls.some(([input]) => input.sourceProviderKey === 'openai_responses')).toBe(true))
+    await user.click(screen.getByTestId('model-picker-sync-refresh'))
+    await screen.findByTestId('model-picker-item-or-new')
+
+    releaseOpenAI()
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-slow')
+    expect(screen.getByTestId('model-picker-item-or-new')).toBeTruthy()
+  })
 })
 

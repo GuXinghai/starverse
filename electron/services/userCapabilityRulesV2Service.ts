@@ -384,7 +384,15 @@ export class UserCapabilityRulesV2Service {
     const requestRulesPublication = prepareGenerationRequestRulesPublicationV2(this.db, subjectSet,
       coreWrite.projected.definition, undefined,
       CAPABILITY_RULE_MATERIALIZATION_DEFAULT_ACTIVATION_POLICIES_V1)
-    const activeV2Snapshots = this.#coreRepo.listOwnershipSnapshots()
+    // R4-09 (P3a-07): an owner row that no longer decodes is left out of this publication rather than blocking the
+    // save of the user's own rules; it stays in the database untouched.
+    const readableV2 = this.#coreRepo.listReadableOwnershipSnapshots()
+    const readableV1 = this.#legacyCoreRepo.listReadableOwnershipSnapshots()
+    if (readableV2.unreadable.length > 0 || readableV1.unreadable.length > 0) {
+      console.warn('[capability-rules] skipped unreadable owner snapshots while saving user rules',
+        { v2: readableV2.unreadable, v1: readableV1.unreadable })
+    }
+    const activeV2Snapshots = readableV2.snapshots
       .filter(snapshot => !(snapshot.projected.definition.ownership === 'user' &&
         snapshot.projected.definition.ownerId === USER_RULES_LOCAL_OWNER_ID_V1))
       .map(snapshot => snapshot.projected)
@@ -392,7 +400,7 @@ export class UserCapabilityRulesV2Service {
     const v2OwnerKeys = new Set(activeV2Snapshots.map(snapshot =>
       `${snapshot.definition.ownership}\0${snapshot.definition.ownerId}`))
     const reservedOwnerKeys = new Set(reservedCloudOwners.map(({ ownerId }) => `cloud\0${ownerId}`))
-    const activeV1Snapshots = this.#legacyCoreRepo.listOwnershipSnapshots()
+    const activeV1Snapshots = readableV1.snapshots
       .filter(snapshot => !v2OwnerKeys.has(`${snapshot.projected.definition.ownership}\0${snapshot.projected.definition.ownerId}`) &&
         !reservedOwnerKeys.has(`${snapshot.projected.definition.ownership}\0${snapshot.projected.definition.ownerId}`))
       .map(snapshot => snapshot.projected)
@@ -470,7 +478,9 @@ export class UserCapabilityRulesV2Service {
   }
 
   cancelDraft(input: Readonly<{ sessionId: string; expectedDraftRevision: number }>): void {
-    this.#requiredDraft(input)
+    // Cancelling does not need the draft's content, so a draft that no longer decodes can still be cancelled.
+    const header = this.#draftRepo.readDraftHeader()
+    if (!header || header.sessionId !== input.sessionId || header.draftRevision !== input.expectedDraftRevision) this.#stale()
     this.#draftRepo.discard(input)
   }
 

@@ -184,6 +184,10 @@ function choose(details: CompatibleProviderRegistryDetails) {
   void loadDiscovery();
 }
 
+function errorText(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
 function beginCreate() {
   selectedId.value = "";
   displayName.value = "";
@@ -195,6 +199,7 @@ function beginCreate() {
   ordinaryHeaders.value = "";
   query.value = "";
   models.value = [];
+  discovery.value = [];
   clearSecrets();
 }
 
@@ -209,7 +214,18 @@ async function save(storageMode?: "session" | "plaintext") {
   busy.value = true;
   error.value = "";
   notice.value = "";
+  // R4-09 (P6a-05): what the request needs is read here, before the first await, so a change made while the
+  // save is in flight cannot alter what is sent for the provider that was being saved.
+  const savingProviderId = selected.value?.provider.providerInstanceId ?? null;
+  const savingDisplayName = displayName.value;
+  const savingAuthMode = authMode.value;
+  const hasNewSecret = Boolean(secret.value || customSecretHeaders.value);
   try {
+    if (savingProviderId !== null && savingAuthMode === "basic" && username.value && !secret.value) {
+      // A username cannot be stored without its password; saying so beats silently dropping the edit.
+      throw new Error("compatible_basic_password_required");
+    }
+    const savingCredential = credential();
     const explicitHeaders = [
       ...(organization.value.trim()
         ? [
@@ -240,26 +256,26 @@ async function save(storageMode?: "session" | "plaintext") {
       query: publicValues(query.value),
     };
     let details: CompatibleProviderRegistryDetails;
-    if (!selected.value)
+    if (savingProviderId === null)
       details = await registry.create({
-        displayName: displayName.value,
+        displayName: savingDisplayName,
         endpoint,
-        credential: credential(),
+        credential: savingCredential,
         ...(storageMode === undefined ? {} : { storageMode }),
         requestMappings: [],
       });
     else {
       details = await registry.update({
-        providerInstanceId: selected.value.provider.providerInstanceId,
-        displayName: displayName.value,
+        providerInstanceId: savingProviderId,
+        displayName: savingDisplayName,
       });
       details = await registry.updateEndpoint({
         providerInstanceId: details.provider.providerInstanceId,
         endpoint,
-        credential: authMode.value === "none"
+        credential: savingAuthMode === "none"
           ? { mode: "none" as const }
-          : (secret.value || customSecretHeaders.value)
-            ? credential()
+          : hasNewSecret
+            ? savingCredential
             : null,
         ...(storageMode === undefined ? {} : { storageMode }),
       });
@@ -272,7 +288,7 @@ async function save(storageMode?: "session" | "plaintext") {
     notice.value = t("settings.openAICompatible.saved");
   } catch (cause) {
     credentialStorageFallback.value = needsCredentialStorageChoice(cause) &&
-      authMode.value !== "none" && Boolean(secret.value || customSecretHeaders.value);
+      savingAuthMode !== "none" && hasNewSecret;
     error.value =
       cause instanceof Error ? cause.message : "invalid_configuration";
   } finally {
@@ -301,20 +317,31 @@ async function removeProvider() {
 
 async function removeCredential(credentialVersionRef: string) {
   if (!selected.value || !window.confirm(t("settings.openAICompatible.deleteCredentialConfirm"))) return;
-  const details = await registry.deleteCredential(credentialVersionRef);
-  providers.value = providers.value.map((item) => item.provider.providerInstanceId === details.provider.providerInstanceId ? details : item);
-  choose(details);
+  const providerId = selected.value.provider.providerInstanceId;
+  busy.value = true;
+  error.value = "";
+  try {
+    const details = await registry.deleteCredential(credentialVersionRef);
+    providers.value = providers.value.map((item) => item.provider.providerInstanceId === details.provider.providerInstanceId ? details : item);
+    if (selectedId.value === providerId) choose(details);
+  } catch (cause) {
+    error.value = errorText(cause, "registry_unavailable");
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function testConnection() {
   if (!selected.value) return;
+  const providerId = selected.value.provider.providerInstanceId;
   busy.value = true;
   diagnostics.value = null;
+  error.value = "";
   try {
-    diagnostics.value = await registry.testConnection(
-      selected.value.provider.providerInstanceId,
-      crypto.randomUUID(),
-    ) as CompatibleConnectionTestResult;
+    const result = await registry.testConnection(providerId, crypto.randomUUID()) as CompatibleConnectionTestResult;
+    if (selectedId.value === providerId) diagnostics.value = result;
+  } catch (cause) {
+    error.value = errorText(cause, "compatible_connection_test_failed");
   } finally {
     busy.value = false;
   }
@@ -322,6 +349,7 @@ async function testConnection() {
 
 async function saveProfiles(acceptedDiscoveryPaths: readonly string[] = []) {
   if (!selected.value) return;
+  const providerId = selected.value.provider.providerInstanceId;
   busy.value = true;
   error.value = "";
   notice.value = "";
@@ -329,7 +357,7 @@ async function saveProfiles(acceptedDiscoveryPaths: readonly string[] = []) {
     const requestProfile = JSON.parse(requestProfileJson.value);
     const defaultExtraBody = JSON.parse(extraBodyJson.value);
     const details = await registry.reviseConfiguration({
-      providerInstanceId: selected.value.provider.providerInstanceId,
+      providerInstanceId: providerId,
       requestProfile: { ...requestProfile, defaultExtraBody },
       requestMappings: JSON.parse(requestMappingsJson.value),
       reasoningMapping: { ...JSON.parse(reasoningMappingJson.value), mode: reasoningMode.value },
@@ -341,7 +369,7 @@ async function saveProfiles(acceptedDiscoveryPaths: readonly string[] = []) {
         ? details
         : item,
     );
-    choose(details);
+    if (selectedId.value === providerId) choose(details);
     notice.value = t("settings.openAICompatible.profilesSaved");
   } catch (cause) {
     error.value =
@@ -378,69 +406,81 @@ function removeReasoningRule(index: number) {
   reasoningMappingJson.value = JSON.stringify(config, null, 2);
 }
 
+// A response is shown only while the provider it was requested for is still the selected one; a slower answer
+// for a previous selection must not appear under the current one.
 async function loadDiscovery() {
   if (!selected.value) return;
+  const providerId = selected.value.provider.providerInstanceId;
   try {
-    discovery.value = [
-      ...(await registry.listDiscovery(
-        selected.value.provider.providerInstanceId,
-      )),
-    ];
+    const found = [...(await registry.listDiscovery(providerId))];
+    if (selectedId.value === providerId) discovery.value = found;
   } catch (cause) {
-    error.value =
-      cause instanceof Error ? cause.message : "registry_unavailable";
+    if (selectedId.value === providerId) error.value = errorText(cause, "registry_unavailable");
   }
 }
 
 async function ignoreDiscovery(streamPath: string) {
   if (!selected.value) return;
-  discovery.value = [
-    ...(await registry.ignoreDiscovery({
-      providerInstanceId: selected.value.provider.providerInstanceId,
-      streamPath,
-    })),
-  ];
+  const providerId = selected.value.provider.providerInstanceId;
+  busy.value = true;
+  error.value = "";
+  try {
+    const remaining = [...(await registry.ignoreDiscovery({ providerInstanceId: providerId, streamPath }))];
+    if (selectedId.value === providerId) discovery.value = remaining;
+  } catch (cause) {
+    error.value = errorText(cause, "registry_unavailable");
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function acceptDiscovery(field: CompatibleDiscoveredResponseField) {
-  const config = JSON.parse(reasoningMappingJson.value);
-  config.rules = [
-    ...config.rules,
-    { stream: { path: field.streamPath, mode: "append" }, semantic: "text" },
-  ];
-  reasoningMappingJson.value = JSON.stringify(config, null, 2);
+  const providerId = selected.value?.provider.providerInstanceId;
+  try {
+    const config = JSON.parse(reasoningMappingJson.value);
+    config.rules = [
+      ...(Array.isArray(config.rules) ? config.rules : []),
+      { stream: { path: field.streamPath, mode: "append" }, semantic: "text" },
+    ];
+    reasoningMappingJson.value = JSON.stringify(config, null, 2);
+  } catch (cause) {
+    error.value = errorText(cause, "invalid_configuration");
+    return;
+  }
   await saveProfiles([field.streamPath]);
-  await loadDiscovery();
+  if (providerId !== undefined && selectedId.value === providerId) await loadDiscovery();
 }
 
 async function loadModels() {
   if (!selected.value) return;
+  const providerId = selected.value.provider.providerInstanceId;
   try {
-    models.value = [
+    const found = [
       ...(
         await catalog.query({
-          providerInstanceId: selected.value.provider.providerInstanceId,
+          providerInstanceId: providerId,
           includeStale: true,
           limit: 200,
         })
       ).items,
     ];
+    if (selectedId.value === providerId) models.value = found;
   } catch (cause) {
-    error.value =
-      cause instanceof Error ? cause.message : "compatible_catalog_sync_failed";
+    if (selectedId.value === providerId) error.value = errorText(cause, "compatible_catalog_sync_failed");
   }
 }
 
 async function syncModels() {
   if (!selected.value) return;
+  const providerId = selected.value.provider.providerInstanceId;
   busy.value = true;
   try {
     await catalog.sync({
-      providerInstanceId: selected.value.provider.providerInstanceId,
+      providerInstanceId: providerId,
       requestId: crypto.randomUUID(),
       force: true,
     });
-    await loadModels();
+    if (selectedId.value === providerId) await loadModels();
   } catch (cause) {
     error.value =
       cause instanceof Error ? cause.message : "compatible_catalog_sync_failed";
@@ -451,15 +491,22 @@ async function syncModels() {
 
 async function addManualModel() {
   if (!selected.value || !manualModelId.value.trim()) return;
+  const providerId = selected.value.provider.providerInstanceId;
   busy.value = true;
+  error.value = "";
   const capability = (value: "unknown" | "yes" | "no") =>
     value === "unknown" ? null : value === "yes";
-  const positiveInteger = (value: string) =>
-    value.trim() ? Number(value) : null;
+  // Main accepts only positive integers, so a typo is reported here instead of reaching it as NaN or a fraction.
+  const positiveInteger = (value: string) => {
+    if (!value.trim()) return null;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error("compatible_manual_limit_invalid");
+    return parsed;
+  };
   const price = (value: string) => value.trim() || null;
   try {
     await catalog.upsertManual({
-      providerInstanceId: selected.value.provider.providerInstanceId,
+      providerInstanceId: providerId,
       modelId: manualModelId.value.trim(),
       metadata: {
         schemaVersion: 1,
@@ -494,7 +541,9 @@ async function addManualModel() {
     manualCompletionPrice.value = "";
     manualRequestPrice.value = "";
     manualImagePrice.value = "";
-    await loadModels();
+    if (selectedId.value === providerId) await loadModels();
+  } catch (cause) {
+    error.value = errorText(cause, "compatible_catalog_sync_failed");
   } finally {
     busy.value = false;
   }
@@ -502,8 +551,17 @@ async function addManualModel() {
 
 async function removeManualModel(modelId: string) {
   if (!selected.value || !window.confirm(t("settings.openAICompatible.deleteManualConfirm"))) return;
-  await catalog.deleteManual({ providerInstanceId: selected.value.provider.providerInstanceId, modelId });
-  await loadModels();
+  const providerId = selected.value.provider.providerInstanceId;
+  busy.value = true;
+  error.value = "";
+  try {
+    await catalog.deleteManual({ providerInstanceId: providerId, modelId });
+    if (selectedId.value === providerId) await loadModels();
+  } catch (cause) {
+    error.value = errorText(cause, "compatible_catalog_sync_failed");
+  } finally {
+    busy.value = false;
+  }
 }
 
 onMounted(load);
@@ -556,6 +614,7 @@ onMounted(load);
           type="button"
           class="sv-row block w-full min-w-0 px-3 py-2 text-left text-xs"
           :class="selectedId === item.provider.providerInstanceId ? 'is-selected' : ''"
+          :disabled="busy"
           @click="choose(item)"
         >
           <span class="font-medium text-gray-900">{{ item.provider.displayName }}</span

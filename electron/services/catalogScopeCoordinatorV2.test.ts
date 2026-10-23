@@ -163,7 +163,8 @@ describe('CatalogScopeCoordinatorV2', () => {
         execute: async () => ({ ok: true, completeness: 'incomplete', items: [{ id: 'partial' }] }) })
       expect(incomplete).toMatchObject({ ok: false, providerFailure: {
         starverseDiagnosticCode: 'MODEL_CATALOG_SNAPSHOT_INCOMPLETE' }, state: { active: null } })
-      expect(coordinator.read(scope).status).toMatchObject({ authorityRevision: 2, syncState: 'error' })
+      // R4-08 (P3a-14): a failed first attempt published no catalog, so the revision is still the initial 1.
+      expect(coordinator.read(scope).status).toMatchObject({ authorityRevision: 1, syncState: 'error' })
     } finally { db.close() }
 
     const repo = {

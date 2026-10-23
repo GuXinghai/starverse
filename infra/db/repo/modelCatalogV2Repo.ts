@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestBoundedV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
 import { decodeProviderFailureV2, type ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
+import { catalogItemsContentKeyV2 } from './catalogSnapshotDigestV2'
 
 const MAX_ITEMS_JSON_BYTES = 32 * 1024 * 1024
 const ID_PATTERN = /^[A-Za-z0-9._:/-]{1,512}$/u
@@ -233,8 +234,7 @@ export class ModelCatalogV2Repo {
       VALUES (@scopeId,@providerKey,@credentialScopeId,@endpointProfileId,@operationContractId,@category,
        1,'syncing',@attemptId,@now,@now,@now)
       ON CONFLICT(scope_id) DO UPDATE SET sync_state='syncing',active_attempt_id=excluded.active_attempt_id,
-       last_attempted_at_ms=excluded.last_attempted_at_ms,updated_at_ms=excluded.updated_at_ms,
-       authority_revision=model_catalog_scope_v2.authority_revision+1
+       last_attempted_at_ms=excluded.last_attempted_at_ms,updated_at_ms=excluded.updated_at_ms
        WHERE model_catalog_scope_v2.sync_state!='syncing'`)
       .run({ ...scope, attemptId, now }).changes
     if (changes !== 1) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_SYNC_IN_PROGRESS')
@@ -298,9 +298,21 @@ export class ModelCatalogV2Repo {
           safeCount(immutableSnapshot.visible_model_count) !== visibleModelCount ||
           safeCount(immutableSnapshot.hidden_model_count) !== hiddenModelCount ||
           safeCount(immutableSnapshot.codec_version) !== codecVersion ||
-          immutableSnapshot.completeness !== completeness || immutableSnapshot.adapter_revision !== adapterRevision ||
-          String(immutableSnapshot.aggregate_evidence_json) !== evidenceJson ||
-          String(immutableSnapshot.items_json) !== itemsJson) {
+          immutableSnapshot.completeness !== completeness || immutableSnapshot.adapter_revision !== adapterRevision) {
+        throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+      }
+      // The stored row is kept as it is. The digest covers content only (R4-08 / P3a-02), so a later fetch of the
+      // same content carries different fetch times; it must match on content, never on the raw bytes.
+      const storedItemsJson = String(immutableSnapshot.items_json)
+      if (storedItemsJson !== itemsJson) {
+        let storedContentKey: string
+        try { storedContentKey = catalogItemsContentKeyV2(JSON.parse(storedItemsJson) as unknown[]) } catch {
+          throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+        }
+        if (storedContentKey !== catalogItemsContentKeyV2(input.items)) {
+          throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+        }
+      } else if (String(immutableSnapshot.aggregate_evidence_json) !== evidenceJson) {
         throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
       }
       let changes: number
@@ -308,15 +320,16 @@ export class ModelCatalogV2Repo {
         changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET
           pending_snapshot_digest=CASE WHEN active_snapshot_digest=? THEN NULL ELSE ? END,
           sync_state='ok',active_attempt_id=NULL,
-          last_succeeded_at_ms=?,last_failure_json=NULL,updated_at_ms=?,authority_revision=authority_revision+1
+          last_succeeded_at_ms=?,last_failure_json=NULL,updated_at_ms=?
           WHERE scope_id=? AND active_attempt_id=?`).run(input.responseDigest, input.responseDigest,
             observedAtMs, now, scope.scopeId, attemptId).changes
       } else {
         changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET active_snapshot_digest=?,pending_snapshot_digest=NULL,
           sync_state='ok',active_attempt_id=NULL,last_succeeded_at_ms=?,last_failure_json=NULL,
-          model_count=?,visible_model_count=?,hidden_model_count=?,updated_at_ms=?,authority_revision=authority_revision+1
+          model_count=?,visible_model_count=?,hidden_model_count=?,updated_at_ms=?,
+          authority_revision=authority_revision+CASE WHEN active_snapshot_digest IS ? THEN 0 ELSE 1 END
           WHERE scope_id=? AND active_attempt_id=?`).run(input.responseDigest, observedAtMs, modelCount, visibleModelCount,
-            hiddenModelCount, now, scope.scopeId, attemptId).changes
+            hiddenModelCount, now, input.responseDigest, scope.scopeId, attemptId).changes
       }
       if (changes !== 1) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STALE_ATTEMPT')
       if (retentionCutoffMs !== null) this.cleanupInactiveSnapshots(input.scope, retentionCutoffMs)
@@ -378,8 +391,7 @@ export class ModelCatalogV2Repo {
     if (!DIGEST_PATTERN.test(snapshotDigest)) {
       throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
     }
-    const changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET pending_snapshot_digest=NULL,updated_at_ms=?,
-      authority_revision=authority_revision+1
+    const changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET pending_snapshot_digest=NULL,updated_at_ms=?
       WHERE scope_id=? AND sync_state!='syncing' AND pending_snapshot_digest=?`)
       .run(safeTime(this.nowMs()), scope.scopeId, snapshotDigest).changes
     if (changes !== 1) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
@@ -402,10 +414,20 @@ export class ModelCatalogV2Repo {
     const errorFact = encodeErrorFact(error)
     const now = safeTime(this.nowMs())
     const changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET sync_state='error',active_attempt_id=NULL,
-      last_failure_json=?,updated_at_ms=?,authority_revision=authority_revision+1 WHERE scope_id=? AND active_attempt_id=?`)
+      last_failure_json=?,updated_at_ms=? WHERE scope_id=? AND active_attempt_id=?`)
       .run(errorFact, now, scope.scopeId, attemptId).changes
     if (changes !== 1) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STALE_ATTEMPT')
     return this.readStatus(scopeValue)!
+  }
+
+  /**
+   * R4-08 (P3a-05): an attempt that was in flight when the process ended can never finish, and it left its scope
+   * in 'syncing', which refuses every later sync. Call once at startup, before any sync can begin.
+   */
+  recoverInterruptedSyncs(): number {
+    return this.db.prepare(`UPDATE model_catalog_scope_v2 SET active_attempt_id=NULL,updated_at_ms=?,
+      sync_state=CASE WHEN active_snapshot_digest IS NULL THEN 'idle' ELSE 'ok' END
+      WHERE sync_state='syncing'`).run(safeTime(this.nowMs())).changes
   }
 
   readStatus(scopeValue: ModelCatalogScopeIdentityV2): ModelCatalogStatusV2 | null {

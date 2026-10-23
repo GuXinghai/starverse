@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { mount, flushPromises } from '@vue/test-utils'
 import NetworkProxySettingsPanel from './NetworkProxySettingsPanel.vue'
 import { DEFAULT_NETWORK_PROXY_SETTINGS, defaultBrowserProxySettings, type NetworkProxyConfiguration } from '@/shared/plugin-distribution/networkProxyShared'
 import * as client from '@/next/settings/networkProxySettingsClient'
@@ -27,6 +28,27 @@ async function ready() {
   await waitFor(() => expect(screen.getByTestId('proxy-save')).not.toBeDisabled())
 }
 describe('proxy configuration UI', () => {
+  // R4-09 (P6a-02): a rejected load used to leave the placeholder defaults editable and saveable, so a
+  // global Save replaced the stored proxy configuration with them.
+  it('R4-09: after a failed load the controls are disabled and save() persists nothing', async () => {
+    vi.mocked(client.getProxyConfiguration).mockRejectedValue(new Error('proxy_load_failed'))
+    const wrapper = mount(NetworkProxySettingsPanel, { props: { disabled: false } })
+    await flushPromises()
+    for (const id of ['proxy-application-mode', 'proxy-browser-policy', 'proxy-save', 'proxy-application-test']) {
+      expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled'), id).toBeDefined()
+    }
+    await (wrapper.vm as unknown as { save: () => Promise<void> }).save()
+    expect(client.saveProxyConfiguration).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('R4-09: a successful load still saves a changed draft through the exposed save()', async () => {
+    const wrapper = mount(NetworkProxySettingsPanel, { props: { disabled: false } })
+    await flushPromises()
+    await wrapper.get('[data-testid="proxy-application-mode"]').setValue('direct')
+    await (wrapper.vm as unknown as { save: () => Promise<void> }).save()
+    expect(client.saveProxyConfiguration).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
   it('shows fields only for the mode which uses them', async () => {
     await ready()
     expect(screen.queryByTestId('proxy-application-bypass')).toBeNull()

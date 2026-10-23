@@ -6,7 +6,7 @@ import { bindRequestRulesToSubjectsV2, decodeBoundRequestRulesV2, emptyBoundRequ
 import type { AuthoritativeModelSubjectSetV1 } from '../../../src/core/generation-v2/model-facts/authoritativeModelSubjectSetV1'
 import { canonicalSourceFactDigestV1, type CanonicalModelSubjectV1 } from '../../../src/core/generation-v2/model-facts/canonicalSourceFactsV1'
 import { stableSerializeProviderRequestV2 } from '../../../src/core/generation-v2/compiler/stableSerialize'
-import { listCapabilityRuleOwnershipSnapshotsV2 } from './capabilityRuleCoreV2Repo'
+import { listReadableCapabilityRuleOwnershipSnapshotsV2 } from './capabilityRuleCoreV2Repo'
 
 export type PreparedGenerationRequestRulesPublicationV2 = Readonly<{
   bundles: readonly BoundRequestRulesV2[]
@@ -20,7 +20,7 @@ export function prepareGenerationRequestRulesPublicationV2(db: BetterSqlite3.Dat
   subjectSet: AuthoritativeModelSubjectSetV1, replacement?: CapabilityRuleOwnershipSnapshotV2,
   excludedOwner?: Readonly<{ ownership: 'cloud' | 'user'; ownerId: string }>,
   defaultActivationPolicies: CapabilityRuleDefaultActivationPoliciesV1 = { cloud: 'enabled', user: 'enabled' }): PreparedGenerationRequestRulesPublicationV2 {
-  const snapshots = listCapabilityRuleOwnershipSnapshotsV2(db).map(value => value.projected.definition)
+  const snapshots = listReadableCapabilityRuleOwnershipSnapshotsV2(db).map(value => value.projected.definition)
     .filter(value => !replacement || value.ownership !== replacement.ownership || value.ownerId !== replacement.ownerId)
     .filter(value => !excludedOwner || value.ownership !== excludedOwner.ownership || value.ownerId !== excludedOwner.ownerId)
   if (replacement) snapshots.push(replacement)
@@ -35,7 +35,7 @@ export function prepareGenerationRequestRulesPublicationV2(db: BetterSqlite3.Dat
 export function writeGenerationRequestRulesPublicationV2(db: BetterSqlite3.Database,
   prepared: PreparedGenerationRequestRulesPublicationV2): void {
   if (!db.inTransaction) throw new Error('GENERATION_V2_REQUEST_RULE_TRANSACTION_REQUIRED')
-  const actualOwners = listCapabilityRuleOwnershipSnapshotsV2(db).map(value => value.projected.snapshotRevision).sort()
+  const actualOwners = listReadableCapabilityRuleOwnershipSnapshotsV2(db).map(value => value.projected.snapshotRevision).sort()
   if (stableSerializeProviderRequestV2(actualOwners) !== stableSerializeProviderRequestV2(prepared.ownerSnapshotRevisions)) {
     throw new Error('GENERATION_V2_REQUEST_RULE_PUBLICATION_STALE')
   }
