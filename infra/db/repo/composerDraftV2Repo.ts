@@ -84,6 +84,8 @@ export type ComposerDraftV2 = Readonly<{
   revision: number
   updatedAtMs: number
   attachments: readonly ComposerDraftAttachmentV2[]
+  /** Rows that failed their integrity check on read. They stay stored, untouched, and are left out of `attachments`. */
+  unreadableAttachmentCount: number
   editSession: ComposerEditSessionV2 | null
 }>
 
@@ -208,13 +210,26 @@ export class ComposerDraftV2Repo {
         CASE WHEN asset_revision.revision_kind='derived' THEN asset_revision.parent_asset_revision_id
           ELSE draft.asset_revision_id END
       WHERE draft.conversation_id=? ORDER BY draft.attachment_order,draft.asset_revision_id,draft.url_reference_revision`).all(conversationId) as AttachmentRow[]
-    const decodedAttachments=attachments.map((entry,index)=>this.decodeAttachment(entry,index))
+    // R5-03 (P5b-13, D-4): one corrupt attachment row must not make the whole composer unreadable. The row is
+    // reported, not repaired or deleted; the rest of the draft stays usable.
+    const decodedAttachments:ComposerDraftAttachmentV2[]=[]
+    let unreadableAttachmentCount=0
+    attachments.forEach((entry,index)=>{
+      try {
+        decodedAttachments.push(this.decodeAttachment(entry,index))
+      } catch(error) {
+        if(!(error instanceof ComposerDraftV2RepoError))throw error
+        unreadableAttachmentCount+=1
+      }
+    })
+    // A selected conversion whose output is retired or has a bad producer still fails the read closed: that is a
+    // decision about what would be sent, not a damaged row.
     for(const attachment of decodedAttachments) {
       if(attachment.kind==='managed_file'&&attachment.dfcSelection)this.verifyDfcSelection({sourceAssetRevisionId:attachment.assetRevisionId,...attachment.dfcSelection})
     }
     return Object.freeze({conversationId,draftText:row.draft_text,draftMode:row.draft_mode,
       editingSourceQuestionId:row.editing_source_question_id as string|null,revision:row.revision as number,
-      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(decodedAttachments),
+      updatedAtMs:row.updated_at_ms as number,attachments:Object.freeze(decodedAttachments),unreadableAttachmentCount,
       editSession:this.readEditSession(conversationId,row.draft_mode,row.editing_source_question_id,row.revision as number)})
   }
 

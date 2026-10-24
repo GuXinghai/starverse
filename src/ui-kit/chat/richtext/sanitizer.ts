@@ -72,7 +72,8 @@ function isAllowedLinkHref(href: string): boolean {
     if (value.startsWith('#') || value.startsWith('/')) return true
     if (value.startsWith('./') || value.startsWith('../')) return true
 
-    const hasExplicitScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
+    // Browsers ignore tabs and newlines inside a scheme, so "java\tscript:" must be judged as a scheme too.
+    const hasExplicitScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value.replace(/[\u0000- ]/g, ''))
     if (!hasExplicitScheme) return true
 
     try {
@@ -81,6 +82,15 @@ function isAllowedLinkHref(href: string): boolean {
     } catch {
         return false
     }
+}
+
+const DANGEROUS_LINK_SCHEMES = new Set(['javascript', 'vbscript', 'data', 'file'])
+
+function isDangerousLinkScheme(href: string): boolean {
+    // Browsers ignore control characters and spaces inside a scheme, so "java\tscript:" is still javascript:.
+    const compact = href.replace(/[\u0000- ]/g, '')
+    const match = /^([a-zA-Z][a-zA-Z\d+.-]*):/.exec(compact)
+    return match !== null && DANGEROUS_LINK_SCHEMES.has(match[1].toLowerCase())
 }
 
 export interface SanitizeResult {
@@ -112,7 +122,9 @@ export function sanitizeHtml(dirty: string): SanitizeResult {
         }
         if (data.attrName === 'href' && typeof data.attrValue === 'string' && !isAllowedLinkHref(data.attrValue)) {
             data.keepAttr = false
-            removed = true
+            // R5-05 (P6b-03): an unsupported but harmless scheme (ssh:, vscode:, obsidian:, ftp:) only loses its own
+            // href. The security fallback for the whole message is kept for schemes that execute or read local data.
+            if (isDangerousLinkScheme(data.attrValue)) removed = true
         }
     })
 

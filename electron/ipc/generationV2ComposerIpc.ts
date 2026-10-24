@@ -147,9 +147,9 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
       if(persisted.sha256.length!==64||persisted.sizeBytes!==bytes.byteLength)throw new Error('GENERATION_V2_ATTACHMENT_BLOB_MISMATCH')
       const assetId=`asset:${randomUUID()}`,assetRevisionId=`asset-revision:${randomUUID()}`
       const draft = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
-        const blob=assets.recordBlobFromBytesInAuthorityTransaction(context,bytes,mime)
+        const blob=assets.recordBlobKeepingStoredMimeInAuthorityTransaction(context,bytes,mime)
         const asset=assets.createImportedAssetRevisionInAuthorityTransaction(context,{assetId,assetRevisionId,
-          assetKind:mime.startsWith('image/')?'image':'file',filename,blob})
+          assetKind:blob.mime.startsWith('image/')?'image':'file',filename,blob})
         detections.createPendingInAuthorityTransaction(context,{assetRevisionId:asset.assetRevisionId.value,
           assetSha256:asset.blob.sha256.value,attemptId:`file-detection-attempt:${randomUUID()}`})
         return drafts.addAttachmentInAuthorityTransaction(context,{conversationId,expectedRevision,attachment:{
@@ -190,9 +190,9 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
       const assetId=`asset:${randomUUID()}`,assetRevisionId=`asset-revision:${randomUUID()}`
       const capturedAt=nowMs()
       const draft = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
-        const blob=assets.recordBlobFromBytesInAuthorityTransaction(context,bytes,mime)
+        const blob=assets.recordBlobKeepingStoredMimeInAuthorityTransaction(context,bytes,mime)
         const asset=assets.createImportedAssetRevisionInAuthorityTransaction(context,{assetId,assetRevisionId,
-          assetKind:mime.startsWith('image/')?'image':'file',filename,blob,sourceKind:'url_import'})
+          assetKind:blob.mime.startsWith('image/')?'image':'file',filename,blob,sourceKind:'url_import'})
         input.db.prepare(`INSERT INTO managed_url_import_provenance_v2
           (asset_revision_id,original_url,url_digest,captured_at_ms,provenance,created_at_ms)
           VALUES (?,?,?,?, 'user_supplied',?)`).run(asset.assetRevisionId.value,originalUrl,

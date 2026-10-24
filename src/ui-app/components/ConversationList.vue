@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import WorkspaceIcon from './WorkspaceIcon.vue'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import type { ConversationListItem, ProjectListItem } from './ConversationList.types'
 import type { ProjectNameMutationResult } from '@/shared/settings/projectDuplicatePolicy'
@@ -62,8 +62,12 @@ let projectNameOperation = 0
 
 const mutationsDisabled = computed(() => props.disabled || props.mutationDisabled)
 
-const selectedCount = computed(() => selectedIds.value.size)
-const selectedIdsArray = computed(() => Array.from(selectedIds.value))
+// R5-01 (P6a-01): a bulk action may only touch rows the user can see. The list can change under an open selection
+// (project switch, refresh, a delete elsewhere), so every use goes through the rows that are visible now.
+const visibleIds = computed(() => new Set(props.items.map((item) => item.id)))
+const visibleSelectedIds = computed(() => Array.from(selectedIds.value).filter((id) => visibleIds.value.has(id)))
+const selectedCount = computed(() => visibleSelectedIds.value.length)
+const selectedIdsArray = visibleSelectedIds
 
 const inboxProject = computed(() => {
   if (!props.inboxId) return null
@@ -104,7 +108,7 @@ function toggleSelected(id: string) {
 }
 
 function toggleSelectAll() {
-  if (selectedIds.value.size === props.items.length) {
+  if (selectedCount.value === props.items.length) {
     // 全部已选中，执行全不选
     selectedIds.value = new Set()
   } else {
@@ -114,11 +118,16 @@ function toggleSelectAll() {
 }
 
 const isAllSelected = computed(() => {
-  return props.items.length > 0 && selectedIds.value.size === props.items.length
+  return props.items.length > 0 && selectedCount.value === props.items.length
 })
 
 const isSomeSelected = computed(() => {
-  return selectedIds.value.size > 0 && selectedIds.value.size < props.items.length
+  return selectedCount.value > 0 && selectedCount.value < props.items.length
+})
+
+watch(() => props.items, () => {
+  const kept = visibleSelectedIds.value
+  if (kept.length !== selectedIds.value.size) selectedIds.value = new Set(kept)
 })
 
 function onRowClick(id: string) {
@@ -162,8 +171,10 @@ function confirmDelete() {
   if (mutationsDisabled.value) return
   const dlg = deleteDialog.value
   if (!dlg) return
-  if (dlg.ids.length === 1) emit('delete', dlg.ids[0])
-  else emit('bulkDelete', dlg.ids)
+  // A dialog opened before the list changed must not act on rows that have since left it.
+  const ids = dlg.ids.filter((id) => visibleIds.value.has(id))
+  if (ids.length === 1) emit('delete', ids[0])
+  else if (ids.length > 1) emit('bulkDelete', ids)
   deleteDialog.value = null
   if (selectionMode.value) selectedIds.value = new Set()
 }
@@ -179,8 +190,9 @@ function confirmMove() {
   if (mutationsDisabled.value) return
   const dlg = moveDialog.value
   if (!dlg) return
-  if (dlg.ids.length === 1) emit('moveToProject', dlg.ids[0], dlg.projectId)
-  else emit('bulkMoveToProject', dlg.ids, dlg.projectId)
+  const ids = dlg.ids.filter((id) => visibleIds.value.has(id))
+  if (ids.length === 1) emit('moveToProject', ids[0], dlg.projectId)
+  else if (ids.length > 1) emit('bulkMoveToProject', ids, dlg.projectId)
   moveDialog.value = null
   if (selectionMode.value) selectedIds.value = new Set()
 }

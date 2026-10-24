@@ -215,3 +215,96 @@ describe('finalRenderer', () => {
         })
     })
 })
+describe('finalRenderer replacement-pattern safety (R5-04, P6b-01)', () => {
+    const textOf = (html: string) => html.replace(/<[^>]+>/g, '')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+
+    // One case per String.replace special pattern: $&, $`, $' and $$.
+    const patterns: Array<[string, string]> = [
+        ['$&', 'echo $& done'],
+        ['$`', 'echo $` done'],
+        ["$'", "echo $' done"],
+        ['$$', 'echo $$ done'],
+    ]
+
+    describe.each([['fallback', false], ['highlighted', true]] as const)('code block, %s path', (_name, highlight) => {
+        it.each(patterns)('keeps %s byte-exact', async (_pattern, line) => {
+            if (highlight) await getHighlighter()
+            const result = await renderFinal('before\n\n```bash\n' + line + '\n```\n\nafter')
+            expect(textOf(result.html)).toContain(line + '\n')
+            expect(result.html).not.toContain('shiki-placeholder')
+            expect(textOf(result.html)).toContain('before')
+            expect(textOf(result.html)).toContain('after')
+        })
+    })
+
+    // KaTeX keeps the source in its MathML annotation, so a corrupted restore shows up there.
+    it.each([
+        ['$&', '\\begin{matrix}\\$&b\\end{matrix}'],
+        ['$`', '\\text{\\$`}'],
+        ["$'", "\\text{\\$'}"],
+        ['$$', '\\text{\\$\\$}'],
+    ])('keeps %s in the source of rendered display math', async (_pattern, body) => {
+        const result = await renderFinal('$$' + body + '$$')
+        expect(result.html).not.toContain('MATH_BLOCK')
+        expect(result.html).toContain('katex')
+        expect(textOf(result.html)).toContain(body)
+    })
+})
+describe('finalRenderer inline math, links and nested fences (R5-05)', () => {
+    describe('inline math delimiters (P6b-02)', () => {
+        it.each([
+            ['currency', 'It costs $5 and $10 in total.'],
+            ['shell variables', 'Set $HOME and $PATH before running.'],
+            ['a space inside the delimiters', 'Pay $ 5 and $ 10 later.'],
+        ])('leaves %s as prose', async (_name, text) => {
+            const result = await renderFinal(text)
+            expect(result.html).not.toContain('katex')
+            expect(result.html).toContain(text.replace(/&/g, '&amp;'))
+        })
+
+        it('does not pair a stray $ with a later one across paragraphs', async () => {
+            const result = await renderFinal('Costs $5 today.\n\nAnd then it was gone for $x$ later, or $y.')
+            expect(result.html.match(/class="katex"/g)?.length ?? 0).toBe(1)
+            expect(result.html).toContain('Costs $5 today.')
+        })
+
+        it('does not pair a $ with one on the next line of the same paragraph', async () => {
+            const result = await renderFinal('first $a\nsecond b$ done')
+            expect(result.html).not.toContain('katex')
+        })
+
+        it('still renders ordinary inline math, including several on one line', async () => {
+            const result = await renderFinal('Given $x+1$ and $y_2$, then $z$.')
+            expect(result.html.match(/class="katex"/g)?.length ?? 0).toBe(3)
+        })
+    })
+
+    describe('link schemes (P6b-03)', () => {
+        it.each(['ssh://host/path', 'vscode://file/a', 'obsidian://open?vault=x', 'ftp://example.com/a'])(
+            'drops only the href of %s and keeps the rest of the message rendered', async (href) => {
+                const result = await renderFinal('# Title\n\nSee [link](' + href + ') and **bold**.')
+                expect(result.sanitizerRemoved).toBe(false)
+                expect(result.html).toContain('<h1>')
+                expect(result.html).toContain('<strong>bold</strong>')
+                expect(result.html).toContain('link')
+                expect(result.html).not.toContain(href)
+            })
+    })
+
+    describe('fence nested in a list or quote while streaming (P6b-04)', () => {
+        it.each([
+            ['list', '- item\n\n  ```js\n  const a = 1 < 2\n  ```\n'],
+            ['blockquote', '> ```js\n> const a = 1 < 2\n> ```\n'],
+        ])('shows the code of a fence in a %s', (_name, source) => {
+            const html = renderBlockSync(source)
+            expect(html).not.toContain('shiki-placeholder')
+            expect(html).toContain('const a = 1 &lt; 2')
+        })
+
+        it('keeps $-patterns in nested code byte-exact', () => {
+            const html = renderBlockSync('- item\n\n  ```bash\n  echo $& $$\n  ```\n')
+            expect(html).toContain('echo $&amp; $$')
+        })
+    })
+})

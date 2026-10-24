@@ -53,6 +53,8 @@ const draftSchema = z.object({
   revision: z.number().int().nonnegative(),
   updatedAtMs: z.number().int().nonnegative(),
   attachments: z.array(attachmentSchema),
+  // R5-03 (P5b-13): rows that failed their integrity check are counted, not listed.
+  unreadableAttachmentCount: z.number().int().nonnegative().optional(),
 }).strict()
 
 const snapshotSchema = z.object({

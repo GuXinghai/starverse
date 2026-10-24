@@ -351,4 +351,27 @@ describe('actual App indexed message search navigation', () => {
     await fireEvent.click(screen.getByTestId('search-close'))
     expect(screen.getByTestId(`convo-title-match-${sourceConvo}`)).toBeVisible()
   })
+
+  // R5-01 (P6a-09): selecting something that cannot be read hands the view back instead of leaving dead state.
+  it('restores the open conversation when the selected one cannot be read', async () => {
+    createConvo('conversation:unreadable', 'branch:unreadable')
+    await mount()
+    const real = bridge.workspace.readBranch.getMockImplementation()!
+    bridge.workspace.readBranch.mockImplementation((branchId: string, ...rest: unknown[]) =>
+      branchId === 'branch:unreadable' ? Promise.resolve({ ok: false, code: 'GENERATION_V2_BRANCH_NOT_FOUND' }) : real(branchId, ...rest))
+    await logic().onSelectConvo('conversation:unreadable')
+    expect(logic().activeConvoId.value).toBe(sourceConvo)
+    expect(logic().activeBranch.value?.id).toBe(sourceBranch)
+    expect(logic().loadError.value).toBeTruthy()
+  })
+
+  it('does not select a project that a stale search hit names but that no longer exists', async () => {
+    await mount()
+    logic().openSearchModal()
+    await waitFor(() => expect(logic().searchModalOpen.value).toBe(true))
+    const before = logic().activeProjectId.value
+    const selected = await logic().onSelectSearchHit({ entityType: 'project', entityId: 'project:deleted' } as never)
+    expect(selected).toBe(false)
+    expect(logic().activeProjectId.value).toBe(before)
+  })
 })

@@ -39,7 +39,7 @@ const ledger = createSemanticConsumptionLedgerV2([{
 
 type Kind = 'anthropic' | 'gemini'
 type Attachment = Readonly<Record<string, unknown>>
-type Turn = Readonly<{ attachments?: readonly Attachment[]; bindings?: readonly unknown[]; text: string }>
+type Turn = Readonly<{ attachments?: readonly Attachment[]; bindings?: readonly unknown[]; text: string; scope?: string }>
 
 function config(kind: Kind) {
   if (kind === 'anthropic') {
@@ -89,8 +89,8 @@ function config(kind: Kind) {
   }
 }
 
-function capabilityFor(kind: Kind) {
-  const cfg = config(kind)
+function capabilityFor(kind: Kind, scope?: string) {
+  const cfg = scope ? { ...config(kind), binding: { ...config(kind).binding, credentialScopeId: scope } } : config(kind)
   return decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2, resolvedAt: '2026-07-18T00:00:00.000Z', binding: cfg.binding,
     evidence: [{ evidenceId: 'test.ev', kind: 'official_documentation', effect: 'supports',
@@ -129,7 +129,7 @@ function snapshotFor(kind: Kind, capability: ReturnType<typeof capabilityFor>, t
       { ownerKind: 'project', ownerId: 'project:1', revision: 'config:project:1' },
       { ownerKind: 'conversation', ownerId: 'conversation:1', revision: 'config:conversation:1' },
     ],
-    providerBinding: cfg.binding,
+    providerBinding: value.scope ? { ...cfg.binding, credentialScopeId: value.scope } : cfg.binding,
     capabilityBinding: {
       capabilityRevision: capability.revision.value, evidenceDigest: capability.evidenceDigest.value,
       semanticFieldsDigest: capability.semanticFieldsDigest.value, snapshotHash: capability.snapshotHash.value,
@@ -151,6 +151,11 @@ function createConversation(kind: Kind, turns: readonly Turn[]) {
   db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)').run('conversation:1', 'project:1', 'Conversation', 2, 2)
   db.prepare(`INSERT INTO branch_v2 VALUES ('branch:1', 'conversation:1', NULL, NULL, 12, 12, NULL, NULL)`).run()
   const executionRepo = new GenerationExecutionV2Repo(db)
+  for (const scoped of new Set(turns.flatMap((turn) => turn.scope ? [turn.scope] : []))) {
+    const other = capabilityFor(kind, scoped)
+    db.prepare(`INSERT INTO runtime_capability_snapshot_v2 VALUES (?, ?, 2, ?, ?, ?, 1)`).run(
+      other.snapshotHash.value, other.revision.value, other.canonicalJson, other.evidenceDigest.value, other.semanticFieldsDigest.value)
+  }
   turns.forEach((turn, index) => {
     const n = index + 1
     const base = n * 100
@@ -166,7 +171,7 @@ function createConversation(kind: Kind, turns: readonly Turn[]) {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => executionRepo.insertOperationAndSnapshot(context, {
       operationId: `operation:${n}`, actionKind: 'initial_send', branchId: 'branch:1', conversationId: 'conversation:1',
       questionId: `question:${n}`, sourceAnswerId: null, targetAnswerId: `answer:${n}`,
-      snapshot: snapshotFor(kind, capability, n, turn), commandFingerprint: HASH_A, createdAtMs: base + 10,
+      snapshot: snapshotFor(kind, turn.scope ? capabilityFor(kind, turn.scope) : capability, n, turn), commandFingerprint: HASH_A, createdAtMs: base + 10,
     }))
     if (n === turns.length) return
     const snapshotHash = (db.prepare(`SELECT snapshot_hash AS hash FROM assistant_generation_snapshot_v2
@@ -176,9 +181,9 @@ function createConversation(kind: Kind, turns: readonly Turn[]) {
       snapshot_hash, provider_id, endpoint_profile_id, credential_scope_id, contract_id, model_id,
       effective_endpoint_id, capability_revision, compiler_ledger_json, compiler_ledger_hash,
       prepared_body_sha256, prepared_body_byte_length, state, created_at_ms, updated_at_ms)
-      VALUES (?, 1, ?, ?, ?, ?, 'credential-scope:p', ?, ?, 'endpoint:x', ?, ?, ?, ?, 2, 'prepared', ?, ?)`).run(
-      op, `answer:${n}`, snapshotHash, cfg.providerId, cfg.binding.endpointProfileId, cfg.contractId, cfg.modelId,
-      capability.revision.value, ledger.canonicalJson, ledger.sha256, HASH_A, base + 11, base + 11)
+      VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, 'endpoint:x', ?, ?, ?, ?, 2, 'prepared', ?, ?)`).run(
+      op, `answer:${n}`, snapshotHash, cfg.providerId, cfg.binding.endpointProfileId, turns[index].scope ?? 'credential-scope:p', cfg.contractId, cfg.modelId,
+      (turn.scope ? capabilityFor(kind, turn.scope) : capability).revision.value, ledger.canonicalJson, ledger.sha256, HASH_A, base + 11, base + 11)
     db.prepare(`INSERT INTO generation_attempt_v2 VALUES (?, 1, 1, 'open', NULL, NULL, ?, NULL)`).run(op, base + 12)
     db.prepare(`UPDATE generation_request_v2 SET state='streaming', updated_at_ms=? WHERE operation_id=?`).run(base + 13, op)
     db.prepare(`UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=? WHERE operation_id=?`).run(base + 14, op)
@@ -358,6 +363,20 @@ describe('Anthropic prior-turn attachment replay', () => {
         { type: 'document', source: { type: 'file', file_id: 'file_abc' } },
       ])
       expect(JSON.stringify(prepared.headersPlan)).toContain('files-api-2025-04-14')
+    } finally { db.close() }
+  })
+
+  // R5-03 (P5b-04), characterization: a changed credential scope takes the portable history path, which re-encodes the
+  // attachment bytes. The old scope's provider file id is therefore never sent, so no code change was needed.
+  it('does not send a provider file id issued under another credential scope', () => {
+    const binding = { assetRevisionId: 'revision:p', providerFileDescriptor: {
+      descriptorId: 'descriptor:p', descriptorRevision: 'descriptor-rev:1', descriptorHash: HASH_A, providerFileId: 'file_old_scope' } }
+    const db = createConversation('anthropic', [
+      { text: 'one', scope: 'credential-scope:old', attachments: [textAttachment('asset:p', 'revision:p', sha(textBytes), true, 'provider_file', 'none')], bindings: [binding] },
+      { text: 'two' }])
+    try {
+      const { body } = compileAnthropic(db, 'operation:2', { attachmentBlobStore: blobStoreFor({ 'revision:p': textBytes }) })
+      expect(JSON.stringify(body)).not.toContain('file_old_scope')
     } finally { db.close() }
   })
 

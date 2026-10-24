@@ -220,7 +220,8 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | 3 | Complete, see [repair-phase-3.md](repair-phase-3.md). R3-01 to R3-08 done. R3-04 used the documented `citations_delta` shape. P4b-04 needed no tool-continuation UI: an operation left `awaiting_tool` is cancelled on Stop or quiesce |
 | 4a | Complete, see [repair-phase-4a.md](repair-phase-4a.md). R4-01 to R4-07 done. P3a-08 was not reproduced (characterization tests added). OQ-4 evidence recorded; bootstrap activation unchanged (D-8) |
 | 4b | Complete, see [repair-phase-4b.md](repair-phase-4b.md). R4-08 and R4-09 done. The catalog revision now bumps only when the active snapshot changes, interrupted syncs are recovered, settings saves no longer overwrite unloaded values, and one undecodable rule row no longer blocks saving (D-4). Limitations are in section 5 of that report. |
-| 5–8 | Not started |
+| 5 | Complete, see [repair-phase-5.md](repair-phase-5.md). R5-01 to R5-05 done. P5b-04 was not reproduced (characterization test added). A corrupt draft attachment row is now skipped and counted; a broken DFC selection still fails the read. No test assertion changed |
+| 6–8 | Not started |
 
 ## 5. Still-unreviewed areas
 

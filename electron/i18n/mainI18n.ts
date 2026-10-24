@@ -208,11 +208,9 @@ export function t(key: string, locale?: SupportedLocale): string {
  * @param locale - 可选，覆盖当前 locale
  */
 export function tf(key: string, params: Record<string, string | number>, locale?: SupportedLocale): string {
-  let message = t(key, locale)
-  for (const [k, v] of Object.entries(params)) {
-    message = message.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))
-  }
-  return message
+  // One pass with a function replacer: a value is inserted literally and never scanned again (see shared tf).
+  return t(key, locale).replace(/\{([^{}]+)\}/g, (placeholder, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : placeholder)
 }
 
 /**

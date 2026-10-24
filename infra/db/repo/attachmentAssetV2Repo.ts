@@ -471,7 +471,25 @@ export class AttachmentAssetV2Repo {
     return this.recordBlobFromBytesInCurrentTransaction(bytes, mimeValue)
   }
 
-  private recordBlobFromBytesInCurrentTransaction(bytes: Uint8Array, mimeValue: unknown): AttachmentBlobRepositoryFactV2 {
+  /**
+   * Like recordBlobFromBytesInAuthorityTransaction, but identical bytes already stored under another mime label
+   * resolve to the stored blob instead of conflicting. A blob is identified by its bytes; the label belongs to
+   * whichever import came first (R5-02, P5b-01/P5b-05).
+   */
+  recordBlobKeepingStoredMimeInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    bytes: Uint8Array,
+    mimeValue: unknown,
+  ): AttachmentBlobRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.recordBlobFromBytesInCurrentTransaction(bytes, mimeValue, true)
+  }
+
+  private recordBlobFromBytesInCurrentTransaction(
+    bytes: Uint8Array,
+    mimeValue: unknown,
+    keepStoredMime = false,
+  ): AttachmentBlobRepositoryFactV2 {
     const mime = safeMime(mimeValue)
     const owned = copyOwnedUint8Array(bytes)
     const sizeBytes = owned.byteLength
@@ -486,8 +504,8 @@ export class AttachmentAssetV2Repo {
     const now = safeTime(this.#nowMs())
     const existing = this.findBlob(blobId)
     if (existing) {
-      if (existing.sha256.value !== sha256 || existing.sizeBytes !== sizeBytes || existing.mime !== mime ||
-          existing.storageRef !== storageRef) {
+      if (existing.sha256.value !== sha256 || existing.sizeBytes !== sizeBytes ||
+          (!keepStoredMime && existing.mime !== mime) || existing.storageRef !== storageRef) {
         throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
       }
       return existing

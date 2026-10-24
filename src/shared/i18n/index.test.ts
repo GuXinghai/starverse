@@ -82,6 +82,15 @@ describe('i18n index', () => {
       // Use a key that doesn't exist so we can test raw interpolation
       expect(tf('common.settings', { name: 'Test' }, 'zh-CN')).toBe('设置')
     })
+
+    // R5-04 (P6b-09): values are inserted literally, in one pass.
+    it.each(['Q$&A', 'Q$`A', "Q$'A", 'Q$$A'])('inserts %s literally', (value) => {
+      expect(tf('settings.modelsCapabilities.facts.control.reasonLine', { state: value, explanation: 'm' }, 'en-US')).toBe(`${value}: m`)
+    })
+
+    it('does not expand a placeholder that appears inside a value', () => {
+      expect(tf('settings.modelsCapabilities.facts.control.reasonLine', { state: '{explanation}', explanation: 'm' }, 'en-US')).toBe('{explanation}: m')
+    })
   })
 
   describe('getMessages()', () => {

@@ -276,3 +276,29 @@ describe('ComposerDraftV2Repo scoped edit aggregate',()=>{
     }finally{db.close()}
   })
 })
+
+describe('ComposerDraftV2Repo corrupt attachment rows',()=>{
+  it('keeps the draft readable when one attachment row cannot be decoded, and reports it',()=>{
+    const db=createDb()
+    try {
+      const drafts=new ComposerDraftV2Repo(db,()=>10)
+      const initial=drafts.getOrCreate('conversation:1')
+      const first=drafts.addUrlReference({conversationId:'conversation:1',expectedRevision:initial.revision,
+        referenceId:'url:good',referenceRevision:'url-revision:good',originalUrl:'https://example.test/good.pdf',
+        mediaKind:'document',declaredMediaType:'application/pdf'})
+      const second=drafts.addUrlReference({conversationId:'conversation:1',expectedRevision:first.revision,
+        referenceId:'url:bad',referenceRevision:'url-revision:bad',originalUrl:'https://example.test/bad.pdf',
+        mediaKind:'document',declaredMediaType:'application/pdf'})
+      expect(second.attachments).toHaveLength(2)
+      // The stored digest no longer matches the stored URL: this row fails its integrity check on decode.
+      db.pragma('ignore_check_constraints = ON')
+      db.exec('DROP TRIGGER IF EXISTS url_attachment_reference_v2_no_update')
+      for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='url_attachment_reference_v2'").all() as {name:string}[]) db.exec('DROP TRIGGER "'+name+'"')
+      db.prepare("UPDATE url_attachment_reference_v2 SET url_digest=? WHERE reference_id='url:bad'").run('0'.repeat(64))
+      const read=drafts.read('conversation:1')
+      expect(read.attachments.map(entry=>entry.kind==='url_reference'?entry.referenceId:'')).toEqual(['url:good'])
+      expect(read.unreadableAttachmentCount).toBe(1)
+      expect(db.prepare('SELECT COUNT(*) AS n FROM composer_draft_attachment_v2').get()).toEqual({n:2})
+    } finally { db.close() }
+  })
+})

@@ -80,6 +80,21 @@ describe('sanitizer', () => {
             expect(removed).toBe(true)
         })
 
+        // R5-05 (P6b-03): a harmless unsupported scheme loses only its href; it must not trigger the whole-message fallback.
+        it.each(['ssh://host', 'vscode://file/a', 'obsidian://open', 'ftp://example.com/a'])('drops only the href of %s', (href) => {
+            const { html, removed } = sanitizeHtml('<p>a <a href="' + href + '">link</a> b</p>')
+            expect(html).not.toContain('href')
+            expect(html).toContain('link')
+            expect(removed).toBe(false)
+        })
+
+        it.each(['javascript:alert(1)', 'java\tscript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', 'vbscript:x'])(
+            'still flags the dangerous scheme %j', (href) => {
+                const { html, removed } = sanitizeHtml('<a href="' + href + '">x</a>')
+                expect(html).not.toContain('alert')
+                expect(removed).toBe(true)
+            })
+
         it('strips iframe tags', () => {
             const input = '<iframe src="https://evil.com"></iframe>'
             const { html, removed } = sanitizeHtml(input)

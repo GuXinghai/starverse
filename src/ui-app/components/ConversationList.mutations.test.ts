@@ -178,3 +178,51 @@ describe('ConversationList mutation guards', () => {
     expect(view.emitted('deleteProject')).toBeUndefined()
   })
 })
+
+// R5-01 (P6a-01): bulk actions only ever touch rows that are visible when the action is confirmed.
+describe('bulk selection follows the visible list', () => {
+  const rows = (...ids: string[]) => ids.map((id, index) => ({ id, title: `Title ${id}`, updatedAt: index + 1 }))
+  async function selectAll(view: ReturnType<typeof render>) {
+    await fireEvent.click(screen.getByTestId('conversation-selection-toggle'))
+    await fireEvent.click(screen.getByLabelText(t('navigation.actions.selectAll')))
+    return view
+  }
+
+  it('drops selected rows that left the list and counts only the visible ones', async () => {
+    const view = render(ConversationList, { props: { ...props, items: rows('a', 'b', 'c') } })
+    await selectAll(view)
+    await view.rerender({ items: rows('c', 'd') })
+    expect(screen.getByTestId('bulk-bar')).toHaveTextContent(`${t('navigation.actions.selected')} 1`)
+    await fireEvent.click(screen.getByLabelText(t('navigation.actions.bulkDelete')))
+    await fireEvent.click(within(screen.getByTestId('delete-dialog')).getByRole('button', { name: t('common.delete') }))
+    expect(view.emitted('delete')).toEqual([['c']])
+    expect(view.emitted('bulkDelete')).toBeUndefined()
+  })
+
+  it('does not delete or move hidden rows after a project switch', async () => {
+    const view = render(ConversationList, { props: { ...props, items: rows('a', 'b') } })
+    await selectAll(view)
+    await view.rerender({ items: rows('x', 'y') })
+    expect(screen.getByLabelText(t('navigation.actions.bulkDelete'))).toBeDisabled()
+    expect(screen.getByLabelText(t('navigation.actions.bulkMove'))).toBeDisabled()
+  })
+
+  it('does not act on rows that left the list while a bulk dialog was open', async () => {
+    const view = render(ConversationList, { props: { ...props, items: rows('a', 'b', 'c') } })
+    await selectAll(view)
+    await fireEvent.click(screen.getByLabelText(t('navigation.actions.bulkDelete')))
+    await view.rerender({ items: rows('b', 'c') })
+    await fireEvent.click(within(screen.getByTestId('delete-dialog')).getByRole('button', { name: t('common.delete') }))
+    expect(view.emitted('bulkDelete')).toEqual([[['b', 'c']]])
+    expect(view.emitted('delete')).toBeUndefined()
+  })
+
+  it('reselecting everything after a list change selects exactly the visible rows', async () => {
+    const view = render(ConversationList, { props: { ...props, items: rows('a', 'b') } })
+    await selectAll(view)
+    await view.rerender({ items: rows('b', 'c', 'd') })
+    expect(screen.getByTestId('bulk-bar')).toHaveTextContent(`${t('navigation.actions.selected')} 1`)
+    await fireEvent.click(screen.getByLabelText(t('navigation.actions.selectAll')))
+    expect(screen.getByTestId('bulk-bar')).toHaveTextContent(`${t('navigation.actions.selected')} 3`)
+  })
+})

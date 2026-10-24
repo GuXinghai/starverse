@@ -120,6 +120,17 @@ describe('mainI18n', () => {
       expect(enResult).toBe('Unsupported wire version: wireVersion=2, expected 3.')
     })
 
+    // R5-04 (P6b-09): values are inserted literally, in one pass.
+    it.each(['a$&b', 'a$`b', "a$'b", 'a$$b'])('inserts %s literally', (value) => {
+      expect(tf('dialogs.errors.unsupportedWireVersion', { actual: value, expected: '3' }, 'en-US'))
+        .toBe(`Unsupported wire version: wireVersion=${value}, expected 3.`)
+    })
+
+    it('does not expand a placeholder that appears inside a value', () => {
+      expect(tf('dialogs.errors.unsupportedWireVersion', { actual: '{expected}', expected: '3' }, 'en-US'))
+        .toBe('Unsupported wire version: wireVersion={expected}, expected 3.')
+    })
+
     it('returns key when missing', () => {
       expect(tf('nonexistent.key', { x: '1' }, 'zh-CN')).toBe('nonexistent.key')
     })

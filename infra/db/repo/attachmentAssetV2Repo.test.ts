@@ -526,4 +526,19 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       fs.rmSync(directory, { recursive: true, force: true })
     }
   })
+  // R5-02 (P5b-05): the strict method above still refuses a different label; the keep-stored variant resolves to the first one.
+  it('resolves identical bytes under another mime to the stored blob when asked to keep the stored label', () => {
+    const db = createDb()
+    try {
+      const repo = new AttachmentAssetV2Repo(db, () => 10)
+      const bytes = new Uint8Array([4, 5, 6])
+      const first = repo.recordBlobFromBytes(bytes, 'text/plain')
+      const again = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.recordBlobKeepingStoredMimeInAuthorityTransaction(context, bytes, 'text/markdown'))
+      expect(again.blobId.value).toBe(first.blobId.value)
+      expect(again.mime).toBe('text/plain')
+      expect(db.prepare('SELECT count(*) AS n FROM file_blob_v2').get()).toEqual({ n: 1 })
+    } finally { db.close() }
+  })
+
 })

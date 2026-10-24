@@ -2245,7 +2245,8 @@ export function useAppChatAppLogic() {
     for (const [projectId, page] of pages) {
       nextCursors.set(projectId, page.nextCursor)
       for (const conversation of projectConversationPageItems(page.items)) {
-        byId.set(conversation.id, conversation)
+        // A page requested before a delete finished can still list the deleted conversation.
+        if (!deletedConversationIds.has(conversation.id)) byId.set(conversation.id, conversation)
       }
     }
     conversationCursorByProjectId.value = nextCursors
@@ -2688,9 +2689,27 @@ export function useAppChatAppLogic() {
   async function onSelectConvo(convoId: string) {
     if (!isReady.value) return
     if (convoId === activeConvoId.value) return
+    // R5-01 (P6a-09): the ids move before the transcript loads, so a conversation that cannot be read (deleted
+    // elsewhere, a missing branch) must hand the view back to the one that was open instead of leaving its
+    // transcript on screen under the dead id.
+    const previousConvoId = activeConvoId.value
+    const previousBranchId = activeBranchId.value
     activeBranchId.value = null
     activeConvoId.value = convoId
-    await loadTranscriptForActiveConvo()
+    try {
+      await loadTranscriptForActiveConvo()
+    } catch (err: any) {
+      if (activeConvoId.value !== convoId) return
+      loadError.value = err?.message ? String(err.message) : String(err)
+      activeConvoId.value = previousConvoId
+      activeBranchId.value = previousBranchId
+      try {
+        await loadTranscriptForActiveConvo()
+      } catch {
+        // The previous conversation is unreadable too; the error above stays the one shown.
+      }
+      return
+    }
     if (activeConvoId.value !== convoId) return
     if (convoId !== systemTemplateSnapshot.value?.conversation.id) {
       await setLastFormalConversationId(convoId)
@@ -2888,7 +2907,9 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     activeProjectId.value = projectId
     // 切换项目后刷新对话列表
-    void refreshConvos()
+    refreshConvos().catch((err: any) => {
+      loadError.value = err?.message ? String(err.message) : String(err)
+    })
   }
 
   async function onCreateProject(name: string, confirmDuplicate = false, complete?: (result: ProjectNameMutationResult | null) => void) {
@@ -3340,6 +3361,8 @@ export function useAppChatAppLogic() {
     if (context) searchNameHighlight.value = collectNameMatchIds(context.hits)
     else searchNameHighlight.value = collectNameMatchIds([hit])
     if (hit.entityType === 'project') {
+      // A stale hit can name a project that no longer exists; selecting it would filter the list by a dead id.
+      if (!projects.value.some((project) => project.id === hit.entityId)) return false
       onSelectProject(hit.entityId)
       return isCurrent() && activeProjectId.value === hit.entityId
     }

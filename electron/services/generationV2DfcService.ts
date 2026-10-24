@@ -31,6 +31,7 @@ const TEXT_TARGETS: readonly Exclude<TargetKind,'original_file'|'pdf_attachment'
 const CONVERTER_CONTRACT = 'starverse-dfc-text-v1'
 const CONVERTER_REVISION = '1'
 const HTML_PDF_CONVERTER_CONTRACT = 'starverse-dfc-html-pdf-v1'
+const PDF_FAILURE_MEMORY_MS = 60_000
 
 export function decodeDfcReadyOptionBindingV2(value:unknown):DfcReadyOptionBindingV2 {
   function record(raw:unknown,keys:readonly string[]):Record<string,unknown> {
@@ -74,6 +75,7 @@ export class GenerationV2DfcService {
   private readonly assets:AttachmentAssetV2Repo
   private readonly drafts:ComposerDraftV2Repo
   private readonly htmlPdfInFlight=new Map<string,Promise<ReturnType<AttachmentAssetV2Repo['getRevision']>>>()
+  private readonly pdfFailedUntilMs=new Map<string,number>()
   constructor(private readonly db:BetterSqlite3.Database,private readonly blobs:Epoch2AttachmentBlobStoreV2,private readonly nowMs:()=>number=Date.now,
     private readonly conversion:ElectronConversionBridge|null=null,private readonly tempRoot:string|null=null,private readonly runtimesRoot:string|null=null) {
     this.assets=new AttachmentAssetV2Repo(db,nowMs);this.drafts=new ComposerDraftV2Repo(db,nowMs)
@@ -138,8 +140,13 @@ export class GenerationV2DfcService {
   private textOption(attachment:ComposerDraftManagedFileAttachmentV2,target:Exclude<TargetKind,'original_file'|'pdf_attachment'>,providerId:string,operation:'chat_completions'|'images'|'responses'):DfcOption {
     if(providerId!=='openrouter'||operation!=='chat_completions') return this.blocked(attachment,target,'GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     if(!this.detectedTextual(attachment)) return this.blocked(attachment,target,'GENERATION_V2_DFC_TEXT_SOURCE_UNSUPPORTED','This source cannot be converted to text without a reviewed converter.')
-    const output=this.ensureTextOutput(attachment,target)
-    return this.readyOption(attachment,target,output)
+    // R5-02 (P5b-02): a conversion that fails blocks this option only; the other options and the original stay usable.
+    try { return this.readyOption(attachment,target,this.ensureTextOutput(attachment,target)) }
+    catch(error) { return this.conversionFailed(attachment,target,error) }
+  }
+  private conversionFailed(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,error:unknown):DfcOption {
+    const reason=error instanceof GenerationV2DfcServiceError?error.code:error instanceof Error&&/^GENERATION_V2_[A-Z0-9_]+$/u.test(error.message)?error.message:'conversion_failed'
+    return this.blocked(attachment,target,'GENERATION_V2_DFC_CONVERSION_FAILED',`The converter could not produce this option (${reason}).`)
   }
   private pdfProviderCompatible(providerId:string,operation:'chat_completions'|'images'|'responses'):boolean {
     return providerId==='openrouter'&&operation==='chat_completions'||providerId==='openai_responses'&&operation==='responses'
@@ -148,12 +155,23 @@ export class GenerationV2DfcService {
     if (!this.pdfProviderCompatible(providerId,operation)) return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     const detectedFormatId=attachment.fileTypeDetection?.formatId
     if ((detectedFormatId==='html'||attachment.mime === 'text/html') && this.conversion && this.tempRoot) {
-      const output=await this.ensureHtmlPdfOutput(attachment)
-      return this.readyOption(attachment,'pdf_attachment',output)
+      // A failed HTML conversion is remembered briefly: every options call would otherwise pay the converter's timeout again.
+      const failedUntil=this.pdfFailedUntilMs.get(attachment.assetRevisionId)
+      if (failedUntil!==undefined&&failedUntil>this.nowMs()) return this.conversionFailed(attachment,'pdf_attachment',null)
+      try {
+        const output=await this.ensureHtmlPdfOutput(attachment)
+        this.pdfFailedUntilMs.delete(attachment.assetRevisionId)
+        return this.readyOption(attachment,'pdf_attachment',output)
+      } catch(error) {
+        this.pdfFailedUntilMs.set(attachment.assetRevisionId,this.nowMs()+PDF_FAILURE_MEMORY_MS)
+        return this.conversionFailed(attachment,'pdf_attachment',error)
+      }
     }
     if ((detectedFormatId==='docx'||attachment.mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') && this.runtimesRoot && this.tempRoot) {
-      const output=await this.ensureDocxPdfOutput(attachment)
-      if (output) return this.readyOption(attachment,'pdf_attachment',output)
+      try {
+        const output=await this.ensureDocxPdfOutput(attachment)
+        if (output) return this.readyOption(attachment,'pdf_attachment',output)
+      } catch(error) { return this.conversionFailed(attachment,'pdf_attachment',error) }
     }
     return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PDF_CONVERTER_NOT_YET_BOUND','PDF conversion requires the reviewed browser or managed LibreOffice converter contract.')
   }
@@ -262,7 +280,7 @@ export class GenerationV2DfcService {
   ) {
     this.blobs.persist(bytes)
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(this.db, context => {
-      const blob = this.assets.recordBlobFromBytesInAuthorityTransaction(context, bytes, mime)
+      const blob = this.assets.recordBlobKeepingStoredMimeInAuthorityTransaction(context, bytes, mime)
       const derived = this.assets.createDerivedAssetRevisionInAuthorityTransaction(context, {
         assetId: `asset:${randomUUID()}`, assetRevisionId: `asset-revision:${randomUUID()}`, assetKind: 'file', filename,
         parentAssetRevisionId: attachment.assetRevisionId, conversionKind, conversionContractId, conversionRevision, blob,

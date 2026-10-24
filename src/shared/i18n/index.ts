@@ -251,11 +251,10 @@ export function tf(
   params: Record<string, string | number>,
   locale: SupportedLocale = currentLocale.value
 ): string {
-  let message = t(key, locale)
-  for (const [k, v] of Object.entries(params)) {
-    message = message.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))
-  }
-  return message
+  // One pass with a function replacer: a value is inserted literally ($&, $` and $' stay as typed) and is never
+  // scanned again, so a value containing "{other}" is not expanded.
+  return t(key, locale).replace(/\{([^{}]+)\}/g, (placeholder, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : placeholder)
 }
 
 // ── 重导出 ────────────────────────────────────────────────

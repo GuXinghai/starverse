@@ -406,4 +406,42 @@ describe('GenerationV2DfcService', () => {
       })
     } finally { db.close() }
   })
+  // R5-02 (P5b-01, P5b-02): non-markdown text sources convert, and one failed option never hides the others.
+  it.each([['notes.txt','text/plain','plain notes'],['data.json','application/json','{"a":1}'],['table.csv','text/csv','a,b;1,2']])(
+    'offers every text option for the non-markdown source %s',async(name,mime,text)=>{
+      const fixture=productionFixture()
+      try {
+        const source=fixture.addSource(name,mime,Buffer.from(text))
+        const dto=await fixture.service().ensureOptions(optionsInput(source.assetId.value))
+        for(const target of ['original_file','plain_text','markdown','code','table_markdown'])
+          expect(dto.options.find(item=>item.targetKind===target)).toMatchObject({status:'ready',isAvailable:true})
+      } finally {fixture.close()}
+    })
+
+  it('keeps the other options when the HTML PDF converter fails, and does not retry it straight away',async()=>{
+    const fixture=productionFixture()
+    try {
+      const source=fixture.addSource('page.html','text/html',Buffer.from('<p>page</p>'))
+      const bridge:ElectronConversionBridge={convert:vi.fn<ElectronConversionBridge['convert']>(async request=>({requestId:request.requestId,
+        conversionKind:request.conversionKind,status:'failed',diagnostics:[],cleanupStatus:'not_requested'}) as never)}
+      const service=fixture.service(bridge)
+      const dto=await service.ensureOptions(optionsInput(source.assetId.value))
+      expect(dto.options.find(item=>item.targetKind==='pdf_attachment')).toMatchObject({status:'blocked',diagnostics:[{code:'GENERATION_V2_DFC_CONVERSION_FAILED'}]})
+      expect(dto.options.find(item=>item.targetKind==='original_file')).toMatchObject({status:'ready'})
+      expect(dto.options.find(item=>item.targetKind==='plain_text')).toMatchObject({status:'ready'})
+      await service.ensureOptions(optionsInput(source.assetId.value))
+      expect(bridge.convert).toHaveBeenCalledTimes(1)
+    } finally {fixture.close()}
+  })
+
+  it('blocks only the text option whose source is not valid UTF-8',async()=>{
+    const fixture=productionFixture()
+    try {
+      const source=fixture.addSource('latin.txt','text/plain',Buffer.from([0x63,0x61,0x66,0xe9]))
+      const dto=await fixture.service().ensureOptions(optionsInput(source.assetId.value))
+      expect(dto.options.find(item=>item.targetKind==='original_file')).toMatchObject({status:'ready'})
+      expect(dto.options.find(item=>item.targetKind==='plain_text')).toMatchObject({status:'blocked',diagnostics:[{code:'GENERATION_V2_DFC_CONVERSION_FAILED'}]})
+    } finally {fixture.close()}
+  })
+
 })

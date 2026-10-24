@@ -67,11 +67,12 @@ export async function renderFinal(text: string): Promise<FinalSnapshot> {
         for (const block of env._codeBlocks) {
             const highlighted = highlightSync(block.code, block.lang)
             if (highlighted) {
-                html = html.replace(block.placeholder, highlighted)
+                // Function replacers: a string replacement would expand $&, $`, $' and $$ inside the code.
+                html = html.replace(block.placeholder, () => highlighted)
                 continue
             }
 
-            html = html.replace(block.placeholder, renderCodeFallback(block.code))
+            html = html.replace(block.placeholder, () => renderCodeFallback(block.code))
             if (isLangLoadable(block.lang)) highlightPending = true
         }
     }
@@ -94,8 +95,15 @@ export async function renderFinal(text: string): Promise<FinalSnapshot> {
  */
 export function renderBlockSync(content: string): string {
     const { processed, mathBlocks } = extractMathBlocks(content)
-    let html = md.render(processed)
+    const env: any = {}
+    let html = md.render(processed, env)
     html = restoreMathBlocks(html, mathBlocks)
+
+    // A fence nested in a list or blockquote reaches this path (top-level fences have their own stream block). The
+    // placeholder would otherwise be stripped by the sanitizer and the code would stay invisible until the final render.
+    for (const block of env._codeBlocks ?? []) {
+        html = html.replace(block.placeholder, () => renderCodeFallback(block.code))
+    }
 
     return html
 }
@@ -165,8 +173,8 @@ function restoreMathBlocks(html: string, mathBlocks: ReadonlyArray<MathBlock>): 
     let result = html
     for (const block of mathBlocks) {
         const rendered = renderMath(block.content, block.display)
-        result = result.replace(`<p>${block.placeholder}</p>`, rendered)
-        result = result.replace(block.placeholder, rendered)
+        result = result.replace(`<p>${block.placeholder}</p>`, () => rendered)
+        result = result.replace(block.placeholder, () => rendered)
     }
     return result
 }
@@ -298,7 +306,9 @@ function replaceMathInPlainText(text: string, blocks: MathBlock[]): string {
     })
 
     // Inline math: $...$ and \(...\)
-    result = result.replace(/(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+?)\$(?!\$)/g, (_match, content: string) => {
+    // Pandoc-style delimiters (R5-05, P6b-02): one line, no space just inside either $, and the closing $ is not
+    // followed by a digit. "costs $5 and $10" and "set $HOME and $PATH" stay prose; "$x$" is still math.
+    result = result.replace(/(?<![$\\])\$(?![\s$])((?:[^$\\\n]|\\.)+?)(?<!\s)\$(?![$\d])/g, (_match, content: string) => {
         const id = `MATH_INLINE_${mathCounter++}_PH`
         blocks.push({ placeholder: id, content: content.trim(), display: false })
         return id

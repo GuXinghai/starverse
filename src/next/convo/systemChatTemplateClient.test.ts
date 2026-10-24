@@ -59,6 +59,15 @@ describe('systemChatTemplateClient epoch-2 bridge', () => {
     expect(workspace.setLastFormalConversation).toHaveBeenCalledWith('conversation:formal')
   })
 
+  // R5-03 (P5b-13): the draft schema is strict, so the unreadable-row count must be part of it.
+  it('accepts a draft that reports unreadable attachment rows', async () => {
+    const withUnreadable = { ...snapshot, draft: { ...snapshot.draft, unreadableAttachmentCount: 1 } }
+    vi.stubGlobal('window', { generationV2: { workspace: {
+      getSystemTemplate: vi.fn(async () => ({ ok: true, value: withUnreadable })),
+    } } })
+    expect((await getSystemChatTemplate()).draft).toMatchObject({ unreadableAttachmentCount: 1 })
+  })
+
   it('surfaces the exact V2 command error without consulting a legacy bridge', async () => {
     vi.stubGlobal('window', { generationV2: { workspace: {
       getSystemTemplate: vi.fn(async () => ({ ok: false, code: 'GENERATION_V2_SYSTEM_TEMPLATE_NOT_FOUND' })),
