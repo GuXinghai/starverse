@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
-import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './config/appCsp'
+import { appCspPlugin } from './config/appCspPlugin'
 import { generatedRuntimeWatchIgnores } from './config/generatedRuntimeWatchIgnores'
 
 // https://vitejs.dev/config/
@@ -13,14 +13,7 @@ export default defineConfig({
     }
   },
   plugins: [
-    {
-      name: 'app-csp-meta-inject',
-      transformIndexHtml(html) {
-        // SSOT: CSP is generated here and injected into index.html placeholder.
-        const env = normalizeAppCspEnv(process.env.NODE_ENV)
-        return injectAppCspIntoHtml(html, getAppCsp(env))
-      },
-    },
+    appCspPlugin(),
     vue(),
     electron({
       main: {

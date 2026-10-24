@@ -93,6 +93,17 @@ function isDangerousLinkScheme(href: string): boolean {
     return match !== null && DANGEROUS_LINK_SCHEMES.has(match[1].toLowerCase())
 }
 
+const LOCAL_IMAGE_SCHEMES = new Set(['data', 'blob', 'asset'])
+
+// R6-07 (P7-04): only local image sources reach the DOM. Remote ones are also blocked by the CSP, but a
+// markdown image must not make the renderer even attempt a request to an address the model chose.
+function isAllowedImageSrc(src: string): boolean {
+    const compact = src.replace(/[\u0000- ]/g, '')
+    if (compact.startsWith('//')) return false
+    const match = /^([a-zA-Z][a-zA-Z\d+.-]*):/.exec(compact)
+    return match === null || LOCAL_IMAGE_SCHEMES.has(match[1].toLowerCase())
+}
+
 export interface SanitizeResult {
     html: string
     removed: boolean
@@ -119,6 +130,9 @@ export function sanitizeHtml(dirty: string): SanitizeResult {
     DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
         if (data.attrName && FORBID_ATTR.includes(data.attrName)) {
             removed = true
+        }
+        if (data.attrName === 'src' && typeof data.attrValue === 'string' && !isAllowedImageSrc(data.attrValue)) {
+            data.keepAttr = false
         }
         if (data.attrName === 'href' && typeof data.attrValue === 'string' && !isAllowedLinkHref(data.attrValue)) {
             data.keepAttr = false

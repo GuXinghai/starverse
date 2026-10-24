@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import path from 'node:path'
 import vue from '@vitejs/plugin-vue'
-import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from '../../config/appCsp'
+import { appCspPlugin } from '../../config/appCspPlugin'
 
 const generatedRuntimeWatchIgnores = [
   '**/.external-runtime-work/**',
@@ -38,13 +38,7 @@ export default defineConfig({
     ],
   },
   plugins: [
-    {
-      name: 'app-csp-meta-inject-smoke',
-      transformIndexHtml(html) {
-        const env = normalizeAppCspEnv(process.env.NODE_ENV)
-        return injectAppCspIntoHtml(html, getAppCsp(env))
-      },
-    },
+    appCspPlugin('app-csp-meta-inject-smoke'),
     vue(),
   ],
   server: {

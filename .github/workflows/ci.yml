@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+# Least privilege (P8-08): the jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: resolve conditional test scope

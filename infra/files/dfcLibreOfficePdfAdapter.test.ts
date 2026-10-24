@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { RunExternalProcessInput } from '../../src/next/file-type/externalProcessRunner'
 import {
@@ -72,6 +73,36 @@ describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
     ]))
     expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.runtime.managedRuntimeRootDir)
     expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.executablePath)
+  })
+
+  // R6-02 (P5a-01): the per-run profile must already carry the hardening when the process starts.
+  it('seeds the per-run profile with macro and link hardening before the process starts', async () => {
+    const runtime = await fakeRuntime()
+    const sandboxRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-pdf-sandbox-'))
+    let seeded = ''
+
+    const result = await runDfcLibreOfficeDocxToPdfAdapter({
+      assetId: 'asset-docx-pdf-hardened',
+      sourceExtension: 'docx',
+      sourceBytes: Buffer.from('fake docx bytes'),
+      sandboxRootDir,
+      runtime,
+      processRunner: async (input) => {
+        const userInstallation = String(input.args?.find((arg) => arg.startsWith('-env:UserInstallation=')) ?? '')
+        const profileDir = fileURLToPath(userInstallation.slice('-env:UserInstallation='.length))
+        seeded = await readFile(path.join(profileDir, 'user', 'registrymodifications.xcu'), 'utf8')
+        const outdir = String(input.args?.[(input.args ?? []).indexOf('--outdir') + 1] ?? '')
+        await writeFile(path.join(outdir, 'asset-docx-pdf-hardened.pdf'), Buffer.from('%PDF-1.7\n%%EOF'))
+        return okProcess()
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(seeded).toContain('<oor:items')
+    expect(seeded).toMatch(/oor:name="MacroSecurityLevel"[^>]*>\s*<value>3<\/value>/)
+    expect(seeded).toMatch(/oor:name="DisableMacrosExecution"[^>]*>\s*<value>true<\/value>/)
+    expect(seeded).toMatch(/oor:name="BlockUntrustedRefererLinks"[^>]*>\s*<value>true<\/value>/)
+    expect(seeded).toMatch(/org\.openoffice\.Office\.Writer\/Content\/Update[\s\S]*oor:name="Link"[^>]*>\s*<value>2<\/value>/)
   })
 
   it('does not run without an injected fake process runner', async () => {

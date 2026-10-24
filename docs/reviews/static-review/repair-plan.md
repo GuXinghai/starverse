@@ -221,7 +221,8 @@ Each item gives: findings, intended behaviour, evidence class (A/B/S/L/M, from r
 | 4a | Complete, see [repair-phase-4a.md](repair-phase-4a.md). R4-01 to R4-07 done. P3a-08 was not reproduced (characterization tests added). OQ-4 evidence recorded; bootstrap activation unchanged (D-8) |
 | 4b | Complete, see [repair-phase-4b.md](repair-phase-4b.md). R4-08 and R4-09 done. The catalog revision now bumps only when the active snapshot changes, interrupted syncs are recovered, settings saves no longer overwrite unloaded values, and one undecodable rule row no longer blocks saving (D-4). Limitations are in section 5 of that report. |
 | 5 | Complete, see [repair-phase-5.md](repair-phase-5.md). R5-01 to R5-05 done. P5b-04 was not reproduced (characterization test added). A corrupt draft attachment row is now skipped and counted; a broken DFC selection still fails the read. No test assertion changed |
-| 6–8 | Not started |
+| 6a | Complete, see [repair-phase-6a.md](repair-phase-6a.md). R6-01, R6-02, R6-07 and R6-08 done, scoped to keep development unaffected. Fuses verified on a packaged exe; LibreOffice not run. No test assertion changed |
+| 6b, 7, 8 | Not started. 6b is R6-03 to R6-06, R6-09 and R6-10 |
 
 ## 5. Still-unreviewed areas
 

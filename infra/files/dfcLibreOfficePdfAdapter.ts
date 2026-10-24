@@ -126,6 +126,7 @@ export async function runDfcLibreOfficeDocxToPdfAdapter(
   await mkdir(plan.request.sandboxOutputDir, { recursive: true })
   await mkdir(plan.request.workingDir, { recursive: true })
   await mkdir(profileDir, { recursive: true })
+  await writeHardenedLibreOfficeProfile(profileDir)
   await writeFile(plan.request.sandboxInputPath, Buffer.from(input.sourceBytes))
 
   const processInput: RunExternalProcessInput = {
@@ -201,6 +202,34 @@ export async function runDfcLibreOfficeDocxToPdfAdapter(
     diagnostics: validation.diagnostics,
     cleanupStatus: outcome.cleanupStatus,
   }
+}
+
+// R6-02 (P5a-01): the profile is created per run, so these settings are the only configuration LibreOffice sees.
+// Macros are off at the highest security level, links in a document are not updated or trusted, and no trusted
+// location exists. A document therefore cannot start a macro or make LibreOffice fetch a linked resource.
+const HARDENED_PROFILE_ITEMS: readonly Readonly<{ path: string; name: string; type: 'int' | 'boolean'; value: string }>[] = [
+  { path: '/org.openoffice.Office.Common/Security/Scripting', name: 'MacroSecurityLevel', type: 'int', value: '3' },
+  { path: '/org.openoffice.Office.Common/Security/Scripting', name: 'DisableMacrosExecution', type: 'boolean', value: 'true' },
+  { path: '/org.openoffice.Office.Common/Security/Scripting', name: 'BlockUntrustedRefererLinks', type: 'boolean', value: 'true' },
+  { path: '/org.openoffice.Office.Common/Security/Scripting', name: 'DisableActiveContent', type: 'boolean', value: 'true' },
+  { path: '/org.openoffice.Office.Writer/Content/Update', name: 'Link', type: 'int', value: '2' },
+]
+
+export function buildHardenedLibreOfficeProfileXcu(): string {
+  const items = HARDENED_PROFILE_ITEMS.map((item) =>
+    `  <item oor:path="${item.path}"><prop oor:name="${item.name}" oor:op="fuse" oor:type="xs:${item.type}"><value>${item.value}</value></prop></item>`)
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+    ...items,
+    '</oor:items>',
+    '',
+  ].join('\n')
+}
+
+async function writeHardenedLibreOfficeProfile(profileDir: string): Promise<void> {
+  await mkdir(path.join(profileDir, 'user'), { recursive: true })
+  await writeFile(path.join(profileDir, 'user', 'registrymodifications.xcu'), buildHardenedLibreOfficeProfileXcu(), 'utf8')
 }
 
 export function buildLibreOfficePdfArgs(input: Readonly<{

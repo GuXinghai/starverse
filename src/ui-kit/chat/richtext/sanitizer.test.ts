@@ -95,6 +95,20 @@ describe('sanitizer', () => {
                 expect(removed).toBe(true)
             })
 
+        // R6-07 (P7-04): remote images are blocked by the CSP; the sanitizer does not hand the URL to the DOM at all.
+        it.each(['https://example.com/a.png', 'http://example.com/a.png', '//example.com/a.png', 'ftp://example.com/a.png'])(
+            'drops the remote image source %s but keeps the alt text', (src) => {
+                const { html, removed } = sanitizeHtml('<img src="' + src + '" alt="chart">')
+                expect(html).not.toContain('example.com')
+                expect(html).toContain('alt="chart"')
+                expect(removed).toBe(false)
+            })
+
+        it.each(['data:image/png;base64,AAAA', '/images/a.png', './a.png', 'a.png'])(
+            'keeps the local image source %s', (src) => {
+                expect(sanitizeHtml('<img src="' + src + '" alt="x">').html).toContain('src="' + src + '"')
+            })
+
         it('strips iframe tags', () => {
             const input = '<iframe src="https://evil.com"></iframe>'
             const { html, removed } = sanitizeHtml(input)

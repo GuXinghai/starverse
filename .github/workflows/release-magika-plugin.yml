@@ -12,8 +12,10 @@ on:
         required: true
         default: 'true'
 
+# Read-only by default (P8-08): the build jobs run repository scripts and must not be able to write.
+# Only the publish job below is granted write access.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   portable-build:
@@ -33,7 +35,9 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Validate release input
         shell: bash
-        run: test "${{ inputs.version }}" = "0.2.0" || (echo "This workflow packages only Magika v0.2.0." && exit 1)
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: test "$RELEASE_VERSION" = "0.2.0" || (echo "This workflow packages only Magika v0.2.0." && exit 1)
       - name: Build deterministic any/any package
         run: node scripts/dev/package-official-magika-v020.mjs
       - name: Node classification smoke
@@ -92,7 +96,17 @@ jobs:
     if: ${{ inputs.dryRun != 'true' }}
     runs-on: ubuntu-24.04
     environment: plugin-release-production
+    permissions:
+      contents: write
     steps:
+      # P8-09: the signing key is available to this job, so refuse to run it from an unreviewed branch.
+      - name: Require a protected ref
+        shell: bash
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main|refs/tags/*) ;;
+            *) echo "::error::Signing and publishing run only from main or a tag, not $GITHUB_REF." && exit 1 ;;
+          esac
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -120,13 +134,16 @@ jobs:
       - name: Publish GitHub Release asset
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
-          tag="starverse-plugin-magika-v${{ inputs.version }}"
+          tag="starverse-plugin-magika-v$RELEASE_VERSION"
           zip=".artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip"
           sig=".artifacts/plugin-packages/signatures/starverse-plugin-magika-0.2.0-any-any.sig.json"
+          summary=".artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.release-summary.json"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --clobber
+            # P8-13: no overwrite flag. A published asset is never replaced silently; publish a new version instead.
+            gh release upload "$tag" "$zip" "$sig" "$summary" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Starverse Magika official plugin v${{ inputs.version }}" --notes "Portable pure-JavaScript any/any Magika plugin."
+            gh release create "$tag" "$zip" "$sig" "$summary" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Starverse Magika official plugin v$RELEASE_VERSION" --notes "Portable pure-JavaScript any/any Magika plugin."
           fi
